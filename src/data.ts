@@ -611,27 +611,35 @@ export interface YtdBreakdown {
 }
 
 export function getMonthsMultiplier(period: string): number {
-  if (period.includes('October')) return 10;
-  if (period.includes('September')) return 9;
-  if (period.includes('August')) return 8;
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  for (let i = 0; i < months.length; i++) {
+    if (period.includes(months[i])) {
+      return i + 1;
+    }
+  }
   return 10; // Default to October (10th month)
 }
 
 export function calculateYtd(employee: Employee, period: string): YtdBreakdown {
   const targetMonths = getMonthsMultiplier(period);
+  const match = period.match(/\d{4}/);
+  const targetYear = match ? parseInt(match[0], 10) : 2026;
   
-  // Calculate service months in 2026
+  // Calculate service months in the target year
   let serviceMonths = targetMonths;
   if (employee.dateOfJoined) {
     const joinDate = new Date(employee.dateOfJoined);
-    const startOf2026 = new Date('2026-01-01');
-    const effectiveJoin = joinDate > startOf2026 ? joinDate : startOf2026;
-    
-    // Calculate months from join date to end of active period's month
-    const endOfMonthIn2026 = targetMonths - 1; // 0-indexed month of current year (e.g. 9 for Oct)
-    const joinMonthIn2026 = joinDate.getFullYear() === 2026 ? joinDate.getMonth() : 0;
-    const monthsWorkedIn2026 = Math.max(1, endOfMonthIn2026 - joinMonthIn2026 + 1);
-    serviceMonths = Math.min(targetMonths, monthsWorkedIn2026);
+    if (joinDate.getFullYear() > targetYear) {
+      serviceMonths = 0;
+    } else {
+      const endOfMonthInTargetYear = targetMonths - 1; // 0-indexed month of current year (e.g. 9 for Oct)
+      const joinMonthInTargetYear = joinDate.getFullYear() === targetYear ? joinDate.getMonth() : 0;
+      const monthsWorkedInTargetYear = Math.max(0, endOfMonthInTargetYear - joinMonthInTargetYear + 1);
+      serviceMonths = Math.min(targetMonths, monthsWorkedInTargetYear);
+    }
   }
 
   // Multiply individual monthly values

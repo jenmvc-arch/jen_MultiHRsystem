@@ -323,9 +323,21 @@ export default function PayrollView({
                   onChange={(e) => setSelectedPayPeriod(e.target.value)}
                   className="w-full rounded border border-neutral-border bg-surface p-1.5 focus:border-primary outline-none"
                 >
-                  <option>October 2026</option>
-                  <option>September 2026</option>
-                  <option>August 2026</option>
+                  {(() => {
+                    const options = [];
+                    for (let year = 2050; year >= 2020; year--) {
+                      const months = [
+                        'December', 'November', 'October', 'September', 'August', 'July',
+                        'June', 'May', 'April', 'March', 'February', 'January'
+                      ];
+                      for (const month of months) {
+                        options.push(`${month} ${year}`);
+                      }
+                    }
+                    return options.map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ));
+                  })()}
                 </select>
               </div>
 
@@ -805,7 +817,17 @@ export default function PayrollView({
                   <p className="text-on-surface-variant mt-2">Bank Account</p>
                   <p className="text-on-surface font-mono font-medium">{activeEmployee.bankName} · {activeEmployee.accountNo}</p>
                   <p className="text-on-surface-variant mt-2">Payment Date</p>
-                  <p className="text-on-surface font-medium">{selectedPayPeriod.includes('October') ? '28 Oct 2026' : selectedPayPeriod.includes('September') ? '28 Sep 2026' : '28 Aug 2026'}</p>
+                  <p className="text-on-surface font-medium">
+                    {(() => {
+                      const parts = selectedPayPeriod.split(' ');
+                      if (parts.length === 2) {
+                        const month = parts[0];
+                        const year = parts[1];
+                        return `28 ${month.substring(0, 3)} ${year}`;
+                      }
+                      return '28 Oct 2026';
+                    })()}
+                  </p>
                   <p className="text-on-surface-variant mt-2">EPF Member Number</p>
                   <p className="text-on-surface font-medium font-mono">{activeEmployee.epfNumber || 'N/A'}</p>
                 </div>
