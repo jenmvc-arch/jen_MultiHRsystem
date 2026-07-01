@@ -1,0 +1,6 @@
+{
+  "name": "HR Nexus",
+  "description": "Enterprise HR portal featuring payroll generation, payslips, employee directory, and performance management reporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

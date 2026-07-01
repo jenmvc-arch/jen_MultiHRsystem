@@ -1,0 +1,609 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect } from 'react';
+import { 
+  Menu, 
+  Bell, 
+  User, 
+  X, 
+  Settings, 
+  HelpCircle, 
+  CheckCircle, 
+  AlertCircle,
+  Clock,
+  Briefcase,
+  FileText,
+  DollarSign,
+  Sun,
+  Moon
+} from 'lucide-react';
+import { AppTab, Employee, EmployeePerformance, ReviewCycle, CorporateEntity } from './types';
+import { 
+  INITIAL_EMPLOYEES, 
+  INITIAL_REVIEW_CYCLES, 
+  INITIAL_PERFORMANCES,
+  INITIAL_ENTITIES
+} from './data';
+
+import Sidebar from './components/Sidebar';
+import DashboardView from './components/DashboardView';
+import PayrollView from './components/PayrollView';
+import PayslipDocumentView from './components/PayslipDocumentView';
+import PerformanceView from './components/PerformanceView';
+import EmployeeDirectoryView from './components/EmployeeDirectoryView';
+import ReportsView from './components/ReportsView';
+import EntitiesView from './components/EntitiesView';
+import TaxSettingsView from './components/TaxSettingsView';
+import LeaveManagementView from './components/LeaveManagementView';
+import FormsDirectoryView from './components/FormsDirectoryView';
+import HireOnboardingView from './components/HireOnboardingView';
+
+export default function App() {
+  // Navigation & View States
+  const [currentTab, setCurrentTab] = useState<AppTab>('dashboard');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('EMP-84729'); // Sarah Jenkins by default
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  // Global Theme State
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('company-console-theme');
+    return (saved === 'dark' || saved === 'light') ? saved : 'light';
+  });
+
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('company-console-theme', theme);
+  }, [theme]);
+
+  // Core Database States
+  const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES);
+  const [performances, setPerformances] = useState<EmployeePerformance[]>(INITIAL_PERFORMANCES);
+  const [reviewCycles] = useState<ReviewCycle[]>(INITIAL_REVIEW_CYCLES);
+  const [entities, setEntities] = useState<CorporateEntity[]>(INITIAL_ENTITIES);
+
+  // Active corporate views
+  const [activeEntityId, setActiveEntityId] = useState<string>('ENT-01');
+  const activeEntity = entities.find(e => e.id === activeEntityId) || entities[0];
+
+  // Dynamic Theme style provider
+  const getThemeStyles = (themeName?: 'theme1' | 'theme2' | 'theme3') => {
+    if (themeName === 'theme2') {
+      return {
+        '--color-primary': '#B30000',
+        '--color-primary-container': '#8B0000',
+        '--color-on-primary-container': '#FFFFFF',
+        '--color-secondary': '#8B0000',
+        '--color-secondary-container': '#F2D7C5',
+        '--color-on-secondary-container': '#B30000',
+        '--color-background': '#F7EBDD',
+        '--color-on-background': '#222222',
+        '--color-surface': '#FFF8F0',
+        '--color-surface-container-lowest': '#FFF8F0',
+        '--color-surface-container-low': '#FFF8F0',
+        '--color-surface-container': '#F2D7C5',
+        '--color-on-surface': '#B30000',
+        '--color-on-surface-variant': '#222222',
+        '--color-neutral-border': '#F2D7C5',
+        '--color-parchment': '#FFF8F0',
+      } as React.CSSProperties;
+    }
+    if (themeName === 'theme3') {
+      return {
+        '--color-primary': '#D4AF37',
+        '--color-primary-container': '#1E1E1E',
+        '--color-on-primary-container': '#D4AF37',
+        '--color-secondary': '#FFD700',
+        '--color-secondary-container': '#2A2A2A',
+        '--color-on-secondary-container': '#D4AF37',
+        '--color-background': '#121212',
+        '--color-on-background': '#FFFFFF',
+        '--color-surface': '#1E1E1E',
+        '--color-surface-container-lowest': '#121212',
+        '--color-surface-container-low': '#1A1A1A',
+        '--color-surface-container': '#2A2A2A',
+        '--color-on-surface': '#D4AF37',
+        '--color-on-surface-variant': '#E5E5E5',
+        '--color-neutral-border': '#3A3A3A',
+        '--color-parchment': '#2A2A2A',
+      } as React.CSSProperties;
+    }
+    return {} as React.CSSProperties;
+  };
+
+  // Global Interactive Settings (State-driven for extra precision)
+  const [companyName, setCompanyName] = useState('Acme Global Enterprise');
+  const [currencySymbol, setCurrencySymbol] = useState('RM');
+  const [taxRate, setTaxRate] = useState(11);
+
+  // Toast System
+  const [toast, setToast] = useState<{ show: boolean; title: string; message: string; type: 'success' | 'info' }>({
+    show: false,
+    title: '',
+    message: '',
+    type: 'success'
+  });
+
+  // New Request Modal state
+  const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const [requestType, setRequestType] = useState('Annual Leave');
+  const [requestDesc, setRequestDesc] = useState('');
+  const [requestDate, setRequestDate] = useState('2023-11-01');
+
+  // Trigger toast helper
+  const triggerNotification = (title: string, message: string, type: 'success' | 'info' = 'success') => {
+    setToast({ show: true, title, message, type });
+  };
+
+  // Dismiss toast after timeout
+  useEffect(() => {
+    if (toast.show) {
+      const timer = setTimeout(() => {
+        setToast(prev => ({ ...prev, show: false }));
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.show]);
+
+  // Database Action Mutators
+  const handleAddEmployee = (newEmployee: Employee) => {
+    setEmployees(prev => [newEmployee, ...prev]);
+  };
+
+  const handleDeleteEmployee = (id: string) => {
+    setEmployees(prev => prev.filter(e => e.id !== id));
+    setPerformances(prev => prev.filter(p => p.employeeId !== id));
+  };
+
+  const handleUpdateEmployeeSalary = (id: string, updates: Partial<Employee>) => {
+    setEmployees(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+  };
+
+  const handleSavePerformance = (updatedPerf: EmployeePerformance) => {
+    setPerformances(prev => {
+      const exists = prev.some(p => p.employeeId === updatedPerf.employeeId && p.reviewCycleId === updatedPerf.reviewCycleId);
+      if (exists) {
+        return prev.map(p => (p.employeeId === updatedPerf.employeeId && p.reviewCycleId === updatedPerf.reviewCycleId) ? updatedPerf : p);
+      } else {
+        return [updatedPerf, ...prev];
+      }
+    });
+  };
+
+  const handleAddEntity = (newEntity: CorporateEntity) => {
+    setEntities(prev => [...prev, newEntity]);
+  };
+
+  const handleUpdateEntity = (id: string, updates: Partial<CorporateEntity>) => {
+    setEntities(prev => prev.map(ent => ent.id === id ? { ...ent, ...updates } : ent));
+  };
+
+  // Navigate to document utility
+  const handleNavigateToDocument = (employeeId: string) => {
+    setSelectedEmployeeId(employeeId);
+    setCurrentTab('payslip-viewer');
+  };
+
+  // New request submission
+  const handleRequestSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!requestDesc.trim()) {
+      triggerNotification('Request Error', 'Please specify details for your administrative request.', 'info');
+      return;
+    }
+    setIsRequestModalOpen(false);
+    setRequestDesc('');
+    triggerNotification(
+      'Request Submitted',
+      `Your administrative request for ${requestType} on ${requestDate} is queued for Director approval.`
+    );
+  };
+
+  return (
+    <div style={getThemeStyles(activeEntity?.theme)} className="flex h-screen bg-background overflow-hidden relative font-sans text-on-background select-none">
+      
+      {/* Toast Notification HUD */}
+      {toast.show && (
+        <div className="fixed top-4 right-4 z-50 max-w-sm bg-white border border-neutral-border shadow-2xl rounded-lg p-4 flex items-start gap-3 animate-in slide-in-from-top-4 duration-300">
+          <div className="shrink-0 mt-0.5">
+            {toast.type === 'success' ? (
+              <CheckCircle className="w-5 h-5 text-green-600" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-primary" />
+            )}
+          </div>
+          <div className="flex-1 text-left text-xs">
+            <h4 className="font-bold text-on-background leading-tight">{toast.title}</h4>
+            <p className="text-on-surface-variant mt-0.5">{toast.message}</p>
+          </div>
+          <button 
+            onClick={() => setToast(prev => ({ ...prev, show: false }))}
+            className="text-outline hover:text-on-surface transition-colors cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Main Responsive Left Sidebar Navigation */}
+      <Sidebar 
+        currentTab={currentTab} 
+        onTabChange={setCurrentTab} 
+        onNewRequest={() => setIsRequestModalOpen(true)}
+        isMobileOpen={isMobileSidebarOpen}
+        onMobileClose={() => setIsMobileSidebarOpen(false)}
+        entities={entities}
+        activeEntityId={activeEntityId}
+        onChangeActiveEntity={(id) => {
+          setActiveEntityId(id);
+          const matched = entities.find(e => e.id === id);
+          if (matched) {
+            triggerNotification(
+              'Corporate View Switched',
+              `Now viewing as ${matched.name}. App branding, colors, and logo have synced.`,
+              'success'
+            );
+          }
+        }}
+      />
+
+      {/* Right Column Layout */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+        
+        {/* Top bar (for search results & system status indicators) */}
+        <header className="h-16 border-b border-neutral-border bg-surface px-6 flex justify-between items-center shrink-0 z-20">
+          <div className="flex items-center gap-3">
+            {/* Mobile Toggle Button */}
+            <button 
+              onClick={() => setIsMobileSidebarOpen(true)}
+              className="md:hidden p-2 rounded hover:bg-surface-container transition-colors cursor-pointer"
+            >
+              <Menu className="w-5 h-5 text-primary" />
+            </button>
+            <span className="text-xs font-bold text-primary bg-primary/10 py-1 px-3 rounded-full hidden sm:inline-block">
+              {companyName} Core Console
+            </span>
+          </div>
+
+          <div className="flex items-center gap-4">
+            {/* Clock Date Widget */}
+            <div className="text-right hidden md:block">
+              <span className="text-[10px] text-on-surface-variant uppercase tracking-wider block font-semibold">Active UTC Standard</span>
+              <span className="text-xs font-mono font-bold text-on-surface">2026-06-29 18:17 UTC</span>
+            </div>
+
+            <div className="w-px h-8 bg-neutral-border/40 hidden md:block" />
+
+            {/* Notifications Alert Bell */}
+            <button 
+              onClick={() => triggerNotification('HR Directives', 'You have 142 outstanding performance reviews due by Nov 5th.', 'info')}
+              className="p-2 rounded-full hover:bg-surface-container relative transition-colors cursor-pointer"
+            >
+              <Bell className="w-4 h-4 text-on-surface" />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full" />
+            </button>
+
+            {/* Global Theme Toggle */}
+            <button 
+              onClick={() => {
+                const newTheme = theme === 'light' ? 'dark' : 'light';
+                setTheme(newTheme);
+                triggerNotification(
+                  'Theme Updated', 
+                  `Switched to ${newTheme === 'dark' ? 'High-Contrast Dark' : 'Standard Light'} theme successfully.`
+                );
+              }}
+              className="p-2 rounded-full hover:bg-surface-container transition-colors cursor-pointer text-on-surface flex items-center justify-center"
+              title={theme === 'light' ? 'Switch to High-Contrast Dark Theme' : 'Switch to Standard Light Theme'}
+            >
+              {theme === 'light' ? (
+                <Moon className="w-4 h-4" />
+              ) : (
+                <Sun className="w-4 h-4 text-amber-500" />
+              )}
+            </button>
+
+            {/* User Account context */}
+            <div className="flex items-center gap-2.5 pl-2 border-l border-neutral-border/40">
+              <div className="w-8 h-8 rounded-full bg-primary text-on-primary-container font-bold text-xs flex items-center justify-center border border-neutral-border">
+                HR
+              </div>
+              <div className="text-left hidden sm:block leading-none">
+                <span className="font-bold text-xs text-on-surface block">meijern.law@gmail.com</span>
+                <span className="text-[10px] text-on-surface-variant mt-0.5 block">Global Administrator</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Core Main Scrollable Content Pane */}
+        <main className="flex-1 overflow-y-auto bg-surface-container-low p-6 md:p-8 select-text">
+          {currentTab === 'dashboard' && (
+            <DashboardView 
+              employees={employees}
+              entities={entities}
+              reviewCycles={reviewCycles}
+              onNavigate={setCurrentTab}
+              onOpenNewEmployeeModal={() => {
+                setCurrentTab('directory');
+                triggerNotification('Directory Navigated', 'Click Add New Employee to register custom personnel.', 'info');
+              }}
+              onOpenRequestModal={() => setIsRequestModalOpen(true)}
+            />
+          )}
+
+          {currentTab === 'payroll' && (
+            <PayrollView 
+              employees={employees}
+              entities={entities}
+              onUpdateEmployeeSalary={handleUpdateEmployeeSalary}
+              onNavigateToDocument={handleNavigateToDocument}
+              onShowNotification={triggerNotification}
+              activeEntity={activeEntity}
+            />
+          )}
+
+          {currentTab === 'payslip-viewer' && (
+            <PayslipDocumentView 
+              employees={employees}
+              selectedEmployeeId={selectedEmployeeId}
+              onBack={() => setCurrentTab('payroll')}
+              onShowNotification={triggerNotification}
+              activeEntity={activeEntity}
+            />
+          )}
+
+          {currentTab === 'performance' && (
+            <PerformanceView 
+              employees={employees}
+              performances={performances}
+              reviewCycles={reviewCycles}
+              onSavePerformance={handleSavePerformance}
+              onShowNotification={triggerNotification}
+            />
+          )}
+
+          {currentTab === 'directory' && (
+            <EmployeeDirectoryView 
+              employees={employees}
+              entities={entities}
+              onAddEmployee={handleAddEmployee}
+              onDeleteEmployee={handleDeleteEmployee}
+              onUpdateEmployee={handleUpdateEmployeeSalary}
+              onShowNotification={triggerNotification}
+            />
+          )}
+
+          {currentTab === 'entities' && (
+            <EntitiesView 
+              entities={entities}
+              employees={employees}
+              onAddEntity={handleAddEntity}
+              onUpdateEntity={handleUpdateEntity}
+              onShowNotification={triggerNotification}
+            />
+          )}
+
+          {currentTab === 'tax-settings' && (
+            <TaxSettingsView 
+              employees={employees}
+              onShowNotification={triggerNotification}
+            />
+          )}
+
+          {currentTab === 'reports' && (
+            <ReportsView 
+              employees={employees}
+              performances={performances}
+              onShowNotification={triggerNotification}
+            />
+          )}
+
+          {currentTab === 'leave-management' && (
+            <LeaveManagementView 
+              employees={employees}
+              onShowNotification={triggerNotification}
+            />
+          )}
+
+          {currentTab === 'forms-directory' && (
+            <FormsDirectoryView 
+              employees={employees}
+              onShowNotification={triggerNotification}
+              activeEntity={activeEntity}
+            />
+          )}
+
+          {currentTab === 'hire-onboarding' && (
+            <HireOnboardingView 
+              entities={entities}
+              onShowNotification={triggerNotification}
+              onAddEmployee={handleAddEmployee}
+            />
+          )}
+
+          {/* Tab: Settings Panel */}
+          {currentTab === 'settings' && (
+            <div className="max-w-2xl mx-auto bg-white border border-neutral-border rounded-lg p-6 shadow-sm text-left animate-in fade-in duration-200 space-y-6">
+              <div>
+                <h2 className="text-xl font-bold text-primary tracking-tight">System Settings</h2>
+                <p className="text-xs text-on-surface-variant mt-0.5">Customize global calculations constants, brand properties, and metadata.</p>
+              </div>
+
+              <div className="space-y-4 text-sm">
+                <div>
+                  <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Company Legal Entity Name</label>
+                  <input 
+                    type="text" 
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Currency Symbol</label>
+                    <select
+                      value={currencySymbol}
+                      onChange={(e) => setCurrencySymbol(e.target.value)}
+                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                    >
+                      <option value="RM">Malaysian Ringgit (RM)</option>
+                      <option value="$">US Dollar ($)</option>
+                      <option value="£">British Pound (£)</option>
+                      <option value="€">Euro (€)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Standard EPF Employee Rate</label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        value={taxRate}
+                        onChange={(e) => setTaxRate(Number(e.target.value))}
+                        className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none pr-8"
+                      />
+                      <span className="absolute right-2 top-2 text-xs font-bold text-outline">%</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3.5 bg-parchment/40 rounded border border-neutral-border text-xs leading-relaxed">
+                  <h4 className="font-bold text-primary mb-1">Enterprise Configuration Standard</h4>
+                  <p className="text-on-surface-variant text-[11px]">These global overrides apply automatically across the dynamic payslip calculators, report generators, and directory sheets in real-time.</p>
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-neutral-border flex justify-end">
+                <button 
+                  onClick={() => {
+                    triggerNotification('Settings Saved', 'Global override variables recalculated successfully.');
+                    setCurrentTab('dashboard');
+                  }}
+                  className="bg-primary text-white text-xs font-semibold py-2 px-6 rounded hover:bg-primary-container"
+                >
+                  Apply System Changes
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Tab: Help Support */}
+          {currentTab === 'help' && (
+            <div className="max-w-2xl mx-auto bg-white border border-neutral-border rounded-lg p-6 shadow-sm text-left animate-in fade-in duration-200 space-y-6">
+              <div>
+                <h2 className="text-xl font-bold text-primary tracking-tight">Support Documentation & Guides</h2>
+                <p className="text-xs text-on-surface-variant mt-0.5">Statutory compliance frameworks, EPF calculations, and directory procedures.</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="p-4 bg-surface-container-low rounded border-l-4 border-primary">
+                  <h3 className="font-bold text-sm text-on-surface mb-1">How is EPF and SOCSO calculated?</h3>
+                  <p className="text-xs text-on-surface-variant leading-relaxed">
+                    EPF (Employees Provident Fund) is calculated at a standard rate of 11% for employees under 60 years old. SOCSO and EIS contributions are tiered matching statutory schedules for local payroll.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-surface-container-low rounded border-l-4 border-primary">
+                  <h3 className="font-bold text-sm text-on-surface mb-1">Adding New Employees</h3>
+                  <p className="text-xs text-on-surface-variant leading-relaxed">
+                    Registering a new employee in the Workforce Directory dynamically inserts their record into active memory. They immediately appear in the Payroll previews and evaluation scorecards for Oct 2023.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-surface-container-low rounded border-l-4 border-primary">
+                  <h3 className="font-bold text-sm text-on-surface mb-1">Who do I contact for payroll audit changes?</h3>
+                  <p className="text-xs text-on-surface-variant leading-relaxed">
+                    For manual overrides, use the Adjust Salary options directly inside the active payslip preview or contact administrative support at <strong>support@acme-global.com</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+
+      {/* Interactive Modal: New Request Form */}
+      {isRequestModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white border border-neutral-border rounded-lg shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-neutral-border flex justify-between items-center bg-surface-container-low text-left">
+              <h3 className="font-bold text-base text-primary">Submit Administrative Request</h3>
+              <button 
+                onClick={() => setIsRequestModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-neutral-200 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleRequestSubmit} className="p-6 text-left space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Request Type</label>
+                <select
+                  value={requestType}
+                  onChange={(e) => setRequestType(e.target.value)}
+                  className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                >
+                  <option>Annual Leave</option>
+                  <option>Travel Expense Reimbursement</option>
+                  <option>Medical Allowance Claim</option>
+                  <option>Corporate IT Hardware Request</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Target Effective Date</label>
+                <input
+                  type="date"
+                  value={requestDate}
+                  onChange={(e) => setRequestDate(e.target.value)}
+                  className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Justification Details *</label>
+                <textarea
+                  rows={3}
+                  required
+                  value={requestDesc}
+                  onChange={(e) => setRequestDesc(e.target.value)}
+                  placeholder="Provide brief details/justification for your request..."
+                  className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                />
+              </div>
+
+              {/* Modal Footer */}
+              <div className="pt-4 border-t border-neutral-border flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsRequestModalOpen(false)}
+                  className="px-4 py-2 bg-white border border-neutral-border hover:bg-surface-container rounded text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-primary text-white rounded text-xs font-semibold hover:bg-primary-container"
+                >
+                  Submit Request
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
