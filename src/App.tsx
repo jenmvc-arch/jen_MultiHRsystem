@@ -20,12 +20,14 @@ import {
   Sun,
   Moon
 } from 'lucide-react';
-import { AppTab, Employee, EmployeePerformance, ReviewCycle, CorporateEntity } from './types';
+import { AppTab, Employee, EmployeePerformance, ReviewCycle, CorporateEntity, Candidate } from './types';
 import { 
   INITIAL_EMPLOYEES, 
   INITIAL_REVIEW_CYCLES, 
   INITIAL_PERFORMANCES,
-  INITIAL_ENTITIES
+  INITIAL_ENTITIES,
+  INITIAL_CANDIDATES,
+  UserAccount
 } from './data';
 
 import Sidebar from './components/Sidebar';
@@ -40,6 +42,11 @@ import TaxSettingsView from './components/TaxSettingsView';
 import LeaveManagementView from './components/LeaveManagementView';
 import FormsDirectoryView from './components/FormsDirectoryView';
 import HireOnboardingView from './components/HireOnboardingView';
+import LoginView from './components/LoginView';
+import JobApplicationForm from './components/JobApplicationForm';
+import OnboardingForm from './components/OnboardingForm';
+
+import { googleSheetsClient, isGoogleConfigured } from './lib/googleSheetsClient';
 
 export default function App() {
   // Navigation & View States
@@ -47,26 +54,195 @@ export default function App() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('EMP-84729'); // Sarah Jenkins by default
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
-  // Global Theme State
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    const saved = localStorage.getItem('company-console-theme');
-    return (saved === 'dark' || saved === 'light') ? saved : 'light';
-  });
+  // Check if we are in print/Puppeteer mode
+  const isPrintMode = window.location.search.includes('print=true');
 
-  useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    localStorage.setItem('company-console-theme', theme);
-  }, [theme]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+
+  const handleLoginSuccess = (user: UserAccount) => {
+    localStorage.setItem('hr-nexus-auth', 'true');
+    localStorage.setItem('hr-nexus-user-email', user.email);
+    localStorage.setItem('hr-nexus-user-name', user.name);
+    localStorage.setItem('hr-nexus-user-role', user.role);
+    setIsAuthenticated(true);
+    setCurrentUserEmail(user.email);
+    setCurrentUserName(user.name);
+    setCurrentUserRole(user.role);
+  };
+
+  const handleSignOut = () => {
+    localStorage.removeItem('hr-nexus-auth');
+    localStorage.removeItem('hr-nexus-user-email');
+    localStorage.removeItem('hr-nexus-user-name');
+    localStorage.removeItem('hr-nexus-user-role');
+    setIsAuthenticated(false);
+    setCurrentUserEmail(null);
+    setCurrentUserName(null);
+    setCurrentUserRole(null);
+  };
 
   // Core Database States
   const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES);
   const [performances, setPerformances] = useState<EmployeePerformance[]>(INITIAL_PERFORMANCES);
-  const [reviewCycles] = useState<ReviewCycle[]>(INITIAL_REVIEW_CYCLES);
+  const [reviewCycles, setReviewCycles] = useState<ReviewCycle[]>(INITIAL_REVIEW_CYCLES);
   const [entities, setEntities] = useState<CorporateEntity[]>(INITIAL_ENTITIES);
+  const [candidates, setCandidates] = useState<Candidate[]>(INITIAL_CANDIDATES);
+
+  // Load session from local storage on mount
+  useEffect(() => {
+    const auth = localStorage.getItem('hr-nexus-auth');
+    if (auth === 'true') {
+      setIsAuthenticated(true);
+      setCurrentUserEmail(localStorage.getItem('hr-nexus-user-email'));
+      setCurrentUserName(localStorage.getItem('hr-nexus-user-name'));
+      setCurrentUserRole(localStorage.getItem('hr-nexus-user-role'));
+    }
+  }, []);
+
+  // Load data from Google Sheets dynamically if configured
+  useEffect(() => {
+    if (!isGoogleConfigured) return;
+
+    async function loadData() {
+      try {
+        const payload = await googleSheetsClient.loadData();
+        
+        // 1. Fetch corporate entities
+        if (payload.corporate_entities && payload.corporate_entities.length > 0) {
+          setEntities(payload.corporate_entities.map((e: any) => ({
+            id: e.id,
+            name: e.name,
+            registrationNumber: e.registrationNumber || '',
+            address: e.address || '',
+            taxReferenceNo: e.taxReferenceNo || '',
+            epfReferenceNo: e.epfReferenceNo || '',
+            socsoReferenceNo: e.socsoReferenceNo || '',
+            currency: e.currency || 'RM',
+            isActive: String(e.isActive) !== 'false' && e.isActive !== false,
+            theme: e.theme as any
+          })));
+        }
+
+        // 2. Fetch employees
+        if (payload.employees && payload.employees.length > 0) {
+          setEmployees(payload.employees.map((e: any) => {
+            let careerHistory = [];
+            let dependants = [];
+            try {
+              if (e.careerHistory && typeof e.careerHistory === 'string') {
+                careerHistory = JSON.parse(e.careerHistory);
+              } else if (Array.isArray(e.careerHistory)) {
+                careerHistory = e.careerHistory;
+              }
+            } catch (err) {
+              console.error('Error parsing career history for employee', e.id, err);
+            }
+            try {
+              if (e.dependants && typeof e.dependants === 'string') {
+                dependants = JSON.parse(e.dependants);
+              } else if (Array.isArray(e.dependants)) {
+                dependants = e.dependants;
+              }
+            } catch (err) {
+              console.error('Error parsing dependants for employee', e.id, err);
+            }
+            return {
+              id: e.id,
+              entityId: e.entityId,
+              name: e.name,
+              email: e.email,
+              designation: e.designation,
+              department: e.department,
+              status: e.status as any,
+              bankName: e.bankName,
+              accountNo: e.accountNo,
+              basicSalary: Number(e.basicSalary || 0),
+              housingAllowance: Number(e.housingAllowance || 0),
+              transportAllowance: Number(e.transportAllowance || 0),
+              overtime: Number(e.overtime || 0),
+              performanceBonus: Number(e.performanceBonus || 0),
+              epfRateEmployee: Number(e.epfRateEmployee || 11),
+              epfRateEmployer: Number(e.epfRateEmployer || 13),
+              socsoEmployee: Number(e.socsoEmployee || 0),
+              socsoEmployer: Number(e.socsoEmployer || 0),
+              eisEmployee: Number(e.eisEmployee || 0),
+              eisEmployer: Number(e.eisEmployer || 0),
+              taxPcb: Number(e.taxPcb || 0),
+              unpaidLeave: Number(e.unpaidLeave || 0),
+              hrdCorp: Number(e.hrdCorp || 0),
+              avatarUrl: e.avatarUrl || undefined,
+              nricPassport: e.nricPassport || '',
+              nationality: e.nationality || '',
+              contactNumber: e.contactNumber || '',
+              taxNumber: e.taxNumber || '',
+              epfNumber: e.epfNumber || '',
+              employmentType: e.employmentType || 'Confirmation',
+              maritalStatus: e.maritalStatus || 'Single',
+              eligibleForStatutory: e.eligibleForStatutory || 'Yes',
+              emergencyContactName: e.emergencyContactName || '',
+              emergencyContactRelation: e.emergencyContactRelation || '',
+              emergencyContactPhone: e.emergencyContactPhone || '',
+              dateOfJoined: e.dateOfJoined || '',
+              careerHistory,
+              dependants
+            };
+          }));
+        }
+
+        // 3. Fetch appraisal / performances
+        if (payload.performances && payload.performances.length > 0) {
+          setPerformances(payload.performances.map((p: any) => {
+            let goals = [];
+            try {
+              if (p.goals && typeof p.goals === 'string') {
+                goals = JSON.parse(p.goals);
+              } else if (Array.isArray(p.goals)) {
+                goals = p.goals;
+              }
+            } catch (err) {
+              console.error('Error parsing goals for performance', p.employeeId, err);
+            }
+            return {
+              employeeId: p.employeeId,
+              reviewCycleId: p.reviewCycleId,
+              managerName: p.managerName || '',
+              reviewStatus: p.reviewStatus || 'Not Started',
+              rating: Number(p.rating || 0),
+              teamworkScore: Number(p.teamworkScore || 0),
+              communicationScore: Number(p.communicationScore || 0),
+              problemSolvingScore: Number(p.problemSolvingScore || 0),
+              selfEvaluation: p.selfEvaluation || '',
+              managerComments: p.managerComments || '',
+              goals
+            };
+          }));
+        }
+
+        // 4. Fetch candidates
+        if (payload.candidates && payload.candidates.length > 0) {
+          setCandidates(payload.candidates.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            email: c.email,
+            phone: c.phone,
+            designation: c.designation,
+            department: c.department || 'Engineering',
+            entityId: c.entityId || 'ENT-01',
+            stage: c.stage as any,
+            progress: Number(c.progress || 0),
+            dateJoined: c.dateJoined || ''
+          })));
+        }
+      } catch (err) {
+        console.error('[Google Sheets Load] Error loading database tables:', err);
+      }
+    }
+
+    loadData();
+  }, []);
 
   // Active corporate views
   const [activeEntityId, setActiveEntityId] = useState<string>('ENT-01');
@@ -152,20 +328,185 @@ export default function App() {
   }, [toast.show]);
 
   // Database Action Mutators
-  const handleAddEmployee = (newEmployee: Employee) => {
-    setEmployees(prev => [newEmployee, ...prev]);
+  const handleAddCandidate = async (newCandidate: Candidate) => {
+    setCandidates(prev => [...prev, newCandidate]);
+
+    if (isGoogleConfigured) {
+      try {
+        await googleSheetsClient.insert('candidates', {
+          id: newCandidate.id,
+          name: newCandidate.name,
+          email: newCandidate.email,
+          phone: newCandidate.phone,
+          designation: newCandidate.designation,
+          department: newCandidate.department,
+          entityId: newCandidate.entityId,
+          stage: newCandidate.stage,
+          progress: newCandidate.progress,
+          dateJoined: newCandidate.dateJoined
+        });
+      } catch (err) {
+        console.error('[Google Sheets Candidate Insert] Failed:', err);
+        triggerNotification('Sync Failed', 'Could not save new candidate to Google Sheets.', 'info');
+      }
+    }
   };
 
-  const handleDeleteEmployee = (id: string) => {
+  const handleUpdateCandidate = async (id: string, updates: Partial<Candidate>) => {
+    setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+
+    if (isGoogleConfigured) {
+      try {
+        await googleSheetsClient.update('candidates', id, updates, 'id');
+      } catch (err) {
+        console.error('[Google Sheets Candidate Update] Failed:', err);
+        triggerNotification('Sync Failed', 'Could not update candidate in Google Sheets.', 'info');
+      }
+    }
+  };
+
+  const handleAddEmployee = async (newEmployee: Employee) => {
+    setEmployees(prev => [newEmployee, ...prev]);
+
+    if (isGoogleConfigured) {
+      try {
+        await googleSheetsClient.insert('employees', {
+          id: newEmployee.id,
+          entityId: newEmployee.entityId,
+          name: newEmployee.name,
+          email: newEmployee.email,
+          designation: newEmployee.designation,
+          department: newEmployee.department,
+          status: newEmployee.status,
+          bankName: newEmployee.bankName,
+          accountNo: newEmployee.accountNo,
+          basicSalary: newEmployee.basicSalary,
+          housingAllowance: newEmployee.housingAllowance,
+          transportAllowance: newEmployee.transportAllowance,
+          overtime: newEmployee.overtime,
+          performanceBonus: newEmployee.performanceBonus,
+          epfRateEmployee: newEmployee.epfRateEmployee,
+          epfRateEmployer: newEmployee.epfRateEmployer,
+          socsoEmployee: newEmployee.socsoEmployee,
+          socsoEmployer: newEmployee.socsoEmployer,
+          eisEmployee: newEmployee.eisEmployee,
+          eisEmployer: newEmployee.eisEmployer,
+          taxPcb: newEmployee.taxPcb,
+          unpaidLeave: newEmployee.unpaidLeave,
+          hrdCorp: newEmployee.hrdCorp,
+          avatarUrl: newEmployee.avatarUrl || '',
+          nricPassport: newEmployee.nricPassport,
+          nationality: newEmployee.nationality,
+          contactNumber: newEmployee.contactNumber,
+          taxNumber: newEmployee.taxNumber,
+          epfNumber: newEmployee.epfNumber || '',
+          employmentType: newEmployee.employmentType,
+          maritalStatus: newEmployee.maritalStatus,
+          eligibleForStatutory: newEmployee.eligibleForStatutory || 'Yes',
+          emergencyContactName: newEmployee.emergencyContactName,
+          emergencyContactRelation: newEmployee.emergencyContactRelation,
+          emergencyContactPhone: newEmployee.emergencyContactPhone,
+          dateOfJoined: newEmployee.dateOfJoined,
+          careerHistory: JSON.stringify(newEmployee.careerHistory || []),
+          dependants: JSON.stringify(newEmployee.dependants || [])
+        });
+
+        await googleSheetsClient.insert('audit_logs', {
+          id: `log_${Date.now()}`,
+          employeeId: newEmployee.id,
+          changedBy: currentUserEmail || 'admin@acme.com',
+          changeType: 'CREATE_EMPLOYEE',
+          oldValue: '',
+          newValue: JSON.stringify(newEmployee),
+          createdAt: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error('[Google Sheets Insert] Failed to insert employee:', err);
+      }
+    }
+  };
+
+  const handleDeleteEmployee = async (id: string) => {
     setEmployees(prev => prev.filter(e => e.id !== id));
     setPerformances(prev => prev.filter(p => p.employeeId !== id));
+
+    if (isGoogleConfigured) {
+      try {
+        await googleSheetsClient.delete('employees', id, 'id');
+
+        await googleSheetsClient.insert('audit_logs', {
+          id: `log_${Date.now()}`,
+          employeeId: id,
+          changedBy: currentUserEmail || 'admin@acme.com',
+          changeType: 'DELETE_EMPLOYEE',
+          oldValue: `Employee ID: ${id}`,
+          newValue: '',
+          createdAt: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error('[Google Sheets Delete] Failed to delete employee:', err);
+      }
+    }
   };
 
-  const handleUpdateEmployeeSalary = (id: string, updates: Partial<Employee>) => {
+  const handleUpdateEmployeeSalary = async (id: string, updates: Partial<Employee>) => {
+    const oldEmp = employees.find(e => e.id === id);
     setEmployees(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+
+    if (isGoogleConfigured) {
+      try {
+        const payloadUpdates: any = {};
+        if (updates.name !== undefined) payloadUpdates.name = updates.name;
+        if (updates.designation !== undefined) payloadUpdates.designation = updates.designation;
+        if (updates.department !== undefined) payloadUpdates.department = updates.department;
+        if (updates.email !== undefined) payloadUpdates.email = updates.email;
+        if (updates.basicSalary !== undefined) payloadUpdates.basicSalary = updates.basicSalary;
+        if (updates.bankName !== undefined) payloadUpdates.bankName = updates.bankName;
+        if (updates.accountNo !== undefined) payloadUpdates.accountNo = updates.accountNo;
+        if (updates.epfRateEmployee !== undefined) payloadUpdates.epfRateEmployee = updates.epfRateEmployee;
+        if (updates.epfRateEmployer !== undefined) payloadUpdates.epfRateEmployer = updates.epfRateEmployer;
+        if (updates.socsoEmployee !== undefined) payloadUpdates.socsoEmployee = updates.socsoEmployee;
+        if (updates.socsoEmployer !== undefined) payloadUpdates.socsoEmployer = updates.socsoEmployer;
+        if (updates.eisEmployee !== undefined) payloadUpdates.eisEmployee = updates.eisEmployee;
+        if (updates.eisEmployer !== undefined) payloadUpdates.eisEmployer = updates.eisEmployer;
+        if (updates.taxPcb !== undefined) payloadUpdates.taxPcb = updates.taxPcb;
+        if (updates.unpaidLeave !== undefined) payloadUpdates.unpaidLeave = updates.unpaidLeave;
+        if (updates.status !== undefined) payloadUpdates.status = updates.status;
+        if (updates.entityId !== undefined) payloadUpdates.entityId = updates.entityId;
+        if (updates.avatarUrl !== undefined) payloadUpdates.avatarUrl = updates.avatarUrl;
+        if (updates.nricPassport !== undefined) payloadUpdates.nricPassport = updates.nricPassport;
+        if (updates.nationality !== undefined) payloadUpdates.nationality = updates.nationality;
+        if (updates.contactNumber !== undefined) payloadUpdates.contactNumber = updates.contactNumber;
+        if (updates.taxNumber !== undefined) payloadUpdates.taxNumber = updates.taxNumber;
+        if (updates.epfNumber !== undefined) payloadUpdates.epfNumber = updates.epfNumber;
+        if (updates.employmentType !== undefined) payloadUpdates.employmentType = updates.employmentType;
+        if (updates.maritalStatus !== undefined) payloadUpdates.maritalStatus = updates.maritalStatus;
+        if (updates.eligibleForStatutory !== undefined) payloadUpdates.eligibleForStatutory = updates.eligibleForStatutory;
+        if (updates.emergencyContactName !== undefined) payloadUpdates.emergencyContactName = updates.emergencyContactName;
+        if (updates.emergencyContactRelation !== undefined) payloadUpdates.emergencyContactRelation = updates.emergencyContactRelation;
+        if (updates.emergencyContactPhone !== undefined) payloadUpdates.emergencyContactPhone = updates.emergencyContactPhone;
+        if (updates.dateOfJoined !== undefined) payloadUpdates.dateOfJoined = updates.dateOfJoined;
+        if (updates.careerHistory !== undefined) payloadUpdates.careerHistory = JSON.stringify(updates.careerHistory);
+        if (updates.dependants !== undefined) payloadUpdates.dependants = JSON.stringify(updates.dependants);
+
+        await googleSheetsClient.update('employees', id, payloadUpdates, 'id');
+
+        await googleSheetsClient.insert('audit_logs', {
+          id: `log_${Date.now()}`,
+          employeeId: id,
+          changedBy: currentUserEmail || 'admin@acme.com',
+          changeType: 'UPDATE_EMPLOYEE',
+          oldValue: JSON.stringify(oldEmp),
+          newValue: JSON.stringify(updates),
+          createdAt: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error('[Google Sheets Update] Failed to update employee:', err);
+      }
+    }
   };
 
-  const handleSavePerformance = (updatedPerf: EmployeePerformance) => {
+  const handleSavePerformance = async (updatedPerf: EmployeePerformance) => {
     setPerformances(prev => {
       const exists = prev.some(p => p.employeeId === updatedPerf.employeeId && p.reviewCycleId === updatedPerf.reviewCycleId);
       if (exists) {
@@ -174,14 +515,77 @@ export default function App() {
         return [updatedPerf, ...prev];
       }
     });
+
+    if (isGoogleConfigured) {
+      try {
+        const payloadPerf = {
+          employeeId: updatedPerf.employeeId,
+          reviewCycleId: updatedPerf.reviewCycleId,
+          managerName: updatedPerf.managerName,
+          reviewStatus: updatedPerf.reviewStatus,
+          rating: updatedPerf.rating,
+          teamworkScore: updatedPerf.teamworkScore,
+          communicationScore: updatedPerf.communicationScore,
+          problemSolvingScore: updatedPerf.problemSolvingScore,
+          selfEvaluation: updatedPerf.selfEvaluation,
+          managerComments: updatedPerf.managerComments,
+          goals: JSON.stringify(updatedPerf.goals)
+        };
+
+        await googleSheetsClient.upsert('performances', {
+          employeeId: updatedPerf.employeeId,
+          reviewCycleId: updatedPerf.reviewCycleId
+        }, payloadPerf);
+      } catch (err) {
+        console.error('[Google Sheets Save Performance] Failed:', err);
+      }
+    }
   };
 
-  const handleAddEntity = (newEntity: CorporateEntity) => {
+  const handleAddEntity = async (newEntity: CorporateEntity) => {
     setEntities(prev => [...prev, newEntity]);
+
+    if (isGoogleConfigured) {
+      try {
+        await googleSheetsClient.insert('corporate_entities', {
+          id: newEntity.id,
+          name: newEntity.name,
+          registrationNumber: newEntity.registrationNumber,
+          address: newEntity.address,
+          taxReferenceNo: newEntity.taxReferenceNo,
+          epfReferenceNo: newEntity.epfReferenceNo,
+          socsoReferenceNo: newEntity.socsoReferenceNo,
+          currency: newEntity.currency,
+          isActive: newEntity.isActive,
+          theme: newEntity.theme
+        });
+      } catch (err) {
+        console.error('[Google Sheets Entity Insert] Failed:', err);
+      }
+    }
   };
 
-  const handleUpdateEntity = (id: string, updates: Partial<CorporateEntity>) => {
+  const handleUpdateEntity = async (id: string, updates: Partial<CorporateEntity>) => {
     setEntities(prev => prev.map(ent => ent.id === id ? { ...ent, ...updates } : ent));
+
+    if (isGoogleConfigured) {
+      try {
+        const payloadUpdates: any = {};
+        if (updates.name !== undefined) payloadUpdates.name = updates.name;
+        if (updates.registrationNumber !== undefined) payloadUpdates.registrationNumber = updates.registrationNumber;
+        if (updates.address !== undefined) payloadUpdates.address = updates.address;
+        if (updates.taxReferenceNo !== undefined) payloadUpdates.taxReferenceNo = updates.taxReferenceNo;
+        if (updates.epfReferenceNo !== undefined) payloadUpdates.epfReferenceNo = updates.epfReferenceNo;
+        if (updates.socsoReferenceNo !== undefined) payloadUpdates.socsoReferenceNo = updates.socsoReferenceNo;
+        if (updates.currency !== undefined) payloadUpdates.currency = updates.currency;
+        if (updates.isActive !== undefined) payloadUpdates.isActive = updates.isActive;
+        if (updates.theme !== undefined) payloadUpdates.theme = updates.theme;
+
+        await googleSheetsClient.update('corporate_entities', id, payloadUpdates, 'id');
+      } catch (err) {
+        console.error('[Google Sheets Entity Update] Failed:', err);
+      }
+    }
   };
 
   // Navigate to document utility
@@ -204,6 +608,59 @@ export default function App() {
       `Your administrative request for ${requestType} on ${requestDate} is queued for Director approval.`
     );
   };
+
+  if (isPrintMode) {
+    const params = new URLSearchParams(window.location.search);
+    const empId = params.get('employeeId') || selectedEmployeeId;
+    return (
+      <div style={getThemeStyles(activeEntity?.theme)} className="bg-white min-h-screen p-0">
+        <PayslipDocumentView 
+          employees={employees}
+          selectedEmployeeId={empId}
+          onBack={() => {}}
+          onShowNotification={() => {}}
+          activeEntity={activeEntity}
+          isPrintView={true}
+        />
+      </div>
+    );
+  }
+
+  const isJobApplyMode = window.location.search.includes('form=job-apply');
+  const isOnboardingMode = window.location.search.includes('form=onboarding');
+
+  if (isJobApplyMode) {
+    return (
+      <div style={getThemeStyles(activeEntity?.theme)} className="min-h-screen bg-neutral-100 flex items-center justify-center p-4 md:p-8 select-text overflow-y-auto">
+        <div className="w-full max-w-4xl bg-white border border-neutral-border rounded-xl shadow-md p-2">
+          <JobApplicationForm 
+            onShowNotification={triggerNotification}
+            onApplicationSubmit={handleAddCandidate}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (isOnboardingMode) {
+    return (
+      <div style={getThemeStyles(activeEntity?.theme)} className="min-h-screen bg-neutral-100 flex items-center justify-center p-4 md:p-8 select-text overflow-y-auto">
+        <div className="w-full max-w-4xl bg-white border border-neutral-border rounded-xl shadow-md p-2">
+          <OnboardingForm 
+            candidates={candidates}
+            entities={entities}
+            onShowNotification={triggerNotification}
+            onOnboardingComplete={handleAddEmployee}
+            onAdvanceCandidateStage={(id, stage) => handleUpdateCandidate(id, { stage, progress: 100 })}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginView onLoginSuccess={handleLoginSuccess} />;
+  }
 
   return (
     <div style={getThemeStyles(activeEntity?.theme)} className="flex h-screen bg-background overflow-hidden relative font-sans text-on-background select-none">
@@ -286,38 +743,25 @@ export default function App() {
               className="p-2 rounded-full hover:bg-surface-container relative transition-colors cursor-pointer"
             >
               <Bell className="w-4 h-4 text-on-surface" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full" />
             </button>
-
-            {/* Global Theme Toggle */}
-            <button 
-              onClick={() => {
-                const newTheme = theme === 'light' ? 'dark' : 'light';
-                setTheme(newTheme);
-                triggerNotification(
-                  'Theme Updated', 
-                  `Switched to ${newTheme === 'dark' ? 'High-Contrast Dark' : 'Standard Light'} theme successfully.`
-                );
-              }}
-              className="p-2 rounded-full hover:bg-surface-container transition-colors cursor-pointer text-on-surface flex items-center justify-center"
-              title={theme === 'light' ? 'Switch to High-Contrast Dark Theme' : 'Switch to Standard Light Theme'}
-            >
-              {theme === 'light' ? (
-                <Moon className="w-4 h-4" />
-              ) : (
-                <Sun className="w-4 h-4 text-amber-500" />
-              )}
-            </button>
-
             {/* User Account context */}
             <div className="flex items-center gap-2.5 pl-2 border-l border-neutral-border/40">
               <div className="w-8 h-8 rounded-full bg-primary text-on-primary-container font-bold text-xs flex items-center justify-center border border-neutral-border">
-                HR
+                {currentUserName 
+                  ? currentUserName.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() 
+                  : 'HR'}
               </div>
               <div className="text-left hidden sm:block leading-none">
-                <span className="font-bold text-xs text-on-surface block">meijern.law@gmail.com</span>
-                <span className="text-[10px] text-on-surface-variant mt-0.5 block">Global Administrator</span>
+                <span className="font-bold text-xs text-on-surface block">{currentUserName || 'Jenny Law'}</span>
+                <span className="text-[10px] text-on-surface-variant mt-0.5 block">{currentUserRole || 'Global Administrator'}</span>
               </div>
+              <button 
+                onClick={handleSignOut}
+                className="text-[10px] font-bold text-primary hover:text-primary-container ml-2.5 pl-2.5 border-l border-neutral-border/40 cursor-pointer uppercase transition-colors"
+                title="Sign Out of Console"
+              >
+                Sign Out
+              </button>
             </div>
           </div>
         </header>
@@ -425,6 +869,9 @@ export default function App() {
               entities={entities}
               onShowNotification={triggerNotification}
               onAddEmployee={handleAddEmployee}
+              candidates={candidates}
+              onAddCandidate={handleAddCandidate}
+              onUpdateCandidate={handleUpdateCandidate}
             />
           )}
 

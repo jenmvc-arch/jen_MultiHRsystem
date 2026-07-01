@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { googleSheetsClient, isGoogleConfigured } from '../lib/googleSheetsClient';
 import { 
   Users, 
   Search, 
@@ -128,6 +129,69 @@ export default function EmployeeDirectoryView({
   // Selected Employee Detail View States
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [formAvatarUrl, setFormAvatarUrl] = useState('');
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!isGoogleConfigured) {
+      // Offline fallback: Use local blob URL
+      const localUrl = URL.createObjectURL(file);
+      setFormAvatarUrl(localUrl);
+      onShowNotification('Avatar Selected', 'Simulated image upload locally.');
+      return;
+    }
+
+    try {
+      onShowNotification('Uploading Image', 'Uploading photo to Google Drive...');
+      
+      const publicUrl = await googleSheetsClient.uploadFile(file);
+
+      setFormAvatarUrl(publicUrl);
+      onShowNotification('Upload Succeeded', 'Employee photo uploaded successfully.');
+    } catch (err: any) {
+      console.error('[Google Drive Storage] Upload error:', err);
+      onShowNotification('Upload Error', `Could not upload image: ${err.message}`);
+    }
+  };
+
+  const handleDetailAvatarChange = async (employeeId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!isGoogleConfigured) {
+      // Offline fallback: Use local blob URL
+      const localUrl = URL.createObjectURL(file);
+      onUpdateEmployee(employeeId, { avatarUrl: localUrl });
+      onShowNotification('Avatar Selected', 'Simulated avatar change locally.');
+      return;
+    }
+
+    try {
+      onShowNotification('Uploading Image', 'Uploading photo to Google Drive...');
+      
+      const publicUrl = await googleSheetsClient.uploadFile(file);
+
+      onUpdateEmployee(employeeId, { avatarUrl: publicUrl });
+
+      // Log update to audit log table
+      await googleSheetsClient.insert('audit_logs', {
+        id: `log_${Date.now()}`,
+        employeeId: employeeId,
+        changedBy: 'admin@acme.com',
+        changeType: 'AVATAR_CHANGE',
+        oldValue: '',
+        newValue: publicUrl,
+        createdAt: new Date().toISOString()
+      });
+
+      onShowNotification('Photo Updated', 'Employee photo has been updated successfully.');
+    } catch (err: any) {
+      console.error('[Google Drive Storage] Upload error:', err);
+      onShowNotification('Upload Error', `Could not upload image: ${err.message}`);
+    }
+  };
 
   // Detail View Family editor states
   const [isEditingFamily, setIsEditingFamily] = useState(false);
@@ -411,7 +475,7 @@ export default function EmployeeDirectoryView({
       taxPcb: Math.round(Number(formSalary) * 0.1),
       unpaidLeave: 0,
       hrdCorp: 103,
-      avatarUrl: `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random()*100000)}?q=80&w=256&h=256&fit=crop`,
+      avatarUrl: formAvatarUrl || `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random()*100000)}?q=80&w=256&h=256&fit=crop`,
       
       // New fields mapping
       nricPassport: formNricPassport,
@@ -1802,13 +1866,25 @@ export default function EmployeeDirectoryView({
             {/* Modal Header */}
             <div className="p-4 border-b border-neutral-border flex justify-between items-center bg-primary text-[#f7f0e0]">
               <div className="flex items-center gap-3">
-                {selectedEmployee.avatarUrl ? (
-                  <img src={selectedEmployee.avatarUrl} alt={selectedEmployee.name} className="w-12 h-12 rounded-full object-cover border-2 border-white/20" referrerPolicy="no-referrer" />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-white/20 text-white flex items-center justify-center font-bold text-lg">
-                    {selectedEmployee.name.split(' ').map(n => n[0]).join('')}
-                  </div>
-                )}
+                <div className="relative group shrink-0 w-12 h-12">
+                  {selectedEmployee.avatarUrl ? (
+                    <img src={selectedEmployee.avatarUrl} alt={selectedEmployee.name} className="w-12 h-12 rounded-full object-cover border-2 border-white/20" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-white/20 text-white flex items-center justify-center font-bold text-lg">
+                      {selectedEmployee.name.split(' ').map(n => n[0]).join('')}
+                    </div>
+                  )}
+                  {/* Photo Edit overlay */}
+                  <label className="absolute inset-0 w-full h-full rounded-full bg-black/55 flex flex-col items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-[7px] text-white font-extrabold uppercase tracking-wider">Change</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={(e) => handleDetailAvatarChange(selectedEmployee.id, e)} 
+                      className="hidden" 
+                    />
+                  </label>
+                </div>
                 <div>
                   <h3 className="font-bold text-lg tracking-tight leading-none text-[#f7f0e0]">{selectedEmployee.name}</h3>
                   <p className="text-xs text-[#f7f0e0]/70 mt-1">{selectedEmployee.designation} — Staff ID: <span className="font-mono font-bold">{selectedEmployee.id}</span></p>
@@ -2604,6 +2680,31 @@ export default function EmployeeDirectoryView({
                 {/* SECTION 1: Personal Particulars */}
                 <div className="border-b border-neutral-border pb-2">
                   <span className="text-xs font-bold text-primary uppercase tracking-wider block">1. PERSONAL PARTICULARS</span>
+                </div>
+
+                {/* Profile Graphic Upload */}
+                <div className="flex items-center gap-4 p-3 bg-neutral-50 rounded-lg border border-neutral-border/60">
+                  <div className="w-14 h-14 rounded-full overflow-hidden bg-neutral-200 border border-neutral-border shrink-0 flex items-center justify-center">
+                    {formAvatarUrl ? (
+                      <img src={formAvatarUrl} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-[10px] text-zinc-400 font-bold uppercase">No Photo</span>
+                    )}
+                  </div>
+                  <div className="text-left">
+                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">
+                      Upload Profile Graphic (Photo)
+                    </label>
+                    <input 
+                      type="file" 
+                      accept="image/*"
+                      onChange={handleAvatarUpload}
+                      className="text-xs text-zinc-600 file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-[11px] file:font-bold file:bg-primary file:text-white hover:file:bg-primary/90 cursor-pointer"
+                    />
+                    <span className="block text-[9px] text-zinc-400 mt-1">
+                      Supports JPEG, PNG, or GIF. Max 5MB.
+                    </span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

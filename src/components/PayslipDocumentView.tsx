@@ -14,8 +14,8 @@ import {
   AlertCircle,
   Building2
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
+import { pdf } from '@react-pdf/renderer';
+import { PayslipPDFDocument } from './PayslipPDFDocument';
 import { Employee, CorporateEntity } from '../types';
 import { calculatePayslip, getPayslipLabel } from '../data';
 
@@ -25,6 +25,7 @@ interface PayslipDocumentViewProps {
   onBack: () => void;
   onShowNotification: (title: string, message: string) => void;
   activeEntity?: CorporateEntity;
+  isPrintView?: boolean;
 }
 
 export default function PayslipDocumentView({
@@ -32,7 +33,8 @@ export default function PayslipDocumentView({
   selectedEmployeeId,
   onBack,
   onShowNotification,
-  activeEntity
+  activeEntity,
+  isPrintView = false
 }: PayslipDocumentViewProps) {
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
@@ -75,66 +77,23 @@ export default function PayslipDocumentView({
   };
 
   const handleDownload = async () => {
-    onShowNotification('Download Started', `Preparing PDF of October_2023_Payslip_${activeEmployee.name.replace(/\s+/g, '_')}.pdf...`);
+    const fileName = `October_2023_Payslip_${activeEmployee.name.replace(/\s+/g, '_')}.pdf`;
+    onShowNotification('Download Started', `Generating and downloading ${fileName} in your browser...`);
     
-    const element = document.getElementById('payslip-pdf-content');
-    if (!element) {
-      onShowNotification('Error', 'Failed to find payslip document container.');
-      return;
-    }
-
     try {
-      // Temporarily store the original style to restore after capture
-      const originalTransform = element.style.transform;
-      const originalTransition = element.style.transition;
-      
-      // Temporarily reset transform and transition for accurate canvas measurement
-      element.style.transform = 'none';
-      element.style.transition = 'none';
-
-      // Capture the element using html2canvas with high-resolution scale
-      const canvas = await html2canvas(element, {
-        scale: 2, // 2x resolution for crisp text
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        logging: false
-      });
-
-      // Restore original transform styles
-      element.style.transform = originalTransform;
-      element.style.transition = originalTransition;
-
-      const imgData = canvas.toDataURL('image/png');
-      
-      // Create jsPDF instance (A4 size, portrait)
-      // Standard A4 dimensions in mm: 210 x 297
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4'
-      });
-
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      
-      // Calculate height relative to A4 width
-      const ratio = imgWidth / pdfWidth;
-      const imgHeightInPdf = imgHeight / ratio;
-
-      // Add image to PDF.
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeightInPdf);
-      
-      // Save PDF file
-      const fileName = `October_2023_Payslip_${activeEmployee.name.replace(/\s+/g, '_')}.pdf`;
-      pdf.save(fileName);
-      
-      onShowNotification('Download Complete', `${fileName} has been saved successfully.`);
-    } catch (error) {
-      console.error('PDF generation failed:', error);
-      onShowNotification('Error', 'An error occurred during PDF rendering. Please try again or use standard Print.');
+      const doc = <PayslipPDFDocument employee={activeEmployee} entity={activeEntity} />;
+      const blob = await pdf(doc).toBlob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error('[PDF Download] Failed client-side generation:', err);
+      onShowNotification('Download Failed', `Could not generate PDF. Please try print to PDF option.`);
     }
   };
 
@@ -152,90 +111,92 @@ export default function PayslipDocumentView({
 
   return (
     <div 
-      className="flex flex-col h-screen w-full bg-surface-container-highest overflow-hidden animate-in fade-in duration-200"
+      className={isPrintView ? "bg-white w-full select-text text-left flex justify-center" : "flex flex-col h-screen w-full bg-surface-container-highest overflow-hidden animate-in fade-in duration-200"}
       style={themeStyles}
     >
       
       {/* Viewer Toolbar */}
-      <div className="h-14 bg-zinc-900 flex items-center justify-between px-4 shadow-md z-10 shrink-0 select-none">
-        {/* Left Controls */}
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={onBack}
-            className="text-white hover:bg-white/10 p-2 rounded-full transition-colors flex items-center justify-center cursor-pointer"
-            title="Go Back"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="flex flex-col text-left">
-            <span className="text-white text-xs font-semibold truncate max-w-[200px] md:max-w-[400px]">
-              October_2023_Payslip_{activeEmployee.name.replace(/\s+/g, '_')}.pdf
-            </span>
-            <span className="text-gray-400 text-[10px] uppercase tracking-wider font-semibold">
-              Acme Global Enterprise
-            </span>
+      {!isPrintView && (
+        <div className="h-14 bg-zinc-900 flex items-center justify-between px-4 shadow-md z-10 shrink-0 select-none">
+          {/* Left Controls */}
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={onBack}
+              className="text-white hover:bg-white/10 p-2 rounded-full transition-colors flex items-center justify-center cursor-pointer"
+              title="Go Back"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex flex-col text-left">
+              <span className="text-white text-xs font-semibold truncate max-w-[200px] md:max-w-[400px]">
+                October_2023_Payslip_{activeEmployee.name.replace(/\s+/g, '_')}.pdf
+              </span>
+              <span className="text-gray-400 text-[10px] uppercase tracking-wider font-semibold">
+                Acme Global Enterprise
+              </span>
+            </div>
+          </div>
+
+          {/* Center Controls (Zoom & Page) - Hidden on Mobile */}
+          <div className="hidden md:flex items-center gap-3 bg-black/20 rounded px-2.5 py-1">
+            <button 
+              onClick={handleZoomOut}
+              className="text-white hover:bg-white/10 p-1 rounded transition-colors flex items-center justify-center cursor-pointer"
+              title="Zoom Out"
+            >
+              <Minus className="w-4 h-4" />
+            </button>
+            <span className="text-white text-xs font-bold px-2 w-[45px] text-center">{zoom}%</span>
+            <button 
+              onClick={handleZoomIn}
+              className="text-white hover:bg-white/10 p-1 rounded transition-colors flex items-center justify-center cursor-pointer"
+              title="Zoom In"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+            <div className="w-px h-4 bg-white/20 mx-1" />
+            <span className="text-white text-xs font-semibold px-2">1 / 1</span>
+          </div>
+
+          {/* Right Controls */}
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleRotate}
+              className="text-white hover:bg-white/10 p-2 rounded-full transition-colors flex items-center justify-center cursor-pointer" 
+              title="Rotate 90°"
+            >
+              <RotateCw className="w-4 h-4" />
+            </button>
+            <button 
+              onClick={handlePrint}
+              className="text-white hover:bg-white/10 p-2 rounded-full transition-colors flex items-center justify-center cursor-pointer" 
+              title="Print Document"
+            >
+              <Printer className="w-4 h-4" />
+            </button>
+            <button 
+              onClick={handleDownload}
+              className="text-white hover:bg-white/10 p-2 rounded-full transition-colors flex items-center justify-center cursor-pointer" 
+              title="Download PDF"
+            >
+              <Download className="w-4 h-4" />
+            </button>
           </div>
         </div>
-
-        {/* Center Controls (Zoom & Page) - Hidden on Mobile */}
-        <div className="hidden md:flex items-center gap-3 bg-black/20 rounded px-2.5 py-1">
-          <button 
-            onClick={handleZoomOut}
-            className="text-white hover:bg-white/10 p-1 rounded transition-colors flex items-center justify-center cursor-pointer"
-            title="Zoom Out"
-          >
-            <Minus className="w-4 h-4" />
-          </button>
-          <span className="text-white text-xs font-bold px-2 w-[45px] text-center">{zoom}%</span>
-          <button 
-            onClick={handleZoomIn}
-            className="text-white hover:bg-white/10 p-1 rounded transition-colors flex items-center justify-center cursor-pointer"
-            title="Zoom In"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-          <div className="w-px h-4 bg-white/20 mx-1" />
-          <span className="text-white text-xs font-semibold px-2">1 / 1</span>
-        </div>
-
-        {/* Right Controls */}
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={handleRotate}
-            className="text-white hover:bg-white/10 p-2 rounded-full transition-colors flex items-center justify-center cursor-pointer" 
-            title="Rotate 90°"
-          >
-            <RotateCw className="w-4 h-4" />
-          </button>
-          <button 
-            onClick={handlePrint}
-            className="text-white hover:bg-white/10 p-2 rounded-full transition-colors flex items-center justify-center cursor-pointer" 
-            title="Print Document"
-          >
-            <Printer className="w-4 h-4" />
-          </button>
-          <button 
-            onClick={handleDownload}
-            className="text-white hover:bg-white/10 p-2 rounded-full transition-colors flex items-center justify-center cursor-pointer" 
-            title="Download PDF"
-          >
-            <Download className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Viewer Canvas (Scrollable) */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-8 flex justify-center items-start">
+      <div className={isPrintView ? "w-full flex justify-center" : "flex-1 overflow-y-auto p-4 md:p-8 flex justify-center items-start"}>
         {/* Document (Payslip Page) */}
         <div 
           id="payslip-pdf-content"
           style={{ 
-            transform: `scale(${zoom / 100}) rotate(${rotation}deg)`,
+            transform: isPrintView ? 'none' : `scale(${zoom / 100}) rotate(${rotation}deg)`,
             transformOrigin: 'top center',
             transition: 'transform 0.2s ease-out',
             ...themeStyles
           }}
-          className="bg-white w-full max-w-[800px] min-h-[960px] shadow-2xl my-4 p-8 md:p-12 border border-neutral-border/40 text-left select-text relative"
+          className={isPrintView ? "bg-white w-full max-w-[800px] min-h-[960px] p-8 md:p-12 text-left relative" : "bg-white w-full max-w-[800px] min-h-[960px] shadow-2xl my-4 p-8 md:p-12 border border-neutral-border/40 text-left select-text relative"}
         >
           {/* Subtle PDF watermark/grid header */}
           <div className="absolute top-2 right-4 text-[9px] text-on-surface-variant/30 font-mono select-none">

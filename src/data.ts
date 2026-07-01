@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { CorporateEntity, Employee, ReviewCycle, EmployeePerformance } from './types';
+import { CorporateEntity, Employee, ReviewCycle, EmployeePerformance, Candidate } from './types';
 
 export const INITIAL_ENTITIES: CorporateEntity[] = [
   {
@@ -741,3 +741,88 @@ export function calculateYtd(employee: Employee, period: string): YtdBreakdown {
     netPay: ytdNetPay
   };
 }
+
+export interface UserAccount {
+  email: string;
+  password: string;
+  name: string;
+  role: string;
+}
+
+export const MOCK_USERS: UserAccount[] = [
+  {
+    email: 'jennylaw.hr',
+    password: 'admin123#',
+    name: 'Jenny Law',
+    role: 'Global Administrator'
+  },
+  {
+    email: 'admin@acme.com',
+    password: 'password123',
+    name: 'Mei Jern Law',
+    role: 'Global Administrator'
+  },
+  {
+    email: 'hr.manager@acme.com',
+    password: 'password456',
+    name: 'Jane Manager',
+    role: 'HR Manager'
+  },
+  {
+    email: 'employee@acme.com',
+    password: 'password789',
+    name: 'Sarah Jenkins',
+    role: 'Employee'
+  }
+];
+
+export const INITIAL_CANDIDATES: Candidate[] = [
+  {
+    id: 'CAN-01',
+    name: 'Muhammad Harith bin Roslan',
+    email: 'harith.roslan@outlook.com',
+    phone: '+60 12-384 1928',
+    designation: 'Senior DevOps Engineer',
+    department: 'Engineering',
+    entityId: 'ENT-01',
+    stage: 'Onboarding',
+    progress: 75,
+    dateJoined: '2023-11-01'
+  },
+  {
+    id: 'CAN-02',
+    name: 'Ching Wei Xiang',
+    email: 'wx.ching@gmail.com',
+    phone: '+60 19-283 7461',
+    designation: 'Full Stack Engineer',
+    department: 'Engineering',
+    entityId: 'ENT-01',
+    stage: 'Onboarding',
+    progress: 40,
+    dateJoined: '2023-11-15'
+  },
+  {
+    id: 'CAN-03',
+    name: 'Prisha d/o Ravindran',
+    email: 'prisha.r@gmail.com',
+    phone: '+60 17-384 1229',
+    designation: 'HR Specialist',
+    department: 'Human Resources',
+    entityId: 'ENT-02',
+    stage: 'Offered',
+    progress: 0,
+    dateJoined: '2023-12-01'
+  },
+  {
+    id: 'CAN-04',
+    name: 'Emily Rose Thompson',
+    email: 'emily.rose@gmail.com',
+    phone: '+60 11-283 4910',
+    designation: 'Strategy Consultant',
+    department: 'Strategy',
+    entityId: 'ENT-02',
+    stage: 'Interviewing',
+    progress: 0,
+    dateJoined: '2023-12-15'
+  }
+];

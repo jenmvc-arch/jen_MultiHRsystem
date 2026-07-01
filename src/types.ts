@@ -177,3 +177,16 @@ export interface ReportConfig {
   metrics: string[];
   format: 'pdf' | 'excel' | 'csv' | 'ppt';
 }
+
+export interface Candidate {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  designation: string;
+  department: string;
+  entityId: string;
+  stage: 'Applied' | 'Interviewing' | 'Offered' | 'Onboarding';
+  progress: number;
+  dateJoined: string;
+}

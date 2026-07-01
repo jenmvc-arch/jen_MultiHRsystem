@@ -76,7 +76,7 @@ export default function Sidebar({
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="font-bold text-sm tracking-tight leading-tight text-[#f7f0e0] truncate">
-              {activeEntity?.name || 'HR Nexus'}
+              {activeEntity?.name || 'Mega HR'}
             </h1>
             <p className="text-[10px] text-[#f7f0e0]/60 mt-0.5 font-mono uppercase tracking-wider font-semibold">
               {activeEntity?.id || 'GLOBAL ADMIN'}

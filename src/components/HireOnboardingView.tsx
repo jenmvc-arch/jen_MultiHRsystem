@@ -20,24 +20,13 @@ import {
   FileBadge,
   FileText,
   LayoutGrid,
-  UserCheck
+  UserCheck,
+  Share2,
+  Link as LinkIcon
 } from 'lucide-react';
-import { CorporateEntity } from '../types';
+import { CorporateEntity, Candidate } from '../types';
 import JobApplicationForm from './JobApplicationForm';
 import OnboardingForm from './OnboardingForm';
-
-interface Candidate {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  designation: string;
-  department: string;
-  entityId: string;
-  stage: 'Applied' | 'Interviewing' | 'Offered' | 'Onboarding';
-  progress: number; // Onboarding checklist progress percentage
-  dateJoined: string;
-}
 
 interface OnboardingTask {
   id: string;
@@ -50,58 +39,10 @@ interface HireOnboardingViewProps {
   entities: CorporateEntity[];
   onShowNotification: (title: string, message: string) => void;
   onAddEmployee?: (newEmployee: any) => void;
+  candidates: Candidate[];
+  onAddCandidate: (newCandidate: Candidate) => void;
+  onUpdateCandidate: (id: string, updates: Partial<Candidate>) => void;
 }
-
-const INITIAL_CANDIDATES: Candidate[] = [
-  {
-    id: 'CAN-01',
-    name: 'Muhammad Harith bin Roslan',
-    email: 'harith.roslan@outlook.com',
-    phone: '+60 12-384 1928',
-    designation: 'Senior DevOps Engineer',
-    department: 'Engineering',
-    entityId: 'ENT-01',
-    stage: 'Onboarding',
-    progress: 75,
-    dateJoined: '2023-11-01'
-  },
-  {
-    id: 'CAN-02',
-    name: 'Ching Wei Xiang',
-    email: 'wx.ching@gmail.com',
-    phone: '+60 19-283 7461',
-    designation: 'Full Stack Engineer',
-    department: 'Engineering',
-    entityId: 'ENT-01',
-    stage: 'Onboarding',
-    progress: 40,
-    dateJoined: '2023-11-15'
-  },
-  {
-    id: 'CAN-03',
-    name: 'Prisha d/o Ravindran',
-    email: 'prisha.r@gmail.com',
-    phone: '+60 17-384 1229',
-    designation: 'HR Specialist',
-    department: 'Human Resources',
-    entityId: 'ENT-02',
-    stage: 'Offered',
-    progress: 0,
-    dateJoined: '2023-12-01'
-  },
-  {
-    id: 'CAN-04',
-    name: 'Emily Rose Thompson',
-    email: 'emily.rose@gmail.com',
-    phone: '+60 11-283 4910',
-    designation: 'Strategy Consultant',
-    department: 'Strategy',
-    entityId: 'ENT-02',
-    stage: 'Interviewing',
-    progress: 0,
-    dateJoined: '2023-12-15'
-  }
-];
 
 const INITIAL_ONBOARDING_TASKS: OnboardingTask[] = [
   { id: 'T-01', title: 'Submit signed Letter of Offer', completed: true, category: 'Compliance' },
@@ -115,16 +56,18 @@ const INITIAL_ONBOARDING_TASKS: OnboardingTask[] = [
 export default function HireOnboardingView({
   entities,
   onShowNotification,
-  onAddEmployee
+  onAddEmployee,
+  candidates,
+  onAddCandidate,
+  onUpdateCandidate
 }: HireOnboardingViewProps) {
-  const [candidates, setCandidates] = useState<Candidate[]>(INITIAL_CANDIDATES);
   const [tasks, setTasks] = useState<OnboardingTask[]>(INITIAL_ONBOARDING_TASKS);
   const [selectedCandidateId, setSelectedCandidateId] = useState('CAN-01');
   const [activeTab, setActiveTab] = useState<'pipeline' | 'application-form' | 'onboarding-form'>('pipeline');
 
   const handleApplicationSubmit = (formData: any) => {
     const newCandidate: Candidate = {
-      id: `CAN-${String(candidates.length + 1).padStart(2, '0')}`,
+      id: `CAN-${Date.now()}`,
       name: formData.fullName,
       email: formData.email,
       phone: formData.phone,
@@ -136,7 +79,7 @@ export default function HireOnboardingView({
       dateJoined: formData.dateJoined || new Date().toISOString().split('T')[0]
     };
 
-    setCandidates(prev => [...prev, newCandidate]);
+    onAddCandidate(newCandidate);
     setSelectedCandidateId(newCandidate.id);
     setActiveTab('pipeline');
     onShowNotification(
@@ -150,22 +93,15 @@ export default function HireOnboardingView({
       onAddEmployee(newEmployee);
     }
     // Set candidate's onboarding progress to 100% and stage to Onboarding
-    setCandidates(prev => prev.map(c => {
-      if (c.email.toLowerCase() === newEmployee.email.toLowerCase() || c.name.toLowerCase() === newEmployee.name.toLowerCase()) {
-        return { ...c, stage: 'Onboarding', progress: 100 };
-      }
-      return c;
-    }));
+    const matched = candidates.find(c => c.email.toLowerCase() === newEmployee.email.toLowerCase() || c.name.toLowerCase() === newEmployee.name.toLowerCase());
+    if (matched) {
+      onUpdateCandidate(matched.id, { stage: 'Onboarding', progress: 100 });
+    }
     setActiveTab('pipeline');
   };
 
   const handleOnboardingStageAdvance = (candidateId: string, stage: 'Applied' | 'Interviewing' | 'Offered' | 'Onboarding') => {
-    setCandidates(prev => prev.map(c => {
-      if (c.id === candidateId) {
-        return { ...c, stage, progress: 100 };
-      }
-      return c;
-    }));
+    onUpdateCandidate(candidateId, { stage, progress: 100 });
   };
 
   // Candidate Create Form States
@@ -214,7 +150,7 @@ export default function HireOnboardingView({
     }
 
     const newCandidate: Candidate = {
-      id: `CAN-${String(candidates.length + 1).padStart(2, '0')}`,
+      id: `CAN-${Date.now()}`,
       name: candName,
       email: candEmail,
       phone: candPhone,
@@ -226,7 +162,7 @@ export default function HireOnboardingView({
       dateJoined: new Date().toISOString().split('T')[0]
     };
 
-    setCandidates([...candidates, newCandidate]);
+    onAddCandidate(newCandidate);
     setSelectedCandidateId(newCandidate.id);
     
     setCandName('');
@@ -242,26 +178,24 @@ export default function HireOnboardingView({
   };
 
   const handlePromoteStage = (candidateId: string) => {
-    setCandidates(prev => prev.map(c => {
-      if (c.id === candidateId) {
-        let nextStage: 'Applied' | 'Interviewing' | 'Offered' | 'Onboarding' = 'Applied';
-        if (c.stage === 'Applied') nextStage = 'Interviewing';
-        else if (c.stage === 'Interviewing') nextStage = 'Offered';
-        else if (c.stage === 'Offered') nextStage = 'Onboarding';
-        else if (c.stage === 'Onboarding') {
-          onShowNotification('Already Onboarding', 'Candidate has reached the active onboarding phase.');
-          return c;
-        }
-
-        onShowNotification(
-          'Hiring Stage Advanced',
-          `Advanced ${c.name} to the "${nextStage}" phase.`
-        );
-
-        return { ...c, stage: nextStage };
+    const c = candidates.find(cand => cand.id === candidateId);
+    if (c) {
+      let nextStage: 'Applied' | 'Interviewing' | 'Offered' | 'Onboarding' = 'Applied';
+      if (c.stage === 'Applied') nextStage = 'Interviewing';
+      else if (c.stage === 'Interviewing') nextStage = 'Offered';
+      else if (c.stage === 'Offered') nextStage = 'Onboarding';
+      else if (c.stage === 'Onboarding') {
+        onShowNotification('Already Onboarding', 'Candidate has reached the active onboarding phase.');
+        return;
       }
-      return c;
-    }));
+
+      onShowNotification(
+        'Hiring Stage Advanced',
+        `Advanced ${c.name} to the "${nextStage}" phase.`
+      );
+
+      onUpdateCandidate(candidateId, { stage: nextStage });
+    }
   };
 
   const handleToggleTask = (taskId: string) => {
@@ -277,12 +211,7 @@ export default function HireOnboardingView({
     const completedCount = updatedTasks.filter(t => t.completed).length;
     const percentage = Math.round((completedCount / updatedTasks.length) * 100);
 
-    setCandidates(prev => prev.map(c => {
-      if (c.id === selectedCandidateId) {
-        return { ...c, progress: percentage };
-      }
-      return c;
-    }));
+    onUpdateCandidate(selectedCandidateId, { progress: percentage });
   };
 
   const activeEntityName = entities.find(e => e.id === selectedCandidate?.entityId)?.name || 'Acme Tech';
@@ -296,39 +225,54 @@ export default function HireOnboardingView({
             Manage recruitment pipelines and guide newly hired staff through the structured statutory and IT setup process.
           </p>
         </div>
-        <div className="flex space-x-2 border border-neutral-border rounded-lg p-1 bg-white shrink-0 self-start md:self-auto">
+        <div className="flex flex-wrap items-center gap-2 shrink-0 self-start md:self-auto">
+          <div className="flex space-x-2 border border-neutral-border rounded-lg p-1 bg-white">
+            <button
+              onClick={() => setActiveTab('pipeline')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${
+                activeTab === 'pipeline'
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'text-on-surface hover:bg-neutral-50'
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4" />
+              Hiring Pipeline
+            </button>
+            <button
+              onClick={() => setActiveTab('application-form')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${
+                activeTab === 'application-form'
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'text-on-surface hover:bg-neutral-50'
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              Job Application Form
+            </button>
+            <button
+              onClick={() => setActiveTab('onboarding-form')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${
+                activeTab === 'onboarding-form'
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'text-on-surface hover:bg-neutral-50'
+              }`}
+            >
+              <UserCheck className="w-4 h-4" />
+              Onboarding Form
+            </button>
+          </div>
+
           <button
-            onClick={() => setActiveTab('pipeline')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${
-              activeTab === 'pipeline'
-                ? 'bg-primary text-white shadow-sm'
-                : 'text-on-surface hover:bg-neutral-50'
-            }`}
+            onClick={() => {
+              const link = `${window.location.origin}/?form=job-apply`;
+              navigator.clipboard.writeText(link);
+              onShowNotification('Application Link Copied', 'Public job application form URL copied to clipboard.');
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold border border-neutral-border rounded-md bg-white text-on-surface hover:bg-neutral-50 cursor-pointer transition-all"
+            title="Copy public job application form link"
           >
-            <LayoutGrid className="w-4 h-4" />
-            Hiring Pipeline
-          </button>
-          <button
-            onClick={() => setActiveTab('application-form')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${
-              activeTab === 'application-form'
-                ? 'bg-primary text-white shadow-sm'
-                : 'text-on-surface hover:bg-neutral-50'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            Job Application Form
-          </button>
-          <button
-            onClick={() => setActiveTab('onboarding-form')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${
-              activeTab === 'onboarding-form'
-                ? 'bg-primary text-white shadow-sm'
-                : 'text-on-surface hover:bg-neutral-50'
-            }`}
-          >
-            <UserCheck className="w-4 h-4" />
-            Onboarding Form
+            <Share2 className="w-3.5 h-3.5 text-primary animate-pulse" />
+            Share Apply Link
           </button>
         </div>
       </div>
@@ -384,7 +328,21 @@ export default function HireOnboardingView({
                             : 'bg-white border-neutral-border hover:border-primary/50'
                         }`}
                       >
-                        <div className="font-bold text-on-surface hover:text-primary transition-colors truncate">{cand.name}</div>
+                        <div className="flex items-start justify-between gap-1">
+                          <div className="font-bold text-on-surface hover:text-primary transition-colors truncate pr-1">{cand.name}</div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const link = `${window.location.origin}/?form=onboarding&candidateId=${cand.id}`;
+                              navigator.clipboard.writeText(link);
+                              onShowNotification('Onboarding Link Copied', `Onboarding link for ${cand.name} copied.`);
+                            }}
+                            className="p-1 hover:bg-neutral-100 text-on-surface-variant hover:text-primary rounded shrink-0 cursor-pointer transition-colors"
+                            title="Copy candidate onboarding link"
+                          >
+                            <LinkIcon className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                         <div className="text-[10px] text-on-surface-variant truncate mt-0.5">{cand.designation}</div>
                         
                         {stage === 'Onboarding' ? (

@@ -18,20 +18,7 @@ import {
   UploadCloud,
   X
 } from 'lucide-react';
-import { CorporateEntity, Employee } from '../types';
-
-interface Candidate {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  designation: string;
-  department: string;
-  entityId: string;
-  stage: 'Applied' | 'Interviewing' | 'Offered' | 'Onboarding';
-  progress: number;
-  dateJoined: string;
-}
+import { CorporateEntity, Employee, Candidate } from '../types';
 
 interface OnboardingFormProps {
   candidates: Candidate[];
@@ -180,7 +167,12 @@ export default function OnboardingForm({
   onAdvanceCandidateStage
 }: OnboardingFormProps) {
   // Candidate Selection
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string>('manual');
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('candidateId') || 'manual';
+  });
+
+  const hasCandidateParam = new URLSearchParams(window.location.search).has('candidateId');
 
   // Form Section 1: Basic & Employment Profile
   const [fullName, setFullName] = useState('');
@@ -488,28 +480,30 @@ export default function OnboardingForm({
 
       <form onSubmit={handleSubmit} className="p-6 space-y-6">
         {/* Candidate Selector Link */}
-        <div className="p-4 bg-neutral-50/50 rounded border border-neutral-border/60">
-          <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1.5">
-            Link Prospect / Selected Candidate
-          </label>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <select
-              value={selectedCandidateId}
-              onChange={(e) => setSelectedCandidateId(e.target.value)}
-              className="bg-white border border-neutral-border rounded p-2 text-xs font-semibold focus:ring-1 focus:ring-primary outline-none max-w-sm"
-            >
-              <option value="manual">-- Standard Manual Entry (No Link) --</option>
-              {eligibleCandidates.map(cand => (
-                <option key={cand.id} value={cand.id}>
-                  {cand.name} ({cand.designation} - Stage: {cand.stage})
-                </option>
-              ))}
-            </select>
-            <p className="text-[11px] text-on-surface-variant/80 self-center leading-relaxed">
-              Linking a prospect pre-populates basic details and updates their status in the recruitment pipeline upon submission.
-            </p>
+        {!hasCandidateParam && (
+          <div className="p-4 bg-neutral-50/50 rounded border border-neutral-border/60">
+            <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1.5">
+              Link Prospect / Selected Candidate
+            </label>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <select
+                value={selectedCandidateId}
+                onChange={(e) => setSelectedCandidateId(e.target.value)}
+                className="bg-white border border-neutral-border rounded p-2 text-xs font-semibold focus:ring-1 focus:ring-primary outline-none max-w-sm"
+              >
+                <option value="manual">-- Standard Manual Entry (No Link) --</option>
+                {eligibleCandidates.map(cand => (
+                  <option key={cand.id} value={cand.id}>
+                    {cand.name} ({cand.designation} - Stage: {cand.stage})
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-on-surface-variant/80 self-center leading-relaxed">
+                Linking a prospect pre-populates basic details and updates their status in the recruitment pipeline upon submission.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Form Sections Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
