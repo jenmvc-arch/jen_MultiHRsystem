@@ -318,27 +318,45 @@ export default function PayrollView({
             <div className="space-y-3 text-sm">
               <div>
                 <label className="block text-xs font-semibold text-on-surface-variant uppercase mb-1">Pay Period</label>
-                <select 
-                  value={selectedPayPeriod} 
-                  onChange={(e) => setSelectedPayPeriod(e.target.value)}
-                  className="w-full rounded border border-neutral-border bg-surface p-1.5 focus:border-primary outline-none"
-                >
-                  {(() => {
-                    const options = [];
-                    for (let year = 2050; year >= 2020; year--) {
-                      const months = [
-                        'December', 'November', 'October', 'September', 'August', 'July',
-                        'June', 'May', 'April', 'March', 'February', 'January'
-                      ];
-                      for (const month of months) {
-                        options.push(`${month} ${year}`);
-                      }
-                    }
-                    return options.map(opt => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ));
-                  })()}
-                </select>
+                {(() => {
+                  const parts = selectedPayPeriod.split(' ');
+                  const selectedMonth = parts[0] || 'October';
+                  const selectedYear = parts[1] || '2026';
+                  const months = [
+                    'January', 'February', 'March', 'April', 'May', 'June',
+                    'July', 'August', 'September', 'October', 'November', 'December'
+                  ];
+                  const years = [];
+                  for (let y = 2050; y >= 2020; y--) {
+                    years.push(y.toString());
+                  }
+                  return (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <select 
+                          value={selectedMonth} 
+                          onChange={(e) => setSelectedPayPeriod(`${e.target.value} ${selectedYear}`)}
+                          className="w-full rounded border border-neutral-border bg-surface p-1.5 focus:border-primary outline-none text-xs cursor-pointer"
+                        >
+                          {months.map(m => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <select 
+                          value={selectedYear} 
+                          onChange={(e) => setSelectedPayPeriod(`${selectedMonth} ${e.target.value}`)}
+                          className="w-full rounded border border-neutral-border bg-surface p-1.5 focus:border-primary outline-none text-xs cursor-pointer"
+                        >
+                          {years.map(y => (
+                            <option key={y} value={y}>{y}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>
