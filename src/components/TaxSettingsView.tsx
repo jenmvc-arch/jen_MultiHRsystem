@@ -410,7 +410,7 @@ export default function TaxSettingsView({
                       </div>
                       <div className="text-right text-gray-400">
                         <p>Enterprise Compliance ID</p>
-                        <p className="font-mono text-[9px]">LHDN-EA-2023-F9A3</p>
+                        <p className="font-mono text-[9px]">LHDN-EA-2026-F9A3</p>
                       </div>
                     </div>
                   </div>
@@ -465,7 +465,7 @@ export default function TaxSettingsView({
                           </tr>
                           <tr>
                             <td className="py-1 font-medium">Date of Employment:</td>
-                            <td className="py-1 font-semibold">{activeEmployee.dateOfJoined || '2023-01-01'}</td>
+                            <td className="py-1 font-semibold">{activeEmployee.dateOfJoined || '2026-01-01'}</td>
                           </tr>
                           <tr>
                             <td className="py-1 font-medium">Initial Monthly Basic Salary:</td>
@@ -489,7 +489,7 @@ export default function TaxSettingsView({
                         <p>Authorized Signatory: {authorizedSignatory}</p>
                       </div>
                       <div className="text-right">
-                        <p>Document Version: CP22/2023</p>
+                        <p>Document Version: CP22/2026</p>
                       </div>
                     </div>
                   </div>
@@ -569,7 +569,7 @@ export default function TaxSettingsView({
                             <td className="py-1 font-medium">{cessationReason}</td>
                           </tr>
                           <tr>
-                            <td className="py-1 font-semibold">YTD Remuneration (2023):</td>
+                            <td className="py-1 font-semibold">YTD Remuneration (2026):</td>
                             <td className="py-1 font-mono font-semibold text-primary">RM {ytd.grossEarnings.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                           </tr>
                         </tbody>

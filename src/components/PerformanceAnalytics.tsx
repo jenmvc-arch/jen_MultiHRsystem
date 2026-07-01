@@ -70,19 +70,19 @@ export default function PerformanceAnalytics({
 
     if (deptReviews.length === 0) {
       // Historical or default estimates to preserve trend look
-      if (cycleId === 'cycle-2023-mid-year') {
+      if (cycleId === 'cycle-2026-mid-year') {
         if (deptName.includes('Engineering') || deptName.includes('Product & Engineering')) return 4.2;
         if (deptName.includes('Product')) return 3.9;
         if (deptName.includes('Human Resources')) return 3.8;
         return 3.6;
       }
-      if (cycleId === 'cycle-2023-q1-probation') {
+      if (cycleId === 'cycle-2026-q1-probation') {
         if (deptName.includes('Engineering') || deptName.includes('Product & Engineering')) return 3.8;
         if (deptName.includes('Product')) return 4.1;
         if (deptName.includes('Human Resources')) return 3.7;
         return 3.5;
       }
-      // cycle-2023-annual
+      // cycle-2026-annual
       if (deptName.includes('Engineering') || deptName.includes('Product & Engineering')) return 4.0;
       if (deptName.includes('Product')) return 3.8;
       if (deptName.includes('Human Resources')) return 4.0;
@@ -208,7 +208,7 @@ export default function PerformanceAnalytics({
   const competencyData = getCompetencyAverages();
 
   // Summary Metrics
-  const activeCycleName = reviewCycles.find(c => c.id === selectedCycleId)?.name || 'Annual Review 2023';
+  const activeCycleName = reviewCycles.find(c => c.id === selectedCycleId)?.name || 'Annual Review 2026';
 
   return (
     <div className="space-y-6 text-xs animate-in fade-in duration-300">

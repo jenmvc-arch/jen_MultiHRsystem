@@ -310,7 +310,7 @@ export default function App() {
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [requestType, setRequestType] = useState('Annual Leave');
   const [requestDesc, setRequestDesc] = useState('');
-  const [requestDate, setRequestDate] = useState('2023-11-01');
+  const [requestDate, setRequestDate] = useState('2026-11-01');
 
   // Trigger toast helper
   const triggerNotification = (title: string, message: string, type: 'success' | 'info' = 'success') => {
@@ -961,7 +961,7 @@ export default function App() {
                 <div className="p-4 bg-surface-container-low rounded border-l-4 border-primary">
                   <h3 className="font-bold text-sm text-on-surface mb-1">Adding New Employees</h3>
                   <p className="text-xs text-on-surface-variant leading-relaxed">
-                    Registering a new employee in the Workforce Directory dynamically inserts their record into active memory. They immediately appear in the Payroll previews and evaluation scorecards for Oct 2023.
+                    Registering a new employee in the Workforce Directory dynamically inserts their record into active memory. They immediately appear in the Payroll previews and evaluation scorecards for Oct 2026.
                   </p>
                 </div>
 

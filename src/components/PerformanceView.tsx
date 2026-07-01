@@ -40,7 +40,7 @@ export default function PerformanceView({
   const [deptFilter, setDeptFilter] = useState('All Departments');
   
   // Selected cycle state
-  const [selectedCycleId, setSelectedCycleId] = useState('cycle-2023-annual');
+  const [selectedCycleId, setSelectedCycleId] = useState('cycle-2026-annual');
 
   // Modal evaluation state
   const [editingPerformance, setEditingPerformance] = useState<EmployeePerformance | null>(null);
@@ -454,7 +454,7 @@ export default function PerformanceView({
 
               {/* Goals list */}
               <div className="space-y-3 pt-2 border-t border-neutral-border/30">
-                <label className="block font-bold text-on-surface">Target Professional Goals (Nov 2023 - Oct 2024)</label>
+                <label className="block font-bold text-on-surface">Target Professional Goals (Nov 2026 - Oct 2027)</label>
                 <div className="flex gap-2">
                   <input
                     type="text"

@@ -31,8 +31,8 @@ export default function ReportsView({
 }: ReportsViewProps) {
   // Config state
   const [reportType, setReportType] = useState('Departmental Metrics Breakdown');
-  const [startDate, setStartDate] = useState('2023-10-01');
-  const [endDate, setEndDate] = useState('2023-10-31');
+  const [startDate, setStartDate] = useState('2026-10-01');
+  const [endDate, setEndDate] = useState('2026-10-31');
   
   // Targeted audience checkboxes
   const [audience, setAudience] = useState<Record<string, boolean>>({

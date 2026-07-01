@@ -430,7 +430,7 @@ export default function PayrollView({
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-neutral-border pb-4 mb-6 gap-4">
               <div>
                 <h2 className="text-xl font-bold text-primary tracking-tight">Active Payslip Preview</h2>
-                <p className="text-xs text-on-surface-variant mt-0.5">Pay period: October 2023 · Employee status: <span className="font-semibold">{generatedMap[activeEmployee.id] ? 'Generated' : 'Draft'}</span></p>
+                <p className="text-xs text-on-surface-variant mt-0.5">Pay period: October 2026 · Employee status: <span className="font-semibold">{generatedMap[activeEmployee.id] ? 'Generated' : 'Draft'}</span></p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button 

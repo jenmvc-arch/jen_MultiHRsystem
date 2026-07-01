@@ -297,7 +297,7 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
           </View>
           <View style={styles.titleContainer}>
             <Text style={styles.title}>Payslip</Text>
-            <Text style={styles.period}>October 2023</Text>
+            <Text style={styles.period}>October 2026</Text>
           </View>
         </View>
 
