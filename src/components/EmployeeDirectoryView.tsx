@@ -35,9 +35,9 @@ import {
   Lock,
   Shield,
   Activity,
-  Minus,
   Plus,
-  RotateCw
+  RotateCw,
+  Save
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -350,6 +350,35 @@ export default function EmployeeDirectoryView({
   const [adjSalary, setAdjSalary] = useState(0);
   const [adjReason, setAdjReason] = useState('');
 
+  // Selected Employee object (synchronized with parent state in real time)
+  const selectedEmployee = employees.find(e => e.id === selectedEmployeeId) || null;
+
+  // Local staged changes for Career & Salary
+  const [localSalaryAdjustments, setLocalSalaryAdjustments] = useState<any[]>([]);
+  const [localCareerHistory, setLocalCareerHistory] = useState<any[]>([]);
+  const [localDesignation, setLocalDesignation] = useState('');
+  const [localDepartment, setLocalDepartment] = useState('');
+  const [localStatus, setLocalStatus] = useState<any>('Active');
+  const [localEmploymentType, setLocalEmploymentType] = useState<any>('Confirmation');
+  const [localBasicSalary, setLocalBasicSalary] = useState(0);
+  const [localTaxPcb, setLocalTaxPcb] = useState(0);
+  const [localEntityId, setLocalEntityId] = useState('');
+
+  // Sync with selectedEmployee changes
+  useEffect(() => {
+    if (selectedEmployee) {
+      setLocalSalaryAdjustments(selectedEmployee.salaryAdjustments || []);
+      setLocalCareerHistory(selectedEmployee.careerHistory || []);
+      setLocalDesignation(selectedEmployee.designation);
+      setLocalDepartment(selectedEmployee.department);
+      setLocalStatus(selectedEmployee.status);
+      setLocalEmploymentType(selectedEmployee.employmentType);
+      setLocalBasicSalary(selectedEmployee.basicSalary);
+      setLocalTaxPcb(selectedEmployee.taxPcb || 0);
+      setLocalEntityId(selectedEmployee.entityId);
+    }
+  }, [selectedEmployeeId, selectedEmployee]);
+
   const handleSalaryAdjustmentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEmployee) return;
@@ -371,16 +400,12 @@ export default function EmployeeDirectoryView({
       createdAt: new Date().toISOString()
     };
 
-    const currentAdjustments = selectedEmployee.salaryAdjustments || [];
-    const updatedAdjustments = [...currentAdjustments, newAdj].sort((a, b) => new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime());
-
-    onUpdateEmployee(selectedEmployee.id, {
-      salaryAdjustments: updatedAdjustments
-    });
+    const updatedAdjustments = [...localSalaryAdjustments, newAdj].sort((a, b) => new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime());
+    setLocalSalaryAdjustments(updatedAdjustments);
 
     onShowNotification(
-      'Salary Adjustment Added',
-      `New salary of RM ${adjSalary.toLocaleString()} is scheduled to take effect on ${adjEffectiveDate}.`
+      'Salary Staged',
+      `New salary of RM ${adjSalary.toLocaleString()} is staged. Click the Save button at the bottom to write changes to database.`
     );
 
     // Reset inputs
@@ -389,20 +414,31 @@ export default function EmployeeDirectoryView({
   };
 
   const handleRemoveSalaryAdjustment = (adjId: string) => {
-    if (!selectedEmployee) return;
-    if (window.confirm('Are you sure you want to delete this salary adjustment?')) {
-      const currentAdjustments = selectedEmployee.salaryAdjustments || [];
-      const updatedAdjustments = currentAdjustments.filter(adj => adj.id !== adjId);
-      
-      onUpdateEmployee(selectedEmployee.id, {
-        salaryAdjustments: updatedAdjustments
-      });
-      onShowNotification('Adjustment Deleted', 'Salary adjustment record has been removed.');
+    if (window.confirm('Are you sure you want to delete this salary adjustment from staged updates?')) {
+      const updatedAdjustments = localSalaryAdjustments.filter(adj => adj.id !== adjId);
+      setLocalSalaryAdjustments(updatedAdjustments);
+      onShowNotification('Staged Deleted', 'Salary adjustment removed from staged updates.');
     }
   };
 
-  // Selected Employee object (synchronized with parent state in real time)
-  const selectedEmployee = employees.find(e => e.id === selectedEmployeeId) || null;
+  const handleSaveCareerChanges = () => {
+    if (!selectedEmployee) return;
+    onUpdateEmployee(selectedEmployee.id, {
+      designation: localDesignation,
+      department: localDepartment,
+      status: localStatus,
+      employmentType: localEmploymentType,
+      basicSalary: localBasicSalary,
+      taxPcb: localTaxPcb,
+      entityId: localEntityId,
+      salaryAdjustments: localSalaryAdjustments,
+      careerHistory: localCareerHistory
+    });
+    onShowNotification(
+      'Database Synced',
+      `Staged career adjustments for ${selectedEmployee.name} saved and synced to Google Sheets database.`
+    );
+  };
 
   // Filter list
   const filteredEmployees = employees.filter(emp => {
@@ -715,42 +751,38 @@ export default function EmployeeDirectoryView({
 
     let previousVal = '';
     let newVal = progressionValue;
-    const updates: Partial<Employee> = {};
 
     switch (progressionType) {
       case 'Status Change':
-        previousVal = selectedEmployee.status;
-        updates.status = progressionValue as any;
+        previousVal = localStatus;
+        setLocalStatus(progressionValue as any);
         break;
       case 'Promotion':
-        previousVal = selectedEmployee.designation;
-        updates.designation = progressionValue;
+        previousVal = localDesignation;
+        setLocalDesignation(progressionValue);
         break;
       case 'Department Transfer':
-        previousVal = selectedEmployee.department;
-        updates.department = progressionValue;
+        previousVal = localDepartment;
+        setLocalDepartment(progressionValue);
         break;
       case 'Employment Type Change':
-        previousVal = selectedEmployee.employmentType;
-        updates.employmentType = progressionValue as any;
-        if (progressionValue === 'Independent Contractor / Freelance') {
-          updates.eligibleForStatutory = 'No';
-        }
+        previousVal = localEmploymentType;
+        setLocalEmploymentType(progressionValue as any);
         break;
       case 'Salary Revision':
-        previousVal = `RM ${selectedEmployee.basicSalary.toLocaleString()}`;
+        previousVal = `RM ${localBasicSalary.toLocaleString()}`;
         const numericSalary = Number(progressionValue);
         if (isNaN(numericSalary) || numericSalary <= 0) {
           onShowNotification('Validation Error', 'Please enter a valid numeric salary.');
           return;
         }
-        updates.basicSalary = numericSalary;
-        updates.taxPcb = Math.round(numericSalary * 0.1); // Auto adjust tax PCB
+        setLocalBasicSalary(numericSalary);
+        setLocalTaxPcb(Math.round(numericSalary * 0.1));
         newVal = `RM ${numericSalary.toLocaleString()}`;
         break;
       case 'Subsidiary Transfer':
-        previousVal = entities.find(e => e.id === selectedEmployee.entityId)?.name || selectedEmployee.entityId;
-        updates.entityId = progressionValue;
+        previousVal = entities.find(e => e.id === localEntityId)?.name || localEntityId;
+        setLocalEntityId(progressionValue);
         newVal = entities.find(e => e.id === progressionValue)?.name || progressionValue;
         break;
     }
@@ -764,13 +796,10 @@ export default function EmployeeDirectoryView({
       notes: progressionNotes || 'No notes provided by Administrator.'
     };
 
-    const currentHistory = selectedEmployee.careerHistory || [];
-    updates.careerHistory = [newHistoryEntry, ...currentHistory];
-
-    onUpdateEmployee(selectedEmployee.id, updates);
+    setLocalCareerHistory([newHistoryEntry, ...localCareerHistory]);
     onShowNotification(
-      'Career Progression Updated',
-      `${selectedEmployee.name} progression event has been recorded in the permanent log.`
+      'Progression Staged',
+      `Progression event staged successfully. Remember to click the Save button at the bottom to write changes to database.`
     );
 
     // Clear progression sub-form inputs
@@ -3111,12 +3140,119 @@ export default function EmployeeDirectoryView({
                   )}
                 </div>
 
-              </div>
-
-              {/* Right Column: Career Progression Form & Historic Timeline */}
+                            {/* Right Column: Career Progression Form & Historic Timeline */}
               <div className="lg:col-span-5 p-6 flex flex-col justify-between space-y-6">
                 
-                {/* Section 1: Change Employment Status (The Action) */}
+                {/* Section 1: Salary Adjustment History & Administration */}
+                <div className="bg-surface-container-low border border-neutral-border p-4 rounded-lg space-y-4">
+                  <div className="border-b border-neutral-border pb-2">
+                    <h4 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5">
+                      <DollarSign className="w-4 h-4 text-primary" /> Salary Adjustment Registry
+                    </h4>
+                    <p className="text-[10px] text-on-surface-variant">Schedule baseline salary modifications with start dates and effective dates.</p>
+                  </div>
+
+                  {/* Add adjustment sub-form */}
+                  <form onSubmit={handleSalaryAdjustmentSubmit} className="space-y-3 text-xs">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Start Date</label>
+                        <input 
+                          type="date" 
+                          required
+                          value={adjStartDate} 
+                          onChange={(e) => setAdjStartDate(e.target.value)}
+                          className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Effective Date</label>
+                        <input 
+                          type="date" 
+                          required
+                          value={adjEffectiveDate} 
+                          onChange={(e) => setAdjEffectiveDate(e.target.value)}
+                          className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Adjusted Salary (RM)</label>
+                        <input 
+                          type="number" 
+                          required 
+                          min="1"
+                          value={adjSalary || ''} 
+                          onChange={(e) => setAdjSalary(Number(e.target.value))}
+                          placeholder="e.g. 6200"
+                          className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Reason / Notes</label>
+                        <input 
+                          type="text" 
+                          value={adjReason} 
+                          onChange={(e) => setAdjReason(e.target.value)}
+                          placeholder="e.g. Promotion revision"
+                          className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <button 
+                      type="submit"
+                      className="w-full bg-primary text-white py-1.5 rounded text-xs font-semibold hover:bg-primary-container transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Salary Adjustment
+                    </button>
+                  </form>
+
+                  {/* List of adjustments */}
+                  <div className="pt-2 border-t border-neutral-border/40">
+                    <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider block mb-2">Logged Adjustments History</span>
+                    {localSalaryAdjustments && localSalaryAdjustments.length > 0 ? (
+                      <div className="bg-white border border-neutral-border rounded overflow-hidden max-h-[140px] overflow-y-auto">
+                        <table className="w-full text-left text-[10px]">
+                          <thead className="bg-surface-container-low border-b border-neutral-border text-[8px] uppercase text-on-surface-variant font-bold">
+                            <tr>
+                              <th className="p-1.5">Start</th>
+                              <th className="p-1.5">Effective</th>
+                              <th className="p-1.5 text-right">Salary (RM)</th>
+                              <th className="p-1.5">Reason</th>
+                              <th className="p-1.5 w-8"></th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-neutral-border/40 font-medium">
+                            {localSalaryAdjustments.map((adj) => (
+                              <tr key={adj.id} className="hover:bg-zinc-50/50">
+                                <td className="p-1.5 font-mono">{adj.startDate}</td>
+                                <td className="p-1.5 font-mono font-bold text-primary">{adj.effectiveDate}</td>
+                                <td className="p-1.5 font-mono text-right font-bold text-on-surface">RM {adj.adjustedSalary.toLocaleString()}</td>
+                                <td className="p-1.5 truncate max-w-[80px]" title={adj.reason}>{adj.reason}</td>
+                                <td className="p-1.5 text-right">
+                                  <button
+                                    onClick={() => handleRemoveSalaryAdjustment(adj.id)}
+                                    className="text-red-600 hover:text-red-800 font-bold px-1"
+                                    title="Delete adjustment"
+                                  >
+                                    ×
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-[10px] italic text-on-surface-variant text-center py-2">No adjustments scheduled. Basic salary baseline applies.</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Section 2: Change Employment Status (The Action) */}
                 <div className="bg-surface-container-low border border-neutral-border p-4 rounded-lg space-y-4">
                   <div className="border-b border-neutral-border pb-2">
                     <h4 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5">
@@ -3274,7 +3410,7 @@ export default function EmployeeDirectoryView({
                   </form>
                 </div>
 
-                {/* Section 2: Progression History Log Timeline */}
+                {/* Section 3: Progression History Log Timeline */}
                 <div className="flex-1 space-y-3 min-h-[160px] overflow-hidden flex flex-col">
                   <div className="border-b border-neutral-border pb-2 shrink-0">
                     <h4 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5">
@@ -3283,15 +3419,15 @@ export default function EmployeeDirectoryView({
                   </div>
 
                   <div className="overflow-y-auto max-h-[180px] pr-1 space-y-3 flex-1">
-                    {selectedEmployee.careerHistory && selectedEmployee.careerHistory.length > 0 ? (
-                      selectedEmployee.careerHistory.map((item, index) => {
+                    {localCareerHistory && localCareerHistory.length > 0 ? (
+                      localCareerHistory.map((item, index) => {
                         let badgeColor = "bg-blue-100 text-blue-700";
                         if (item.type === 'Status Change') badgeColor = "bg-amber-100 text-amber-700";
                         if (item.type === 'Salary Revision') badgeColor = "bg-green-100 text-green-700";
                         if (item.type === 'Promotion') badgeColor = "bg-purple-100 text-purple-700";
 
                         return (
-                          <div key={item.id || index} className="relative pl-5 border-l-2 border-neutral-border/60 text-xs">
+                          <div key={item.id || index} className="relative pl-5 border-l-2 border-neutral-border/60 text-xs text-left">
                             {/* Dot indicator */}
                             <div className="absolute -left-[6px] top-1.5 w-2.5 h-2.5 rounded-full bg-primary" />
                             
@@ -3318,116 +3454,18 @@ export default function EmployeeDirectoryView({
                   </div>
                 </div>
 
-                {/* Section 3: Salary Adjustment History & Administration */}
-                <div className="bg-surface-container-low border border-neutral-border p-4 rounded-lg space-y-4">
-                  <div className="border-b border-neutral-border pb-2">
-                    <h4 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5">
-                      <DollarSign className="w-4 h-4 text-primary" /> Salary Adjustment Registry
-                    </h4>
-                    <p className="text-[10px] text-on-surface-variant">Schedule baseline salary modifications with start dates and effective dates.</p>
-                  </div>
-
-                  {/* Add adjustment sub-form */}
-                  <form onSubmit={handleSalaryAdjustmentSubmit} className="space-y-3 text-xs">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Start Date</label>
-                        <input 
-                          type="date" 
-                          required
-                          value={adjStartDate} 
-                          onChange={(e) => setAdjStartDate(e.target.value)}
-                          className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Effective Date</label>
-                        <input 
-                          type="date" 
-                          required
-                          value={adjEffectiveDate} 
-                          onChange={(e) => setAdjEffectiveDate(e.target.value)}
-                          className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Adjusted Salary (RM)</label>
-                        <input 
-                          type="number" 
-                          required 
-                          min="1"
-                          value={adjSalary || ''} 
-                          onChange={(e) => setAdjSalary(Number(e.target.value))}
-                          placeholder="e.g. 6200"
-                          className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Reason / Notes</label>
-                        <input 
-                          type="text" 
-                          value={adjReason} 
-                          onChange={(e) => setAdjReason(e.target.value)}
-                          placeholder="e.g. Promotion revision"
-                          className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <button 
-                      type="submit"
-                      className="w-full bg-primary text-white py-1.5 rounded text-xs font-semibold hover:bg-primary-container transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Add Salary Adjustment
-                    </button>
-                  </form>
-
-                  {/* List of adjustments */}
-                  <div className="pt-2 border-t border-neutral-border/40">
-                    <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider block mb-2">Logged Adjustments History</span>
-                    {selectedEmployee.salaryAdjustments && selectedEmployee.salaryAdjustments.length > 0 ? (
-                      <div className="bg-white border border-neutral-border rounded overflow-hidden max-h-[140px] overflow-y-auto">
-                        <table className="w-full text-left text-[10px]">
-                          <thead className="bg-surface-container-low border-b border-neutral-border text-[8px] uppercase text-on-surface-variant font-bold">
-                            <tr>
-                              <th className="p-1.5">Start</th>
-                              <th className="p-1.5">Effective</th>
-                              <th className="p-1.5 text-right">Salary (RM)</th>
-                              <th className="p-1.5">Reason</th>
-                              <th className="p-1.5 w-8"></th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-neutral-border/40 font-medium">
-                            {selectedEmployee.salaryAdjustments.map((adj) => (
-                              <tr key={adj.id} className="hover:bg-zinc-50/50">
-                                <td className="p-1.5 font-mono">{adj.startDate}</td>
-                                <td className="p-1.5 font-mono font-bold text-primary">{adj.effectiveDate}</td>
-                                <td className="p-1.5 font-mono text-right font-bold text-on-surface">RM {adj.adjustedSalary.toLocaleString()}</td>
-                                <td className="p-1.5 truncate max-w-[80px]" title={adj.reason}>{adj.reason}</td>
-                                <td className="p-1.5 text-right">
-                                  <button
-                                    onClick={() => handleRemoveSalaryAdjustment(adj.id)}
-                                    className="text-red-600 hover:text-red-800 font-bold px-1"
-                                    title="Delete adjustment"
-                                  >
-                                    ×
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p className="text-[10px] italic text-on-surface-variant text-center py-2">No adjustments scheduled. Basic salary baseline applies.</p>
-                    )}
-                  </div>
+                {/* Staged Career & Salary changes global Save Button */}
+                <div className="pt-2 border-t border-neutral-border/40 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleSaveCareerChanges}
+                    className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-2.5 rounded text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                  >
+                    <Save className="w-4 h-4 text-white animate-pulse" /> Save Career & Salary Changes (Sync to Sheets)
+                  </button>
                 </div>
 
-              </div>
+              </div>     </div>
 
             </div>
 
