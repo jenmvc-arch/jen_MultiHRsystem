@@ -26,26 +26,7 @@ export const INITIAL_ENTITIES: CorporateEntity[] = [];
 
 export const INITIAL_EMPLOYEES: Employee[] = [];
 
-export const INITIAL_REVIEW_CYCLES: ReviewCycle[] = [
-  {
-    id: 'cycle-2026-annual',
-    name: 'Annual Review 2026',
-    period: 'Jan 1 - Feb 28, 2026',
-    status: 'In Progress'
-  },
-  {
-    id: 'cycle-2026-q1-probation',
-    name: 'Q1 Probation Review',
-    period: 'Mar 1 - Mar 31, 2026',
-    status: 'Upcoming'
-  },
-  {
-    id: 'cycle-2026-mid-year',
-    name: 'Mid-Year Review 2026',
-    period: 'Jun 1 - Jul 15, 2026',
-    status: 'Completed'
-  }
-];
+export const INITIAL_REVIEW_CYCLES: ReviewCycle[] = [];
 
 export const INITIAL_PERFORMANCES: EmployeePerformance[] = [];
 
