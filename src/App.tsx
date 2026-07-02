@@ -276,7 +276,7 @@ export default function App() {
         
         // 1. Fetch corporate entities
         if (payload.corporate_entities) {
-          setEntities(payload.corporate_entities.map((e: any) => ({
+          const loadedEntities = payload.corporate_entities.map((e: any) => ({
             id: e.id,
             name: e.name,
             registrationNumber: e.registrationNumber || '',
@@ -288,7 +288,11 @@ export default function App() {
             isActive: String(e.isActive) !== 'false' && e.isActive !== false,
             theme: e.theme as any,
             logoUrl: e.logoUrl || ''
-          })));
+          }));
+          setEntities(loadedEntities);
+          if (loadedEntities.length > 0) {
+            setActiveEntityId(loadedEntities[0].id);
+          }
         }
 
         // 2. Fetch employees
@@ -376,7 +380,7 @@ export default function App() {
               console.error('Error parsing tp3Data for employee', e.id, err);
             }
             return {
-              id: e.id,
+              id: e.id || e.email || '',
               entityId: e.entityId,
               name: e.name,
               email: e.email,

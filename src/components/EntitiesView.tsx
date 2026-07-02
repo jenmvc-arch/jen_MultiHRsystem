@@ -52,7 +52,13 @@ export default function EntitiesView({
   const [formTheme, setFormTheme] = useState<'theme1' | 'theme2' | 'theme3'>('theme1');
 
   // Active viewing state to list registered employees under a clicked subsidiary card
-  const [selectedEntityId, setSelectedEntityId] = useState<string | null>('ENT-01');
+  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (entities.length > 0 && !selectedEntityId) {
+      setSelectedEntityId(entities[0].id);
+    }
+  }, [entities, selectedEntityId]);
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
