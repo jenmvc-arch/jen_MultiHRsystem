@@ -27,6 +27,7 @@ import {
 import { CorporateEntity, Candidate } from '../types';
 import JobApplicationForm from './JobApplicationForm';
 import OnboardingForm from './OnboardingForm';
+import { getGmt8DateString } from '../lib/dateUtils';
 
 interface OnboardingTask {
   id: string;
@@ -76,7 +77,7 @@ export default function HireOnboardingView({
       entityId: entities[0]?.id || 'ENT-01',
       stage: formData.stage,
       progress: 0,
-      dateJoined: formData.dateJoined || new Date().toISOString().split('T')[0]
+      dateJoined: formData.dateJoined || getGmt8DateString()
     };
 
     onAddCandidate(newCandidate);
@@ -159,7 +160,7 @@ export default function HireOnboardingView({
       entityId: candEntity,
       stage: 'Applied',
       progress: 0,
-      dateJoined: new Date().toISOString().split('T')[0]
+      dateJoined: getGmt8DateString()
     };
 
     onAddCandidate(newCandidate);

@@ -24,6 +24,7 @@ import {
   MapPin,
   FileCheck
 } from 'lucide-react';
+import { getGmt8DateString } from '../lib/dateUtils';
 
 interface JobApplicationFormProps {
   onShowNotification: (title: string, message: string) => void;
@@ -62,7 +63,7 @@ export default function JobApplicationForm({
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
   // Form Section 1: Application Details
-  const [appDate, setAppDate] = useState(new Date().toISOString().split('T')[0]);
+  const [appDate, setAppDate] = useState(getGmt8DateString());
   const [positionApplied, setPositionApplied] = useState('');
   const [recruitmentChannel, setRecruitmentChannel] = useState('JobStreet');
   const [otherRecruitmentChannel, setOtherRecruitmentChannel] = useState('');
@@ -120,7 +121,7 @@ export default function JobApplicationForm({
 
   // Form Section 9: HR / Interviewer Evaluation (Internal Section)
   const [evaluators, setEvaluators] = useState<Evaluator[]>([
-    { id: 'eval-1', name: '', designation: '', date: new Date().toISOString().split('T')[0] }
+    { id: 'eval-1', name: '', designation: '', date: getGmt8DateString() }
   ]);
   const [evalTechnical, setEvalTechnical] = useState(3);
   const [evalCommunication, setEvalCommunication] = useState(3);
@@ -205,7 +206,7 @@ export default function JobApplicationForm({
       id: `eval-${Date.now()}`,
       name: '',
       designation: '',
-      date: new Date().toISOString().split('T')[0]
+      date: getGmt8DateString()
     };
     setEvaluators([...evaluators, newEval]);
   };
@@ -326,7 +327,7 @@ export default function JobApplicationForm({
           designation: positionApplied,
           stage: overallRecommendation === 'Strong Hire' || overallRecommendation === 'Hire' ? 'Offered' : 'Applied',
           progress: 0,
-          dateJoined: reportDate || new Date().toISOString().split('T')[0],
+          dateJoined: reportDate || getGmt8DateString(),
           photoUrl: photoPreview
         });
       }

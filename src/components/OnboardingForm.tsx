@@ -19,6 +19,7 @@ import {
   X
 } from 'lucide-react';
 import { CorporateEntity, Employee, Candidate } from '../types';
+import { getGmt8DateString } from '../lib/dateUtils';
 
 interface OnboardingFormProps {
   candidates: Candidate[];
@@ -182,7 +183,7 @@ export default function OnboardingForm({
   const [department, setDepartment] = useState('Engineering');
   const [entityId, setEntityId] = useState('');
   const [employmentType, setEmploymentType] = useState<'Probationary' | 'Confirmation' | 'Part Time' | 'Internship' | 'Independent Contractor / Freelance'>('Probationary');
-  const [dateOfJoined, setDateOfJoined] = useState(new Date().toISOString().split('T')[0]);
+  const [dateOfJoined, setDateOfJoined] = useState(getGmt8DateString());
   const [basicSalary, setBasicSalary] = useState('');
 
   // Form Section 2: Personal & Statutory Compliance

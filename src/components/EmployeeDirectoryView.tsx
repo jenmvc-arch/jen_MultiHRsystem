@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { googleSheetsClient, isGoogleConfigured } from '../lib/googleSheetsClient';
+import { getGmt8Timestamp } from '../lib/dateUtils';
 import { 
   Users, 
   Search, 
@@ -183,7 +184,7 @@ export default function EmployeeDirectoryView({
         changeType: 'AVATAR_CHANGE',
         oldValue: '',
         newValue: publicUrl,
-        createdAt: new Date().toISOString()
+        createdAt: getGmt8Timestamp()
       });
 
       onShowNotification('Photo Updated', 'Employee photo has been updated successfully.');

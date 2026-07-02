@@ -19,6 +19,7 @@ import {
   Check
 } from 'lucide-react';
 import { Employee, CorporateEntity } from '../types';
+import { getGmt8DateString, getGmt8LongDateString } from '../lib/dateUtils';
 
 interface StatutoryForm {
   id: string;
@@ -139,7 +140,7 @@ export default function FormsDirectoryView({
       epfContribution: emp.basicSalary * 0.11,
       socsoContribution: 19.85,
       taxPcb: emp.taxPcb,
-      dateGenerated: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      dateGenerated: getGmt8LongDateString()
     };
 
     setGeneratedPdfMock(mockPdfData);
@@ -168,7 +169,7 @@ export default function FormsDirectoryView({
       const file = e.dataTransfer.files[0];
       const newFile = {
         name: file.name,
-        date: new Date().toISOString().split('T')[0],
+        date: getGmt8DateString(),
         size: (file.size / 1024).toFixed(1) + ' KB'
       };
       setUploadedFiles([newFile, ...uploadedFiles]);
@@ -181,7 +182,7 @@ export default function FormsDirectoryView({
       const file = e.target.files[0];
       const newFile = {
         name: file.name,
-        date: new Date().toISOString().split('T')[0],
+        date: getGmt8DateString(),
         size: (file.size / 1024).toFixed(1) + ' KB'
       };
       setUploadedFiles([newFile, ...uploadedFiles]);

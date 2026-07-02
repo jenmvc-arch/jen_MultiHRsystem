@@ -34,6 +34,7 @@ import {
   SEED_PERFORMANCES,
   SEED_CANDIDATES
 } from './data';
+import { getGmt8Timestamp, getGmt8DateString } from './lib/dateUtils';
 
 import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
@@ -497,6 +498,14 @@ export default function App() {
   const [currencySymbol, setCurrencySymbol] = useState('RM');
   const [taxRate, setTaxRate] = useState(11);
 
+  // Keep settings states in sync with active subsidiary (activeEntity)
+  useEffect(() => {
+    if (activeEntity) {
+      setCompanyName(activeEntity.name);
+      setCurrencySymbol(activeEntity.currency);
+    }
+  }, [activeEntityId, activeEntity]);
+
   // Toast System
   const [toast, setToast] = useState<{ show: boolean; title: string; message: string; type: 'success' | 'info' }>({
     show: false,
@@ -650,7 +659,7 @@ export default function App() {
           changeType: 'CREATE_EMPLOYEE',
           oldValue: '',
           newValue: JSON.stringify(newEmployee),
-          createdAt: new Date().toISOString()
+          createdAt: getGmt8Timestamp()
         });
       } catch (err: any) {
         console.error('[Google Sheets Insert] Failed to insert employee:', err);
@@ -674,7 +683,7 @@ export default function App() {
           changeType: 'DELETE_EMPLOYEE',
           oldValue: `Employee ID: ${id}`,
           newValue: '',
-          createdAt: new Date().toISOString()
+          createdAt: getGmt8Timestamp()
         });
       } catch (err) {
         console.error('[Google Sheets Delete] Failed to delete employee:', err);
@@ -768,7 +777,7 @@ export default function App() {
           changeType: 'UPDATE_EMPLOYEE',
           oldValue: JSON.stringify(oldEmp),
           newValue: JSON.stringify(updates),
-          createdAt: new Date().toISOString()
+          createdAt: getGmt8Timestamp()
         });
       } catch (err: any) {
         console.error('[Google Sheets Update] Failed to update employee:', err);
@@ -1234,8 +1243,16 @@ export default function App() {
 
               <div className="pt-6 border-t border-neutral-border flex justify-end">
                 <button 
-                  onClick={() => {
-                    triggerNotification('Settings Saved', 'Global override variables recalculated successfully.');
+                  onClick={async () => {
+                    if (activeEntity) {
+                      await handleUpdateEntity(activeEntity.id, {
+                        name: companyName,
+                        currency: currencySymbol
+                      });
+                      triggerNotification('Settings Saved', 'Company settings and global variables synchronized successfully.');
+                    } else {
+                      triggerNotification('Settings Saved', 'Global override variables recalculated successfully.');
+                    }
                     setCurrentTab('dashboard');
                   }}
                   className="bg-primary text-white text-xs font-semibold py-2 px-6 rounded hover:bg-primary-container"

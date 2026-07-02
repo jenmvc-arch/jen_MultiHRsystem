@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Employee } from '../types';
 import LeaveCalendar from './LeaveCalendar';
+import { getGmt8DateString } from '../lib/dateUtils';
 
 export interface LeaveRequest {
   id: string;
@@ -154,7 +155,7 @@ export default function LeaveManagementView({
       totalDays,
       reason,
       status: 'Pending',
-      appliedDate: new Date().toISOString().split('T')[0]
+      appliedDate: getGmt8DateString()
     };
 
     setRequests([newRequest, ...requests]);

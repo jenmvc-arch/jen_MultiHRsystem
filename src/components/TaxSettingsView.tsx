@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Employee } from '../types';
 import { calculatePayslip, calculateYtd } from '../data';
+import { getGmt8DateString } from '../lib/dateUtils';
 
 interface TaxSettingsViewProps {
   employees: Employee[];
@@ -406,7 +407,7 @@ export default function TaxSettingsView({
                           </div>
                         )}
                         <p className="mt-2 text-gray-500">Designation: {authorizedSignatory}</p>
-                        <p className="text-gray-500">Date: {new Date().toISOString().split('T')[0]}</p>
+                        <p className="text-gray-500">Date: {getGmt8DateString()}</p>
                       </div>
                       <div className="text-right text-gray-400">
                         <p>Enterprise Compliance ID</p>
