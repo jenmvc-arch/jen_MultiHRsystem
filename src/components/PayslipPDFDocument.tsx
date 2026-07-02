@@ -1,5 +1,5 @@
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import { Employee, CorporateEntity } from '../types';
 import { calculatePayslip, getPayslipLabel } from '../data';
 
@@ -41,6 +41,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#1c4e89',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  logoImage: {
+    width: 45,
+    height: 45,
+    borderRadius: 4,
   },
   logoText: {
     fontSize: 16,
@@ -303,9 +308,16 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
         {/* Company and Document Title Header */}
         <View style={[styles.headerContainer, { borderBottomColor: primaryColor }]}>
           <View style={styles.logoContainer}>
-            <View style={[styles.logoPlaceholder, { backgroundColor: primaryColor }]}>
-              <Text style={styles.logoText}>HR</Text>
-            </View>
+            {entity?.logoUrl ? (
+              <Image 
+                src={entity.logoUrl} 
+                style={styles.logoImage} 
+              />
+            ) : (
+              <View style={[styles.logoPlaceholder, { backgroundColor: primaryColor }]}>
+                <Text style={styles.logoText}>HR</Text>
+              </View>
+            )}
             <View>
               <Text style={[styles.companyName, { color: primaryColor }]}>{entity?.name || 'Corporate Subsidiary'}</Text>
               {entity?.registrationNumber && (
