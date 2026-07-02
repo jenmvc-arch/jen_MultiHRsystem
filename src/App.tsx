@@ -791,13 +791,13 @@ export default function App() {
 
   const handleDeleteEmployee = async (id: string) => {
     const targetEmp = employees.find(e => e.id === id);
-    const lookupKey = targetEmp?.email || id;
+    const lookupKey = targetEmp?.name || id;
     setEmployees(prev => prev.filter(e => e.id !== id));
     setPerformances(prev => prev.filter(p => p.employeeId !== id));
 
     if (isGoogleConfigured) {
       try {
-        await googleSheetsClient.delete('employees', lookupKey, 'email');
+        await googleSheetsClient.delete('employees', lookupKey, 'name');
 
         await googleSheetsClient.insert('audit_logs', {
           id: `log_${Date.now()}`,
@@ -897,8 +897,8 @@ export default function App() {
         if (updates.tp1Declarations !== undefined) payloadUpdates.tp1Declarations = JSON.stringify(updates.tp1Declarations);
         if (updates.tp3Data !== undefined) payloadUpdates.tp3Data = JSON.stringify(updates.tp3Data);
 
-        const lookupKey = oldEmp?.email || id;
-        await googleSheetsClient.update('employees', lookupKey, payloadUpdates, 'email');
+        const lookupKey = oldEmp?.name || id;
+        await googleSheetsClient.update('employees', lookupKey, payloadUpdates, 'name');
 
         await googleSheetsClient.insert('audit_logs', {
           id: `log_${Date.now()}`,
