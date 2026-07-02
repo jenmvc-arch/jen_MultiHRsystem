@@ -40,9 +40,18 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       try {
         const payload = await googleSheetsClient.loadData();
         const users = payload.users || [];
-        const matched = users.find(
+        let matched = users.find(
           (u: any) => String(u.email).toLowerCase() === email.trim().toLowerCase() && String(u.password) === password
         );
+
+        if (!matched && users.length === 0) {
+          const fallbackUser = MOCK_USERS.find(
+            u => u.email === email.trim().toLowerCase() && u.password === password
+          );
+          if (fallbackUser) {
+            matched = fallbackUser;
+          }
+        }
 
         setIsLoading(false);
 

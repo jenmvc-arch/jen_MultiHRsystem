@@ -125,6 +125,7 @@ export default function App() {
         await googleSheetsClient.insert('employees', {
           id: emp.id,
           entityId: emp.entityId,
+          entityName: emp.entityId === 'ENT-02' ? 'YSYD Sdn Bhd' : 'Red Point Sdn Bhd',
           name: emp.name,
           email: emp.email,
           designation: emp.designation,
@@ -217,6 +218,7 @@ export default function App() {
           designation: cand.designation,
           department: cand.department,
           entityId: cand.entityId,
+          entityName: cand.entityId === 'ENT-02' ? 'YSYD Sdn Bhd' : 'Red Point Sdn Bhd',
           stage: cand.stage,
           progress: cand.progress,
           dateJoined: cand.dateJoined
@@ -227,6 +229,7 @@ export default function App() {
       for (const perf of SEED_PERFORMANCES) {
         await googleSheetsClient.insert('performances', {
           employeeId: perf.employeeId,
+          employeeEmail: SEED_EMPLOYEES.find(emp => emp.id === perf.employeeId)?.email || '',
           reviewCycleId: perf.reviewCycleId,
           managerName: perf.managerName,
           reviewStatus: perf.reviewStatus,
@@ -273,6 +276,12 @@ export default function App() {
     async function loadData() {
       try {
         const payload = await googleSheetsClient.loadData();
+
+        // Auto-seed if corporate entities is empty (fresh spreadsheet database)
+        if (!payload.corporate_entities || payload.corporate_entities.length === 0) {
+          await handleSeedDatabase();
+          return;
+        }
         
         // 1. Fetch corporate entities
         if (payload.corporate_entities) {
