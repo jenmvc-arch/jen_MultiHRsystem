@@ -129,8 +129,10 @@ function doPost(e) {
       if (idColIndex === -1) throw new Error("Key column '" + (payload.keyName || "id") + "' not found in sheet headers");
       
       let foundIndex = -1;
+      const searchVal = String(payload.keyValue).trim().toLowerCase();
       for (let i = 1; i < allRows.length; i++) {
-        if (String(allRows[i][idColIndex]) === String(payload.keyValue)) {
+        const cellValue = String(allRows[i][idColIndex]).trim().toLowerCase();
+        if (cellValue === searchVal) {
           foundIndex = i + 1;
           break;
         }
@@ -146,8 +148,10 @@ function doPost(e) {
       if (idColIndex === -1) throw new Error("Key column '" + (payload.keyName || "id") + "' not found in sheet headers");
       
       let foundIndex = -1;
+      const searchVal = String(payload.keyValue).trim().toLowerCase();
       for (let i = 1; i < allRows.length; i++) {
-        if (String(allRows[i][idColIndex]) === String(payload.keyValue)) {
+        const cellValue = String(allRows[i][idColIndex]).trim().toLowerCase();
+        if (cellValue === searchVal) {
           foundIndex = i + 1;
           break;
         }
@@ -161,7 +165,13 @@ function doPost(e) {
         let match = true;
         for (let key in payload.query) {
           const colIdx = normalizedHeaders.indexOf(String(key).trim().toLowerCase());
-          if (colIdx === -1 || String(allRows[i][colIdx]) !== String(payload.query[key])) {
+          if (colIdx === -1) {
+            match = false;
+            break;
+          }
+          const cellValue = String(allRows[i][colIdx]).trim().toLowerCase();
+          const queryVal = String(payload.query[key]).trim().toLowerCase();
+          if (cellValue !== queryVal) {
             match = false;
             break;
           }
