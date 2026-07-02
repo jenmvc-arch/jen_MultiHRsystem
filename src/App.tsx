@@ -1163,7 +1163,7 @@ export default function App() {
 
   const employeesWithHistory = React.useMemo(() => {
     return employees.map(emp => {
-      const records = payrollRecords2026.filter(r => r.employeeEmail.toLowerCase() === emp.email.toLowerCase());
+      const records = (payrollRecords2026 || []).filter(r => r && r.employeeEmail && emp.email && r.employeeEmail.toLowerCase() === emp.email.toLowerCase());
       const mapped = records.map(r => ({
         payrollMonth: r.payrollMonth,
         basicSalary: r.basicSalary,

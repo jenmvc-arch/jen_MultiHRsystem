@@ -446,7 +446,7 @@ export default function PayrollView({
             }
 
             const records = (payrollRecords2026 || []).filter(
-              r => r.employeeEmail.toLowerCase() === activeEmp.email.toLowerCase()
+              r => r && r.employeeEmail && activeEmp.email && r.employeeEmail.toLowerCase() === activeEmp.email.toLowerCase()
             ).sort((a, b) => a.payrollMonth - b.payrollMonth);
 
             if (records.length === 0) {
