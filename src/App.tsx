@@ -1345,11 +1345,28 @@ export default function App() {
                 <div>
                   <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Company Logo</label>
                   <div className="flex items-center gap-4 bg-surface-container-low p-3 rounded border border-neutral-border/60">
-                    <div className="w-12 h-12 rounded border border-neutral-border bg-white flex items-center justify-center overflow-hidden shrink-0">
-                      {companyLogoUrl ? (
-                        <img src={companyLogoUrl} alt="Logo preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <div className="w-12 h-12 rounded border border-neutral-border bg-white flex items-center justify-center overflow-hidden shrink-0 relative">
+                      {companyLogoUrl && !companyLogoUrl.includes('placeholder') && !companyLogoUrl.includes('example.com') ? (
+                        <>
+                          <img 
+                            src={companyLogoUrl} 
+                            alt="Logo preview" 
+                            className="w-full h-full object-cover" 
+                            referrerPolicy="no-referrer" 
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                              if (fallback) fallback.style.display = 'flex';
+                            }}
+                          />
+                          <div style={{ display: 'none' }} className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-xs uppercase">
+                            {activeEntity?.name ? activeEntity.name.substring(0, 2) : 'HR'}
+                          </div>
+                        </>
                       ) : (
-                        <span className="text-[10px] text-on-surface-variant font-bold">No Logo</span>
+                        <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-xs uppercase">
+                          {activeEntity?.name ? activeEntity.name.substring(0, 2) : 'HR'}
+                        </div>
                       )}
                     </div>
                     <div className="flex-1 space-y-1.5 text-left">

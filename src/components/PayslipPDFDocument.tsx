@@ -308,14 +308,14 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
         {/* Company and Document Title Header */}
         <View style={[styles.headerContainer, { borderBottomColor: primaryColor }]}>
           <View style={styles.logoContainer}>
-            {entity?.logoUrl ? (
+            {entity?.logoUrl && !entity.logoUrl.includes('placeholder') && !entity.logoUrl.includes('example.com') ? (
               <Image 
                 src={entity.logoUrl} 
                 style={styles.logoImage} 
               />
             ) : (
               <View style={[styles.logoPlaceholder, { backgroundColor: primaryColor }]}>
-                <Text style={styles.logoText}>HR</Text>
+                <Text style={styles.logoText}>{entity?.name ? entity.name.substring(0, 2).toUpperCase() : 'HR'}</Text>
               </View>
             )}
             <View>

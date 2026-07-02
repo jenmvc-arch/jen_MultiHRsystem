@@ -216,11 +216,28 @@ export default function EntitiesView({
               <div>
                 <div className="flex justify-between items-start gap-2 mb-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-10 h-10 rounded bg-white border border-neutral-border/50 flex items-center justify-center overflow-hidden shrink-0">
-                      {ent.logoUrl ? (
-                        <img src={ent.logoUrl} alt={ent.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <div className="w-10 h-10 rounded bg-white border border-neutral-border/50 flex items-center justify-center overflow-hidden shrink-0 relative">
+                      {ent.logoUrl && !ent.logoUrl.includes('placeholder') && !ent.logoUrl.includes('example.com') ? (
+                        <>
+                          <img 
+                            src={ent.logoUrl} 
+                            alt={ent.name} 
+                            className="w-full h-full object-cover" 
+                            referrerPolicy="no-referrer" 
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                              if (fallback) fallback.style.display = 'flex';
+                            }}
+                          />
+                          <div style={{ display: 'none' }} className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-xs uppercase">
+                            {ent.name.substring(0, 2)}
+                          </div>
+                        </>
                       ) : (
-                        <Building2 className="w-5 h-5 text-primary" />
+                        <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-xs uppercase">
+                          {ent.name.substring(0, 2)}
+                        </div>
                       )}
                     </div>
                     <div>
@@ -481,11 +498,19 @@ export default function EntitiesView({
                         className="flex-1 bg-white border border-neutral-border rounded p-1 text-xs focus:ring-1 focus:ring-primary outline-none"
                       />
                     </div>
-                    {formLogoUrl && (
+                    {formLogoUrl && !formLogoUrl.includes('placeholder') && !formLogoUrl.includes('example.com') && (
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-[10px] text-on-surface-variant">Preview:</span>
-                        <div className="w-8 h-8 rounded border overflow-hidden bg-white">
-                          <img src={formLogoUrl} alt="Logo preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        <div className="w-8 h-8 rounded border overflow-hidden bg-white relative">
+                          <img 
+                            src={formLogoUrl} 
+                            alt="Logo preview" 
+                            className="w-full h-full object-cover" 
+                            referrerPolicy="no-referrer" 
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
                         </div>
                       </div>
                     )}
@@ -685,11 +710,19 @@ export default function EntitiesView({
                         className="flex-1 bg-white border border-neutral-border rounded p-1 text-xs focus:ring-1 focus:ring-primary outline-none"
                       />
                     </div>
-                    {formLogoUrl && (
+                    {formLogoUrl && !formLogoUrl.includes('placeholder') && !formLogoUrl.includes('example.com') && (
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-[10px] text-on-surface-variant">Preview:</span>
-                        <div className="w-8 h-8 rounded border overflow-hidden bg-white">
-                          <img src={formLogoUrl} alt="Logo preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        <div className="w-8 h-8 rounded border overflow-hidden bg-white relative">
+                          <img 
+                            src={formLogoUrl} 
+                            alt="Logo preview" 
+                            className="w-full h-full object-cover" 
+                            referrerPolicy="no-referrer" 
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
                         </div>
                       </div>
                     )}

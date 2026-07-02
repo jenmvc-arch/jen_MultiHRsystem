@@ -207,16 +207,28 @@ export default function PayslipDocumentView({
           <div className="flex justify-between items-start border-b-2 border-primary pb-6 mb-6">
             <div className="flex items-start gap-4">
               {/* Logo container */}
-              <div className="w-14 h-14 rounded-lg bg-white border border-neutral-border/40 flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
-                {activeEntity?.logoUrl ? (
-                  <img 
-                    src={activeEntity.logoUrl} 
-                    alt={activeEntity.name} 
-                    className="w-full h-full object-cover" 
-                    referrerPolicy="no-referrer" 
-                  />
+              <div className="w-14 h-14 rounded-lg bg-white border border-neutral-border/40 flex items-center justify-center overflow-hidden shrink-0 shadow-xs relative">
+                {activeEntity?.logoUrl && !activeEntity.logoUrl.includes('placeholder') && !activeEntity.logoUrl.includes('example.com') ? (
+                  <>
+                    <img 
+                      src={activeEntity.logoUrl} 
+                      alt={activeEntity.name} 
+                      className="w-full h-full object-cover" 
+                      referrerPolicy="no-referrer" 
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                        if (fallback) fallback.style.display = 'flex';
+                      }}
+                    />
+                    <div style={{ display: 'none' }} className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-sm uppercase">
+                      {activeEntity.name.substring(0, 2)}
+                    </div>
+                  </>
                 ) : (
-                  <Building2 className="w-7 h-7 text-primary" />
+                  <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-sm uppercase">
+                    {activeEntity?.name ? activeEntity.name.substring(0, 2) : 'HR'}
+                  </div>
                 )}
               </div>
 

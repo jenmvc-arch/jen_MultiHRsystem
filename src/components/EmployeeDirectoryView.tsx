@@ -1460,11 +1460,28 @@ export default function EmployeeDirectoryView({
                   {/* Payslip Branding Header */}
                   <div className="flex justify-between items-start border-b-2 border-primary pb-6 mb-6">
                     <div className="flex items-start gap-4 text-left">
-                      <div className="w-14 h-14 rounded-lg bg-white border border-neutral-border/40 flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
-                        {activeSub.logoUrl ? (
-                          <img src={activeSub.logoUrl} alt={activeSub.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <div className="w-14 h-14 rounded-lg bg-white border border-neutral-border/40 flex items-center justify-center overflow-hidden shrink-0 shadow-xs relative">
+                        {activeSub.logoUrl && !activeSub.logoUrl.includes('placeholder') && !activeSub.logoUrl.includes('example.com') ? (
+                          <>
+                            <img 
+                              src={activeSub.logoUrl} 
+                              alt={activeSub.name} 
+                              className="w-full h-full object-cover" 
+                              referrerPolicy="no-referrer" 
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                                if (fallback) fallback.style.display = 'flex';
+                              }}
+                            />
+                            <div style={{ display: 'none' }} className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-sm uppercase">
+                              {activeSub.name.substring(0, 2)}
+                            </div>
+                          </>
                         ) : (
-                          <Building2 className="w-7 h-7 text-primary" />
+                          <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-sm uppercase">
+                            {activeSub.name.substring(0, 2)}
+                          </div>
                         )}
                       </div>
 

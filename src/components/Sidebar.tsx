@@ -67,11 +67,28 @@ export default function Sidebar({
       {/* Brand Header with Corporate Selector */}
       <div className="px-5 mb-6 flex flex-col gap-2 bg-white/5 p-3 rounded-lg mx-3 border border-white/10">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-sm border border-white/10">
-            {activeEntity?.logoUrl ? (
-              <img src={activeEntity.logoUrl} alt={activeEntity.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          <div className="w-9 h-9 rounded bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-sm border border-white/10 relative">
+            {activeEntity?.logoUrl && !activeEntity.logoUrl.includes('placeholder') && !activeEntity.logoUrl.includes('example.com') ? (
+              <>
+                <img 
+                  src={activeEntity.logoUrl} 
+                  alt={activeEntity.name} 
+                  className="w-full h-full object-cover" 
+                  referrerPolicy="no-referrer" 
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                    if (fallback) fallback.style.display = 'flex';
+                  }}
+                />
+                <div style={{ display: 'none' }} className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-xs uppercase">
+                  {activeEntity.name.substring(0, 2)}
+                </div>
+              </>
             ) : (
-              <Building2 className="w-5 h-5 text-primary" />
+              <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-xs uppercase">
+                {activeEntity?.name ? activeEntity.name.substring(0, 2) : 'HR'}
+              </div>
             )}
           </div>
           <div className="min-w-0 flex-1">
