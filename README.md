@@ -37,7 +37,7 @@ function getSpreadsheet() {
 
 const SCHEMA = {
   "corporate_entities": ["id", "name", "registrationNumber", "address", "taxReferenceNo", "epfReferenceNo", "socsoReferenceNo", "currency", "isActive", "theme"],
-  "employees": ["id", "entityId", "name", "email", "designation", "department", "status", "bankName", "accountNo", "basicSalary", "housingAllowance", "transportAllowance", "overtime", "performanceBonus", "epfRateEmployee", "epfRateEmployer", "socsoEmployee", "socsoEmployer", "eisEmployee", "eisEmployer", "taxPcb", "unpaidLeave", "hrdCorp", "avatarUrl", "nricPassport", "nationality", "contactNumber", "taxNumber", "epfNumber", "employmentType", "maritalStatus", "eligibleForStatutory", "emergencyContactName", "emergencyContactRelation", "emergencyContactPhone", "dateOfJoined", "careerHistory", "dependants"],
+  "employees": ["id", "entityId", "name", "email", "designation", "department", "status", "bankName", "accountNo", "basicSalary", "housingAllowance", "transportAllowance", "overtime", "performanceBonus", "epfRateEmployee", "epfRateEmployer", "socsoEmployee", "socsoEmployer", "eisEmployee", "eisEmployer", "taxPcb", "unpaidLeave", "hrdCorp", "avatarUrl", "nricPassport", "nationality", "contactNumber", "taxNumber", "epfNumber", "employmentType", "maritalStatus", "eligibleForStatutory", "emergencyContactName", "emergencyContactRelation", "emergencyContactPhone", "dateOfJoined", "careerHistory", "dependants", "allowanceGeneral", "allowanceTransport", "allowanceParking", "allowanceMeal", "allowanceAccommodation", "allowancePhone", "reimbursementAmount", "reimbursementDesc", "bonusAmount", "bonusDesc", "commissionAmount", "commissionDesc", "backPayAmount", "backPayDesc", "awsAmount", "awsDesc", "compensationAmount", "compensationDesc", "deductionInLieu", "deductionCp38", "deductionOthers", "deductionOthersDesc"],
   "performances": ["employeeId", "reviewCycleId", "managerName", "reviewStatus", "rating", "teamworkScore", "communicationScore", "problemSolvingScore", "selfEvaluation", "managerComments", "goals"],
   "users": ["email", "password", "name", "role"],
   "audit_logs": ["id", "employeeId", "changedBy", "changeType", "oldValue", "newValue", "createdAt"]
@@ -50,6 +50,15 @@ function initializeDatabase() {
     if (!sheet) {
       sheet = ss.insertSheet(sheetName);
       sheet.appendRow(SCHEMA[sheetName]);
+    } else {
+      const data = sheet.getDataRange().getValues();
+      const existingHeaders = data[0] || [];
+      const schemaHeaders = SCHEMA[sheetName];
+      const missingHeaders = schemaHeaders.filter(h => !existingHeaders.includes(h));
+      if (missingHeaders.length > 0) {
+        const nextCol = existingHeaders.length + 1;
+        sheet.getRange(1, nextCol, 1, missingHeaders.length).setValues([missingHeaders]);
+      }
     }
   }
 }
