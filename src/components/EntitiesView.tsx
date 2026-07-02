@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { CorporateEntity, Employee } from '../types';
 import { googleSheetsClient, isGoogleConfigured } from '../lib/googleSheetsClient';
+import { getDirectLogoUrl } from '../data';
 
 interface EntitiesViewProps {
   entities: CorporateEntity[];
@@ -220,7 +221,7 @@ export default function EntitiesView({
                       {ent.logoUrl && !ent.logoUrl.includes('placeholder') && !ent.logoUrl.includes('example.com') ? (
                         <>
                           <img 
-                            src={ent.logoUrl} 
+                            src={getDirectLogoUrl(ent.logoUrl)} 
                             alt={ent.name} 
                             className="w-full h-full object-cover" 
                             referrerPolicy="no-referrer" 
@@ -503,7 +504,7 @@ export default function EntitiesView({
                         <span className="text-[10px] text-on-surface-variant">Preview:</span>
                         <div className="w-8 h-8 rounded border overflow-hidden bg-white relative">
                           <img 
-                            src={formLogoUrl} 
+                            src={getDirectLogoUrl(formLogoUrl)} 
                             alt="Logo preview" 
                             className="w-full h-full object-cover" 
                             referrerPolicy="no-referrer" 
@@ -715,7 +716,7 @@ export default function EntitiesView({
                         <span className="text-[10px] text-on-surface-variant">Preview:</span>
                         <div className="w-8 h-8 rounded border overflow-hidden bg-white relative">
                           <img 
-                            src={formLogoUrl} 
+                            src={getDirectLogoUrl(formLogoUrl)} 
                             alt="Logo preview" 
                             className="w-full h-full object-cover" 
                             referrerPolicy="no-referrer" 

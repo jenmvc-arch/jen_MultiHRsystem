@@ -73,7 +73,7 @@ export default function Sidebar({
             {activeEntity?.logoUrl && !activeEntity.logoUrl.includes('placeholder') && !activeEntity.logoUrl.includes('example.com') ? (
               <>
                 <img 
-                  src={activeEntity.logoUrl} 
+                  src={getDirectLogoUrl(activeEntity.logoUrl)} 
                   alt={activeEntity.name} 
                   className="w-full h-full object-cover" 
                   referrerPolicy="no-referrer" 

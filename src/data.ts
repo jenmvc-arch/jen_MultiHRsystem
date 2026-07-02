@@ -962,3 +962,16 @@ export function recalculatePCBFromMonth(params: {
   return results;
 }
 
+export function getDirectLogoUrl(url: string | undefined): string {
+  if (!url) return '';
+  // Check if it's a Google Drive link
+  if (url.includes('drive.google.com')) {
+    // Extract file ID
+    const match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      return `https://docs.google.com/uc?export=download&id=${match[1]}`;
+    }
+  }
+  return url;
+}
+

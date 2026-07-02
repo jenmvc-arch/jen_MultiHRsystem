@@ -42,7 +42,7 @@ import {
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { Employee, CareerHistoryEntry, Dependant, CorporateEntity } from '../types';
-import { calculatePayslip, getPayslipLabel } from '../data';
+import { calculatePayslip, getPayslipLabel, getDirectLogoUrl } from '../data';
 
 interface EmployeeDirectoryViewProps {
   employees: Employee[];
@@ -1489,7 +1489,7 @@ export default function EmployeeDirectoryView({
                         {activeSub.logoUrl && !activeSub.logoUrl.includes('placeholder') && !activeSub.logoUrl.includes('example.com') ? (
                           <>
                             <img 
-                              src={activeSub.logoUrl} 
+                              src={getDirectLogoUrl(activeSub.logoUrl)} 
                               alt={activeSub.name} 
                               className="w-full h-full object-cover" 
                               referrerPolicy="no-referrer" 
