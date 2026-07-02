@@ -36,8 +36,8 @@ function getSpreadsheet() {
 }
 
 const SCHEMA = {
-  "corporate_entities": ["id", "name", "registrationNumber", "address", "taxReferenceNo", "epfReferenceNo", "socsoReferenceNo", "currency", "isActive", "theme"],
-  "employees": ["id", "entityId", "name", "email", "designation", "department", "status", "bankName", "accountNo", "basicSalary", "housingAllowance", "transportAllowance", "overtime", "performanceBonus", "epfRateEmployee", "epfRateEmployer", "socsoEmployee", "socsoEmployer", "eisEmployee", "eisEmployer", "taxPcb", "unpaidLeave", "hrdCorp", "avatarUrl", "nricPassport", "nationality", "contactNumber", "taxNumber", "epfNumber", "employmentType", "maritalStatus", "eligibleForStatutory", "emergencyContactName", "emergencyContactRelation", "emergencyContactPhone", "dateOfJoined", "careerHistory", "dependants", "allowanceGeneral", "allowanceTransport", "allowanceParking", "allowanceMeal", "allowanceAccommodation", "allowancePhone", "reimbursementAmount", "reimbursementDesc", "bonusAmount", "bonusDesc", "commissionAmount", "commissionDesc", "backPayAmount", "backPayDesc", "awsAmount", "awsDesc", "compensationAmount", "compensationDesc", "deductionInLieu", "deductionCp38", "deductionOthers", "deductionOthersDesc"],
+  "corporate_entities": ["id", "name", "registrationNumber", "address", "taxReferenceNo", "epfReferenceNo", "socsoReferenceNo", "currency", "isActive", "theme", "logoUrl"],
+  "employees": ["id", "entityId", "name", "email", "designation", "department", "status", "bankName", "accountNo", "basicSalary", "housingAllowance", "transportAllowance", "overtime", "performanceBonus", "epfRateEmployee", "epfRateEmployer", "socsoEmployee", "socsoEmployer", "eisEmployee", "eisEmployer", "taxPcb", "unpaidLeave", "hrdCorp", "avatarUrl", "nricPassport", "nationality", "contactNumber", "taxNumber", "epfNumber", "employmentType", "maritalStatus", "eligibleForStatutory", "emergencyContactName", "emergencyContactRelation", "emergencyContactPhone", "dateOfJoined", "careerHistory", "dependants", "allowanceGeneral", "allowanceTransport", "allowanceParking", "allowanceMeal", "allowanceAccommodation", "allowancePhone", "reimbursementAmount", "reimbursementDesc", "bonusAmount", "bonusDesc", "commissionAmount", "commissionDesc", "backPayAmount", "backPayDesc", "awsAmount", "awsDesc", "compensationAmount", "compensationDesc", "deductionInLieu", "deductionCp38", "deductionOthers", "deductionOthersDesc", "spouseName", "spouseNric", "spouseIsWorking", "spouseCompany", "spousePosition", "hasDependants", "icFrontUrl", "icBackUrl", "educationCertUrl", "skbbkEmployee", "skbbkEmployer"],
   "performances": ["employeeId", "reviewCycleId", "managerName", "reviewStatus", "rating", "teamworkScore", "communicationScore", "problemSolvingScore", "selfEvaluation", "managerComments", "goals"],
   "users": ["email", "password", "name", "role"],
   "audit_logs": ["id", "employeeId", "changedBy", "changeType", "oldValue", "newValue", "createdAt"]
@@ -56,6 +56,7 @@ function initializeDatabase() {
       const schemaHeaders = SCHEMA[sheetName];
       const missingHeaders = schemaHeaders.filter(h => !existingHeaders.includes(h));
       if (missingHeaders.length > 0) {
+        sheet.insertColumnsAfter(existingHeaders.length, missingHeaders.length);
         const nextCol = existingHeaders.length + 1;
         sheet.getRange(1, nextCol, 1, missingHeaders.length).setValues([missingHeaders]);
       }

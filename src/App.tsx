@@ -122,7 +122,8 @@ export default function App() {
             socsoReferenceNo: e.socsoReferenceNo || '',
             currency: e.currency || 'RM',
             isActive: String(e.isActive) !== 'false' && e.isActive !== false,
-            theme: e.theme as any
+            theme: e.theme as any,
+            logoUrl: e.logoUrl || ''
           })));
         }
 
@@ -208,6 +209,17 @@ export default function App() {
               deductionCp38: Number(e.deductionCp38 || 0),
               deductionOthers: Number(e.deductionOthers || 0),
               deductionOthersDesc: e.deductionOthersDesc || '',
+              spouseName: e.spouseName || '',
+              spouseNric: e.spouseNric || '',
+              spouseIsWorking: e.spouseIsWorking || 'No',
+              spouseCompany: e.spouseCompany || '',
+              spousePosition: e.spousePosition || '',
+              hasDependants: e.hasDependants || 'No',
+              icFrontUrl: e.icFrontUrl || '',
+              icBackUrl: e.icBackUrl || '',
+              educationCertUrl: e.educationCertUrl || '',
+              skbbkEmployee: Number(e.skbbkEmployee || 0),
+              skbbkEmployer: Number(e.skbbkEmployer || 0),
               careerHistory,
               dependants
             };
@@ -451,6 +463,17 @@ export default function App() {
           deductionCp38: newEmployee.deductionCp38 || 0,
           deductionOthers: newEmployee.deductionOthers || 0,
           deductionOthersDesc: newEmployee.deductionOthersDesc || '',
+          spouseName: newEmployee.spouseName || '',
+          spouseNric: newEmployee.spouseNric || '',
+          spouseIsWorking: newEmployee.spouseIsWorking || 'No',
+          spouseCompany: newEmployee.spouseCompany || '',
+          spousePosition: newEmployee.spousePosition || '',
+          hasDependants: newEmployee.hasDependants || 'No',
+          icFrontUrl: newEmployee.icFrontUrl || '',
+          icBackUrl: newEmployee.icBackUrl || '',
+          educationCertUrl: newEmployee.educationCertUrl || '',
+          skbbkEmployee: newEmployee.skbbkEmployee || 0,
+          skbbkEmployer: newEmployee.skbbkEmployer || 0,
           careerHistory: JSON.stringify(newEmployee.careerHistory || []),
           dependants: JSON.stringify(newEmployee.dependants || [])
         });
@@ -557,6 +580,17 @@ export default function App() {
         if (updates.deductionCp38 !== undefined) payloadUpdates.deductionCp38 = updates.deductionCp38;
         if (updates.deductionOthers !== undefined) payloadUpdates.deductionOthers = updates.deductionOthers;
         if (updates.deductionOthersDesc !== undefined) payloadUpdates.deductionOthersDesc = updates.deductionOthersDesc;
+        if (updates.spouseName !== undefined) payloadUpdates.spouseName = updates.spouseName;
+        if (updates.spouseNric !== undefined) payloadUpdates.spouseNric = updates.spouseNric;
+        if (updates.spouseIsWorking !== undefined) payloadUpdates.spouseIsWorking = updates.spouseIsWorking;
+        if (updates.spouseCompany !== undefined) payloadUpdates.spouseCompany = updates.spouseCompany;
+        if (updates.spousePosition !== undefined) payloadUpdates.spousePosition = updates.spousePosition;
+        if (updates.hasDependants !== undefined) payloadUpdates.hasDependants = updates.hasDependants;
+        if (updates.icFrontUrl !== undefined) payloadUpdates.icFrontUrl = updates.icFrontUrl;
+        if (updates.icBackUrl !== undefined) payloadUpdates.icBackUrl = updates.icBackUrl;
+        if (updates.educationCertUrl !== undefined) payloadUpdates.educationCertUrl = updates.educationCertUrl;
+        if (updates.skbbkEmployee !== undefined) payloadUpdates.skbbkEmployee = updates.skbbkEmployee;
+        if (updates.skbbkEmployer !== undefined) payloadUpdates.skbbkEmployer = updates.skbbkEmployer;
         if (updates.careerHistory !== undefined) payloadUpdates.careerHistory = JSON.stringify(updates.careerHistory);
         if (updates.dependants !== undefined) payloadUpdates.dependants = JSON.stringify(updates.dependants);
 
@@ -629,10 +663,12 @@ export default function App() {
           socsoReferenceNo: newEntity.socsoReferenceNo,
           currency: newEntity.currency,
           isActive: newEntity.isActive,
-          theme: newEntity.theme
+          theme: newEntity.theme,
+          logoUrl: newEntity.logoUrl || ''
         });
-      } catch (err) {
+      } catch (err: any) {
         console.error('[Google Sheets Entity Insert] Failed:', err);
+        triggerNotification('Sync Failed', `Could not save new entity: ${err.message || err}`, 'info');
       }
     }
   };
@@ -652,10 +688,12 @@ export default function App() {
         if (updates.currency !== undefined) payloadUpdates.currency = updates.currency;
         if (updates.isActive !== undefined) payloadUpdates.isActive = updates.isActive;
         if (updates.theme !== undefined) payloadUpdates.theme = updates.theme;
+        if (updates.logoUrl !== undefined) payloadUpdates.logoUrl = updates.logoUrl;
 
         await googleSheetsClient.update('corporate_entities', id, payloadUpdates, 'id');
-      } catch (err) {
+      } catch (err: any) {
         console.error('[Google Sheets Entity Update] Failed:', err);
+        triggerNotification('Sync Failed', `Could not update entity: ${err.message || err}`, 'info');
       }
     }
   };
