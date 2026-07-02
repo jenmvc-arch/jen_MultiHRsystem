@@ -56,10 +56,11 @@ export default function PerformanceView({
   const [newGoalInput, setNewGoalInput] = useState('');
 
   // Calculations
-  const totalReviews = 1200; // Hardcoded static baseline from screenshots
-  const completedReviewsCount = performances.filter(p => p.reviewStatus === 'Completed').length + 1056; // baseline 1058
-  const pendingReviewsCount = totalReviews - completedReviewsCount;
-  const completionRate = Math.round((completedReviewsCount / totalReviews) * 100);
+  const targetPerformances = performances.filter(p => p.reviewCycleId === selectedCycleId);
+  const totalReviews = employees.length;
+  const completedReviewsCount = targetPerformances.filter(p => p.reviewStatus === 'Completed' && employees.some(e => e.id === p.employeeId)).length;
+  const pendingReviewsCount = Math.max(0, totalReviews - completedReviewsCount);
+  const completionRate = totalReviews > 0 ? Math.round((completedReviewsCount / totalReviews) * 100) : 0;
 
   // Build rows: Join employees with performance
   const evaluationList = employees.map(emp => {
@@ -163,7 +164,12 @@ export default function PerformanceView({
         <div className="bg-surface-container-lowest p-5 rounded-lg border border-neutral-border shadow-sm">
           <span className="text-on-surface-variant text-sm font-medium">Global Average Rating</span>
           <div className="text-3xl font-bold text-primary mt-2">
-            {(performances.reduce((acc, p) => acc + p.rating, 0) / performances.length || 3.8).toFixed(1)} / 5.0
+            {(() => {
+              const ratedPerfs = targetPerformances.filter(p => p.reviewStatus === 'Completed' && p.rating > 0);
+              if (ratedPerfs.length === 0) return '0.0';
+              const avg = ratedPerfs.reduce((acc, p) => acc + p.rating, 0) / ratedPerfs.length;
+              return avg.toFixed(1);
+            })()} / 5.0
           </div>
           <div className="text-xs text-on-surface-variant mt-1.5 flex items-center gap-1 font-semibold">
             <TrendingUp className="w-3.5 h-3.5 text-primary" /> Steady professional alignment

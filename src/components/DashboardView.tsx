@@ -22,12 +22,13 @@ import {
   ShieldCheck,
   Check
 } from 'lucide-react';
-import { Employee, ReviewCycle, CorporateEntity } from '../types';
+import { Employee, ReviewCycle, CorporateEntity, EmployeePerformance } from '../types';
 
 interface DashboardViewProps {
   employees: Employee[];
   entities: CorporateEntity[];
   reviewCycles: ReviewCycle[];
+  performances: EmployeePerformance[];
   onNavigate: (tab: any) => void;
   onOpenNewEmployeeModal: () => void;
   onOpenRequestModal: () => void;
@@ -37,6 +38,7 @@ export default function DashboardView({
   employees,
   entities,
   reviewCycles,
+  performances,
   onNavigate,
   onOpenNewEmployeeModal,
   onOpenRequestModal
@@ -61,24 +63,19 @@ export default function DashboardView({
     ? Math.round(filteredEmployees.reduce((acc, e) => acc + e.basicSalary, 0) / totalEmployees) 
     : 0;
 
-  // 4. Subsidiary-specific performance metrics (realistic simulation)
-  let reviewsPendingCount = 142;
-  let reviewsCompletedCount = 1058;
-  let averageRating = 3.8;
+  // 4. Compute dynamic performance metrics matching current review cycle
+  const currentCycleId = reviewCycles[0]?.id || 'cycle-2026-annual';
+  const entityPerformances = performances.filter(
+    p => p.reviewCycleId === currentCycleId && filteredEmployees.some(e => e.id === p.employeeId)
+  );
 
-  if (selectedEntityId === 'ENT-01') {
-    reviewsPendingCount = 82;
-    reviewsCompletedCount = 612;
-    averageRating = 3.9;
-  } else if (selectedEntityId === 'ENT-02') {
-    reviewsPendingCount = 38;
-    reviewsCompletedCount = 296;
-    averageRating = 3.7;
-  } else if (selectedEntityId === 'ENT-03') {
-    reviewsPendingCount = 22;
-    reviewsCompletedCount = 150;
-    averageRating = 3.6;
-  }
+  const reviewsCompletedCount = entityPerformances.filter(p => p.reviewStatus === 'Completed').length;
+  const reviewsPendingCount = Math.max(0, totalEmployees - reviewsCompletedCount);
+  
+  const ratedPerfs = entityPerformances.filter(p => p.reviewStatus === 'Completed' && p.rating > 0);
+  const averageRating = ratedPerfs.length > 0 
+    ? parseFloat((ratedPerfs.reduce((acc, p) => acc + p.rating, 0) / ratedPerfs.length).toFixed(1))
+    : 0;
 
   // 5. Dynamic Chart Scaling based on selected subsidiary's payroll ratio
   const baseMonthlyValues = [16000, 22000, 24000, 20000, 30000, 33000, 28000, 35000, 39000, 42000];

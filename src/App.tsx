@@ -506,6 +506,31 @@ export default function App() {
     }
   }, [activeEntityId, activeEntity]);
 
+  // GMT+8 Real-Time Clock
+  const [gmt8TimeStr, setGmt8TimeStr] = useState('');
+  useEffect(() => {
+    const updateClock = () => {
+      const now = new Date();
+      const dateStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kuala_Lumpur',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(now);
+      const timeStr = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Kuala_Lumpur',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).format(now);
+      setGmt8TimeStr(`${dateStr} ${timeStr}`);
+    };
+    updateClock();
+    const timer = setInterval(updateClock, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Toast System
   const [toast, setToast] = useState<{ show: boolean; title: string; message: string; type: 'success' | 'info' }>({
     show: false,
@@ -1026,15 +1051,20 @@ export default function App() {
           <div className="flex items-center gap-4">
             {/* Clock Date Widget */}
             <div className="text-right hidden md:block">
-              <span className="text-[10px] text-on-surface-variant uppercase tracking-wider block font-semibold">Active UTC Standard</span>
-              <span className="text-xs font-mono font-bold text-on-surface">2026-06-29 18:17 UTC</span>
+              <span className="text-[10px] text-on-surface-variant uppercase tracking-wider block font-semibold">Local Time (Kuala Lumpur)</span>
+              <span className="text-xs font-mono font-bold text-on-surface">{gmt8TimeStr || 'Loading clock...'}</span>
             </div>
 
             <div className="w-px h-8 bg-neutral-border/40 hidden md:block" />
 
             {/* Notifications Alert Bell */}
             <button 
-              onClick={() => triggerNotification('HR Directives', 'You have 142 outstanding performance reviews due by Nov 5th.', 'info')}
+              onClick={() => {
+                const currentCycleId = reviewCycles[0]?.id || 'cycle-2026-annual';
+                const completedCount = performances.filter(p => p.reviewCycleId === currentCycleId && p.reviewStatus === 'Completed').length;
+                const pendingCount = Math.max(0, employees.length - completedCount);
+                triggerNotification('HR Directives', `You have ${pendingCount} outstanding performance reviews due.`, 'info');
+              }}
               className="p-2 rounded-full hover:bg-surface-container relative transition-colors cursor-pointer"
             >
               <Bell className="w-4 h-4 text-on-surface" />
@@ -1068,6 +1098,7 @@ export default function App() {
               employees={employees}
               entities={entities}
               reviewCycles={reviewCycles}
+              performances={performances}
               onNavigate={setCurrentTab}
               onOpenNewEmployeeModal={() => {
                 setCurrentTab('directory');
