@@ -39,31 +39,65 @@ interface LeaveManagementViewProps {
   onShowNotification: (title: string, message: string) => void;
 }
 
+export interface LeaveConfig {
+  id: string;
+  leaveType: string;
+  daysEntitled: number;
+  leaveGroup: string; // "All" | "Full-Time" | "Probationary" | "Contractor"
+  condition: string;
+}
+
+const DEFAULT_LEAVE_CONFIGS: LeaveConfig[] = [
+  { id: '1', leaveType: 'Annual Leave', daysEntitled: 18, leaveGroup: 'Full-Time', condition: 'Paid leave' },
+  { id: '2', leaveType: 'Sick Leave', daysEntitled: 14, leaveGroup: 'All', condition: 'Paid leave' },
+  { id: '3', leaveType: 'Hospitalisation Leave', daysEntitled: 60, leaveGroup: 'All', condition: 'Paid leave' },
+  { id: '4', leaveType: 'Maternity Leave', daysEntitled: 98, leaveGroup: 'Full-Time', condition: 'Paid leave' },
+  { id: '5', leaveType: 'Paternity Leave', daysEntitled: 7, leaveGroup: 'Full-Time', condition: 'Paid leave' },
+  { id: '6', leaveType: 'Compassionate Leave', daysEntitled: 3, leaveGroup: 'All', condition: 'Paid leave' },
+  { id: '7', leaveType: 'Unpaid Leave', daysEntitled: 30, leaveGroup: 'All', condition: 'Unpaid leave' },
+];
+
 const INITIAL_LEAVE_REQUESTS: LeaveRequest[] = [];
 
 export default function LeaveManagementView({
   employees,
   onShowNotification
 }: LeaveManagementViewProps) {
-  const [requests, setRequests] = useState<LeaveRequest[]>(INITIAL_LEAVE_REQUESTS);
+  const [requests, setRequests] = useState<LeaveRequest[]>(() => {
+    const saved = localStorage.getItem('leave_requests');
+    return saved ? JSON.parse(saved) : INITIAL_LEAVE_REQUESTS;
+  });
+  const [leaveConfigs, setLeaveConfigs] = useState<LeaveConfig[]>(() => {
+    const saved = localStorage.getItem('leave_configs');
+    return saved ? JSON.parse(saved) : DEFAULT_LEAVE_CONFIGS;
+  });
+
+  const saveConfigs = (newConfigs: LeaveConfig[]) => {
+    setLeaveConfigs(newConfigs);
+    localStorage.setItem('leave_configs', JSON.stringify(newConfigs));
+  };
+
+  const saveRequests = (newRequests: LeaveRequest[]) => {
+    setRequests(newRequests);
+    localStorage.setItem('leave_requests', JSON.stringify(newRequests));
+  };
+
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(employees[0]?.id || '');
-  const [leaveType, setLeaveType] = useState('Annual Leave');
+  const [leaveType, setLeaveType] = useState(() => leaveConfigs[0]?.leaveType || 'Annual Leave');
   const [startDate, setStartDate] = useState('2026-07-05');
   const [endDate, setEndDate] = useState('2026-07-07');
   const [reason, setReason] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Approved' | 'Rejected'>('All');
 
+  // Policy configuration modal states
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [newTypeName, setNewTypeName] = useState('');
+  const [newTypeDays, setNewTypeDays] = useState(14);
+  const [newTypeGroup, setNewTypeGroup] = useState('All');
+  const [newTypeCondition, setNewTypeCondition] = useState('Paid leave');
+
   // Compute stats for selected employee
   const currentEmployee = employees.find(e => e.id === selectedEmployeeId) || employees[0];
-  
-  // Simulated leave balances per employee (in a real system, would be model fields)
-  const totalAnnualEntitled = 18;
-  const takenAnnual = requests.filter(r => r.employeeId === selectedEmployeeId && r.leaveType === 'Annual Leave' && r.status === 'Approved').reduce((acc, r) => acc + r.totalDays, 0) + 4; // base Taken value
-  const remainingAnnual = Math.max(0, totalAnnualEntitled - takenAnnual);
-
-  const totalSickEntitled = 14;
-  const takenSick = requests.filter(r => r.employeeId === selectedEmployeeId && r.leaveType === 'Sick Leave' && r.status === 'Approved').reduce((acc, r) => acc + r.totalDays, 0) + 2;
-  const remainingSick = Math.max(0, totalSickEntitled - takenSick);
 
   const calculateDays = (start: string, end: string) => {
     const s = new Date(start);
@@ -97,7 +131,7 @@ export default function LeaveManagementView({
       appliedDate: getGmt8DateString()
     };
 
-    setRequests([newRequest, ...requests]);
+    saveRequests([newRequest, ...requests]);
     setReason('');
     onShowNotification(
       'Leave Request Submitted', 
@@ -106,16 +140,52 @@ export default function LeaveManagementView({
   };
 
   const handleUpdateStatus = (id: string, newStatus: 'Approved' | 'Rejected') => {
-    setRequests(prev => prev.map(req => {
+    const updated = requests.map(req => {
       if (req.id === id) {
         return { ...req, status: newStatus };
       }
       return req;
-    }));
+    });
+    saveRequests(updated);
     onShowNotification(
       `Request ${newStatus}`, 
       `Leave request ${id} has been marked as ${newStatus.toLowerCase()}.`
     );
+  };
+
+  const handleUpdateConfig = (id: string, field: keyof LeaveConfig, value: any) => {
+    const updated = leaveConfigs.map(c => c.id === id ? { ...c, [field]: value } : c);
+    saveConfigs(updated);
+  };
+
+  const handleDeleteConfig = (id: string) => {
+    const updated = leaveConfigs.filter(c => c.id !== id);
+    saveConfigs(updated);
+    if (updated.length > 0) {
+      setLeaveType(updated[0].leaveType);
+    }
+  };
+
+  const handleAddConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTypeName.trim()) {
+      onShowNotification('Validation Error', 'Please specify a leave type name.');
+      return;
+    }
+    const newConfig: LeaveConfig = {
+      id: `LC-${Date.now()}`,
+      leaveType: newTypeName.trim(),
+      daysEntitled: Number(newTypeDays),
+      leaveGroup: newTypeGroup,
+      condition: newTypeCondition
+    };
+    const updated = [...leaveConfigs, newConfig];
+    saveConfigs(updated);
+    setNewTypeName('');
+    setNewTypeDays(14);
+    setNewTypeGroup('All');
+    setNewTypeCondition('Paid leave');
+    onShowNotification('Policy Added', `New leave policy "${newTypeName}" registered successfully.`);
   };
 
   const filteredRequests = statusFilter === 'All' 
@@ -124,11 +194,21 @@ export default function LeaveManagementView({
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto animate-in fade-in duration-200 text-left">
-      <div>
-        <h1 className="text-3xl font-bold text-on-background tracking-tight">Leave Management</h1>
-        <p className="text-on-surface-variant mt-1">
-          Apply, review, and track statutory and corporate leave requests across all subsidiaries.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-on-background tracking-tight">Leave Management</h1>
+          <p className="text-on-surface-variant mt-1">
+            Apply, review, and track statutory and corporate leave requests across all subsidiaries.
+          </p>
+        </div>
+        <div>
+          <button
+            onClick={() => setIsConfigModalOpen(true)}
+            className="bg-primary text-[#f7f0e0] font-semibold text-xs py-2.5 px-4 rounded hover:opacity-90 shadow-sm flex items-center gap-1.5 cursor-pointer border border-primary/20"
+          >
+            <Briefcase className="w-4 h-4 text-[#f7f0e0]" /> Configure Leave Policies
+          </button>
+        </div>
       </div>
 
       {/* Grid Layout: Left form & stats, Right review logs */}
@@ -165,13 +245,9 @@ export default function LeaveManagementView({
                     onChange={(e) => setLeaveType(e.target.value)}
                     className="w-full bg-white border border-neutral-border rounded p-2 focus:ring-1 focus:ring-primary outline-none"
                   >
-                    <option>Annual Leave</option>
-                    <option>Sick Leave</option>
-                    <option>Hospitalisation Leave</option>
-                    <option>Maternity Leave</option>
-                    <option>Paternity Leave</option>
-                    <option>Compassionate Leave</option>
-                    <option>Unpaid Leave</option>
+                    {leaveConfigs.map(config => (
+                      <option key={config.id} value={config.leaveType}>{config.leaveType}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -238,27 +314,26 @@ export default function LeaveManagementView({
             </p>
 
             <div className="grid grid-cols-2 gap-4 text-xs font-mono">
-              <div className="bg-neutral-50 p-3 rounded border border-neutral-border/40">
-                <span className="text-[10px] text-on-surface-variant block font-sans font-bold uppercase tracking-wider mb-1.5">Annual Leave</span>
-                <div className="flex justify-between items-end">
-                  <div>
-                    <span className="text-lg font-bold text-primary">{remainingAnnual}</span>
-                    <span className="text-[10px] text-on-surface-variant"> / {totalAnnualEntitled} days</span>
-                  </div>
-                  <span className="text-[10px] text-on-surface-variant">Available</span>
-                </div>
-              </div>
+              {leaveConfigs.map(config => {
+                const taken = requests.filter(r => r.employeeId === selectedEmployeeId && r.leaveType === config.leaveType && r.status === 'Approved').reduce((acc, r) => acc + r.totalDays, 0);
+                // Offset value to simulate initial seeder taken days (optional, matches the original)
+                const simulatedOffset = config.leaveType === 'Annual Leave' ? 4 : (config.leaveType === 'Sick Leave' ? 2 : 0);
+                const finalTaken = taken + simulatedOffset;
+                const remaining = Math.max(0, config.daysEntitled - finalTaken);
 
-              <div className="bg-neutral-50 p-3 rounded border border-neutral-border/40">
-                <span className="text-[10px] text-on-surface-variant block font-sans font-bold uppercase tracking-wider mb-1.5">Medical / Sick Leave</span>
-                <div className="flex justify-between items-end">
-                  <div>
-                    <span className="text-lg font-bold text-primary">{remainingSick}</span>
-                    <span className="text-[10px] text-on-surface-variant"> / {totalSickEntitled} days</span>
+                return (
+                  <div key={config.id} className="bg-neutral-50 p-3 rounded border border-neutral-border/40 text-left">
+                    <span className="text-[10px] text-on-surface-variant block font-sans font-bold uppercase tracking-wider mb-1">{config.leaveType}</span>
+                    <div className="flex justify-between items-end">
+                      <div>
+                        <span className="text-lg font-bold text-primary">{remaining}</span>
+                        <span className="text-[10px] text-on-surface-variant font-sans"> / {config.daysEntitled}d</span>
+                      </div>
+                      <span className="text-[9px] text-zinc-400 font-sans">{config.condition}</span>
+                    </div>
                   </div>
-                  <span className="text-[10px] text-on-surface-variant">Available</span>
-                </div>
-              </div>
+                );
+              })}
             </div>
 
             <div className="mt-4 p-3 bg-amber-50/50 rounded border border-amber-200/50 flex gap-2.5 items-start text-[11px] text-amber-900 leading-normal">
@@ -390,6 +465,164 @@ export default function LeaveManagementView({
 
       {/* Leave Calendar Section */}
       <LeaveCalendar requests={requests} employees={employees} />
+
+      {/* Policy Configuration Modal */}
+      {isConfigModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white border border-neutral-border rounded-lg shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col animate-in zoom-in-95 duration-150 text-left">
+            
+            {/* Modal Header */}
+            <div className="p-4 border-b border-neutral-border flex justify-between items-center bg-primary text-[#f7f0e0]">
+              <h3 className="font-bold text-base flex items-center gap-2">
+                <Briefcase className="w-5 h-5 text-[#f7f0e0]" /> Configure Leave Availability & Policies
+              </h3>
+              <button 
+                onClick={() => setIsConfigModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-white/10 text-white transition-colors"
+              >
+                <XCircle className="w-5 h-5 text-[#f7f0e0]" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 overflow-y-auto space-y-6">
+              
+              {/* Existing configs list */}
+              <div className="space-y-3">
+                <span className="text-xs font-bold text-primary uppercase tracking-wider block">Active Leave Entitlements</span>
+                
+                <div className="border border-neutral-border rounded-lg overflow-hidden">
+                  <table className="w-full text-xs text-left border-collapse">
+                    <thead>
+                      <tr className="bg-neutral-50 text-on-surface-variant font-bold border-b border-neutral-border uppercase tracking-wider text-[10px]">
+                        <th className="p-3">Leave Type</th>
+                        <th className="p-3 w-24">Days Entitled</th>
+                        <th className="p-3 w-32">Leave Group</th>
+                        <th className="p-3">Condition / Rule</th>
+                        <th className="p-3 text-center w-20">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-border/60">
+                      {leaveConfigs.map(config => (
+                        <tr key={config.id} className="hover:bg-neutral-50/50">
+                          <td className="p-3 font-semibold text-primary">{config.leaveType}</td>
+                          <td className="p-2">
+                            <input 
+                              type="number"
+                              value={config.daysEntitled}
+                              onChange={(e) => handleUpdateConfig(config.id, 'daysEntitled', Number(e.target.value))}
+                              className="w-full bg-white border border-neutral-border rounded p-1 font-mono text-center focus:ring-1 focus:ring-primary outline-none"
+                            />
+                          </td>
+                          <td className="p-2">
+                            <select
+                              value={config.leaveGroup}
+                              onChange={(e) => handleUpdateConfig(config.id, 'leaveGroup', e.target.value)}
+                              className="w-full bg-white border border-neutral-border rounded p-1 focus:ring-1 focus:ring-primary outline-none"
+                            >
+                              <option value="All">All Staff</option>
+                              <option value="Full-Time">Full-Time Only</option>
+                              <option value="Probationary">Probationary Only</option>
+                              <option value="Contractor">Contractors Only</option>
+                            </select>
+                          </td>
+                          <td className="p-2">
+                            <input 
+                              type="text"
+                              value={config.condition}
+                              onChange={(e) => handleUpdateConfig(config.id, 'condition', e.target.value)}
+                              className="w-full bg-white border border-neutral-border rounded p-1 focus:ring-1 focus:ring-primary outline-none"
+                            />
+                          </td>
+                          <td className="p-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteConfig(config.id)}
+                              className="text-error hover:bg-error/10 p-1.5 rounded transition-colors cursor-pointer"
+                              title="Delete policy"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Add New policy section */}
+              <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg space-y-3">
+                <span className="text-xs font-bold text-primary uppercase tracking-wider block">Add New Leave Policy</span>
+                <form onSubmit={handleAddConfig} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end text-xs">
+                  <div className="sm:col-span-4">
+                    <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Leave Type Name</label>
+                    <input 
+                      type="text" required
+                      placeholder="e.g. Marriage Leave"
+                      value={newTypeName}
+                      onChange={(e) => setNewTypeName(e.target.value)}
+                      className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Days</label>
+                    <input 
+                      type="number" required min={1}
+                      value={newTypeDays}
+                      onChange={(e) => setNewTypeDays(Number(e.target.value))}
+                      className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs font-mono focus:ring-1 focus:ring-primary outline-none"
+                    />
+                  </div>
+                  <div className="sm:col-span-3">
+                    <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Leave Group</label>
+                    <select
+                      value={newTypeGroup}
+                      onChange={(e) => setNewTypeGroup(e.target.value)}
+                      className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none animate-none"
+                    >
+                      <option value="All">All Staff</option>
+                      <option value="Full-Time">Full-Time Only</option>
+                      <option value="Probationary">Probationary Only</option>
+                      <option value="Contractor">Contractors Only</option>
+                    </select>
+                  </div>
+                  <div className="sm:col-span-3">
+                    <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Condition</label>
+                    <input 
+                      type="text" required
+                      placeholder="e.g. Paid leave"
+                      value={newTypeCondition}
+                      onChange={(e) => setNewTypeCondition(e.target.value)}
+                      className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
+                    />
+                  </div>
+                  <div className="sm:col-span-12 flex justify-end mt-2">
+                    <button
+                      type="submit"
+                      className="bg-primary text-[#f7f0e0] font-semibold text-xs py-2 px-5 rounded hover:opacity-90 cursor-pointer shadow-xs"
+                    >
+                      Register Leave Policy
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-neutral-border bg-neutral-50 flex justify-end">
+              <button
+                onClick={() => setIsConfigModalOpen(false)}
+                className="bg-zinc-600 hover:bg-zinc-700 text-[#f7f0e0] font-semibold text-xs py-2 px-6 rounded cursor-pointer"
+              >
+                Close Policies Panel
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -496,6 +496,7 @@ export default function App() {
   // Global Interactive Settings (State-driven for extra precision)
   const [companyName, setCompanyName] = useState('Acme Global Enterprise');
   const [currencySymbol, setCurrencySymbol] = useState('RM');
+  const [companyLogoUrl, setCompanyLogoUrl] = useState('');
   const [taxRate, setTaxRate] = useState(11);
 
   // Keep settings states in sync with active subsidiary (activeEntity)
@@ -503,6 +504,7 @@ export default function App() {
     if (activeEntity) {
       setCompanyName(activeEntity.name);
       setCurrencySymbol(activeEntity.currency);
+      setCompanyLogoUrl(activeEntity.logoUrl || '');
     }
   }, [activeEntityId, activeEntity]);
 
@@ -1220,6 +1222,44 @@ export default function App() {
                   />
                 </div>
 
+                <div>
+                  <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Company Logo</label>
+                  <div className="flex items-center gap-4 bg-surface-container-low p-3 rounded border border-neutral-border/60">
+                    <div className="w-12 h-12 rounded border border-neutral-border bg-white flex items-center justify-center overflow-hidden shrink-0">
+                      {companyLogoUrl ? (
+                        <img src={companyLogoUrl} alt="Logo preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <span className="text-[10px] text-on-surface-variant font-bold">No Logo</span>
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-1.5 text-left">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setCompanyLogoUrl(reader.result as string);
+                              triggerNotification('Logo Uploaded', 'New company logo loaded in preview. Click Apply System Changes to save.', 'success');
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                        className="w-full text-xs text-on-surface-variant file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Or enter logo image URL..."
+                        value={companyLogoUrl}
+                        onChange={(e) => setCompanyLogoUrl(e.target.value)}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Currency Symbol</label>
@@ -1278,7 +1318,8 @@ export default function App() {
                     if (activeEntity) {
                       await handleUpdateEntity(activeEntity.id, {
                         name: companyName,
-                        currency: currencySymbol
+                        currency: currencySymbol,
+                        logoUrl: companyLogoUrl
                       });
                       triggerNotification('Settings Saved', 'Company settings and global variables synchronized successfully.');
                     } else {

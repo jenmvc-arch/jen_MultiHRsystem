@@ -132,6 +132,103 @@ export default function EmployeeDirectoryView({
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [formAvatarUrl, setFormAvatarUrl] = useState('');
 
+  // General Info Edit States
+  const [isEditingGeneralInfo, setIsEditingGeneralInfo] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editDesignation, setEditDesignation] = useState('');
+  const [editDepartment, setEditDepartment] = useState('');
+  const [editStatus, setEditStatus] = useState<'Active' | 'On Leave' | 'Terminated' | 'Suspended'>('Active');
+  const [editBankName, setEditBankName] = useState('');
+  const [editAccountNo, setEditAccountNo] = useState('');
+  const [editBasicSalary, setEditBasicSalary] = useState(0);
+  const [editHousingAllowance, setEditHousingAllowance] = useState(0);
+  const [editTransportAllowance, setEditTransportAllowance] = useState(0);
+  const [editAllowanceGeneral, setEditAllowanceGeneral] = useState(0);
+  const [editAllowanceParking, setEditAllowanceParking] = useState(0);
+  const [editAllowanceMeal, setEditAllowanceMeal] = useState(0);
+  const [editAllowancePhone, setEditAllowancePhone] = useState(0);
+  const [editNricPassport, setEditNricPassport] = useState('');
+  const [editNationality, setEditNationality] = useState('');
+  const [editContactNumber, setEditContactNumber] = useState('');
+  const [editEmploymentType, setEditEmploymentType] = useState('');
+  const [editDateOfJoined, setEditDateOfJoined] = useState('');
+  const [editEpfRateEmployee, setEditEpfRateEmployee] = useState(11);
+  const [editEpfRateEmployer, setEditEpfRateEmployer] = useState(13);
+  const [editTaxPcb, setEditTaxPcb] = useState(0);
+  const [editEmergencyContactName, setEditEmergencyContactName] = useState('');
+  const [editEmergencyContactRelation, setEditEmergencyContactRelation] = useState('');
+  const [editEmergencyContactPhone, setEditEmergencyContactPhone] = useState('');
+  const [editEntityId, setEditEntityId] = useState('');
+
+  const handleStartEditGeneralInfo = () => {
+    if (!selectedEmployee) return;
+    setEditName(selectedEmployee.name);
+    setEditEmail(selectedEmployee.email || '');
+    setEditDesignation(selectedEmployee.designation);
+    setEditDepartment(selectedEmployee.department);
+    setEditStatus(selectedEmployee.status);
+    setEditBankName(selectedEmployee.bankName || '');
+    setEditAccountNo(selectedEmployee.accountNo || '');
+    setEditBasicSalary(selectedEmployee.basicSalary);
+    setEditHousingAllowance(selectedEmployee.housingAllowance || 0);
+    setEditTransportAllowance(selectedEmployee.transportAllowance || 0);
+    setEditAllowanceGeneral(selectedEmployee.allowanceGeneral || 0);
+    setEditAllowanceParking(selectedEmployee.allowanceParking || 0);
+    setEditAllowanceMeal(selectedEmployee.allowanceMeal || 0);
+    setEditAllowancePhone(selectedEmployee.allowancePhone || 0);
+    setEditNricPassport(selectedEmployee.nricPassport || '');
+    setEditNationality(selectedEmployee.nationality || '');
+    setEditContactNumber(selectedEmployee.contactNumber || '');
+    setEditEmploymentType(selectedEmployee.employmentType || '');
+    setEditDateOfJoined(selectedEmployee.dateOfJoined || '');
+    setEditEpfRateEmployee(selectedEmployee.epfRateEmployee !== undefined ? selectedEmployee.epfRateEmployee : 11);
+    setEditEpfRateEmployer(selectedEmployee.epfRateEmployer !== undefined ? selectedEmployee.epfRateEmployer : 13);
+    setEditTaxPcb(selectedEmployee.taxPcb || 0);
+    setEditEmergencyContactName(selectedEmployee.emergencyContactName || '');
+    setEditEmergencyContactRelation(selectedEmployee.emergencyContactRelation || '');
+    setEditEmergencyContactPhone(selectedEmployee.emergencyContactPhone || '');
+    setEditEntityId(selectedEmployee.entityId || 'ENT-01');
+    setIsEditingGeneralInfo(true);
+  };
+
+  const handleSaveGeneralInfoUpdates = () => {
+    if (!selectedEmployee) return;
+    
+    const updates: Partial<Employee> = {
+      name: editName,
+      email: editEmail,
+      designation: editDesignation,
+      department: editDepartment,
+      status: editStatus,
+      bankName: editBankName,
+      accountNo: editAccountNo,
+      basicSalary: Number(editBasicSalary),
+      housingAllowance: Number(editHousingAllowance),
+      transportAllowance: Number(editTransportAllowance),
+      allowanceGeneral: Number(editAllowanceGeneral),
+      allowanceParking: Number(editAllowanceParking),
+      allowanceMeal: Number(editAllowanceMeal),
+      allowancePhone: Number(editAllowancePhone),
+      nricPassport: editNricPassport,
+      nationality: editNationality,
+      contactNumber: editContactNumber,
+      employmentType: editEmploymentType,
+      dateOfJoined: editDateOfJoined,
+      epfRateEmployee: Number(editEpfRateEmployee),
+      epfRateEmployer: Number(editEpfRateEmployer),
+      taxPcb: Number(editTaxPcb),
+      emergencyContactName: editEmergencyContactName,
+      emergencyContactRelation: editEmergencyContactRelation,
+      emergencyContactPhone: editEmergencyContactPhone,
+      entityId: editEntityId
+    };
+
+    onUpdateEmployee(selectedEmployee.id, updates);
+    setIsEditingGeneralInfo(false);
+    onShowNotification('Profile Saved', 'Employee personal and corporate profile updated successfully.');
+  };
+
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1918,7 +2015,10 @@ export default function EmployeeDirectoryView({
                 </div>
               </div>
               <button 
-                onClick={() => setIsDetailOpen(false)}
+                onClick={() => {
+                  setIsDetailOpen(false);
+                  setIsEditingGeneralInfo(false);
+                }}
                 className="p-1.5 rounded-full hover:bg-white/10 text-white transition-colors"
               >
                 <X className="w-5 h-5 text-[#f7f0e0]" />
@@ -1932,140 +2032,449 @@ export default function EmployeeDirectoryView({
               <div className="lg:col-span-7 p-6 space-y-6">
                 
                 {/* Section title */}
-                <div className="border-b border-neutral-border pb-3">
-                  <h4 className="font-bold text-sm text-primary flex items-center gap-2">
-                    <UserCheck className="w-4 h-4 text-primary" /> Statutory Compliance & Personal Profile
-                  </h4>
-                  <p className="text-[11px] text-on-surface-variant">Verified corporate personnel registration details.</p>
+                <div className="border-b border-neutral-border pb-3 flex justify-between items-center">
+                  <div>
+                    <h4 className="font-bold text-sm text-primary flex items-center gap-2">
+                      <UserCheck className="w-4 h-4 text-primary" /> Statutory Compliance & Personal Profile
+                    </h4>
+                    <p className="text-[11px] text-on-surface-variant">
+                      {isEditingGeneralInfo ? 'Edit corporate personnel registration details.' : 'Verified corporate personnel registration details.'}
+                    </p>
+                  </div>
+                  {!isEditingGeneralInfo ? (
+                    <button 
+                      type="button"
+                      onClick={handleStartEditGeneralInfo}
+                      className="bg-primary text-[#f7f0e0] hover:bg-primary-container px-3 py-1.5 rounded transition-colors text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      Edit Employee Profile
+                    </button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button 
+                        type="button"
+                        onClick={() => setIsEditingGeneralInfo(false)}
+                        className="text-on-surface-variant hover:bg-surface-container px-3 py-1.5 rounded transition-colors text-xs font-semibold cursor-pointer border border-neutral-border"
+                      >
+                        Cancel
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={handleSaveGeneralInfoUpdates}
+                        className="bg-primary text-[#f7f0e0] hover:opacity-95 px-3 py-1.5 rounded transition-colors text-xs font-semibold cursor-pointer"
+                      >
+                        Save Changes
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                {/* Primary Data Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                  
-                  {/* Row 1 */}
-                  <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
-                    <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">NRIC / Passport Number</div>
-                    <div className="font-mono text-sm font-semibold text-on-surface">{selectedEmployee.nricPassport || 'N/A'}</div>
-                  </div>
+                {!isEditingGeneralInfo ? (
+                  <>
+                    {/* Primary Data Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                      
+                      {/* Row 1 */}
+                      <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
+                        <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">NRIC / Passport Number</div>
+                        <div className="font-mono text-sm font-semibold text-on-surface">{selectedEmployee.nricPassport || 'N/A'}</div>
+                      </div>
 
-                  <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
-                    <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Nationality</div>
-                    <div className="font-semibold text-sm text-on-surface flex items-center gap-1.5">
-                      <Globe className="w-3.5 h-3.5 text-primary" /> {selectedEmployee.nationality || 'Malaysian'}
-                    </div>
-                  </div>
+                      <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
+                        <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Nationality</div>
+                        <div className="font-semibold text-sm text-on-surface flex items-center gap-1.5">
+                          <Globe className="w-3.5 h-3.5 text-primary" /> {selectedEmployee.nationality || 'Malaysian'}
+                        </div>
+                      </div>
 
-                  {/* Row 2 */}
-                  <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
-                    <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Contact Number</div>
-                    <div className="font-mono text-sm font-semibold text-on-surface flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5 text-primary" /> {selectedEmployee.contactNumber || 'N/A'}
-                    </div>
-                  </div>
+                      {/* Row 2 */}
+                      <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
+                        <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Contact Number</div>
+                        <div className="font-mono text-sm font-semibold text-on-surface flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5 text-primary" /> {selectedEmployee.contactNumber || 'N/A'}
+                        </div>
+                      </div>
 
-                  <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
-                    <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Income Tax Number</div>
-                    <div className="font-mono text-sm font-semibold text-on-surface">{selectedEmployee.taxNumber || 'N/A'}</div>
-                  </div>
+                      <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
+                        <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Income Tax Number</div>
+                        <div className="font-mono text-sm font-semibold text-on-surface">{selectedEmployee.taxNumber || 'N/A'}</div>
+                      </div>
 
-                  <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
-                    <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">EPF Member Number</div>
-                    <div className="font-mono text-sm font-semibold text-on-surface">{selectedEmployee.epfNumber || 'N/A'}</div>
-                  </div>
+                      <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
+                        <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">EPF Member Number</div>
+                        <div className="font-mono text-sm font-semibold text-on-surface">{selectedEmployee.epfNumber || 'N/A'}</div>
+                      </div>
 
-                  {/* Row 3 */}
-                  <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
-                    <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Type of Employment</div>
-                    <div className="font-semibold text-sm text-primary uppercase">{selectedEmployee.employmentType || 'Full-Time'}</div>
-                  </div>
+                      {/* Row 3 */}
+                      <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
+                        <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Type of Employment</div>
+                        <div className="font-semibold text-sm text-primary uppercase">{selectedEmployee.employmentType || 'Full-Time'}</div>
+                      </div>
 
-                  <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
-                    <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Marital Status</div>
-                    <div className="font-semibold text-sm text-on-surface flex items-center gap-1.5">
-                      <Heart className="w-3.5 h-3.5 text-primary" /> {selectedEmployee.maritalStatus || 'Single'}
-                    </div>
-                  </div>
+                      <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
+                        <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Marital Status</div>
+                        <div className="font-semibold text-sm text-on-surface flex items-center gap-1.5">
+                          <Heart className="w-3.5 h-3.5 text-primary" /> {selectedEmployee.maritalStatus || 'Single'}
+                        </div>
+                      </div>
 
-                  {/* Row 4 */}
-                  <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
-                    <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Date of Joined</div>
-                    <div className="font-mono text-sm font-semibold text-on-surface flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 text-primary" /> {selectedEmployee.dateOfJoined || 'N/A'}
-                    </div>
-                  </div>
+                      {/* Row 4 */}
+                      <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
+                        <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Date of Joined</div>
+                        <div className="font-mono text-sm font-semibold text-on-surface flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-primary" /> {selectedEmployee.dateOfJoined || 'N/A'}
+                        </div>
+                      </div>
 
-                  <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
-                    <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Payroll Registry Status</div>
-                    <div className="mt-0.5">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
-                        selectedEmployee.status === 'Active' 
-                          ? 'bg-green-100 text-green-700' 
-                          : selectedEmployee.status === 'On Leave'
-                          ? 'bg-amber-100 text-amber-700'
-                          : selectedEmployee.status === 'Suspended'
-                          ? 'bg-zinc-100 text-zinc-600'
-                          : 'bg-red-100 text-red-700'
-                      }`}>
-                        {selectedEmployee.status}
-                      </span>
-                    </div>
-                  </div>
+                      <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
+                        <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Payroll Registry Status</div>
+                        <div className="mt-0.5">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
+                            selectedEmployee.status === 'Active' 
+                              ? 'bg-green-100 text-green-700' 
+                              : selectedEmployee.status === 'On Leave'
+                              ? 'bg-amber-100 text-amber-700'
+                              : selectedEmployee.status === 'Suspended'
+                              ? 'bg-zinc-100 text-zinc-600'
+                              : 'bg-red-100 text-red-700'
+                          }`}>
+                            {selectedEmployee.status}
+                          </span>
+                        </div>
+                      </div>
 
-                  {/* Row 5: Subsidiary Mapping */}
-                  <div className="p-3 bg-primary/5 rounded border border-primary/20 sm:col-span-2">
-                    <div className="text-primary font-bold text-[10px] uppercase tracking-wider mb-0.5">Corporate Subsidiary / Entity</div>
-                    <div className="font-bold text-sm text-primary flex items-center gap-1.5">
-                      <span className="bg-primary text-[#f7f0e0] text-[10px] font-bold px-1.5 py-0.5 rounded mr-1">OFFICIAL REGISTER</span>
-                      {entities.find(e => e.id === selectedEmployee.entityId)?.name || selectedEmployee.entityId} ({selectedEmployee.entityId})
+                      {/* Row 5: Subsidiary Mapping */}
+                      <div className="p-3 bg-primary/5 rounded border border-primary/20 sm:col-span-2">
+                        <div className="text-primary font-bold text-[10px] uppercase tracking-wider mb-0.5">Corporate Subsidiary / Entity</div>
+                        <div className="font-bold text-sm text-primary flex items-center gap-1.5">
+                          <span className="bg-primary text-[#f7f0e0] text-[10px] font-bold px-1.5 py-0.5 rounded mr-1">OFFICIAL REGISTER</span>
+                          {entities.find(e => e.id === selectedEmployee.entityId)?.name || selectedEmployee.entityId} ({selectedEmployee.entityId})
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
 
-                {/* Emergency Contacts Card */}
-                <div className="p-4 bg-zinc-50 border border-neutral-border rounded-lg space-y-3">
-                  <div className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
-                    <ShieldAlert className="w-4 h-4 text-error" /> EMERGENCY CONTACT INFORMATION
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                    <div>
-                      <span className="text-outline text-[10px] block font-bold">Contact Person Name</span>
-                      <span className="font-bold text-on-surface">{selectedEmployee.emergencyContactName || 'N/A'}</span>
+                    {/* Emergency Contacts Card */}
+                    <div className="p-4 bg-zinc-50 border border-neutral-border rounded-lg space-y-3">
+                      <div className="text-xs font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1.5">
+                        <ShieldAlert className="w-4 h-4 text-error" /> EMERGENCY CONTACT INFORMATION
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                        <div>
+                          <span className="text-outline text-[10px] block font-bold">Contact Person Name</span>
+                          <span className="font-bold text-on-surface">{selectedEmployee.emergencyContactName || 'N/A'}</span>
+                        </div>
+                        <div>
+                          <span className="text-outline text-[10px] block font-bold">Relationship</span>
+                          <span className="font-semibold text-on-surface-variant">{selectedEmployee.emergencyContactRelation || 'N/A'}</span>
+                        </div>
+                        <div>
+                          <span className="text-outline text-[10px] block font-bold">Contact Phone Number</span>
+                          <span className="font-mono font-bold text-primary">{selectedEmployee.emergencyContactPhone || 'N/A'}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-outline text-[10px] block font-bold">Relationship</span>
-                      <span className="font-semibold text-on-surface-variant">{selectedEmployee.emergencyContactRelation || 'N/A'}</span>
-                    </div>
-                    <div>
-                      <span className="text-outline text-[10px] block font-bold">Contact Phone Number</span>
-                      <span className="font-mono font-bold text-primary">{selectedEmployee.emergencyContactPhone || 'N/A'}</span>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Financial Baseline Information */}
-                <div className="p-4 border border-neutral-border rounded-lg bg-surface-container-low/30 space-y-3">
-                  <div className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
-                    <DollarSign className="w-4 h-4 text-primary" /> BASELINE COMPENSATION STRUCTURE
+                    {/* Financial Baseline Information */}
+                    <div className="p-4 border border-neutral-border rounded-lg bg-surface-container-low/30 space-y-3">
+                      <div className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
+                        <DollarSign className="w-4 h-4 text-primary" /> BASELINE COMPENSATION STRUCTURE
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                        <div>
+                          <span className="text-outline text-[9px] block uppercase font-bold">Basic Monthly Base</span>
+                          <span className="font-mono font-bold text-sm text-primary">RM {selectedEmployee.basicSalary.toLocaleString()}</span>
+                        </div>
+                        <div>
+                          <span className="text-outline text-[9px] block uppercase font-bold">Housing Allowance</span>
+                          <span className="font-mono text-on-surface">RM {selectedEmployee.housingAllowance.toLocaleString()}</span>
+                        </div>
+                        <div>
+                          <span className="text-outline text-[9px] block uppercase font-bold">Transport Allowance</span>
+                          <span className="font-mono text-on-surface">RM {selectedEmployee.transportAllowance.toLocaleString()}</span>
+                        </div>
+                        <div>
+                          <span className="text-outline text-[9px] block uppercase font-bold">Statutory Tax PCB</span>
+                          <span className="font-mono text-on-surface">RM {selectedEmployee.taxPcb.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-4 text-xs">
+                    {/* General Details Section */}
+                    <div className="bg-neutral-50 p-4 border border-neutral-border rounded-lg space-y-3">
+                      <span className="text-[10px] font-bold text-primary uppercase tracking-wider block">Corporate & Personal Particulars</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Employee Name</label>
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Email Address</label>
+                          <input
+                            type="email"
+                            value={editEmail}
+                            onChange={(e) => setEditEmail(e.target.value)}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Role / Designation</label>
+                          <input
+                            type="text"
+                            value={editDesignation}
+                            onChange={(e) => setEditDesignation(e.target.value)}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Department</label>
+                          <select
+                            value={editDepartment}
+                            onChange={(e) => setEditDepartment(e.target.value)}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          >
+                            <option value="Engineering">Engineering</option>
+                            <option value="Product">Product</option>
+                            <option value="Marketing">Marketing</option>
+                            <option value="Sales">Sales</option>
+                            <option value="Operations">Operations</option>
+                            <option value="HR">HR</option>
+                            <option value="Finance">Finance</option>
+                            <option value="Legal">Legal</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Corporate Subsidiary</label>
+                          <select
+                            value={editEntityId}
+                            onChange={(e) => setEditEntityId(e.target.value)}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          >
+                            {entities.map(ent => (
+                              <option key={ent.id} value={ent.id}>{ent.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Status</label>
+                          <select
+                            value={editStatus}
+                            onChange={(e) => setEditStatus(e.target.value as any)}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          >
+                            <option value="Active">Active</option>
+                            <option value="On Leave">On Leave</option>
+                            <option value="Terminated">Terminated</option>
+                            <option value="Suspended">Suspended</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">NRIC / Passport</label>
+                          <input
+                            type="text"
+                            value={editNricPassport}
+                            onChange={(e) => setEditNricPassport(e.target.value)}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Nationality</label>
+                          <input
+                            type="text"
+                            value={editNationality}
+                            onChange={(e) => setEditNationality(e.target.value)}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Contact Number</label>
+                          <input
+                            type="text"
+                            value={editContactNumber}
+                            onChange={(e) => setEditContactNumber(e.target.value)}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Employment Type</label>
+                          <select
+                            value={editEmploymentType}
+                            onChange={(e) => setEditEmploymentType(e.target.value)}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          >
+                            <option value="Confirmation">Confirmation</option>
+                            <option value="Probationary">Probationary</option>
+                            <option value="Independent Contractor / Freelance">Independent Contractor / Freelance</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Date Joined</label>
+                          <input
+                            type="date"
+                            value={editDateOfJoined}
+                            onChange={(e) => setEditDateOfJoined(e.target.value)}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Financial & Allowances Details Section */}
+                    <div className="bg-neutral-50 p-4 border border-neutral-border rounded-lg space-y-3">
+                      <span className="text-[10px] font-bold text-primary uppercase tracking-wider block">Baseline Compensation & Allowances</span>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Basic Monthly Base (RM)</label>
+                          <input
+                            type="number"
+                            value={editBasicSalary}
+                            onChange={(e) => setEditBasicSalary(Number(e.target.value))}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Housing Allowance (RM)</label>
+                          <input
+                            type="number"
+                            value={editHousingAllowance}
+                            onChange={(e) => setEditHousingAllowance(Number(e.target.value))}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Transport Allowance (RM)</label>
+                          <input
+                            type="number"
+                            value={editTransportAllowance}
+                            onChange={(e) => setEditTransportAllowance(Number(e.target.value))}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">General Allowance (RM)</label>
+                          <input
+                            type="number"
+                            value={editAllowanceGeneral}
+                            onChange={(e) => setEditAllowanceGeneral(Number(e.target.value))}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Parking Allowance (RM)</label>
+                          <input
+                            type="number"
+                            value={editAllowanceParking}
+                            onChange={(e) => setEditAllowanceParking(Number(e.target.value))}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Meal Allowance (RM)</label>
+                          <input
+                            type="number"
+                            value={editAllowanceMeal}
+                            onChange={(e) => setEditAllowanceMeal(Number(e.target.value))}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Phone Allowance (RM)</label>
+                          <input
+                            type="number"
+                            value={editAllowancePhone}
+                            onChange={(e) => setEditAllowancePhone(Number(e.target.value))}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Tax PCB override (RM)</label>
+                          <input
+                            type="number"
+                            value={editTaxPcb}
+                            onChange={(e) => setEditTaxPcb(Number(e.target.value))}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Employee EPF Rate (%)</label>
+                          <input
+                            type="number"
+                            value={editEpfRateEmployee}
+                            onChange={(e) => setEditEpfRateEmployee(Number(e.target.value))}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Employer EPF Rate (%)</label>
+                          <input
+                            type="number"
+                            value={editEpfRateEmployer}
+                            onChange={(e) => setEditEpfRateEmployer(Number(e.target.value))}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Bank Name</label>
+                          <input
+                            type="text"
+                            value={editBankName}
+                            onChange={(e) => setEditBankName(e.target.value)}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Bank Account Number</label>
+                          <input
+                            type="text"
+                            value={editAccountNo}
+                            onChange={(e) => setEditAccountNo(e.target.value)}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Emergency Contacts Section */}
+                    <div className="bg-neutral-50 p-4 border border-neutral-border rounded-lg space-y-3">
+                      <span className="text-[10px] font-bold text-primary uppercase tracking-wider block">Emergency Contacts</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Person Name</label>
+                          <input
+                            type="text"
+                            value={editEmergencyContactName}
+                            onChange={(e) => setEditEmergencyContactName(e.target.value)}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Relationship</label>
+                          <input
+                            type="text"
+                            value={editEmergencyContactRelation}
+                            onChange={(e) => setEditEmergencyContactRelation(e.target.value)}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Phone Number</label>
+                          <input
+                            type="text"
+                            value={editEmergencyContactPhone}
+                            onChange={(e) => setEditEmergencyContactPhone(e.target.value)}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                    <div>
-                      <span className="text-outline text-[9px] block uppercase font-bold">Basic Monthly Base</span>
-                      <span className="font-mono font-bold text-sm text-primary">RM {selectedEmployee.basicSalary.toLocaleString()}</span>
-                    </div>
-                    <div>
-                      <span className="text-outline text-[9px] block uppercase font-bold">Housing Allowance</span>
-                      <span className="font-mono text-on-surface">RM {selectedEmployee.housingAllowance.toLocaleString()}</span>
-                    </div>
-                    <div>
-                      <span className="text-outline text-[9px] block uppercase font-bold">Transport Allowance</span>
-                      <span className="font-mono text-on-surface">RM {selectedEmployee.transportAllowance.toLocaleString()}</span>
-                    </div>
-                    <div>
-                      <span className="text-outline text-[9px] block uppercase font-bold">Statutory Tax PCB</span>
-                      <span className="font-mono text-on-surface">RM {selectedEmployee.taxPcb.toLocaleString()}</span>
-                    </div>
-                  </div>
-                </div>
+                )}
 
                 {/* Spouse & Dependants Registry Card */}
                 <div className="p-4 border border-neutral-border rounded-lg bg-surface-container-low/35 space-y-4">
