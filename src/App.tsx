@@ -28,7 +28,11 @@ import {
   INITIAL_ENTITIES,
   INITIAL_CANDIDATES,
   UserAccount,
-  MOCK_USERS
+  MOCK_USERS,
+  SEED_EMPLOYEES,
+  SEED_ENTITIES,
+  SEED_PERFORMANCES,
+  SEED_CANDIDATES
 } from './data';
 
 import Sidebar from './components/Sidebar';
@@ -92,13 +96,14 @@ export default function App() {
   const [entities, setEntities] = useState<CorporateEntity[]>(INITIAL_ENTITIES);
   const [candidates, setCandidates] = useState<Candidate[]>(INITIAL_CANDIDATES);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isLoadingDb, setIsLoadingDb] = useState(isGoogleConfigured);
 
   const handleSeedDatabase = async () => {
     setIsSeeding(true);
     triggerNotification('Seeding Database', 'Syncing preset data with your Google Sheets...', 'info');
     try {
       // 1. Seed corporate entities
-      for (const ent of INITIAL_ENTITIES) {
+      for (const ent of SEED_ENTITIES) {
         await googleSheetsClient.insert('corporate_entities', {
           id: ent.id,
           name: ent.name,
@@ -115,7 +120,7 @@ export default function App() {
       }
 
       // 2. Seed employees
-      for (const emp of INITIAL_EMPLOYEES) {
+      for (const emp of SEED_EMPLOYEES) {
         await googleSheetsClient.insert('employees', {
           id: emp.id,
           entityId: emp.entityId,
@@ -202,7 +207,7 @@ export default function App() {
       }
 
       // 4. Seed candidates
-      for (const cand of INITIAL_CANDIDATES) {
+      for (const cand of SEED_CANDIDATES) {
         await googleSheetsClient.insert('candidates', {
           id: cand.id,
           name: cand.name,
@@ -218,7 +223,7 @@ export default function App() {
       }
 
       // 5. Seed performances
-      for (const perf of INITIAL_PERFORMANCES) {
+      for (const perf of SEED_PERFORMANCES) {
         await googleSheetsClient.insert('performances', {
           employeeId: perf.employeeId,
           reviewCycleId: perf.reviewCycleId,
@@ -259,14 +264,17 @@ export default function App() {
 
   // Load data from Google Sheets dynamically if configured
   useEffect(() => {
-    if (!isGoogleConfigured) return;
+    if (!isGoogleConfigured) {
+      setIsLoadingDb(false);
+      return;
+    }
 
     async function loadData() {
       try {
         const payload = await googleSheetsClient.loadData();
         
         // 1. Fetch corporate entities
-        if (payload.corporate_entities && payload.corporate_entities.length > 0) {
+        if (payload.corporate_entities) {
           setEntities(payload.corporate_entities.map((e: any) => ({
             id: e.id,
             name: e.name,
@@ -283,7 +291,7 @@ export default function App() {
         }
 
         // 2. Fetch employees
-        if (payload.employees && payload.employees.length > 0) {
+        if (payload.employees) {
           setEmployees(payload.employees.map((e: any) => {
             let careerHistory = [];
             let dependants = [];
@@ -382,7 +390,7 @@ export default function App() {
         }
 
         // 3. Fetch appraisal / performances
-        if (payload.performances && payload.performances.length > 0) {
+        if (payload.performances) {
           setPerformances(payload.performances.map((p: any) => {
             let goals = [];
             try {
@@ -411,7 +419,7 @@ export default function App() {
         }
 
         // 4. Fetch candidates
-        if (payload.candidates && payload.candidates.length > 0) {
+        if (payload.candidates) {
           setCandidates(payload.candidates.map((c: any) => ({
             id: c.id,
             name: c.name,
@@ -427,6 +435,8 @@ export default function App() {
         }
       } catch (err) {
         console.error('[Google Sheets Load] Error loading database tables:', err);
+      } finally {
+        setIsLoadingDb(false);
       }
     }
 
@@ -873,6 +883,17 @@ export default function App() {
       `Your administrative request for ${requestType} on ${requestDate} is queued for Director approval.`
     );
   };
+
+  if (isLoadingDb) {
+    return (
+      <div className="min-h-screen bg-[#FFF8F0] flex flex-col items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="w-10 h-10 border-4 border-[#3A2E2B] border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-xs font-mono font-bold text-[#3A2E2B] uppercase tracking-widest animate-pulse">Synchronizing HR Database...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (isPrintMode) {
     const params = new URLSearchParams(window.location.search);
