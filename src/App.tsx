@@ -186,6 +186,28 @@ export default function App() {
               emergencyContactRelation: e.emergencyContactRelation || '',
               emergencyContactPhone: e.emergencyContactPhone || '',
               dateOfJoined: e.dateOfJoined || '',
+              allowanceGeneral: Number(e.allowanceGeneral || 0),
+              allowanceTransport: Number(e.allowanceTransport !== undefined ? e.allowanceTransport : e.transportAllowance || 0),
+              allowanceParking: Number(e.allowanceParking || 0),
+              allowanceMeal: Number(e.allowanceMeal || 0),
+              allowanceAccommodation: Number(e.allowanceAccommodation !== undefined ? e.allowanceAccommodation : e.housingAllowance || 0),
+              allowancePhone: Number(e.allowancePhone || 0),
+              reimbursementAmount: Number(e.reimbursementAmount || 0),
+              reimbursementDesc: e.reimbursementDesc || '',
+              bonusAmount: Number(e.bonusAmount !== undefined ? e.bonusAmount : e.performanceBonus || 0),
+              bonusDesc: e.bonusDesc || '',
+              commissionAmount: Number(e.commissionAmount || 0),
+              commissionDesc: e.commissionDesc || '',
+              backPayAmount: Number(e.backPayAmount || 0),
+              backPayDesc: e.backPayDesc || '',
+              awsAmount: Number(e.awsAmount || 0),
+              awsDesc: e.awsDesc || '',
+              compensationAmount: Number(e.compensationAmount || 0),
+              compensationDesc: e.compensationDesc || '',
+              deductionInLieu: Number(e.deductionInLieu || 0),
+              deductionCp38: Number(e.deductionCp38 || 0),
+              deductionOthers: Number(e.deductionOthers || 0),
+              deductionOthersDesc: e.deductionOthersDesc || '',
               careerHistory,
               dependants
             };
@@ -407,6 +429,28 @@ export default function App() {
           emergencyContactRelation: newEmployee.emergencyContactRelation,
           emergencyContactPhone: newEmployee.emergencyContactPhone,
           dateOfJoined: newEmployee.dateOfJoined,
+          allowanceGeneral: newEmployee.allowanceGeneral || 0,
+          allowanceTransport: newEmployee.allowanceTransport !== undefined ? newEmployee.allowanceTransport : newEmployee.transportAllowance || 0,
+          allowanceParking: newEmployee.allowanceParking || 0,
+          allowanceMeal: newEmployee.allowanceMeal || 0,
+          allowanceAccommodation: newEmployee.allowanceAccommodation !== undefined ? newEmployee.allowanceAccommodation : newEmployee.housingAllowance || 0,
+          allowancePhone: newEmployee.allowancePhone || 0,
+          reimbursementAmount: newEmployee.reimbursementAmount || 0,
+          reimbursementDesc: newEmployee.reimbursementDesc || '',
+          bonusAmount: newEmployee.bonusAmount !== undefined ? newEmployee.bonusAmount : newEmployee.performanceBonus || 0,
+          bonusDesc: newEmployee.bonusDesc || '',
+          commissionAmount: newEmployee.commissionAmount || 0,
+          commissionDesc: newEmployee.commissionDesc || '',
+          backPayAmount: newEmployee.backPayAmount || 0,
+          backPayDesc: newEmployee.backPayDesc || '',
+          awsAmount: newEmployee.awsAmount || 0,
+          awsDesc: newEmployee.awsDesc || '',
+          compensationAmount: newEmployee.compensationAmount || 0,
+          compensationDesc: newEmployee.compensationDesc || '',
+          deductionInLieu: newEmployee.deductionInLieu || 0,
+          deductionCp38: newEmployee.deductionCp38 || 0,
+          deductionOthers: newEmployee.deductionOthers || 0,
+          deductionOthersDesc: newEmployee.deductionOthersDesc || '',
           careerHistory: JSON.stringify(newEmployee.careerHistory || []),
           dependants: JSON.stringify(newEmployee.dependants || [])
         });
@@ -486,6 +530,32 @@ export default function App() {
         if (updates.emergencyContactRelation !== undefined) payloadUpdates.emergencyContactRelation = updates.emergencyContactRelation;
         if (updates.emergencyContactPhone !== undefined) payloadUpdates.emergencyContactPhone = updates.emergencyContactPhone;
         if (updates.dateOfJoined !== undefined) payloadUpdates.dateOfJoined = updates.dateOfJoined;
+        if (updates.housingAllowance !== undefined) payloadUpdates.housingAllowance = updates.housingAllowance;
+        if (updates.transportAllowance !== undefined) payloadUpdates.transportAllowance = updates.transportAllowance;
+        if (updates.overtime !== undefined) payloadUpdates.overtime = updates.overtime;
+        if (updates.performanceBonus !== undefined) payloadUpdates.performanceBonus = updates.performanceBonus;
+        if (updates.allowanceGeneral !== undefined) payloadUpdates.allowanceGeneral = updates.allowanceGeneral;
+        if (updates.allowanceTransport !== undefined) payloadUpdates.allowanceTransport = updates.allowanceTransport;
+        if (updates.allowanceParking !== undefined) payloadUpdates.allowanceParking = updates.allowanceParking;
+        if (updates.allowanceMeal !== undefined) payloadUpdates.allowanceMeal = updates.allowanceMeal;
+        if (updates.allowanceAccommodation !== undefined) payloadUpdates.allowanceAccommodation = updates.allowanceAccommodation;
+        if (updates.allowancePhone !== undefined) payloadUpdates.allowancePhone = updates.allowancePhone;
+        if (updates.reimbursementAmount !== undefined) payloadUpdates.reimbursementAmount = updates.reimbursementAmount;
+        if (updates.reimbursementDesc !== undefined) payloadUpdates.reimbursementDesc = updates.reimbursementDesc;
+        if (updates.bonusAmount !== undefined) payloadUpdates.bonusAmount = updates.bonusAmount;
+        if (updates.bonusDesc !== undefined) payloadUpdates.bonusDesc = updates.bonusDesc;
+        if (updates.commissionAmount !== undefined) payloadUpdates.commissionAmount = updates.commissionAmount;
+        if (updates.commissionDesc !== undefined) payloadUpdates.commissionDesc = updates.commissionDesc;
+        if (updates.backPayAmount !== undefined) payloadUpdates.backPayAmount = updates.backPayAmount;
+        if (updates.backPayDesc !== undefined) payloadUpdates.backPayDesc = updates.backPayDesc;
+        if (updates.awsAmount !== undefined) payloadUpdates.awsAmount = updates.awsAmount;
+        if (updates.awsDesc !== undefined) payloadUpdates.awsDesc = updates.awsDesc;
+        if (updates.compensationAmount !== undefined) payloadUpdates.compensationAmount = updates.compensationAmount;
+        if (updates.compensationDesc !== undefined) payloadUpdates.compensationDesc = updates.compensationDesc;
+        if (updates.deductionInLieu !== undefined) payloadUpdates.deductionInLieu = updates.deductionInLieu;
+        if (updates.deductionCp38 !== undefined) payloadUpdates.deductionCp38 = updates.deductionCp38;
+        if (updates.deductionOthers !== undefined) payloadUpdates.deductionOthers = updates.deductionOthers;
+        if (updates.deductionOthersDesc !== undefined) payloadUpdates.deductionOthersDesc = updates.deductionOthersDesc;
         if (updates.careerHistory !== undefined) payloadUpdates.careerHistory = JSON.stringify(updates.careerHistory);
         if (updates.dependants !== undefined) payloadUpdates.dependants = JSON.stringify(updates.dependants);
 
