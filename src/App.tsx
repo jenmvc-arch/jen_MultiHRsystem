@@ -27,7 +27,8 @@ import {
   INITIAL_PERFORMANCES,
   INITIAL_ENTITIES,
   INITIAL_CANDIDATES,
-  UserAccount
+  UserAccount,
+  MOCK_USERS
 } from './data';
 
 import Sidebar from './components/Sidebar';
@@ -90,6 +91,160 @@ export default function App() {
   const [reviewCycles, setReviewCycles] = useState<ReviewCycle[]>(INITIAL_REVIEW_CYCLES);
   const [entities, setEntities] = useState<CorporateEntity[]>(INITIAL_ENTITIES);
   const [candidates, setCandidates] = useState<Candidate[]>(INITIAL_CANDIDATES);
+  const [isSeeding, setIsSeeding] = useState(false);
+
+  const handleSeedDatabase = async () => {
+    setIsSeeding(true);
+    triggerNotification('Seeding Database', 'Syncing preset data with your Google Sheets...', 'info');
+    try {
+      // 1. Seed corporate entities
+      for (const ent of INITIAL_ENTITIES) {
+        await googleSheetsClient.insert('corporate_entities', {
+          id: ent.id,
+          name: ent.name,
+          registrationNumber: ent.registrationNumber,
+          address: ent.address,
+          taxReferenceNo: ent.taxReferenceNo,
+          epfReferenceNo: ent.epfReferenceNo,
+          socsoReferenceNo: ent.socsoReferenceNo,
+          currency: ent.currency,
+          isActive: ent.isActive,
+          theme: ent.theme,
+          logoUrl: ent.logoUrl || ''
+        });
+      }
+
+      // 2. Seed employees
+      for (const emp of INITIAL_EMPLOYEES) {
+        await googleSheetsClient.insert('employees', {
+          id: emp.id,
+          entityId: emp.entityId,
+          name: emp.name,
+          email: emp.email,
+          designation: emp.designation,
+          department: emp.department,
+          status: emp.status,
+          bankName: emp.bankName,
+          accountNo: emp.accountNo,
+          basicSalary: emp.basicSalary,
+          housingAllowance: emp.housingAllowance,
+          transportAllowance: emp.transportAllowance,
+          overtime: emp.overtime,
+          performanceBonus: emp.performanceBonus,
+          epfRateEmployee: emp.epfRateEmployee,
+          epfRateEmployer: emp.epfRateEmployer,
+          socsoEmployee: emp.socsoEmployee,
+          socsoEmployer: emp.socsoEmployer,
+          eisEmployee: emp.eisEmployee,
+          eisEmployer: emp.eisEmployer,
+          taxPcb: emp.taxPcb,
+          unpaidLeave: emp.unpaidLeave,
+          hrdCorp: emp.hrdCorp,
+          avatarUrl: emp.avatarUrl || '',
+          nricPassport: emp.nricPassport,
+          nationality: emp.nationality,
+          contactNumber: emp.contactNumber,
+          taxNumber: emp.taxNumber,
+          epfNumber: emp.epfNumber || '',
+          employmentType: emp.employmentType,
+          maritalStatus: emp.maritalStatus,
+          eligibleForStatutory: emp.eligibleForStatutory || 'Yes',
+          emergencyContactName: emp.emergencyContactName,
+          emergencyContactRelation: emp.emergencyContactRelation,
+          emergencyContactPhone: emp.emergencyContactPhone,
+          dateOfJoined: emp.dateOfJoined,
+          allowanceGeneral: emp.allowanceGeneral || 0,
+          allowanceTransport: emp.allowanceTransport !== undefined ? emp.allowanceTransport : emp.transportAllowance || 0,
+          allowanceParking: emp.allowanceParking || 0,
+          allowanceMeal: emp.allowanceMeal || 0,
+          allowanceAccommodation: emp.allowanceAccommodation !== undefined ? emp.allowanceAccommodation : emp.housingAllowance || 0,
+          allowancePhone: emp.allowancePhone || 0,
+          reimbursementAmount: emp.reimbursementAmount || 0,
+          reimbursementDesc: emp.reimbursementDesc || '',
+          bonusAmount: emp.bonusAmount !== undefined ? emp.bonusAmount : emp.performanceBonus || 0,
+          bonusDesc: emp.bonusDesc || '',
+          commissionAmount: emp.commissionAmount || 0,
+          commissionDesc: emp.commissionDesc || '',
+          backPayAmount: emp.backPayAmount || 0,
+          backPayDesc: emp.backPayDesc || '',
+          awsAmount: emp.awsAmount || 0,
+          awsDesc: emp.awsDesc || '',
+          compensationAmount: emp.compensationAmount || 0,
+          compensationDesc: emp.compensationDesc || '',
+          deductionInLieu: emp.deductionInLieu || 0,
+          deductionCp38: emp.deductionCp38 || 0,
+          deductionOthers: emp.deductionOthers || 0,
+          deductionOthersDesc: emp.deductionOthersDesc || '',
+          spouseName: emp.spouseName || '',
+          spouseNric: emp.spouseNric || '',
+          spouseIsWorking: emp.spouseIsWorking || 'No',
+          spouseCompany: emp.spouseCompany || '',
+          spousePosition: emp.spousePosition || '',
+          hasDependants: emp.hasDependants || 'No',
+          icFrontUrl: emp.icFrontUrl || '',
+          icBackUrl: emp.icBackUrl || '',
+          educationCertUrl: emp.educationCertUrl || '',
+          skbbkEmployee: emp.skbbkEmployee || 0,
+          skbbkEmployer: emp.skbbkEmployer || 0,
+          careerHistory: JSON.stringify(emp.careerHistory || []),
+          dependants: JSON.stringify(emp.dependants || [])
+        });
+      }
+
+      // 3. Seed users
+      for (const usr of MOCK_USERS) {
+        await googleSheetsClient.insert('users', {
+          email: usr.email,
+          password: usr.password,
+          name: usr.name,
+          role: usr.role
+        });
+      }
+
+      // 4. Seed candidates
+      for (const cand of INITIAL_CANDIDATES) {
+        await googleSheetsClient.insert('candidates', {
+          id: cand.id,
+          name: cand.name,
+          email: cand.email,
+          phone: cand.phone,
+          designation: cand.designation,
+          department: cand.department,
+          entityId: cand.entityId,
+          stage: cand.stage,
+          progress: cand.progress,
+          dateJoined: cand.dateJoined
+        });
+      }
+
+      // 5. Seed performances
+      for (const perf of INITIAL_PERFORMANCES) {
+        await googleSheetsClient.insert('performances', {
+          employeeId: perf.employeeId,
+          reviewCycleId: perf.reviewCycleId,
+          managerName: perf.managerName,
+          reviewStatus: perf.reviewStatus,
+          rating: perf.rating,
+          teamworkScore: perf.teamworkScore,
+          communicationScore: perf.communicationScore,
+          problemSolvingScore: perf.problemSolvingScore,
+          selfEvaluation: perf.selfEvaluation,
+          managerComments: perf.managerComments,
+          goals: JSON.stringify(perf.goals || [])
+        });
+      }
+
+      triggerNotification('Seeding Complete', 'Database seeded successfully. Refreshing page...', 'info');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (err: any) {
+      console.error('[Google Sheets Seeding] Failed:', err);
+      triggerNotification('Seed Failed', `Could not seed database: ${err.message || err}`, 'info');
+    } finally {
+      setIsSeeding(false);
+    }
+  };
 
   // Load session from local storage on mount
   useEffect(() => {
@@ -1036,6 +1191,24 @@ export default function App() {
                   <h4 className="font-bold text-primary mb-1">Enterprise Configuration Standard</h4>
                   <p className="text-on-surface-variant text-[11px]">These global overrides apply automatically across the dynamic payslip calculators, report generators, and directory sheets in real-time.</p>
                 </div>
+
+                {isGoogleConfigured && (
+                  <div className="pt-6 border-t border-neutral-border space-y-4">
+                    <div>
+                      <h3 className="text-xs font-bold text-primary uppercase tracking-wider mb-1">Google Sheets Database Administration</h3>
+                      <p className="text-[11px] text-on-surface-variant leading-relaxed">Initialize or seed your Google Spreadsheet with default corporate entities, mock employee records, appraisal data, and login credentials.</p>
+                    </div>
+                    <div>
+                      <button
+                        onClick={handleSeedDatabase}
+                        disabled={isSeeding}
+                        className="bg-primary text-white text-xs font-semibold py-2 px-4 rounded hover:bg-primary-container disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        {isSeeding ? 'Seeding Database...' : 'Seed Database with Default Presets'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="pt-6 border-t border-neutral-border flex justify-end">
