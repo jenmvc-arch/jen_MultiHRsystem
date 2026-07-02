@@ -417,6 +417,16 @@ export default function App() {
             } catch (err) {
               console.error('Error parsing tp3Data for employee', e.id, err);
             }
+            let salaryAdjustments = [];
+            try {
+              if (e.salaryAdjustments && typeof e.salaryAdjustments === 'string') {
+                salaryAdjustments = JSON.parse(e.salaryAdjustments);
+              } else if (Array.isArray(e.salaryAdjustments)) {
+                salaryAdjustments = e.salaryAdjustments;
+              }
+            } catch (err) {
+              console.error('Error parsing salaryAdjustments for employee', e.id, err);
+            }
             let resolvedEntityId = e.entityName || e.entityId || '';
             if (resolvedEntityId === 'ENT-01' || resolvedEntityId === 'ENT-92') {
               resolvedEntityId = 'Red Point Sdn Bhd';
@@ -502,7 +512,8 @@ export default function App() {
               historicalPcbResults,
               historicalVariances,
               tp1Declarations,
-              tp3Data
+              tp3Data,
+              salaryAdjustments
             };
           }));
         }
@@ -838,7 +849,8 @@ export default function App() {
           skbbkEmployee: newEmployee.skbbkEmployee || 0,
           skbbkEmployer: newEmployee.skbbkEmployer || 0,
           careerHistory: JSON.stringify(newEmployee.careerHistory || []),
-          dependants: JSON.stringify(newEmployee.dependants || [])
+          dependants: JSON.stringify(newEmployee.dependants || []),
+          salaryAdjustments: JSON.stringify(newEmployee.salaryAdjustments || [])
         });
 
         await googleSheetsClient.insert('audit_logs', {
@@ -965,6 +977,7 @@ export default function App() {
         if (updates.historicalVariances !== undefined) payloadUpdates.historicalVariances = JSON.stringify(updates.historicalVariances);
         if (updates.tp1Declarations !== undefined) payloadUpdates.tp1Declarations = JSON.stringify(updates.tp1Declarations);
         if (updates.tp3Data !== undefined) payloadUpdates.tp3Data = JSON.stringify(updates.tp3Data);
+        if (updates.salaryAdjustments !== undefined) payloadUpdates.salaryAdjustments = JSON.stringify(updates.salaryAdjustments);
 
         const lookupKey = oldEmp?.name || id;
         await googleSheetsClient.update('employees', lookupKey, payloadUpdates, 'name');

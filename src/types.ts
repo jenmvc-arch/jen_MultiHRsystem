@@ -156,6 +156,16 @@ export interface Employee {
   historicalVariances?: PCBHistoricalVariance[];
   tp1Declarations?: TP1Declaration[];
   tp3Data?: TP3Data;
+  salaryAdjustments?: SalaryAdjustment[];
+}
+
+export interface SalaryAdjustment {
+  id: string;
+  startDate: string;
+  effectiveDate: string;
+  adjustedSalary: number;
+  reason?: string;
+  createdAt: string;
 }
 
 export interface ReviewCycle {
