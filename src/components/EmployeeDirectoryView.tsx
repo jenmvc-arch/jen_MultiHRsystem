@@ -36,6 +36,7 @@ import {
   Shield,
   Activity,
   Plus,
+  Minus,
   RotateCw,
   Save
 } from 'lucide-react';

@@ -108,6 +108,39 @@ export default function PayrollView({
 
   const payrollBreakdown = calculatePayslip(activeEmployee, payMonthIndex, payYear);
 
+  let baseSalaryBeforeProration = activeEmployee.basicSalary;
+  if (activeEmployee.salaryAdjustments && activeEmployee.salaryAdjustments.length > 0) {
+    const activeAdjustments = activeEmployee.salaryAdjustments
+      .filter(adj => {
+        const effDate = new Date(adj.effectiveDate);
+        const effYear = effDate.getFullYear();
+        const effMonth = effDate.getMonth() + 1;
+        return (effYear < payYear) || (effYear === payYear && effMonth <= payMonthIndex);
+      })
+      .sort((a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime());
+    if (activeAdjustments.length > 0) {
+      baseSalaryBeforeProration = activeAdjustments[0].adjustedSalary;
+    }
+  }
+
+  const actualBasic = getAdjustedBasicSalary(activeEmployee, payMonthIndex, payYear);
+  const prorationDeduction = parseFloat((baseSalaryBeforeProration - actualBasic).toFixed(2));
+
+  let prorationDetails = '';
+  if (prorationDeduction > 0 && activeEmployee.dateOfJoined) {
+    const joinDate = new Date(activeEmployee.dateOfJoined);
+    const joinYear = joinDate.getFullYear();
+    const joinMonth = joinDate.getMonth() + 1;
+    if (joinYear === payYear && joinMonth === payMonthIndex) {
+      const joinDay = joinDate.getDate();
+      const calendarDays = new Date(payYear, payMonthIndex, 0).getDate();
+      const unpaidDays = joinDay - 1;
+      prorationDetails = `Joined mid-month on ${joinDate.toLocaleDateString('en-MY', {day: 'numeric', month: 'short', year: 'numeric'})}. Deducted ${unpaidDays}/${calendarDays} unpaid days.`;
+    } else {
+      prorationDetails = `Deduction for incomplete month of service.`;
+    }
+  }
+
   const isEligible = 
     activeEmployee.employmentType === 'Probationary' || 
     activeEmployee.employmentType === 'Confirmation' || 
@@ -1156,7 +1189,7 @@ export default function PayrollView({
                     <span className="w-2 h-2 rounded-full bg-green-600" /> Earnings & Additions
                   </h4>
                   <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between"><span>{getPayslipLabel(activeEmployee.employmentType)}</span><span className="font-mono">RM {activeEmployee.basicSalary.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                    <div className="flex justify-between"><span>{getPayslipLabel(activeEmployee.employmentType)}</span><span className="font-mono">RM {baseSalaryBeforeProration.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     
                     {/* Allowances breakdown */}
                     {(activeEmployee.allowanceGeneral || 0) > 0 && (
@@ -1242,7 +1275,7 @@ export default function PayrollView({
 
                     <div className="flex justify-between border-t border-neutral-border/30 pt-1.5 font-bold text-primary">
                       <span>Total Earnings & Reimbursements</span>
-                      <span className="font-mono">RM {(payrollBreakdown.grossEarnings + payrollBreakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                      <span className="font-mono">RM {(payrollBreakdown.grossEarnings + prorationDeduction + payrollBreakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                     </div>
                   </div>
                 </div>
@@ -1253,20 +1286,22 @@ export default function PayrollView({
                     <span className="w-2 h-2 rounded-full bg-error" /> Deductions
                   </h4>
                   <div className="space-y-1.5 text-xs">
+                    {prorationDeduction > 0 && (
+                      <div className="flex justify-between bg-red-50 p-1.5 rounded">
+                        <div>
+                          <span className="font-semibold text-error text-[11px]">Prorated Basic Salary Deduction</span>
+                          {prorationDetails && <p className="text-[10px] text-on-surface-variant font-medium mt-0.5 leading-tight">{prorationDetails}</p>}
+                        </div>
+                        <span className="font-mono text-error font-semibold">RM {prorationDeduction.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between"><span>EPF (Employee {activeEmployee.epfRateEmployee}%)</span><span className="font-mono">RM {payrollBreakdown.epfEmployeeValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
-                    <div className="flex justify-between"><span>SOCSO</span><span className="font-mono">RM {(activeEmployee.socsoEmployee || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
-                    {(() => {
-                      const isEligible = 
-                        activeEmployee.employmentType === 'Probationary' || 
-                        activeEmployee.employmentType === 'Confirmation' || 
-                        (activeEmployee.employmentType === 'Independent Contractor / Freelance' && activeEmployee.eligibleForStatutory === 'Yes');
-                      const skbbkEmployeeVal = activeEmployee.skbbkEmployee !== undefined ? activeEmployee.skbbkEmployee : (isEligible ? parseFloat(((activeEmployee.socsoEmployee || 0) * 0.25).toFixed(2)) : 0);
-                      return skbbkEmployeeVal > 0 ? (
-                        <div className="flex justify-between"><span>SOCSO (SKBBK)</span><span className="font-mono">RM {skbbkEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
-                      ) : null;
-                    })()}
-                    <div className="flex justify-between"><span>EIS</span><span className="font-mono">RM {(activeEmployee.eisEmployee || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
-                    <div className="flex justify-between"><span>Income Tax (PCB)</span><span className="font-mono">RM {(activeEmployee.taxPcb || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                    <div className="flex justify-between"><span>SOCSO</span><span className="font-mono">RM {payrollBreakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                    {payrollBreakdown.skbbkEmpVal > 0 && (
+                      <div className="flex justify-between"><span>SOCSO (SKBBK)</span><span className="font-mono">RM {payrollBreakdown.skbbkEmpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                    )}
+                    <div className="flex justify-between"><span>EIS</span><span className="font-mono">RM {payrollBreakdown.eisEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                    <div className="flex justify-between"><span>Income Tax (PCB)</span><span className="font-mono">RM {payrollBreakdown.taxPcbVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     
                     {/* Unpaid Leave */}
                     {(activeEmployee.unpaidLeave || 0) > 0 && (
@@ -1296,7 +1331,7 @@ export default function PayrollView({
 
                     <div className="flex justify-between border-t border-neutral-border/30 pt-1.5 font-bold text-error">
                       <span>Total Deductions</span>
-                      <span className="font-mono">RM {payrollBreakdown.totalDeductions.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                      <span className="font-mono">RM {(payrollBreakdown.totalDeductions + prorationDeduction).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                     </div>
                   </div>
                 </div>
@@ -1308,31 +1343,24 @@ export default function PayrollView({
                 <h4 className="font-bold text-on-surface-variant flex items-center gap-1">
                   Employer Contributions <span className="text-[10px] font-normal text-on-surface-variant">(Not paid to employee)</span>
                 </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono font-medium">
                   <div>
-                    <span className="text-on-surface-variant block">EPF ({activeEmployee.epfRateEmployer}%)</span>
-                    <span className="font-bold font-mono text-on-surface">RM {Math.round(activeEmployee.basicSalary * activeEmployee.epfRateEmployer / 100).toLocaleString()}</span>
+                    <span className="text-on-surface-variant block font-sans font-semibold">EPF ({activeEmployee.epfRateEmployer || (activeEmployee.basicSalary <= 5000 ? 13 : 12)}%)</span>
+                    <span className="font-bold text-on-surface">RM {payrollBreakdown.epfEmployerValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                   </div>
                   <div>
-                    <span className="text-on-surface-variant block">SOCSO</span>
-                    <span className="font-bold font-mono text-on-surface">RM {activeEmployee.socsoEmployer.toLocaleString()}</span>
+                    <span className="text-on-surface-variant block font-sans font-semibold">SOCSO</span>
+                    <span className="font-bold text-on-surface">RM {payrollBreakdown.socsoEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                   </div>
-                  {(() => {
-                    const isEligible = 
-                      activeEmployee.employmentType === 'Probationary' || 
-                      activeEmployee.employmentType === 'Confirmation' || 
-                      (activeEmployee.employmentType === 'Independent Contractor / Freelance' && activeEmployee.eligibleForStatutory === 'Yes');
-                    const skbbkEmployerVal = activeEmployee.skbbkEmployer !== undefined ? activeEmployee.skbbkEmployer : (isEligible ? parseFloat(((activeEmployee.socsoEmployer || 0) * 0.25).toFixed(2)) : 0);
-                    return skbbkEmployerVal > 0 ? (
-                      <div>
-                        <span className="text-on-surface-variant block">SOCSO (SKBBK)</span>
-                        <span className="font-bold font-mono text-on-surface">RM {skbbkEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
-                      </div>
-                    ) : null;
-                  })()}
+                  {payrollBreakdown.skbbkEmplyrVal > 0 && (
+                    <div>
+                      <span className="text-on-surface-variant block font-sans font-semibold">SOCSO (SKBBK)</span>
+                      <span className="font-bold text-on-surface">RM {payrollBreakdown.skbbkEmplyrVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                    </div>
+                  )}
                   <div>
-                    <span className="text-on-surface-variant block">EIS</span>
-                    <span className="font-bold font-mono text-on-surface">RM {activeEmployee.eisEmployer.toLocaleString()}</span>
+                    <span className="text-on-surface-variant block font-sans font-semibold">EIS</span>
+                    <span className="font-bold text-on-surface">RM {payrollBreakdown.eisEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                   </div>
                 </div>
               </div>

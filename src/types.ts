@@ -233,8 +233,8 @@ export type HistoricalPCBStatus =
 export interface EmployeeTaxProfile {
   effectiveDate: string; // YYYY-MM-DD
   basicSalary: number;
-  housingAllowance: number;
-  transportAllowance: number;
+  housingAllowance?: number;
+  transportAllowance?: number;
   allowanceGeneral?: number;
   allowanceTransport?: number;
   allowanceParking?: number;
@@ -295,12 +295,17 @@ export interface TP1Declaration {
 }
 
 export interface TP3Data {
-  taxYear: number;
-  previousEmployerRemuneration: number;
+  taxYear?: number;
+  previousEmployerRemuneration?: number;
   previousEmployerAdditionalRemuneration?: number;
-  previousEmployerEpf: number;
-  previousEmployerPcb: number;
-  previousEmployerZakat: number;
+  previousEmployerEpf?: number;
+  previousEmployerPcb?: number;
+  previousEmployerZakat?: number;
+
+  accumulatedPriorRemuneration?: number;
+  accumulatedPriorEPF?: number;
+  accumulatedPriorPCB?: number;
+  accumulatedPriorSocso?: number;
 }
 
 export interface PCBCalculationStep {
@@ -313,7 +318,7 @@ export interface PCBCalculationStep {
 
 export interface HistoricalPCBResult {
   employeeId: string;
-  taxYear: 2026;
+  taxYear: number;
   payrollMonth: number;
 
   processingMode: PCBProcessingMode;
@@ -378,7 +383,8 @@ export interface PCBHistoricalVariance {
 }
 
 export interface HistoricalPCBMonthContext {
-  taxYear: 2026;
+  employeeId: string;
+  taxYear: number;
   payrollMonth: number;
 
   employeeProfileEffectiveForMonth: EmployeeTaxProfile;
@@ -403,6 +409,7 @@ export interface HistoricalPCBMonthContext {
 
   projectedRemainingNormalRemuneration: number;
   remainingApplicableMonths: number;
+  calculationBasis: HistoricalCalculationBasis;
 }
 
 export interface PayrollRecord2026 {

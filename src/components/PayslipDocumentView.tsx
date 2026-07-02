@@ -17,7 +17,7 @@ import {
 import { pdf } from '@react-pdf/renderer';
 import { PayslipPDFDocument } from './PayslipPDFDocument';
 import { Employee, CorporateEntity } from '../types';
-import { calculatePayslip, getPayslipLabel } from '../data';
+import { calculatePayslip, getPayslipLabel, getAdjustedBasicSalary, getDirectLogoUrl } from '../data';
 
 interface PayslipDocumentViewProps {
   employees: Employee[];

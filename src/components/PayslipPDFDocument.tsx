@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import { Employee, CorporateEntity } from '../types';
-import { calculatePayslip, getPayslipLabel, getDirectLogoUrl } from '../data';
+import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getAdjustedBasicSalary } from '../data';
 
 // Create styles for React PDF
 const styles = StyleSheet.create({

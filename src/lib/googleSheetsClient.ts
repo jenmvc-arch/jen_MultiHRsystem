@@ -19,6 +19,7 @@ export interface SheetsDataPayload {
   users: any[];
   audit_logs: any[];
   candidates?: any[];
+  payroll_records_2026?: any[];
 }
 
 export const googleSheetsClient = {

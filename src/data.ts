@@ -661,13 +661,14 @@ export function buildPCBContext(params: {
   const m = params.month;
   
   // Previous employer TP3 data
-  const tp3: TP3Data = params.employee.tp3Data || {
-    taxYear: params.taxYear,
-    previousEmployerRemuneration: 0,
-    previousEmployerAdditionalRemuneration: 0,
-    previousEmployerEpf: 0,
-    previousEmployerPcb: 0,
-    previousEmployerZakat: 0
+  const tp3Raw = params.employee.tp3Data || {};
+  const tp3: TP3Data = {
+    taxYear: tp3Raw.taxYear || params.taxYear,
+    previousEmployerRemuneration: tp3Raw.previousEmployerRemuneration !== undefined ? tp3Raw.previousEmployerRemuneration : (tp3Raw.accumulatedPriorRemuneration || 0),
+    previousEmployerAdditionalRemuneration: tp3Raw.previousEmployerAdditionalRemuneration || 0,
+    previousEmployerEpf: tp3Raw.previousEmployerEpf !== undefined ? tp3Raw.previousEmployerEpf : (tp3Raw.accumulatedPriorEPF || 0),
+    previousEmployerPcb: tp3Raw.previousEmployerPcb !== undefined ? tp3Raw.previousEmployerPcb : (tp3Raw.accumulatedPriorPCB || 0),
+    previousEmployerZakat: tp3Raw.previousEmployerZakat || 0
   };
 
   // YTD accumulation from prior results (up to m-1)
@@ -750,7 +751,9 @@ export function buildPCBContext(params: {
     currentMonthZakat,
     currentMonthCP38,
     projectedRemainingNormalRemuneration,
-    remainingApplicableMonths: remainingMonths
+    remainingApplicableMonths: remainingMonths,
+    calculationBasis: params.calculationBasis,
+    employeeId: params.employee.id
   };
 }
 
@@ -913,8 +916,8 @@ export function calculateMonthlyPCB(context: HistoricalPCBMonthContext): Histori
   }
 
   return {
-    employeeId: context.currentMonthPayroll.employeeId || '',
-    taxYear: 2026,
+    employeeId: context.employeeId,
+    taxYear: context.taxYear,
     payrollMonth: m,
     processingMode: "historical_reconstruction",
     calculationBasis: context.calculationBasis,

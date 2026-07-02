@@ -60,7 +60,7 @@ const mockEmployee: Employee = {
     }
   ],
   historicalPayrollRecords: []
-};
+} as any as Employee;
 
 // Check profile matched in February (should get Jan profile)
 const profileFeb = getEffectiveProfileForMonth(mockEmployee, 2, 2026);
@@ -110,7 +110,7 @@ const employeeWithHistory: Employee = {
       actualPCBDeducted: 120
     }
   ]
-};
+} as any as Employee;
 
 const historyResults = reconstructPCBHistory({
   employee: employeeWithHistory,
