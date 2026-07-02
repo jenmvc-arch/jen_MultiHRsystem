@@ -146,6 +146,14 @@ export interface Employee {
   icFrontUrl?: string;
   icBackUrl?: string;
   educationCertUrl?: string;
+  
+  // Historical PCB Reconstruction Fields
+  historicalPayrollRecords?: HistoricalPayrollRecord[];
+  effectiveDatedProfiles?: EmployeeTaxProfile[];
+  historicalPcbResults?: HistoricalPCBResult[];
+  historicalVariances?: PCBHistoricalVariance[];
+  tp1Declarations?: TP1Declaration[];
+  tp3Data?: TP3Data;
 }
 
 export interface ReviewCycle {
@@ -189,4 +197,198 @@ export interface Candidate {
   stage: 'Applied' | 'Interviewing' | 'Offered' | 'Onboarding';
   progress: number;
   dateJoined: string;
+}
+
+export type PCBProcessingMode =
+  | "live_payroll"
+  | "historical_reconstruction"
+  | "historical_recalculation";
+
+export type HistoricalCalculationBasis =
+  | "actual_deduction_history"
+  | "corrected_recalculated_history";
+
+export type HistoricalPCBStatus =
+  | "not_calculated"
+  | "calculated"
+  | "actual_amount_missing"
+  | "requires_review"
+  | "variance_detected"
+  | "correction_required"
+  | "approved"
+  | "locked";
+
+export interface EmployeeTaxProfile {
+  effectiveDate: string; // YYYY-MM-DD
+  basicSalary: number;
+  housingAllowance: number;
+  transportAllowance: number;
+  allowanceGeneral?: number;
+  allowanceTransport?: number;
+  allowanceParking?: number;
+  allowanceMeal?: number;
+  allowanceAccommodation?: number;
+  allowancePhone?: number;
+  commissionAmount?: number;
+  maritalStatus: 'Single' | 'Married' | 'Divorced' | 'Widowed';
+  spouseIsWorking?: 'Yes' | 'No';
+  spouseNric?: string;
+  spouseName?: string;
+  hasDependants?: 'Yes' | 'No';
+  dependantsCount?: number;
+  eligibleForStatutory?: 'Yes' | 'No';
+  epfRateEmployee?: number;
+  epfRateEmployer?: number;
+  taxNumber?: string;
+  nricPassport?: string;
+  dateOfJoined?: string;
+  dateOfTermination?: string;
+}
+
+export interface HistoricalPayrollRecord {
+  payrollMonth: number; // 1 to 12
+  basicSalary: number;
+  allowanceGeneral?: number;
+  allowanceTransport?: number;
+  allowanceParking?: number;
+  allowanceMeal?: number;
+  allowanceAccommodation?: number;
+  allowancePhone?: number;
+  overtime?: number;
+  performanceBonus?: number;
+  bonusAmount?: number;
+  commissionAmount?: number;
+  backPayAmount?: number;
+  awsAmount?: number;
+  compensationAmount?: number;
+  reimbursementAmount?: number;
+  unpaidLeave?: number;
+  deductionInLieu?: number;
+  deductionCp38?: number;
+  deductionOthers?: number;
+  epfEmployee?: number;
+  zakat?: number;
+  cp38?: number;
+  actualPCBDeducted: number;
+}
+
+export interface TP1Declaration {
+  taxYear: number;
+  declarationDate: string;
+  effectivePayrollMonth: number;
+  claimCategory: string;
+  claimedAmount: number;
+  qualifyingAmount: number;
+  approvalStatus: string;
+}
+
+export interface TP3Data {
+  taxYear: number;
+  previousEmployerRemuneration: number;
+  previousEmployerAdditionalRemuneration?: number;
+  previousEmployerEpf: number;
+  previousEmployerPcb: number;
+  previousEmployerZakat: number;
+}
+
+export interface PCBCalculationStep {
+  stepName: string;
+  formula?: string;
+  inputs?: Record<string, any>;
+  output: number;
+  notes?: string;
+}
+
+export interface HistoricalPCBResult {
+  employeeId: string;
+  taxYear: 2026;
+  payrollMonth: number;
+
+  processingMode: PCBProcessingMode;
+  calculationBasis: HistoricalCalculationBasis;
+
+  effectiveEmployeeProfileVersion: string; // e.g. YYYY-MM-DD or index
+  taxConfigurationVersion: string;
+
+  currentNormalRemuneration: number;
+  currentAdditionalRemuneration: number;
+  currentMonthEmployeeEPF: number;
+
+  accumulatedPriorRemuneration: number;
+  accumulatedPriorAdditionalRemuneration: number;
+  accumulatedPriorEPF: number;
+  accumulatedPriorPCB: number;
+  accumulatedPriorZakat: number;
+
+  previousEmployerRemuneration: number;
+  previousEmployerEPF: number;
+  previousEmployerPCB: number;
+  previousEmployerZakat: number;
+
+  projectedRemainingRemuneration: number;
+  estimatedAnnualIncome: number;
+  qualifyingDeductions: number;
+  personalAndFamilyReliefs: number;
+  approvedTP1Reliefs: number;
+  estimatedChargeableIncome: number;
+  estimatedAnnualTax: number;
+
+  normalRemunerationPCB: number;
+  additionalRemunerationPCB: number;
+  calculatedPCB: number;
+
+  actualPCBDeducted: number | null;
+  pcbVariance: number | null;
+
+  currentZakat: number;
+  currentCP38: number;
+  totalActualTaxDeduction: number | null;
+  totalCalculatedTaxDeduction: number;
+
+  calculationTimestamp: string;
+  calculationVersion: number;
+  status: HistoricalPCBStatus;
+
+  warnings: string[];
+  errors: string[];
+  calculationBreakdown: PCBCalculationStep[];
+}
+
+export interface PCBHistoricalVariance {
+  payrollPeriod: string; // e.g. "2026-03"
+  originalCalculatedPCB: number;
+  originalActualPCBDeducted: number;
+  revisedCalculatedPCB: number;
+  variance: number;
+  reason: string;
+  calculationBasis: HistoricalCalculationBasis;
+  approvalStatus: "pending" | "approved" | "rejected";
+}
+
+export interface HistoricalPCBMonthContext {
+  taxYear: 2026;
+  payrollMonth: number;
+
+  employeeProfileEffectiveForMonth: EmployeeTaxProfile;
+
+  previousEmployerTP3: TP3Data;
+
+  priorCurrentEmployerPayrolls: HistoricalPayrollRecord[];
+
+  currentMonthPayroll: HistoricalPayrollRecord;
+
+  accumulatedRemunerationBeforeCurrentMonth: number;
+  accumulatedAdditionalRemunerationBeforeCurrentMonth: number;
+  accumulatedEmployeeEPFBeforeCurrentMonth: number;
+  accumulatedPCBBeforeCurrentMonth: number;
+  accumulatedZakatBeforeCurrentMonth: number;
+
+  currentMonthNormalRemuneration: number;
+  currentMonthAdditionalRemuneration: number;
+  currentMonthEmployeeEPF: number;
+  currentMonthZakat: number;
+  currentMonthCP38: number;
+
+  projectedRemainingNormalRemuneration: number;
+  remainingApplicableMonths: number;
 }

@@ -23,15 +23,19 @@ import { Employee } from '../types';
 import { calculatePayslip, calculateYtd } from '../data';
 import { getGmt8DateString } from '../lib/dateUtils';
 
+import PCBReconstructionHub from './PCBReconstructionHub';
+
 interface TaxSettingsViewProps {
   employees: Employee[];
-  onShowNotification: (title: string, message: string) => void;
+  onUpdateEmployee: (id: string, updates: Partial<Employee>) => void;
+  onShowNotification: (title: string, message: string, type?: 'success' | 'info' | 'error') => void;
 }
 
-type ActiveForm = 'EA' | 'CP22' | 'CP22A' | 'CP21' | 'CP58' | 'TP3';
+type ActiveForm = 'EA' | 'CP22' | 'CP22A' | 'CP21' | 'CP58' | 'TP3' | 'PCB_RECONSTRUCTION';
 
 export default function TaxSettingsView({
   employees,
+  onUpdateEmployee,
   onShowNotification
 }: TaxSettingsViewProps) {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(employees[0]?.id || '');
@@ -212,14 +216,15 @@ export default function TaxSettingsView({
           {/* Statutory Forms Tabs */}
           <div className="bg-white border border-neutral-border rounded-lg shadow-xs overflow-hidden">
             <div className="border-b border-neutral-border bg-neutral-50 flex flex-wrap">
-              {(['EA', 'CP22', 'CP22A', 'CP21', 'CP58', 'TP3'] as ActiveForm[]).map((tab) => {
+              {(['EA', 'CP22', 'CP22A', 'CP21', 'CP58', 'TP3', 'PCB_RECONSTRUCTION'] as ActiveForm[]).map((tab) => {
                 const labelMap: Record<ActiveForm, string> = {
                   EA: 'EA Form (Annual)',
                   CP22: 'CP22 (New Hire)',
                   CP22A: 'CP22A (Cessation)',
                   CP21: 'CP21 (Expat Departure)',
                   CP58: 'CP58 (Contractors)',
-                  TP3: 'TP3 (Prior Income)'
+                  TP3: 'TP3 (Prior Income)',
+                  PCB_RECONSTRUCTION: 'PCB Reconstruction Hub'
                 };
                 const isActive = activeFormTab === tab;
                 return (
@@ -238,7 +243,17 @@ export default function TaxSettingsView({
               })}
             </div>
 
-            {/* Form Actions Toolbar */}
+            {activeFormTab === 'PCB_RECONSTRUCTION' ? (
+              <div className="p-6 bg-white">
+                <PCBReconstructionHub 
+                  employees={employees}
+                  onUpdateEmployee={onUpdateEmployee}
+                  onShowNotification={onShowNotification}
+                />
+              </div>
+            ) : (
+              <>
+                {/* Form Actions Toolbar */}
             <div className="p-4 bg-white border-b border-neutral-border flex justify-between items-center">
               <span className="text-xs font-semibold text-on-surface-variant">
                 Form State: <span className="text-green-600 font-bold">READY FOR SIGN-OFF</span>
@@ -855,6 +870,8 @@ export default function TaxSettingsView({
 
               </div>
             </div>
+            </>
+            )}
           </div>
 
           {/* Bottom Help notice */}

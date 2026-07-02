@@ -296,6 +296,13 @@ export default function App() {
           setEmployees(payload.employees.map((e: any) => {
             let careerHistory = [];
             let dependants = [];
+            let historicalPayrollRecords = [];
+            let effectiveDatedProfiles = [];
+            let historicalPcbResults = [];
+            let historicalVariances = [];
+            let tp1Declarations = [];
+            let tp3Data = undefined;
+            
             try {
               if (e.careerHistory && typeof e.careerHistory === 'string') {
                 careerHistory = JSON.parse(e.careerHistory);
@@ -313,6 +320,60 @@ export default function App() {
               }
             } catch (err) {
               console.error('Error parsing dependants for employee', e.id, err);
+            }
+            try {
+              if (e.historicalPayrollRecords && typeof e.historicalPayrollRecords === 'string') {
+                historicalPayrollRecords = JSON.parse(e.historicalPayrollRecords);
+              } else if (Array.isArray(e.historicalPayrollRecords)) {
+                historicalPayrollRecords = e.historicalPayrollRecords;
+              }
+            } catch (err) {
+              console.error('Error parsing historicalPayrollRecords for employee', e.id, err);
+            }
+            try {
+              if (e.effectiveDatedProfiles && typeof e.effectiveDatedProfiles === 'string') {
+                effectiveDatedProfiles = JSON.parse(e.effectiveDatedProfiles);
+              } else if (Array.isArray(e.effectiveDatedProfiles)) {
+                effectiveDatedProfiles = e.effectiveDatedProfiles;
+              }
+            } catch (err) {
+              console.error('Error parsing effectiveDatedProfiles for employee', e.id, err);
+            }
+            try {
+              if (e.historicalPcbResults && typeof e.historicalPcbResults === 'string') {
+                historicalPcbResults = JSON.parse(e.historicalPcbResults);
+              } else if (Array.isArray(e.historicalPcbResults)) {
+                historicalPcbResults = e.historicalPcbResults;
+              }
+            } catch (err) {
+              console.error('Error parsing historicalPcbResults for employee', e.id, err);
+            }
+            try {
+              if (e.historicalVariances && typeof e.historicalVariances === 'string') {
+                historicalVariances = JSON.parse(e.historicalVariances);
+              } else if (Array.isArray(e.historicalVariances)) {
+                historicalVariances = e.historicalVariances;
+              }
+            } catch (err) {
+              console.error('Error parsing historicalVariances for employee', e.id, err);
+            }
+            try {
+              if (e.tp1Declarations && typeof e.tp1Declarations === 'string') {
+                tp1Declarations = JSON.parse(e.tp1Declarations);
+              } else if (Array.isArray(e.tp1Declarations)) {
+                tp1Declarations = e.tp1Declarations;
+              }
+            } catch (err) {
+              console.error('Error parsing tp1Declarations for employee', e.id, err);
+            }
+            try {
+              if (e.tp3Data && typeof e.tp3Data === 'string') {
+                tp3Data = JSON.parse(e.tp3Data);
+              } else if (typeof e.tp3Data === 'object' && e.tp3Data !== null) {
+                tp3Data = e.tp3Data;
+              }
+            } catch (err) {
+              console.error('Error parsing tp3Data for employee', e.id, err);
             }
             return {
               id: e.id,
@@ -385,7 +446,13 @@ export default function App() {
               skbbkEmployee: Number(e.skbbkEmployee || 0),
               skbbkEmployer: Number(e.skbbkEmployer || 0),
               careerHistory,
-              dependants
+              dependants,
+              historicalPayrollRecords,
+              effectiveDatedProfiles,
+              historicalPcbResults,
+              historicalVariances,
+              tp1Declarations,
+              tp3Data
             };
           }));
         }
@@ -794,6 +861,12 @@ export default function App() {
         if (updates.skbbkEmployer !== undefined) payloadUpdates.skbbkEmployer = updates.skbbkEmployer;
         if (updates.careerHistory !== undefined) payloadUpdates.careerHistory = JSON.stringify(updates.careerHistory);
         if (updates.dependants !== undefined) payloadUpdates.dependants = JSON.stringify(updates.dependants);
+        if (updates.historicalPayrollRecords !== undefined) payloadUpdates.historicalPayrollRecords = JSON.stringify(updates.historicalPayrollRecords);
+        if (updates.effectiveDatedProfiles !== undefined) payloadUpdates.effectiveDatedProfiles = JSON.stringify(updates.effectiveDatedProfiles);
+        if (updates.historicalPcbResults !== undefined) payloadUpdates.historicalPcbResults = JSON.stringify(updates.historicalPcbResults);
+        if (updates.historicalVariances !== undefined) payloadUpdates.historicalVariances = JSON.stringify(updates.historicalVariances);
+        if (updates.tp1Declarations !== undefined) payloadUpdates.tp1Declarations = JSON.stringify(updates.tp1Declarations);
+        if (updates.tp3Data !== undefined) payloadUpdates.tp3Data = JSON.stringify(updates.tp3Data);
 
         await googleSheetsClient.update('employees', id, payloadUpdates, 'id');
 
@@ -1165,6 +1238,7 @@ export default function App() {
           {currentTab === 'tax-settings' && (
             <TaxSettingsView 
               employees={employees}
+              onUpdateEmployee={handleUpdateEmployeeSalary}
               onShowNotification={triggerNotification}
             />
           )}
