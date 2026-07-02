@@ -42,7 +42,7 @@ import {
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { Employee, CareerHistoryEntry, Dependant, CorporateEntity } from '../types';
-import { calculatePayslip, getPayslipLabel, getDirectLogoUrl } from '../data';
+import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getAdjustedBasicSalary } from '../data';
 
 interface EmployeeDirectoryViewProps {
   employees: Employee[];
@@ -62,6 +62,8 @@ export default function EmployeeDirectoryView({
   onShowNotification
 }: EmployeeDirectoryViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const currentMonth = new Date().getMonth() + 1;
+  const currentYear = new Date().getFullYear();
   const [deptFilter, setDeptFilter] = useState('All Departments');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [entityFilter, setEntityFilter] = useState('All Subsidiaries');
@@ -780,7 +782,7 @@ export default function EmployeeDirectoryView({
 
   if (viewMode === 'self-service' && previewEmployee) {
     const activeSub = entities.find(e => e.id === previewEmployee.entityId) || entities[0];
-    const payslipBreakdown = calculatePayslip(previewEmployee);
+    const payslipBreakdown = calculatePayslip(previewEmployee, currentMonth, currentYear);
     
     const isEligible = 
       previewEmployee.employmentType === 'Probationary' || 
@@ -1358,7 +1360,7 @@ export default function EmployeeDirectoryView({
               <div className="grid grid-cols-2 gap-4 text-xs">
                 <div>
                   <span className="text-outline text-[9px] font-bold uppercase block mb-0.5">Basic Monthly Salary</span>
-                  <span className="font-mono text-sm font-bold text-on-surface">RM {previewEmployee.basicSalary.toLocaleString()}</span>
+                  <span className="font-mono text-sm font-bold text-on-surface">RM {getAdjustedBasicSalary(previewEmployee, currentMonth, currentYear).toLocaleString()}</span>
                 </div>
                 <div>
                   <span className="text-outline text-[9px] font-bold uppercase block mb-0.5">Accommodation Allowance</span>
@@ -1389,7 +1391,15 @@ export default function EmployeeDirectoryView({
               </div>
 
               <div className="divide-y divide-neutral-border/50">
-                {['October 2026', 'September 2026', 'August 2026'].map((month, idx) => {
+                {(() => {
+                  const list = [];
+                  const d = new Date();
+                  for (let i = 0; i < 3; i++) {
+                    list.push(d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
+                    d.setMonth(d.getMonth() - 1);
+                  }
+                  return list;
+                })().map((month, idx) => {
                   return (
                     <div key={idx} className="p-4 flex justify-between items-center hover:bg-zinc-50/50 transition-colors">
                       <div className="space-y-1">
@@ -1459,9 +1469,54 @@ export default function EmployeeDirectoryView({
         </div>
 
         {/* HIGH-FIDELITY INTERACTIVE INLINE PAYSLIP MODAL */}
-        {viewingPayslipMonth && (
-          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto backdrop-blur-xs animate-in fade-in duration-150 text-left">
-            <div className="bg-white border border-neutral-border rounded-lg shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col animate-in zoom-in-95 duration-150">
+        {viewingPayslipMonth && (() => {
+          const parts = viewingPayslipMonth.split(' ');
+          const monthName = parts[0];
+          const yearVal = Number(parts[1]) || 2026;
+          const monthsList = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+          ];
+          const monthIndexVal = monthsList.indexOf(monthName) + 1;
+          
+          const modalBreakdown = calculatePayslip(previewEmployee, monthIndexVal, yearVal);
+
+          let modalBaseSalaryBeforeProration = previewEmployee.basicSalary;
+          if (previewEmployee.salaryAdjustments && previewEmployee.salaryAdjustments.length > 0) {
+            const activeAdjustments = previewEmployee.salaryAdjustments
+              .filter(adj => {
+                const effDate = new Date(adj.effectiveDate);
+                const effYear = effDate.getFullYear();
+                const effMonth = effDate.getMonth() + 1;
+                return (effYear < yearVal) || (effYear === yearVal && effMonth <= monthIndexVal);
+              })
+              .sort((a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime());
+            if (activeAdjustments.length > 0) {
+              modalBaseSalaryBeforeProration = activeAdjustments[0].adjustedSalary;
+            }
+          }
+
+          const modalActualBasic = getAdjustedBasicSalary(previewEmployee, monthIndexVal, yearVal);
+          const modalProrationDeduction = parseFloat((modalBaseSalaryBeforeProration - modalActualBasic).toFixed(2));
+
+          let modalProrationDetails = '';
+          if (modalProrationDeduction > 0 && previewEmployee.dateOfJoined) {
+            const joinDate = new Date(previewEmployee.dateOfJoined);
+            const joinYear = joinDate.getFullYear();
+            const joinMonth = joinDate.getMonth() + 1;
+            if (joinYear === yearVal && joinMonth === monthIndexVal) {
+              const joinDay = joinDate.getDate();
+              const calendarDays = new Date(yearVal, monthIndexVal, 0).getDate();
+              const unpaidDays = joinDay - 1;
+              modalProrationDetails = `Joined mid-month on ${joinDate.toLocaleDateString('en-MY', {day: 'numeric', month: 'short', year: 'numeric'})}. Deducted ${unpaidDays}/${calendarDays} unpaid days.`;
+            } else {
+              modalProrationDetails = `Deduction for incomplete month of service.`;
+            }
+          }
+
+          return (
+            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto backdrop-blur-xs animate-in fade-in duration-150 text-left">
+              <div className="bg-white border border-neutral-border rounded-lg shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col animate-in zoom-in-95 duration-150">
               
               {/* Modal Toolbar Header */}
               <div className="h-14 bg-zinc-900 flex items-center justify-between px-4 shadow-md z-10 shrink-0 select-none">
@@ -1684,7 +1739,7 @@ export default function EmployeeDirectoryView({
                         <tbody>
                           <tr className="border-b border-outline-variant/30">
                             <td className="py-2 text-on-surface text-left">{getPayslipLabel(previewEmployee.employmentType)}</td>
-                            <td className="py-2 text-right text-on-surface font-mono">RM {previewEmployee.basicSalary.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                            <td className="py-2 text-right text-on-surface font-mono">RM {modalBaseSalaryBeforeProration.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                           </tr>
 
                           {/* Allowances */}
@@ -1748,7 +1803,7 @@ export default function EmployeeDirectoryView({
 
                           <tr className="font-bold text-primary">
                             <td className="py-3 text-on-surface text-left font-bold">Total Earnings & Additions</td>
-                            <td className="py-3 text-right font-mono">RM {(payslipBreakdown.grossEarnings + payslipBreakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                            <td className="py-3 text-right font-mono">RM {(modalBreakdown.grossEarnings + modalProrationDeduction + modalBreakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                           </tr>
                         </tbody>
                       </table>
@@ -1761,32 +1816,43 @@ export default function EmployeeDirectoryView({
                       </h3>
                       <table className="w-full text-sm">
                         <tbody>
+                          {modalProrationDeduction > 0 && (
+                            <tr className="border-b border-outline-variant/30 bg-red-50/40">
+                              <td className="py-2 text-on-surface text-left pl-1">
+                                <div>
+                                  <span className="font-semibold text-error">Prorated Basic Salary Deduction</span>
+                                  <p className="text-[10px] text-on-surface-variant font-medium mt-0.5 leading-tight">{modalProrationDetails}</p>
+                                </div>
+                              </td>
+                              <td className="py-2 text-right text-error font-mono pr-1">RM {modalProrationDeduction.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                            </tr>
+                          )}
                           <tr className="border-b border-outline-variant/30">
                             <td className="py-2 text-on-surface text-left">EPF (Employee {previewEmployee.epfRateEmployee}%)</td>
-                            <td className="py-2 text-right text-error font-mono">RM {payslipBreakdown.epfEmployeeValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                            <td className="py-2 text-right text-error font-mono">RM {modalBreakdown.epfEmployeeValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                           </tr>
                           <tr className="border-b border-outline-variant/30">
                             <td className="py-2 text-on-surface text-left">SOCSO</td>
-                            <td className="py-2 text-right text-error font-mono">RM {(previewEmployee.socsoEmployee || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                            <td className="py-2 text-right text-error font-mono">RM {modalBreakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                           </tr>
-                          {skbbkEmployeeVal > 0 && (
+                          {modalBreakdown.skbbkEmpVal > 0 && (
                             <tr className="border-b border-outline-variant/30">
                               <td className="py-2 text-on-surface text-left">SOCSO (SKBBK)</td>
-                              <td className="py-2 text-right text-error font-mono">RM {skbbkEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                              <td className="py-2 text-right text-error font-mono">RM {modalBreakdown.skbbkEmpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                             </tr>
                           )}
                           <tr className="border-b border-outline-variant/30">
                             <td className="py-2 text-on-surface text-left">EIS</td>
-                            <td className="py-2 text-right text-error font-mono">RM {(previewEmployee.eisEmployee || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                            <td className="py-2 text-right text-error font-mono">RM {modalBreakdown.eisEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                           </tr>
                           <tr className="border-b border-outline-variant/30">
                             <td className="py-2 text-on-surface text-left">Income Tax (PCB)</td>
-                            <td className="py-2 text-right text-error font-mono">RM {(previewEmployee.taxPcb || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                            <td className="py-2 text-right text-error font-mono">RM {modalBreakdown.taxPcbVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                           </tr>
 
                           <tr className="font-bold text-error">
                             <td className="py-3 text-on-surface text-left font-bold">Total Deductions</td>
-                            <td className="py-3 text-right font-mono">RM {payslipBreakdown.totalDeductions.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                            <td className="py-3 text-right font-mono">RM {(modalBreakdown.totalDeductions + modalProrationDeduction).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                           </tr>
                         </tbody>
                       </table>
@@ -1801,21 +1867,21 @@ export default function EmployeeDirectoryView({
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono font-medium text-on-surface">
                       <div>
                         <span className="text-on-surface-variant text-[10px] uppercase block mb-1">EPF ({previewEmployee.epfRateEmployer}%)</span>
-                        <span>RM {Math.round(previewEmployee.basicSalary * previewEmployee.epfRateEmployer / 100).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                        <span>RM {modalBreakdown.epfEmployerValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                       </div>
                       <div>
                         <span className="text-on-surface-variant text-[10px] uppercase block mb-1">SOCSO</span>
-                        <span>RM {previewEmployee.socsoEmployer.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                        <span>RM {modalBreakdown.socsoEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                       </div>
-                      {skbbkEmployerVal > 0 && (
+                      {modalBreakdown.skbbkEmplyrVal > 0 && (
                         <div>
                           <span className="text-on-surface-variant text-[10px] uppercase block mb-1">SOCSO (SKBBK)</span>
-                          <span>RM {skbbkEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                          <span>RM {modalBreakdown.skbbkEmplyrVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                         </div>
                       )}
                       <div>
                         <span className="text-on-surface-variant text-[10px] uppercase block mb-1">EIS</span>
-                        <span>RM {previewEmployee.eisEmployer.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                        <span>RM {modalBreakdown.eisEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                       </div>
                     </div>
                   </div>
@@ -1830,7 +1896,7 @@ export default function EmployeeDirectoryView({
                     <div className="text-right bg-primary-container/5 px-6 py-4 rounded border border-primary-container/20 min-w-[200px]">
                       <p className="text-xs text-primary-container font-bold uppercase tracking-widest mb-1">Net Pay</p>
                       <p className="text-2xl font-bold text-on-surface font-mono">
-                        RM {payslipBreakdown.netPay.toLocaleString('en-US', {minimumFractionDigits: 2})}
+                        RM {modalBreakdown.netPay.toLocaleString('en-US', {minimumFractionDigits: 2})}
                       </p>
                     </div>
                   </div>
@@ -1850,7 +1916,8 @@ export default function EmployeeDirectoryView({
               </div>
             </div>
           </div>
-        )}
+        );
+      })()}
 
       </div>
     );
@@ -2062,7 +2129,7 @@ export default function EmployeeDirectoryView({
 
                         {/* Column 5: Base Salary */}
                         <td className="p-4 font-mono font-semibold text-primary">
-                          RM {emp.basicSalary.toLocaleString()}
+                          RM {getAdjustedBasicSalary(emp, currentMonth, currentYear).toLocaleString()}
                         </td>
 
                         {/* Column 6: Date Joined */}

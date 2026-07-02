@@ -73,7 +73,8 @@ export default function TaxSettingsView({
 
   // Calculate values
   const payslip = calculatePayslip(activeEmployee);
-  const ytd = calculateYtd(activeEmployee, 'October 2026'); // standard YTD up to Oct
+  const currentPeriod = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const ytd = calculateYtd(activeEmployee, currentPeriod);
 
   const handleDownloadForm = (formType: string) => {
     onShowNotification(

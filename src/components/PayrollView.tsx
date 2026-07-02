@@ -30,7 +30,8 @@ export default function PayrollView({
   onShowNotification,
   activeEntity
 }: PayrollViewProps) {
-  const [selectedPayPeriod, setSelectedPayPeriod] = useState('October 2026');
+  const defaultPeriod = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const [selectedPayPeriod, setSelectedPayPeriod] = useState(defaultPeriod);
   const [selectedDepartment, setSelectedDepartment] = useState('All Departments');
   const [selectedEntityId, setSelectedEntityId] = useState<string>('all');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(employees[0]?.id || '');
@@ -258,7 +259,6 @@ export default function PayrollView({
     });
 
     onUpdateEmployeeSalary(activeEmployee.id, {
-      basicSalary: tempBasic,
       allowanceGeneral: hasAllowances ? allowanceGen : 0,
       allowanceTransport: hasAllowances ? allowanceTrans : 0,
       allowanceParking: hasAllowances ? allowancePark : 0,
@@ -762,9 +762,12 @@ export default function PayrollView({
                       <input 
                         type="number" 
                         value={tempBasic} 
-                        onChange={(e) => setTempBasic(Number(e.target.value))} 
-                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
+                        disabled
+                        className="w-full bg-neutral-100 border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs text-on-surface-variant cursor-not-allowed font-bold"
                       />
+                      <span className="text-[10px] text-on-surface-variant mt-1 block font-medium">
+                        Salary is managed strictly through Employee Management & Adjustments.
+                      </span>
                       {activeEmployee.dateOfJoined && (() => {
                         const joinDate = new Date(activeEmployee.dateOfJoined);
                         if (isNaN(joinDate.getTime())) return null;
