@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import { Employee, CorporateEntity } from '../types';
-import { calculatePayslip } from '../data';
+import { calculatePayslip, getPayslipLabel } from '../data';
 
 // Create styles for React PDF
 const styles = StyleSheet.create({
@@ -223,6 +223,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Helvetica-Bold',
     color: '#1c4e89',
+  },
+  itemDesc: {
+    fontSize: 7,
+    color: '#6b7280',
+    marginTop: 1,
   }
 });
 
@@ -233,6 +238,14 @@ interface PayslipPDFDocumentProps {
 
 export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps) => {
   const breakdown = calculatePayslip(employee);
+
+  // Determine dynamic brand primary accent color based on active subsidiary's configuration
+  let primaryColor = '#1c4e89'; // theme1 (blue)
+  if (entity?.theme === 'theme2') {
+    primaryColor = '#B30000'; // theme2 (red)
+  } else if (entity?.theme === 'theme3') {
+    primaryColor = '#D4AF37'; // theme3 (gold/yellow)
+  }
 
   // Helper formatting function
   const formatCurrency = (val: number) => {
@@ -247,13 +260,21 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
   const skbbkEmployeeVal = employee.skbbkEmployee !== undefined ? employee.skbbkEmployee : (isEligible ? parseFloat(((employee.socsoEmployee || 0) * 0.25).toFixed(2)) : 0);
   const skbbkEmployerVal = employee.skbbkEmployer !== undefined ? employee.skbbkEmployer : (isEligible ? parseFloat(((employee.socsoEmployer || 0) * 0.25).toFixed(2)) : 0);
 
-  // Allowances breakdown
+  // Complete allowances list matching the HTML Payslip preview
   const allowanceGen = employee.allowanceGeneral || 0;
   const allowanceTrans = employee.allowanceTransport !== undefined ? employee.allowanceTransport : (employee.transportAllowance || 0);
   const allowanceAccom = employee.allowanceAccommodation !== undefined ? employee.allowanceAccommodation : (employee.housingAllowance || 0);
+  const allowancePark = employee.allowanceParking || 0;
+  const allowanceMeal = employee.allowanceMeal || 0;
+  const allowancePhone = employee.allowancePhone || 0;
+
   const overtimeVal = employee.overtime || 0;
   const bonusVal = employee.bonusAmount !== undefined ? employee.bonusAmount : (employee.performanceBonus || 0);
   const commissionVal = employee.commissionAmount || 0;
+  const backPayVal = employee.backPayAmount || 0;
+  const awsVal = employee.awsAmount || 0;
+  const compensationVal = employee.compensationAmount || 0;
+  const reimbursementVal = employee.reimbursementAmount || 0;
 
   // Deductions breakdown
   const epfRateEmp = employee.epfRateEmployee || 11;
@@ -280,13 +301,13 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
         <Text style={styles.watermark}>ACME-CONFIDENTIAL-STRICTLY-PRIVATE</Text>
 
         {/* Company and Document Title Header */}
-        <View style={styles.headerContainer}>
+        <View style={[styles.headerContainer, { borderBottomColor: primaryColor }]}>
           <View style={styles.logoContainer}>
-            <View style={styles.logoPlaceholder}>
+            <View style={[styles.logoPlaceholder, { backgroundColor: primaryColor }]}>
               <Text style={styles.logoText}>HR</Text>
             </View>
             <View>
-              <Text style={styles.companyName}>{entity?.name || 'Corporate Subsidiary'}</Text>
+              <Text style={[styles.companyName, { color: primaryColor }]}>{entity?.name || 'Corporate Subsidiary'}</Text>
               {entity?.registrationNumber && (
                 <Text style={styles.companyReg}>Co. Reg: {entity.registrationNumber}</Text>
               )}
@@ -296,7 +317,7 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
             </View>
           </View>
           <View style={styles.titleContainer}>
-            <Text style={styles.title}>Payslip</Text>
+            <Text style={[styles.title, { color: primaryColor }]}>Payslip</Text>
             <Text style={styles.period}>October 2026</Text>
           </View>
         </View>
@@ -351,26 +372,12 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
         <View style={styles.tableContainer}>
           {/* Earnings Column */}
           <View style={styles.tableCol}>
-            <Text style={styles.tableHeader}>Earnings & Additions</Text>
+            <Text style={[styles.tableHeader, { color: primaryColor, borderBottomColor: primaryColor }]}>Earnings & Additions</Text>
             
             <View style={styles.tableRow}>
-              <Text style={styles.itemName}>Basic Salary</Text>
+              <Text style={styles.itemName}>{getPayslipLabel(employee.employmentType)}</Text>
               <Text style={styles.itemVal}>{formatCurrency(employee.basicSalary)}</Text>
             </View>
-
-            {allowanceTrans > 0 && (
-              <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Transport Allowance</Text>
-                <Text style={styles.itemVal}>{formatCurrency(allowanceTrans)}</Text>
-              </View>
-            )}
-
-            {allowanceAccom > 0 && (
-              <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Housing/Accommodation Allowance</Text>
-                <Text style={styles.itemVal}>{formatCurrency(allowanceAccom)}</Text>
-              </View>
-            )}
 
             {allowanceGen > 0 && (
               <View style={styles.tableRow}>
@@ -379,37 +386,118 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
               </View>
             )}
 
+            {allowanceTrans > 0 && (
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Transport Allowance</Text>
+                <Text style={styles.itemVal}>{formatCurrency(allowanceTrans)}</Text>
+              </View>
+            )}
+
+            {allowancePark > 0 && (
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Parking Allowance</Text>
+                <Text style={styles.itemVal}>{formatCurrency(allowancePark)}</Text>
+              </View>
+            )}
+
+            {allowanceMeal > 0 && (
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Meal Allowance</Text>
+                <Text style={styles.itemVal}>{formatCurrency(allowanceMeal)}</Text>
+              </View>
+            )}
+
+            {allowanceAccom > 0 && (
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Accommodation Allowance</Text>
+                <Text style={styles.itemVal}>{formatCurrency(allowanceAccom)}</Text>
+              </View>
+            )}
+
+            {allowancePhone > 0 && (
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Phone Allowance</Text>
+                <Text style={styles.itemVal}>{formatCurrency(allowancePhone)}</Text>
+              </View>
+            )}
+
             {overtimeVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Overtime Pay</Text>
+                <Text style={styles.itemName}>Overtime</Text>
                 <Text style={styles.itemVal}>{formatCurrency(overtimeVal)}</Text>
               </View>
             )}
 
             {bonusVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Performance Bonus</Text>
+                <View style={{ flexDirection: 'column' }}>
+                  <Text style={styles.itemName}>Performance Bonus</Text>
+                  {employee.bonusDesc && <Text style={styles.itemDesc}>{employee.bonusDesc}</Text>}
+                </View>
                 <Text style={styles.itemVal}>{formatCurrency(bonusVal)}</Text>
               </View>
             )}
 
             {commissionVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Commissions</Text>
+                <View style={{ flexDirection: 'column' }}>
+                  <Text style={styles.itemName}>Commissions</Text>
+                  {employee.commissionDesc && <Text style={styles.itemDesc}>{employee.commissionDesc}</Text>}
+                </View>
                 <Text style={styles.itemVal}>{formatCurrency(commissionVal)}</Text>
+              </View>
+            )}
+
+            {backPayVal > 0 && (
+              <View style={styles.tableRow}>
+                <View style={{ flexDirection: 'column' }}>
+                  <Text style={styles.itemName}>BackPay / Arrears</Text>
+                  {employee.backPayDesc && <Text style={styles.itemDesc}>{employee.backPayDesc}</Text>}
+                </View>
+                <Text style={styles.itemVal}>{formatCurrency(backPayVal)}</Text>
+              </View>
+            )}
+
+            {awsVal > 0 && (
+              <View style={styles.tableRow}>
+                <View style={{ flexDirection: 'column' }}>
+                  <Text style={styles.itemName}>AWS (13th Month)</Text>
+                  {employee.awsDesc && <Text style={styles.itemDesc}>{employee.awsDesc}</Text>}
+                </View>
+                <Text style={styles.itemVal}>{formatCurrency(awsVal)}</Text>
+              </View>
+            )}
+
+            {compensationVal > 0 && (
+              <View style={styles.tableRow}>
+                <View style={{ flexDirection: 'column' }}>
+                  <Text style={styles.itemName}>Compensation / Severance</Text>
+                  {employee.compensationDesc && <Text style={styles.itemDesc}>{employee.compensationDesc}</Text>}
+                </View>
+                <Text style={styles.itemVal}>{formatCurrency(compensationVal)}</Text>
+              </View>
+            )}
+
+            {reimbursementVal > 0 && (
+              <View style={[styles.tableRow, { backgroundColor: '#f9fafb', paddingHorizontal: 3 }]}>
+                <View style={{ flexDirection: 'column' }}>
+                  <Text style={styles.itemNameBold}>Reimbursements (Tax-Free)</Text>
+                  {employee.reimbursementDesc && <Text style={styles.itemDesc}>{employee.reimbursementDesc}</Text>}
+                </View>
+                <Text style={styles.itemNameBold}>{formatCurrency(reimbursementVal)}</Text>
               </View>
             )}
 
             {/* Total Earnings */}
             <View style={styles.tableRowBold}>
               <Text style={styles.itemNameBold}>Total Earnings & Additions</Text>
-              <Text style={styles.itemValBold}>{formatCurrency(breakdown.grossEarnings)}</Text>
+              <Text style={[styles.itemValBold, { color: primaryColor }]}>{formatCurrency(breakdown.grossEarnings + breakdown.reimbursementsSum)}</Text>
             </View>
           </View>
 
           {/* Deductions Column */}
           <View style={styles.tableCol}>
-            <Text style={styles.tableHeader}>Deductions</Text>
+            <Text style={[styles.tableHeader, { color: primaryColor, borderBottomColor: primaryColor }]}>Deductions</Text>
 
             {epfEmployeeValue > 0 && (
               <View style={styles.tableRow}>
@@ -469,7 +557,9 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
 
             {deductionOthersVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{employee.deductionOthersDesc || 'Other Deductions'}</Text>
+                <View style={{ flexDirection: 'column' }}>
+                  <Text style={styles.itemName}>{employee.deductionOthersDesc || 'Other Deductions'}</Text>
+                </View>
                 <Text style={styles.itemValRed}>{formatCurrency(deductionOthersVal)}</Text>
               </View>
             )}
@@ -514,13 +604,13 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
         </View>
 
         {/* Footer Summary / Net Pay */}
-        <View style={styles.summaryBlock}>
+        <View style={[styles.summaryBlock, { borderTopColor: primaryColor }]}>
           <Text style={styles.footnote}>
             This is a computer generated document. No signature is required.
           </Text>
           <View style={styles.netPayContainer}>
             <Text style={styles.netPayLabel}>Net Pay</Text>
-            <Text style={styles.netPayValue}>{formatCurrency(breakdown.netPay)}</Text>
+            <Text style={[styles.netPayValue, { color: primaryColor }]}>{formatCurrency(breakdown.netPay)}</Text>
           </View>
         </View>
       </Page>
