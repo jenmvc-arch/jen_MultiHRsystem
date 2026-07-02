@@ -3,33 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { 
-  CreditCard, 
-  Search, 
-  Plus, 
-  Printer, 
-  Download, 
-  Image, 
-  Mail, 
-  Share2, 
-  Eye, 
-  CheckCircle, 
-  TrendingUp,
-  Sliders,
-  DollarSign,
-  Briefcase,
-  FileText,
-  Globe,
-  Building2
-} from 'lucide-react';
-import { Employee, CorporateEntity, HistoricalPayrollRecord } from '../types';
-import { calculatePayslip, getPayslipLabel, calculateYtd, calculatePcb2026, recalculatePCBFromMonth } from '../data';
+import { CreditCard, Search, Plus, Printer, Download, Image, Mail, Share2, Eye, CheckCircle, TrendingUp, Sliders, DollarSign, Briefcase, FileText, Globe, Building2, Clock } from 'lucide-react';
+import { Employee, CorporateEntity, HistoricalPayrollRecord, PayrollRecord2026 } from '../types';
+import { calculatePayslip, getPayslipLabel, calculateYtd, calculatePcb2026, recalculatePCBFromMonth, getProratedBasicSalary, getStatutoryDeductions2026 } from '../data';
 import PayslipDocumentView from './PayslipDocumentView';
 
 interface PayrollViewProps {
   employees: Employee[];
   entities: CorporateEntity[];
+  payrollRecords2026?: PayrollRecord2026[];
+  onSavePayrollRecord2026?: (record: PayrollRecord2026) => void;
   onUpdateEmployeeSalary: (id: string, updates: Partial<Employee>) => void;
   onNavigateToDocument: (employeeId: string) => void;
   onShowNotification: (title: string, message: string) => void;
@@ -39,6 +22,8 @@ interface PayrollViewProps {
 export default function PayrollView({
   employees,
   entities,
+  payrollRecords2026 = [],
+  onSavePayrollRecord2026,
   onUpdateEmployeeSalary,
   onNavigateToDocument,
   onShowNotification,
@@ -49,7 +34,7 @@ export default function PayrollView({
   const [selectedEntityId, setSelectedEntityId] = useState<string>('all');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(employees[0]?.id || '');
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeSubTab, setActiveSubTab] = useState<'processing' | 'document'>('processing');
+  const [activeSubTab, setActiveSubTab] = useState<'processing' | 'document' | 'history'>('processing');
   
   // Local state to track which employees have been fully "Generated" (vs Draft status)
   const [generatedMap, setGeneratedMap] = useState<Record<string, boolean>>({});
@@ -110,7 +95,16 @@ export default function PayrollView({
     );
   }
 
-  const payrollBreakdown = calculatePayslip(activeEmployee);
+  const MONTHS_LIST = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  const parts = selectedPayPeriod.split(' ');
+  const monthName = parts[0] || 'October';
+  const payYear = Number(parts[1]) || 2026;
+  const payMonthIndex = MONTHS_LIST.indexOf(monthName) + 1;
+
+  const payrollBreakdown = calculatePayslip(activeEmployee, payMonthIndex, payYear);
 
   const isEligible = 
     activeEmployee.employmentType === 'Probationary' || 
@@ -129,7 +123,8 @@ export default function PayrollView({
     : 0;
 
   const startEdit = () => {
-    setTempBasic(activeEmployee.basicSalary || 0);
+    const proratedBasic = getProratedBasicSalary(activeEmployee, payMonthIndex, payYear);
+    setTempBasic(proratedBasic);
     const hasAnyAllowance = (
       (activeEmployee.allowanceGeneral || 0) > 0 ||
       (activeEmployee.allowanceTransport !== undefined ? activeEmployee.allowanceTransport : activeEmployee.transportAllowance || 0) > 0 ||
@@ -176,14 +171,66 @@ export default function PayrollView({
   };
 
   const saveEdit = () => {
-    const MONTHS_LIST = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    const parts = selectedPayPeriod.split(' ');
-    const monthName = parts[0] || 'October';
-    const payYear = Number(parts[1]) || 2026;
-    const payMonthIndex = MONTHS_LIST.indexOf(monthName) + 1;
+    const epfRateEmp = activeEmployee.epfRateEmployee || 11;
+    const epfRateEmployerCalculated = tempBasic <= 5000 ? 13 : 12;
+    const epfRateEmployer = activeEmployee.epfRateEmployer || epfRateEmployerCalculated;
+
+    const epfEmployeeVal = isEligible ? Math.round((tempBasic * epfRateEmp) / 100) : 0;
+    const epfEmployerVal = isEligible ? Math.round((tempBasic * epfRateEmployer) / 100) : 0;
+
+    const stat2026 = getStatutoryDeductions2026(tempBasic);
+    const socsoEmployee = isEligible ? stat2026.socsoEmployee : 0;
+    const socsoEmployer = isEligible ? stat2026.socsoEmployer : 0;
+    const eisEmployee = isEligible ? stat2026.eisEmployee : 0;
+    const eisEmployer = isEligible ? stat2026.eisEmployer : 0;
+
+    const totalAllowances = (hasAllowances ? allowanceGen : 0) + 
+                            (hasAllowances ? allowanceTrans : 0) + 
+                            (hasAllowances ? allowancePark : 0) + 
+                            (hasAllowances ? allowanceMl : 0) + 
+                            (hasAllowances ? allowanceAccom : 0) + 
+                            (hasAllowances ? allowancePh : 0);
+    const totalEarnings = tempBasic + totalAllowances + (activeEmployee.overtime || 0) + bonusAmt + commissionAmt + backPayAmt + awsAmt + compensationAmt + reimbursementAmt;
+    const totalDeductions = epfEmployeeVal + socsoEmployee + eisEmployee + tempTax + unpaidLeave + deductionInLieu + deductionCp38 + deductionOthers;
+    const netPay = parseFloat((totalEarnings - totalDeductions).toFixed(2));
+
+    const record2026: PayrollRecord2026 = {
+      id: `${activeEmployee.email}_${payMonthIndex}_${payYear}`,
+      employeeEmail: activeEmployee.email,
+      payrollMonth: payMonthIndex,
+      payrollYear: payYear,
+      basicSalary: tempBasic,
+      allowanceGeneral: hasAllowances ? allowanceGen : 0,
+      allowanceTransport: hasAllowances ? allowanceTrans : 0,
+      allowanceParking: hasAllowances ? allowancePark : 0,
+      allowanceMeal: hasAllowances ? allowanceMl : 0,
+      allowanceAccommodation: hasAllowances ? allowanceAccom : 0,
+      allowancePhone: hasAllowances ? allowancePh : 0,
+      overtime: activeEmployee.overtime || 0,
+      bonusAmount: bonusAmt,
+      commissionAmount: commissionAmt,
+      backPayAmount: backPayAmt,
+      awsAmount: awsAmt,
+      compensationAmount: compensationAmt,
+      reimbursementAmount: reimbursementAmt,
+      unpaidLeave: unpaidLeave,
+      deductionInLieu: deductionInLieu,
+      deductionCp38: deductionCp38,
+      deductionOthers: deductionOthers,
+      actualPCBDeducted: tempTax,
+      epfEmployee: epfEmployeeVal,
+      epfEmployer: epfEmployerVal,
+      socsoEmployee,
+      socsoEmployer,
+      eisEmployee,
+      eisEmployer,
+      netPay,
+      createdAt: new Date().toISOString()
+    };
+
+    if (onSavePayrollRecord2026) {
+      onSavePayrollRecord2026(record2026);
+    }
 
     const newRecord: HistoricalPayrollRecord = {
       payrollMonth: payMonthIndex,
@@ -193,7 +240,7 @@ export default function PayrollView({
       bonusAmount: bonusAmt,
       commissionAmount: commissionAmt,
       actualPCBDeducted: tempTax,
-      epfEmployee,
+      epfEmployee: epfEmployeeVal,
       zakat: 0,
       cp38: deductionCp38
     };
@@ -223,7 +270,7 @@ export default function PayrollView({
       
       bonusAmount: bonusAmt,
       bonusDesc: bonusDesc,
-      performanceBonus: bonusAmt, // sync with performanceBonus for legacy usage
+      performanceBonus: bonusAmt,
 
       commissionAmount: commissionAmt,
       commissionDesc: commissionDesc,
@@ -321,6 +368,16 @@ export default function PayrollView({
         >
           <FileText className="w-4 h-4" /> 2. Payslip Document Viewer (PDF)
         </button>
+        <button
+          onClick={() => setActiveSubTab('history')}
+          className={`flex-1 py-2 px-4 rounded font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            activeSubTab === 'history'
+              ? 'bg-primary text-white shadow-xs'
+              : 'text-on-surface-variant hover:text-on-surface hover:bg-neutral-100'
+          }`}
+        >
+          <Clock className="w-4 h-4" /> 3. Historical Salary Viewer
+        </button>
       </div>
 
       {/* Corporate Subsidiary Switcher Pills */}
@@ -353,7 +410,140 @@ export default function PayrollView({
         })}
       </div>
 
-      {activeSubTab === 'document' ? (
+      {activeSubTab === 'history' ? (
+        <div className="bg-white rounded-lg border border-neutral-border p-6 shadow-xs text-left space-y-6">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-neutral-border/60 pb-4">
+            <div>
+              <h2 className="text-lg font-bold text-primary flex items-center gap-2">
+                <Clock className="w-5 h-5 text-primary" /> 2026 Historical Salaries & Payroll Records
+              </h2>
+              <p className="text-xs text-on-surface-variant mt-1">
+                View YTD salary accumulation, statutory contributions, and net payout history for the selected employee.
+              </p>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Select Employee</label>
+              <select
+                value={selectedEmployeeId}
+                onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                className="rounded border border-neutral-border bg-surface p-1.5 focus:border-primary outline-none text-xs font-semibold text-primary cursor-pointer w-64"
+              >
+                {employees.map(emp => (
+                  <option key={emp.id} value={emp.id}>{emp.name} ({emp.email})</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {(() => {
+            const activeEmp = employees.find(e => e.id === selectedEmployeeId) || employees[0];
+            if (!activeEmp) {
+              return (
+                <div className="py-8 text-center text-xs text-on-surface-variant">
+                  No active employee found. Please register employees first.
+                </div>
+              );
+            }
+
+            const records = (payrollRecords2026 || []).filter(
+              r => r.employeeEmail.toLowerCase() === activeEmp.email.toLowerCase()
+            ).sort((a, b) => a.payrollMonth - b.payrollMonth);
+
+            if (records.length === 0) {
+              return (
+                <div className="py-12 border border-dashed border-neutral-border/60 rounded-lg text-center text-xs text-on-surface-variant space-y-2">
+                  <p className="font-bold text-on-surface">No Historical Records Found</p>
+                  <p>There are no saved payroll records for 2026 in the database sheet yet.</p>
+                </div>
+              );
+            }
+
+            // Calculations
+            const totalBasic = records.reduce((sum, r) => sum + r.basicSalary, 0);
+            const totalAllowances = records.reduce(
+              (sum, r) => sum + r.allowanceGeneral + r.allowanceTransport + r.allowanceParking + r.allowanceMeal + r.allowanceAccommodation + r.allowancePhone, 
+              0
+            );
+            const totalPcb = records.reduce((sum, r) => sum + r.actualPCBDeducted, 0);
+            const totalNet = records.reduce((sum, r) => sum + r.netPay, 0);
+
+            const monthsName = [
+              '', 'January', 'February', 'March', 'April', 'May', 'June',
+              'July', 'August', 'September', 'October', 'November', 'December'
+            ];
+
+            return (
+              <div className="space-y-6">
+                {/* YTD Stats Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-4 bg-neutral-50 border border-neutral-border/60 rounded-lg">
+                    <span className="text-[10px] font-bold text-on-surface-variant uppercase block">YTD Basic Salary</span>
+                    <span className="text-lg font-mono font-bold text-primary mt-1 block">RM {totalBasic.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                  </div>
+                  <div className="p-4 bg-neutral-50 border border-neutral-border/60 rounded-lg">
+                    <span className="text-[10px] font-bold text-on-surface-variant uppercase block">YTD Allowances</span>
+                    <span className="text-lg font-mono font-bold text-primary mt-1 block">RM {totalAllowances.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                  </div>
+                  <div className="p-4 bg-neutral-50 border border-neutral-border/60 rounded-lg">
+                    <span className="text-[10px] font-bold text-on-surface-variant uppercase block">YTD PCB Deducted</span>
+                    <span className="text-lg font-mono font-bold text-primary mt-1 block">RM {totalPcb.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                  </div>
+                  <div className="p-4 bg-neutral-50 border border-neutral-border/60 rounded-lg">
+                    <span className="text-[10px] font-bold text-on-surface-variant uppercase block">YTD Net Payout</span>
+                    <span className="text-lg font-mono font-bold text-green-700 mt-1 block">RM {totalNet.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                  </div>
+                </div>
+
+                {/* Detailed Table */}
+                <div className="border border-neutral-border rounded-lg overflow-hidden shadow-xs">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-neutral-50 border-b border-neutral-border font-bold text-on-surface-variant uppercase tracking-wider">
+                        <th className="p-3">Month</th>
+                        <th className="p-3 text-right">Basic Salary</th>
+                        <th className="p-3 text-right">Allowances</th>
+                        <th className="p-3 text-right">Overtime/Variable</th>
+                        <th className="p-3 text-right">EPF (Employee)</th>
+                        <th className="p-3 text-right">PCB Deducted</th>
+                        <th className="p-3 text-right font-bold text-green-700">Net Pay</th>
+                        <th className="p-3 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-border/50">
+                      {records.map(rec => {
+                        const recAllowances = rec.allowanceGeneral + rec.allowanceTransport + rec.allowanceParking + rec.allowanceMeal + rec.allowanceAccommodation + rec.allowancePhone;
+                        const recVariable = rec.overtime + rec.bonusAmount + rec.commissionAmount + rec.backPayAmount + rec.awsAmount + rec.compensationAmount;
+                        return (
+                          <tr key={rec.id} className="hover:bg-neutral-50/40">
+                            <td className="p-3 font-semibold text-primary">{monthsName[rec.payrollMonth]} {rec.payrollYear}</td>
+                            <td className="p-3 text-right font-mono">RM {rec.basicSalary.toFixed(2)}</td>
+                            <td className="p-3 text-right font-mono text-on-surface-variant">RM {recAllowances.toFixed(2)}</td>
+                            <td className="p-3 text-right font-mono text-on-surface-variant">RM {recVariable.toFixed(2)}</td>
+                            <td className="p-3 text-right font-mono text-on-surface-variant">RM {rec.epfEmployee.toFixed(2)}</td>
+                            <td className="p-3 text-right font-mono text-red-600">RM {rec.actualPCBDeducted.toFixed(2)}</td>
+                            <td className="p-3 text-right font-mono font-bold text-green-700">RM {rec.netPay.toFixed(2)}</td>
+                            <td className="p-3 text-center">
+                              <button
+                                onClick={() => {
+                                  setSelectedPayPeriod(`${monthsName[rec.payrollMonth]} ${rec.payrollYear}`);
+                                  setActiveSubTab('document');
+                                }}
+                                className="px-2.5 py-1 bg-primary/10 text-primary hover:bg-primary/20 rounded font-bold transition-colors cursor-pointer text-[10px]"
+                              >
+                                View Payslip
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      ) : activeSubTab === 'document' ? (
         <div className="bg-white rounded-lg border border-neutral-border overflow-hidden shadow-xs">
           <PayslipDocumentView
             employees={filteredEmployees}
@@ -574,6 +764,22 @@ export default function PayrollView({
                         onChange={(e) => setTempBasic(Number(e.target.value))} 
                         className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
                       />
+                      {activeEmployee.dateOfJoined && (() => {
+                        const joinParts = activeEmployee.dateOfJoined.split('-');
+                        const joinYear = Number(joinParts[0]);
+                        const joinMonth = Number(joinParts[1]);
+                        const joinDay = Number(joinParts[2]);
+                        if (joinYear === payYear && joinMonth === payMonthIndex) {
+                          const calendarDays = new Date(payYear, payMonthIndex, 0).getDate();
+                          const activeDays = calendarDays - joinDay + 1;
+                          return (
+                            <span className="text-[10px] text-primary font-bold mt-1 block">
+                              Joined {activeEmployee.dateOfJoined}. Prorated: {activeDays}/{calendarDays} days.
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                     {hasAllowances && (
                       <>

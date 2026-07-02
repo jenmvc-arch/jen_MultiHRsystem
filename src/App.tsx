@@ -20,7 +20,7 @@ import {
   Sun,
   Moon
 } from 'lucide-react';
-import { AppTab, Employee, EmployeePerformance, ReviewCycle, CorporateEntity, Candidate } from './types';
+import { AppTab, Employee, EmployeePerformance, ReviewCycle, CorporateEntity, Candidate, PayrollRecord2026 } from './types';
 import { 
   INITIAL_EMPLOYEES, 
   INITIAL_REVIEW_CYCLES, 
@@ -97,6 +97,7 @@ export default function App() {
   const [reviewCycles, setReviewCycles] = useState<ReviewCycle[]>(INITIAL_REVIEW_CYCLES);
   const [entities, setEntities] = useState<CorporateEntity[]>(INITIAL_ENTITIES);
   const [candidates, setCandidates] = useState<Candidate[]>(INITIAL_CANDIDATES);
+  const [payrollRecords2026, setPayrollRecords2026] = useState<PayrollRecord2026[]>([]);
   const [isSeeding, setIsSeeding] = useState(false);
   const [isLoadingDb, setIsLoadingDb] = useState(isGoogleConfigured);
 
@@ -523,6 +524,43 @@ export default function App() {
             dateJoined: c.dateJoined || ''
           })));
         }
+
+        // 5. Fetch payroll records for 2026
+        if (payload.payroll_records_2026) {
+          setPayrollRecords2026(payload.payroll_records_2026.map((r: any) => ({
+            id: r.id || '',
+            employeeEmail: r.employeeEmail || '',
+            payrollMonth: Number(r.payrollMonth || 1),
+            payrollYear: Number(r.payrollYear || 2026),
+            basicSalary: Number(r.basicSalary || 0),
+            allowanceGeneral: Number(r.allowanceGeneral || 0),
+            allowanceTransport: Number(r.allowanceTransport || 0),
+            allowanceParking: Number(r.allowanceParking || 0),
+            allowanceMeal: Number(r.allowanceMeal || 0),
+            allowanceAccommodation: Number(r.allowanceAccommodation || 0),
+            allowancePhone: Number(r.allowancePhone || 0),
+            overtime: Number(r.overtime || 0),
+            bonusAmount: Number(r.bonusAmount || 0),
+            commissionAmount: Number(r.commissionAmount || 0),
+            backPayAmount: Number(r.backPayAmount || 0),
+            awsAmount: Number(r.awsAmount || 0),
+            compensationAmount: Number(r.compensationAmount || 0),
+            reimbursementAmount: Number(r.reimbursementAmount || 0),
+            unpaidLeave: Number(r.unpaidLeave || 0),
+            deductionInLieu: Number(r.deductionInLieu || 0),
+            deductionCp38: Number(r.deductionCp38 || 0),
+            deductionOthers: Number(r.deductionOthers || 0),
+            actualPCBDeducted: Number(r.actualPCBDeducted || 0),
+            epfEmployee: Number(r.epfEmployee || 0),
+            epfEmployer: Number(r.epfEmployer || 0),
+            socsoEmployee: Number(r.socsoEmployee || 0),
+            socsoEmployer: Number(r.socsoEmployer || 0),
+            eisEmployee: Number(r.eisEmployee || 0),
+            eisEmployer: Number(r.eisEmployer || 0),
+            netPay: Number(r.netPay || 0),
+            createdAt: r.createdAt || ''
+          })));
+        }
       } catch (err) {
         console.error('[Google Sheets Load] Error loading database tables:', err);
       } finally {
@@ -920,6 +958,26 @@ export default function App() {
     }
   };
 
+  const handleSavePayrollRecord2026 = async (record: PayrollRecord2026) => {
+    setPayrollRecords2026(prev => {
+      const filtered = prev.filter(r => r.id !== record.id);
+      return [...filtered, record];
+    });
+
+    if (isGoogleConfigured) {
+      try {
+        const exists = payrollRecords2026.some(r => r.id === record.id);
+        if (exists) {
+          await googleSheetsClient.update('payroll_records_2026', record.id, record, 'id');
+        } else {
+          await googleSheetsClient.insert('payroll_records_2026', record);
+        }
+      } catch (err: any) {
+        console.error('[Google Sheets] Failed to save payroll record 2026:', err);
+      }
+    }
+  };
+
   const handleSavePerformance = async (updatedPerf: EmployeePerformance) => {
     setPerformances(prev => {
       const exists = prev.some(p => p.employeeId === updatedPerf.employeeId && p.reviewCycleId === updatedPerf.reviewCycleId);
@@ -1103,6 +1161,33 @@ export default function App() {
     );
   }
 
+  const employeesWithHistory = React.useMemo(() => {
+    return employees.map(emp => {
+      const records = payrollRecords2026.filter(r => r.employeeEmail.toLowerCase() === emp.email.toLowerCase());
+      const mapped = records.map(r => ({
+        payrollMonth: r.payrollMonth,
+        basicSalary: r.basicSalary,
+        allowanceGeneral: r.allowanceGeneral,
+        allowanceTransport: r.allowanceTransport,
+        allowanceParking: r.allowanceParking,
+        allowanceMeal: r.allowanceMeal,
+        allowanceAccommodation: r.allowanceAccommodation,
+        allowancePhone: r.allowancePhone,
+        overtime: r.overtime,
+        bonusAmount: r.bonusAmount,
+        commissionAmount: r.commissionAmount,
+        actualPCBDeducted: r.actualPCBDeducted,
+        epfEmployee: r.epfEmployee,
+        zakat: r.zakat,
+        cp38: r.deductionCp38
+      }));
+      return {
+        ...emp,
+        historicalPayrollRecords: mapped.sort((a, b) => a.payrollMonth - b.payrollMonth)
+      };
+    });
+  }, [employees, payrollRecords2026]);
+
   if (!isAuthenticated) {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
@@ -1220,7 +1305,7 @@ export default function App() {
         <main className="flex-1 overflow-y-auto bg-surface-container-low p-6 md:p-8 select-text">
           {currentTab === 'dashboard' && (
             <DashboardView 
-              employees={employees}
+              employees={employeesWithHistory}
               entities={entities}
               reviewCycles={reviewCycles}
               performances={performances}
@@ -1235,8 +1320,10 @@ export default function App() {
 
           {currentTab === 'payroll' && (
             <PayrollView 
-              employees={employees}
+              employees={employeesWithHistory}
               entities={entities}
+              payrollRecords2026={payrollRecords2026}
+              onSavePayrollRecord2026={handleSavePayrollRecord2026}
               onUpdateEmployeeSalary={handleUpdateEmployeeSalary}
               onNavigateToDocument={handleNavigateToDocument}
               onShowNotification={triggerNotification}
@@ -1246,7 +1333,7 @@ export default function App() {
 
           {currentTab === 'payslip-viewer' && (
             <PayslipDocumentView 
-              employees={employees}
+              employees={employeesWithHistory}
               selectedEmployeeId={selectedEmployeeId}
               onBack={() => setCurrentTab('payroll')}
               onShowNotification={triggerNotification}
@@ -1295,7 +1382,7 @@ export default function App() {
 
           {currentTab === 'reports' && (
             <ReportsView 
-              employees={employees}
+              employees={employeesWithHistory}
               performances={performances}
               onShowNotification={triggerNotification}
             />

@@ -158,7 +158,37 @@ export function calculatePcb2026(
   return parseFloat((annualTax / 12).toFixed(2));
 }
 
-export function calculatePayslip(employee: Employee): PayslipBreakdown {
+export function getProratedBasicSalary(employee: Employee, month: number, year: number): number {
+  if (!employee.dateOfJoined) return employee.basicSalary;
+  const joinParts = employee.dateOfJoined.split('-');
+  const joinYear = Number(joinParts[0]);
+  const joinMonth = Number(joinParts[1]);
+  const joinDay = Number(joinParts[2]);
+
+  if (isNaN(joinYear) || isNaN(joinMonth) || isNaN(joinDay)) return employee.basicSalary;
+
+  // If the pay period is before join year/month: salary is 0
+  if (year < joinYear || (year === joinYear && month < joinMonth)) {
+    return 0;
+  }
+
+  // If the pay period is the join year/month: proration occurs
+  if (year === joinYear && month === joinMonth) {
+    const calendarDays = new Date(year, month, 0).getDate(); // days in that month
+    const activeDays = calendarDays - joinDay + 1;
+    if (activeDays <= 0) return 0;
+    return parseFloat(((employee.basicSalary / calendarDays) * activeDays).toFixed(2));
+  }
+
+  // If the pay period is after join year/month: full salary
+  return employee.basicSalary;
+}
+
+export function calculatePayslip(employee: Employee, month?: number, year?: number): PayslipBreakdown {
+  const basicSalary = (month !== undefined && year !== undefined)
+    ? getProratedBasicSalary(employee, month, year)
+    : (employee.basicSalary || 0);
+
   // Compute individual allowances, falling back to old ones for backwards compatibility
   const allowanceGen = employee.allowanceGeneral || 0;
   const allowanceTrans = employee.allowanceTransport !== undefined ? employee.allowanceTransport : (employee.transportAllowance || 0);
@@ -182,7 +212,7 @@ export function calculatePayslip(employee: Employee): PayslipBreakdown {
 
   // Gross Earnings subject to statutory deductions / standard gross
   const grossEarnings = 
-    employee.basicSalary + 
+    basicSalary + 
     allowancesSum + 
     overtimeVal + 
     bonusVal + 
@@ -197,14 +227,14 @@ export function calculatePayslip(employee: Employee): PayslipBreakdown {
     (employee.employmentType === 'Independent Contractor / Freelance' && employee.eligibleForStatutory === 'Yes');
 
   const epfRateEmp = employee.epfRateEmployee || 11;
-  const epfRateEmployerCalculated = employee.basicSalary <= 5000 ? 13 : 12;
+  const epfRateEmployerCalculated = basicSalary <= 5000 ? 13 : 12;
   const epfRateEmployer = employee.epfRateEmployer || epfRateEmployerCalculated;
 
-  const epfEmployeeValue = isEligible ? Math.round((employee.basicSalary * epfRateEmp) / 100) : 0;
-  const epfEmployerValue = isEligible ? Math.round((employee.basicSalary * epfRateEmployer) / 100) : 0;
+  const epfEmployeeValue = isEligible ? Math.round((basicSalary * epfRateEmp) / 100) : 0;
+  const epfEmployerValue = isEligible ? Math.round((basicSalary * epfRateEmployer) / 100) : 0;
 
   // Calculate 2026 dynamic SOCSO and EIS
-  const stat2026 = getStatutoryDeductions2026(employee.basicSalary);
+  const stat2026 = getStatutoryDeductions2026(basicSalary);
   
   const socsoEmployeeVal = isEligible ? stat2026.socsoEmployee : 0;
   const socsoEmployerVal = isEligible ? stat2026.socsoEmployer : 0;
@@ -219,10 +249,10 @@ export function calculatePayslip(employee: Employee): PayslipBreakdown {
 
   // Dynamic 2026 PCB calculation if basicSalary changed from original or if taxPcb is missing
   const baseEmp = INITIAL_EMPLOYEES.find(e => e.id === employee.id);
-  const isSalaryChanged = baseEmp ? baseEmp.basicSalary !== employee.basicSalary : true;
+  const isSalaryChanged = baseEmp ? baseEmp.basicSalary !== basicSalary : true;
   const taxPcbVal = isEligible 
     ? (isSalaryChanged || employee.taxPcb === undefined
-       ? calculatePcb2026(employee.basicSalary, employee.maritalStatus || 'Single', employee.spouseIsWorking || 'No', employee.dependants?.length || 0, epfEmployeeValue)
+       ? calculatePcb2026(basicSalary, employee.maritalStatus || 'Single', employee.spouseIsWorking || 'No', employee.dependants?.length || 0, epfEmployeeValue)
        : employee.taxPcb)
     : 0;
 

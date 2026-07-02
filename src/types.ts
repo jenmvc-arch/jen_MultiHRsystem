@@ -394,3 +394,37 @@ export interface HistoricalPCBMonthContext {
   projectedRemainingNormalRemuneration: number;
   remainingApplicableMonths: number;
 }
+
+export interface PayrollRecord2026 {
+  id: string; // employeeEmail_month_year
+  employeeEmail: string;
+  payrollMonth: number;
+  payrollYear: number;
+  basicSalary: number;
+  allowanceGeneral: number;
+  allowanceTransport: number;
+  allowanceParking: number;
+  allowanceMeal: number;
+  allowanceAccommodation: number;
+  allowancePhone: number;
+  overtime: number;
+  bonusAmount: number;
+  commissionAmount: number;
+  backPayAmount: number;
+  awsAmount: number;
+  compensationAmount: number;
+  reimbursementAmount: number;
+  unpaidLeave: number;
+  deductionInLieu: number;
+  deductionCp38: number;
+  deductionOthers: number;
+  actualPCBDeducted: number;
+  epfEmployee: number;
+  epfEmployer: number;
+  socsoEmployee: number;
+  socsoEmployer: number;
+  eisEmployee: number;
+  eisEmployer: number;
+  netPay: number;
+  createdAt: string;
+}
