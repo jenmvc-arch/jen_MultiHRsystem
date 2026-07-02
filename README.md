@@ -112,16 +112,22 @@ function doPost(e) {
     
     const sheet = ss.getSheetByName(payload.sheetName);
     if (!sheet) throw new Error("Sheet not found: " + payload.sheetName);
-    const headers = SCHEMA[payload.sheetName];
+    
+    // Dynamic self-healing header mapping: locates columns by checking actual sheet headers rather than hardcoded SCHEMA
+    const allRows = sheet.getDataRange().getValues();
+    const actualHeaders = allRows[0] || [];
+    const normalizedHeaders = actualHeaders.map(h => String(h).trim().toLowerCase());
     
     if (action === "insert") {
-      const newRow = headers.map(h => data[h] !== undefined ? data[h] : "");
+      const newRow = actualHeaders.map(h => data[h] !== undefined ? data[h] : "");
       sheet.appendRow(newRow);
       return ContentService.createTextOutput(JSON.stringify({ success: true }))
         .setMimeType(ContentService.MimeType.JSON);
     } else if (action === "update") {
-      const allRows = sheet.getDataRange().getValues();
-      const idColIndex = headers.indexOf(payload.keyName || "id");
+      const keyToFind = String(payload.keyName || "id").trim().toLowerCase();
+      const idColIndex = normalizedHeaders.indexOf(keyToFind);
+      if (idColIndex === -1) throw new Error("Key column '" + (payload.keyName || "id") + "' not found in sheet headers");
+      
       let foundIndex = -1;
       for (let i = 1; i < allRows.length; i++) {
         if (String(allRows[i][idColIndex]) === String(payload.keyValue)) {
@@ -129,14 +135,16 @@ function doPost(e) {
           break;
         }
       }
-      if (foundIndex === -1) throw new Error("Record not found");
-      const updatedRow = headers.map((h, j) => data[h] !== undefined ? data[h] : allRows[foundIndex - 1][j]);
-      sheet.getRange(foundIndex, 1, 1, headers.length).setValues([updatedRow]);
+      if (foundIndex === -1) throw new Error("Record not found for value: " + payload.keyValue);
+      const updatedRow = actualHeaders.map((h, j) => data[h] !== undefined ? data[h] : allRows[foundIndex - 1][j]);
+      sheet.getRange(foundIndex, 1, 1, actualHeaders.length).setValues([updatedRow]);
       return ContentService.createTextOutput(JSON.stringify({ success: true }))
         .setMimeType(ContentService.MimeType.JSON);
     } else if (action === "delete") {
-      const allRows = sheet.getDataRange().getValues();
-      const idColIndex = headers.indexOf(payload.keyName || "id");
+      const keyToFind = String(payload.keyName || "id").trim().toLowerCase();
+      const idColIndex = normalizedHeaders.indexOf(keyToFind);
+      if (idColIndex === -1) throw new Error("Key column '" + (payload.keyName || "id") + "' not found in sheet headers");
+      
       let foundIndex = -1;
       for (let i = 1; i < allRows.length; i++) {
         if (String(allRows[i][idColIndex]) === String(payload.keyValue)) {
@@ -148,12 +156,11 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({ success: true }))
         .setMimeType(ContentService.MimeType.JSON);
     } else if (action === "upsert") {
-      const allRows = sheet.getDataRange().getValues();
       let foundIndex = -1;
       for (let i = 1; i < allRows.length; i++) {
         let match = true;
         for (let key in payload.query) {
-          const colIdx = headers.indexOf(key);
+          const colIdx = normalizedHeaders.indexOf(String(key).trim().toLowerCase());
           if (colIdx === -1 || String(allRows[i][colIdx]) !== String(payload.query[key])) {
             match = false;
             break;
@@ -165,10 +172,10 @@ function doPost(e) {
         }
       }
       if (foundIndex !== -1) {
-        const updatedRow = headers.map((h, j) => data[h] !== undefined ? data[h] : allRows[foundIndex - 1][j]);
-        sheet.getRange(foundIndex, 1, 1, headers.length).setValues([updatedRow]);
+        const updatedRow = actualHeaders.map((h, j) => data[h] !== undefined ? data[h] : allRows[foundIndex - 1][j]);
+        sheet.getRange(foundIndex, 1, 1, actualHeaders.length).setValues([updatedRow]);
       } else {
-        const newRow = headers.map(h => data[h] !== undefined ? data[h] : "");
+        const newRow = actualHeaders.map(h => data[h] !== undefined ? data[h] : "");
         sheet.appendRow(newRow);
       }
       return ContentService.createTextOutput(JSON.stringify({ success: true }))
