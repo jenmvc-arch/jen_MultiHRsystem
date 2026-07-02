@@ -41,7 +41,7 @@ export const googleSheetsClient = {
     if (!isGoogleConfigured) return;
     const response = await fetch(googleScriptUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'insert',
         sheetName,
@@ -59,7 +59,7 @@ export const googleSheetsClient = {
     if (!isGoogleConfigured) return;
     const response = await fetch(googleScriptUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'update',
         sheetName,
@@ -79,7 +79,7 @@ export const googleSheetsClient = {
     if (!isGoogleConfigured) return;
     const response = await fetch(googleScriptUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'delete',
         sheetName,
@@ -98,7 +98,7 @@ export const googleSheetsClient = {
     if (!isGoogleConfigured) return;
     const response = await fetch(googleScriptUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'upsert',
         sheetName,
@@ -124,7 +124,7 @@ export const googleSheetsClient = {
           const base64 = (reader.result as string).split(',')[1];
           const response = await fetch(googleScriptUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify({
               action: 'upload_file',
               base64,
