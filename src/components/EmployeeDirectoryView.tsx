@@ -171,8 +171,8 @@ export default function EmployeeDirectoryView({
     setEditBankName(selectedEmployee.bankName || '');
     setEditAccountNo(selectedEmployee.accountNo || '');
     setEditBasicSalary(selectedEmployee.basicSalary);
-    setEditHousingAllowance(selectedEmployee.housingAllowance || 0);
-    setEditTransportAllowance(selectedEmployee.transportAllowance || 0);
+    setEditHousingAllowance(selectedEmployee.allowanceAccommodation !== undefined ? selectedEmployee.allowanceAccommodation : selectedEmployee.housingAllowance || 0);
+    setEditTransportAllowance(selectedEmployee.allowanceTransport !== undefined ? selectedEmployee.allowanceTransport : selectedEmployee.transportAllowance || 0);
     setEditAllowanceGeneral(selectedEmployee.allowanceGeneral || 0);
     setEditAllowanceParking(selectedEmployee.allowanceParking || 0);
     setEditAllowanceMeal(selectedEmployee.allowanceMeal || 0);
@@ -205,7 +205,9 @@ export default function EmployeeDirectoryView({
       accountNo: editAccountNo,
       basicSalary: Number(editBasicSalary),
       housingAllowance: Number(editHousingAllowance),
+      allowanceAccommodation: Number(editHousingAllowance),
       transportAllowance: Number(editTransportAllowance),
+      allowanceTransport: Number(editTransportAllowance),
       allowanceGeneral: Number(editAllowanceGeneral),
       allowanceParking: Number(editAllowanceParking),
       allowanceMeal: Number(editAllowanceMeal),
@@ -436,12 +438,9 @@ export default function EmployeeDirectoryView({
     const updates: Partial<Employee> = {
       maritalStatus: editMaritalStatus,
       taxNumber: editTaxNumber,
-      epfNumber: editEpfNumber
+      epfNumber: editEpfNumber,
+      eligibleForStatutory: editEligibleForStatutory
     };
-
-    if (selectedEmployee.employmentType === 'Independent Contractor / Freelance') {
-      updates.eligibleForStatutory = editEligibleForStatutory;
-    }
 
     if (editMaritalStatus === 'Married') {
       updates.spouseName = editSpouseName;

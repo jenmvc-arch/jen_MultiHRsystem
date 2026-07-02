@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   FileText, 
   Printer, 
@@ -86,10 +86,29 @@ export default function TaxSettingsView({
     window.print();
   };
 
+  // Synchronize TP3 state when selected employee changes
+  useEffect(() => {
+    if (activeEmployee) {
+      setTp3PrevSalary(activeEmployee.tp3Data?.accumulatedPriorRemuneration?.toString() || '0');
+      setTp3PrevEpf(activeEmployee.tp3Data?.accumulatedPriorEPF?.toString() || '0');
+      setTp3PrevSocso(activeEmployee.tp3Data?.accumulatedPriorSocso?.toString() || '0');
+      setTp3PrevPcb(activeEmployee.tp3Data?.accumulatedPriorPCB?.toString() || '0');
+    }
+  }, [selectedEmployeeId, activeEmployee]);
+
   const handleSaveTP3 = () => {
+    onUpdateEmployee(activeEmployee.id, {
+      tp3Data: {
+        accumulatedPriorRemuneration: Number(tp3PrevSalary),
+        accumulatedPriorEPF: Number(tp3PrevEpf),
+        accumulatedPriorPCB: Number(tp3PrevPcb),
+        accumulatedPriorSocso: Number(tp3PrevSocso)
+      }
+    });
     onShowNotification(
       'TP3 Record Synced',
-      `Prior employment earnings of RM ${Number(tp3PrevSalary).toLocaleString()} have been registered for ${activeEmployee.name} to optimize remaining 2026 PCB calculations.`
+      `Prior employment earnings of RM ${Number(tp3PrevSalary).toLocaleString()} have been registered for ${activeEmployee.name} to optimize remaining 2026 PCB calculations.`,
+      'success'
     );
   };
 

@@ -564,7 +564,10 @@ export default function App() {
   const [companyName, setCompanyName] = useState('Acme Global Enterprise');
   const [currencySymbol, setCurrencySymbol] = useState('RM');
   const [companyLogoUrl, setCompanyLogoUrl] = useState('');
-  const [taxRate, setTaxRate] = useState(11);
+  const [taxRate, setTaxRate] = useState(() => {
+    const saved = localStorage.getItem('company_tax_rate');
+    return saved ? Number(saved) : 11;
+  });
 
   // Keep settings states in sync with active subsidiary (activeEntity)
   useEffect(() => {
@@ -1310,15 +1313,29 @@ export default function App() {
                       <input
                         type="file"
                         accept="image/*"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
-                          if (file) {
+                          if (!file) return;
+
+                          if (!isGoogleConfigured) {
+                            // Offline fallback
                             const reader = new FileReader();
                             reader.onloadend = () => {
                               setCompanyLogoUrl(reader.result as string);
                               triggerNotification('Logo Uploaded', 'New company logo loaded in preview. Click Apply System Changes to save.', 'success');
                             };
                             reader.readAsDataURL(file);
+                            return;
+                          }
+
+                          try {
+                            triggerNotification('Uploading Logo', 'Uploading company logo to Google Drive...', 'info');
+                            const publicUrl = await googleSheetsClient.uploadFile(file);
+                            setCompanyLogoUrl(publicUrl);
+                            triggerNotification('Logo Uploaded', 'New company logo uploaded successfully. Click Apply System Changes to save.', 'success');
+                          } catch (err: any) {
+                            console.error('[Google Drive Logo Upload] Error:', err);
+                            triggerNotification('Upload Error', `Could not upload logo: ${err.message}`, 'info');
                           }
                         }}
                         className="w-full text-xs text-on-surface-variant file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
@@ -1389,6 +1406,7 @@ export default function App() {
               <div className="pt-6 border-t border-neutral-border flex justify-end">
                 <button 
                   onClick={async () => {
+                    localStorage.setItem('company_tax_rate', String(taxRate));
                     if (activeEntity) {
                       await handleUpdateEntity(activeEntity.id, {
                         name: companyName,

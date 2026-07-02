@@ -18,6 +18,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { CorporateEntity, Employee } from '../types';
+import { googleSheetsClient, isGoogleConfigured } from '../lib/googleSheetsClient';
 
 interface EntitiesViewProps {
   entities: CorporateEntity[];
@@ -53,15 +54,28 @@ export default function EntitiesView({
   // Active viewing state to list registered employees under a clicked subsidiary card
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>('ENT-01');
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+
+    if (!isGoogleConfigured) {
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormLogoUrl(reader.result as string);
         onShowNotification('Logo Processed', 'The company logo has been successfully uploaded and stored locally.');
       };
       reader.readAsDataURL(file);
+      return;
+    }
+
+    try {
+      onShowNotification('Uploading Logo', 'Uploading company logo to Google Drive...');
+      const publicUrl = await googleSheetsClient.uploadFile(file);
+      setFormLogoUrl(publicUrl);
+      onShowNotification('Logo Uploaded', 'Company logo uploaded successfully.');
+    } catch (err: any) {
+      console.error('[Google Drive Logo Upload] Error:', err);
+      onShowNotification('Upload Error', `Could not upload logo: ${err.message}`);
     }
   };
 
