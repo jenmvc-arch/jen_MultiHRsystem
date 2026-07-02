@@ -101,12 +101,12 @@ export default function EntitiesView({
 
   const handleOpenEditModal = (entity: CorporateEntity) => {
     setEditingEntity(entity);
-    setFormName(entity.name);
-    setFormRegNo(entity.registrationNumber);
-    setFormAddress(entity.address);
-    setFormTaxRef(entity.taxReferenceNo);
-    setFormEpfRef(entity.epfReferenceNo);
-    setFormSocsoRef(entity.socsoReferenceNo);
+    setFormName(String(entity.name || ''));
+    setFormRegNo(String(entity.registrationNumber || ''));
+    setFormAddress(String(entity.address || ''));
+    setFormTaxRef(String(entity.taxReferenceNo || ''));
+    setFormEpfRef(String(entity.epfReferenceNo || ''));
+    setFormSocsoRef(String(entity.socsoReferenceNo || ''));
     setFormCurrency(entity.currency);
     setFormIsActive(entity.isActive);
     setFormLogoUrl(entity.logoUrl || '');
@@ -116,19 +116,21 @@ export default function EntitiesView({
 
   const handleCreateEntitySubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName.trim() || !formRegNo.trim()) {
+    const nameStr = String(formName).trim();
+    const regNoStr = String(formRegNo).trim();
+    if (!nameStr || !regNoStr) {
       onShowNotification('Validation Error', 'Subsidiary Name and Registration Number are required.');
       return;
     }
 
     const newEntity: CorporateEntity = {
-      id: formName.trim(),
-      name: formName.trim(),
-      registrationNumber: formRegNo.trim(),
-      address: formAddress.trim() || 'No official registered office address registered.',
-      taxReferenceNo: formTaxRef.trim() || 'Pending Inland Revenue allocation',
-      epfReferenceNo: formEpfRef.trim() || 'Pending EPF registration',
-      socsoReferenceNo: formSocsoRef.trim() || 'Pending SOCSO registration',
+      id: nameStr,
+      name: nameStr,
+      registrationNumber: regNoStr,
+      address: String(formAddress).trim() || 'No official registered office address registered.',
+      taxReferenceNo: String(formTaxRef).trim() || 'Pending Inland Revenue allocation',
+      epfReferenceNo: String(formEpfRef).trim() || 'Pending EPF registration',
+      socsoReferenceNo: String(formSocsoRef).trim() || 'Pending SOCSO registration',
       currency: formCurrency,
       isActive: formIsActive,
       logoUrl: formLogoUrl || undefined,
@@ -137,7 +139,7 @@ export default function EntitiesView({
 
     onAddEntity(newEntity);
     setIsAddModalOpen(false);
-    setSelectedEntityId(newId);
+    setSelectedEntityId(newEntity.id);
     onShowNotification('Subsidiary Added', `"${newEntity.name}" has been registered with customized logo & branding.`);
   };
 
@@ -145,18 +147,20 @@ export default function EntitiesView({
     e.preventDefault();
     if (!editingEntity) return;
 
-    if (!formName.trim() || !formRegNo.trim()) {
+    const nameStr = String(formName).trim();
+    const regNoStr = String(formRegNo).trim();
+    if (!nameStr || !regNoStr) {
       onShowNotification('Validation Error', 'Subsidiary Name and Registration Number are required.');
       return;
     }
 
     const updates: Partial<CorporateEntity> = {
-      name: formName.trim(),
-      registrationNumber: formRegNo.trim(),
-      address: formAddress.trim(),
-      taxReferenceNo: formTaxRef.trim(),
-      epfReferenceNo: formEpfRef.trim(),
-      socsoReferenceNo: formSocsoRef.trim(),
+      name: nameStr,
+      registrationNumber: regNoStr,
+      address: String(formAddress).trim(),
+      taxReferenceNo: String(formTaxRef).trim(),
+      epfReferenceNo: String(formEpfRef).trim(),
+      socsoReferenceNo: String(formSocsoRef).trim(),
       currency: formCurrency,
       isActive: formIsActive,
       logoUrl: formLogoUrl || undefined,
@@ -166,7 +170,7 @@ export default function EntitiesView({
     onUpdateEntity(editingEntity.id, updates);
     setIsEditModalOpen(false);
     setEditingEntity(null);
-    onShowNotification('Subsidiary Updated', `Corporate details & branding for ${formName} have been updated.`);
+    onShowNotification('Subsidiary Updated', `Corporate details & branding for ${nameStr} have been updated.`);
   };
 
   const activeEntityEmployees = employees.filter(emp => emp.entityId === selectedEntityId);
