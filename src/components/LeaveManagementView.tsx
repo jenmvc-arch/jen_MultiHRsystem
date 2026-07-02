@@ -39,68 +39,7 @@ interface LeaveManagementViewProps {
   onShowNotification: (title: string, message: string) => void;
 }
 
-const INITIAL_LEAVE_REQUESTS: LeaveRequest[] = [
-  {
-    id: 'LR-001',
-    employeeId: 'EMP-84729',
-    employeeName: 'Sarah Jenkins',
-    leaveType: 'Annual Leave',
-    startDate: '2026-06-15',
-    endDate: '2026-06-18',
-    totalDays: 4,
-    reason: 'Family wedding back in Penang.',
-    status: 'Approved',
-    appliedDate: '2026-06-01'
-  },
-  {
-    id: 'LR-002',
-    employeeId: 'EMP-001',
-    employeeName: 'Jane Doe',
-    leaveType: 'Sick Leave',
-    startDate: '2026-06-24',
-    endDate: '2026-06-24',
-    totalDays: 1,
-    reason: 'Medical checkup and dental treatment.',
-    status: 'Approved',
-    appliedDate: '2026-06-23'
-  },
-  {
-    id: 'LR-003',
-    employeeId: 'EMP-042',
-    employeeName: 'Alan Smith',
-    leaveType: 'Emergency Leave',
-    startDate: '2026-07-01',
-    endDate: '2026-07-02',
-    totalDays: 2,
-    reason: 'Household plumbing issue and urgent repair.',
-    status: 'Pending',
-    appliedDate: '2026-06-28'
-  },
-  {
-    id: 'LR-004',
-    employeeId: 'EMP-001',
-    employeeName: 'Jane Doe',
-    leaveType: 'Annual Leave',
-    startDate: '2026-07-10',
-    endDate: '2026-07-14',
-    totalDays: 5,
-    reason: 'Summer vacation and family trip.',
-    status: 'Pending',
-    appliedDate: '2026-06-29'
-  },
-  {
-    id: 'LR-005',
-    employeeId: 'EMP-84729',
-    employeeName: 'Sarah Jenkins',
-    leaveType: 'Annual Leave',
-    startDate: '2026-06-29',
-    endDate: '2026-06-30',
-    totalDays: 2,
-    reason: 'Rest & relaxation block.',
-    status: 'Approved',
-    appliedDate: '2026-06-20'
-  }
-];
+const INITIAL_LEAVE_REQUESTS: LeaveRequest[] = [];
 
 export default function LeaveManagementView({
   employees,

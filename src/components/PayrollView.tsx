@@ -52,10 +52,7 @@ export default function PayrollView({
   const [activeSubTab, setActiveSubTab] = useState<'processing' | 'document'>('processing');
   
   // Local state to track which employees have been fully "Generated" (vs Draft status)
-  const [generatedMap, setGeneratedMap] = useState<Record<string, boolean>>({
-    'EMP-001': true, // Jane Doe generated
-    'EMP-84729': true // Sarah Jenkins generated
-  });
+  const [generatedMap, setGeneratedMap] = useState<Record<string, boolean>>({});
 
   // Edit states for dynamic live testing!
   const [isEditing, setIsEditing] = useState(false);
