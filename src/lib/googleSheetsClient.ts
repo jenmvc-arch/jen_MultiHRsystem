@@ -39,6 +39,8 @@ export const googleSheetsClient = {
 
   async insert(sheetName: string, data: any): Promise<void> {
     if (!isGoogleConfigured) return;
+    console.log('[Google Sheets Client] Inserting record:', { sheetName, data });
+    console.log('[Google Sheets Client] Target Web App URL:', googleScriptUrl);
     const response = await fetch(googleScriptUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
@@ -57,6 +59,8 @@ export const googleSheetsClient = {
 
   async update(sheetName: string, keyValue: string, data: any, keyName: string = 'id'): Promise<void> {
     if (!isGoogleConfigured) return;
+    console.log('[Google Sheets Client] Updating record:', { sheetName, keyName, keyValue, data });
+    console.log('[Google Sheets Client] Target Web App URL:', googleScriptUrl);
     const response = await fetch(googleScriptUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
@@ -77,6 +81,8 @@ export const googleSheetsClient = {
 
   async delete(sheetName: string, keyValue: string, keyName: string = 'id'): Promise<void> {
     if (!isGoogleConfigured) return;
+    console.log('[Google Sheets Client] Deleting record:', { sheetName, keyName, keyValue });
+    console.log('[Google Sheets Client] Target Web App URL:', googleScriptUrl);
     const response = await fetch(googleScriptUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
@@ -96,6 +102,8 @@ export const googleSheetsClient = {
 
   async upsert(sheetName: string, query: Record<string, string>, data: any): Promise<void> {
     if (!isGoogleConfigured) return;
+    console.log('[Google Sheets Client] Upserting record:', { sheetName, query, data });
+    console.log('[Google Sheets Client] Target Web App URL:', googleScriptUrl);
     const response = await fetch(googleScriptUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
