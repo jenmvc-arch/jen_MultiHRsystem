@@ -101,6 +101,33 @@ export default function App() {
   const [isSeeding, setIsSeeding] = useState(false);
   const [isLoadingDb, setIsLoadingDb] = useState(isGoogleConfigured);
 
+  const employeesWithHistory = React.useMemo(() => {
+    return employees.map(emp => {
+      const records = (payrollRecords2026 || []).filter(r => r && r.employeeEmail && emp.email && r.employeeEmail.toLowerCase() === emp.email.toLowerCase());
+      const mapped = records.map(r => ({
+        payrollMonth: r.payrollMonth,
+        basicSalary: r.basicSalary,
+        allowanceGeneral: r.allowanceGeneral,
+        allowanceTransport: r.allowanceTransport,
+        allowanceParking: r.allowanceParking,
+        allowanceMeal: r.allowanceMeal,
+        allowanceAccommodation: r.allowanceAccommodation,
+        allowancePhone: r.allowancePhone,
+        overtime: r.overtime,
+        bonusAmount: r.bonusAmount,
+        commissionAmount: r.commissionAmount,
+        actualPCBDeducted: r.actualPCBDeducted,
+        epfEmployee: r.epfEmployee,
+        zakat: r.zakat,
+        cp38: r.deductionCp38
+      }));
+      return {
+        ...emp,
+        historicalPayrollRecords: mapped.sort((a, b) => a.payrollMonth - b.payrollMonth)
+      };
+    });
+  }, [employees, payrollRecords2026]);
+
   const handleSeedDatabase = async () => {
     setIsSeeding(true);
     triggerNotification('Seeding Database', 'Syncing preset data with your Google Sheets...', 'info');
@@ -1161,32 +1188,6 @@ export default function App() {
     );
   }
 
-  const employeesWithHistory = React.useMemo(() => {
-    return employees.map(emp => {
-      const records = (payrollRecords2026 || []).filter(r => r && r.employeeEmail && emp.email && r.employeeEmail.toLowerCase() === emp.email.toLowerCase());
-      const mapped = records.map(r => ({
-        payrollMonth: r.payrollMonth,
-        basicSalary: r.basicSalary,
-        allowanceGeneral: r.allowanceGeneral,
-        allowanceTransport: r.allowanceTransport,
-        allowanceParking: r.allowanceParking,
-        allowanceMeal: r.allowanceMeal,
-        allowanceAccommodation: r.allowanceAccommodation,
-        allowancePhone: r.allowancePhone,
-        overtime: r.overtime,
-        bonusAmount: r.bonusAmount,
-        commissionAmount: r.commissionAmount,
-        actualPCBDeducted: r.actualPCBDeducted,
-        epfEmployee: r.epfEmployee,
-        zakat: r.zakat,
-        cp38: r.deductionCp38
-      }));
-      return {
-        ...emp,
-        historicalPayrollRecords: mapped.sort((a, b) => a.payrollMonth - b.payrollMonth)
-      };
-    });
-  }, [employees, payrollRecords2026]);
 
   if (!isAuthenticated) {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
