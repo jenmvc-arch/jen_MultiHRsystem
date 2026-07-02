@@ -545,9 +545,8 @@ export default function EmployeeDirectoryView({
       spouseAndDependantFields.dependants = [];
     }
 
-    const newId = `EMP-${Math.floor(10000 + Math.random() * 90000)}`;
     const newEmp: Employee = {
-      id: newId,
+      id: formEmail,
       entityId: formEntityId,
       name: formName,
       email: formEmail,
@@ -603,12 +602,12 @@ export default function EmployeeDirectoryView({
       ]
     };
 
-    onAddEmployee(newEmp);
-    setIsAddModalOpen(false);
-    onShowNotification(
-      'Employee Registered',
-      `${formName} has been onboarded into Workforce records as ${newId}.`
-    );
+     onAddEmployee(newEmp);
+     setIsAddModalOpen(false);
+     onShowNotification(
+       'Employee Registered',
+       `${formName} has been onboarded into Workforce records.`
+     );
   };
 
   const handleDelete = (id: string, name: string) => {
@@ -1495,8 +1494,8 @@ export default function EmployeeDirectoryView({
                       <p className="text-on-surface font-semibold text-sm">{previewEmployee.name}</p>
                     </div>
                     <div>
-                      <p className="text-on-surface-variant mb-1 font-medium">Employee ID</p>
-                      <p className="text-on-surface font-semibold text-sm">{previewEmployee.id}</p>
+                      <p className="text-on-surface-variant mb-1 font-medium">Email Address</p>
+                      <p className="text-on-surface font-semibold text-sm truncate" title={previewEmployee.email}>{previewEmployee.email}</p>
                     </div>
                     <div>
                       <p className="text-on-surface-variant mb-1 font-medium">Department</p>
@@ -1847,7 +1846,6 @@ export default function EmployeeDirectoryView({
                 <thead>
                   <tr className="bg-surface-container-low border-b border-neutral-border text-on-surface-variant font-bold uppercase tracking-wider select-none">
                     <th className="p-4">Personnel Info</th>
-                    <th className="p-4">Staff ID</th>
                     <th className="p-4">Subsidiary</th>
                     <th className="p-4">Type & NRIC/Passport</th>
                     <th className="p-4">Department & Designation</th>
@@ -1890,8 +1888,7 @@ export default function EmployeeDirectoryView({
                           </div>
                         </td>
 
-                        {/* Column 2: ID */}
-                        <td className="p-4 font-mono font-bold text-primary">{emp.id}</td>
+
 
                         {/* Column 2b: Subsidiary */}
                         <td className="p-4">
@@ -2010,7 +2007,7 @@ export default function EmployeeDirectoryView({
                 </div>
                 <div>
                   <h3 className="font-bold text-lg tracking-tight leading-none text-[#f7f0e0]">{selectedEmployee.name}</h3>
-                  <p className="text-xs text-[#f7f0e0]/70 mt-1">{selectedEmployee.designation} — Staff ID: <span className="font-mono font-bold">{selectedEmployee.id}</span></p>
+                  <p className="text-xs text-[#f7f0e0]/70 mt-1">{selectedEmployee.designation}</p>
                 </div>
               </div>
               <button 

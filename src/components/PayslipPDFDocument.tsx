@@ -341,8 +341,8 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
             <Text style={styles.detailValue}>{employee.name}</Text>
           </View>
           <View style={styles.detailCol}>
-            <Text style={styles.detailLabel}>Employee ID</Text>
-            <Text style={styles.detailValue}>{employee.id}</Text>
+            <Text style={styles.detailLabel}>Email Address</Text>
+            <Text style={styles.detailValue}>{employee.email}</Text>
           </View>
           <View style={styles.detailCol}>
             <Text style={styles.detailLabel}>Department</Text>

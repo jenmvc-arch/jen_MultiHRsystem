@@ -248,8 +248,8 @@ export default function PayslipDocumentView({
               <p className="text-on-surface font-semibold text-sm">{activeEmployee.name}</p>
             </div>
             <div>
-              <p className="text-on-surface-variant mb-1 font-medium">Employee ID</p>
-              <p className="text-on-surface font-semibold text-sm">{activeEmployee.id}</p>
+              <p className="text-on-surface-variant mb-1 font-medium">Email Address</p>
+              <p className="text-on-surface font-semibold text-sm truncate" title={activeEmployee.email}>{activeEmployee.email}</p>
             </div>
             <div>
               <p className="text-on-surface-variant mb-1 font-medium">Department</p>

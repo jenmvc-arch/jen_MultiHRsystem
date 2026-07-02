@@ -277,8 +277,8 @@ export default function App() {
         // 1. Fetch corporate entities
         if (payload.corporate_entities) {
           const loadedEntities = payload.corporate_entities.map((e: any) => ({
-            id: e.id,
-            name: e.name,
+            id: e.name || '',
+            name: e.name || '',
             registrationNumber: e.registrationNumber || '',
             address: e.address || '',
             taxReferenceNo: e.taxReferenceNo || '',
@@ -380,8 +380,8 @@ export default function App() {
               console.error('Error parsing tp3Data for employee', e.id, err);
             }
             return {
-              id: e.id || e.email || '',
-              entityId: e.entityId,
+              id: e.email || '',
+              entityId: e.entityName || '',
               name: e.name,
               email: e.email,
               designation: e.designation,
@@ -475,7 +475,7 @@ export default function App() {
               console.error('Error parsing goals for performance', p.employeeId, err);
             }
             return {
-              employeeId: p.employeeId,
+              employeeId: p.employeeEmail || p.employeeId || '',
               reviewCycleId: p.reviewCycleId,
               managerName: p.managerName || '',
               reviewStatus: p.reviewStatus || 'Not Started',
@@ -499,7 +499,7 @@ export default function App() {
             phone: c.phone,
             designation: c.designation,
             department: c.department || 'Engineering',
-            entityId: c.entityId || 'ENT-01',
+            entityId: c.entityName || c.entityId || '',
             stage: c.stage as any,
             progress: Number(c.progress || 0),
             dateJoined: c.dateJoined || ''
@@ -649,7 +649,7 @@ export default function App() {
           phone: newCandidate.phone,
           designation: newCandidate.designation,
           department: newCandidate.department,
-          entityId: newCandidate.entityId,
+          entityName: newCandidate.entityId,
           stage: newCandidate.stage,
           progress: newCandidate.progress,
           dateJoined: newCandidate.dateJoined
@@ -666,7 +666,12 @@ export default function App() {
 
     if (isGoogleConfigured) {
       try {
-        await googleSheetsClient.update('candidates', id, updates, 'id');
+        const payloadUpdates: any = { ...updates };
+        if (updates.entityId !== undefined) {
+          payloadUpdates.entityName = updates.entityId;
+          delete payloadUpdates.entityId;
+        }
+        await googleSheetsClient.update('candidates', id, payloadUpdates, 'id');
       } catch (err) {
         console.error('[Google Sheets Candidate Update] Failed:', err);
         triggerNotification('Sync Failed', 'Could not update candidate in Google Sheets.', 'info');
@@ -680,8 +685,7 @@ export default function App() {
     if (isGoogleConfigured) {
       try {
         await googleSheetsClient.insert('employees', {
-          id: newEmployee.id,
-          entityId: newEmployee.entityId,
+          entityName: newEmployee.entityId,
           name: newEmployee.name,
           email: newEmployee.email,
           designation: newEmployee.designation,
@@ -755,7 +759,7 @@ export default function App() {
 
         await googleSheetsClient.insert('audit_logs', {
           id: `log_${Date.now()}`,
-          employeeId: newEmployee.id,
+          employeeEmail: newEmployee.email,
           changedBy: currentUserEmail || 'admin@acme.com',
           changeType: 'CREATE_EMPLOYEE',
           oldValue: '',
@@ -781,10 +785,10 @@ export default function App() {
 
         await googleSheetsClient.insert('audit_logs', {
           id: `log_${Date.now()}`,
-          employeeId: id,
+          employeeEmail: lookupKey,
           changedBy: currentUserEmail || 'admin@acme.com',
           changeType: 'DELETE_EMPLOYEE',
-          oldValue: `Employee ID: ${id} (Email: ${lookupKey})`,
+          oldValue: `Employee Email: ${lookupKey}`,
           newValue: '',
           createdAt: getGmt8Timestamp()
         });
@@ -817,7 +821,7 @@ export default function App() {
         if (updates.taxPcb !== undefined) payloadUpdates.taxPcb = updates.taxPcb;
         if (updates.unpaidLeave !== undefined) payloadUpdates.unpaidLeave = updates.unpaidLeave;
         if (updates.status !== undefined) payloadUpdates.status = updates.status;
-        if (updates.entityId !== undefined) payloadUpdates.entityId = updates.entityId;
+        if (updates.entityId !== undefined) payloadUpdates.entityName = updates.entityId;
         if (updates.avatarUrl !== undefined) payloadUpdates.avatarUrl = updates.avatarUrl;
         if (updates.nricPassport !== undefined) payloadUpdates.nricPassport = updates.nricPassport;
         if (updates.nationality !== undefined) payloadUpdates.nationality = updates.nationality;
@@ -882,7 +886,7 @@ export default function App() {
 
         await googleSheetsClient.insert('audit_logs', {
           id: `log_${Date.now()}`,
-          employeeId: id,
+          employeeEmail: lookupKey,
           changedBy: currentUserEmail || 'admin@acme.com',
           changeType: 'UPDATE_EMPLOYEE',
           oldValue: JSON.stringify(oldEmp),
@@ -909,7 +913,7 @@ export default function App() {
     if (isGoogleConfigured) {
       try {
         const payloadPerf = {
-          employeeId: updatedPerf.employeeId,
+          employeeEmail: updatedPerf.employeeId,
           reviewCycleId: updatedPerf.reviewCycleId,
           managerName: updatedPerf.managerName,
           reviewStatus: updatedPerf.reviewStatus,
@@ -923,7 +927,7 @@ export default function App() {
         };
 
         await googleSheetsClient.upsert('performances', {
-          employeeId: updatedPerf.employeeId,
+          employeeEmail: updatedPerf.employeeId,
           reviewCycleId: updatedPerf.reviewCycleId
         }, payloadPerf);
       } catch (err) {
@@ -938,7 +942,6 @@ export default function App() {
     if (isGoogleConfigured) {
       try {
         await googleSheetsClient.insert('corporate_entities', {
-          id: newEntity.id,
           name: newEntity.name,
           registrationNumber: newEntity.registrationNumber,
           address: newEntity.address,
@@ -974,7 +977,7 @@ export default function App() {
         if (updates.theme !== undefined) payloadUpdates.theme = updates.theme;
         if (updates.logoUrl !== undefined) payloadUpdates.logoUrl = updates.logoUrl;
 
-        await googleSheetsClient.update('corporate_entities', id, payloadUpdates, 'id');
+        await googleSheetsClient.update('corporate_entities', id, payloadUpdates, 'name');
       } catch (err: any) {
         console.error('[Google Sheets Entity Update] Failed:', err);
         triggerNotification('Sync Failed', `Could not update entity: ${err.message || err}`, 'info');

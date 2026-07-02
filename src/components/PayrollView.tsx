@@ -828,8 +828,8 @@ export default function PayrollView({
                   <p className="text-on-surface font-medium font-mono">{activeEmployee.taxNumber || 'N/A'}</p>
                 </div>
                 <div className="text-right sm:text-left sm:pl-10">
-                  <p className="text-on-surface-variant">Employee ID</p>
-                  <p className="font-bold text-on-surface">{activeEmployee.id}</p>
+                  <p className="text-on-surface-variant">Email Address</p>
+                  <p className="font-bold text-on-surface truncate" title={activeEmployee.email}>{activeEmployee.email}</p>
                   <p className="text-on-surface-variant mt-2">Bank Account</p>
                   <p className="text-on-surface font-mono font-medium">{activeEmployee.bankName} · {activeEmployee.accountNo}</p>
                   <p className="text-on-surface-variant mt-2">Payment Date</p>

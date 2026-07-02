@@ -121,9 +121,8 @@ export default function EntitiesView({
       return;
     }
 
-    const newId = `ENT-${Math.floor(10 + Math.random() * 90)}`;
     const newEntity: CorporateEntity = {
-      id: newId,
+      id: formName.trim(),
       name: formName.trim(),
       registrationNumber: formRegNo.trim(),
       address: formAddress.trim() || 'No official registered office address registered.',
@@ -221,8 +220,7 @@ export default function EntitiesView({
                       )}
                     </div>
                     <div>
-                      <span className="text-[10px] font-bold text-primary font-mono">{ent.id}</span>
-                      <h3 className="font-bold text-sm text-on-surface tracking-tight line-clamp-1">{ent.name}</h3>
+                    <h3 className="font-bold text-sm text-on-surface tracking-tight line-clamp-1">{ent.name}</h3>
                     </div>
                   </div>
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
@@ -327,9 +325,11 @@ export default function EntitiesView({
                 Staff listing currently mapped to this legal corporate subsidiary. Total active headcount is <span className="font-bold text-primary">{activeEntityEmployees.length}</span>.
               </p>
             </div>
-            <span className="text-xs font-bold text-primary font-mono bg-primary/10 px-2.5 py-1 rounded">
-              {selectedEntity.id}
-            </span>
+            {selectedEntity && (
+              <span className="text-xs font-bold text-primary font-mono bg-primary/10 px-2.5 py-1 rounded">
+                ROC: {selectedEntity.registrationNumber || 'N/A'}
+              </span>
+            )}
           </div>
 
           {activeEntityEmployees.length === 0 ? (
@@ -343,7 +343,7 @@ export default function EntitiesView({
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-surface-container-low border-b border-neutral-border text-on-surface-variant font-bold uppercase tracking-wider select-none">
-                    <th className="p-3">Staff ID</th>
+                    <th className="p-3">Email Address</th>
                     <th className="p-3">Personnel Name</th>
                     <th className="p-3">Department & Designation</th>
                     <th className="p-3 font-mono">Monthly Salary</th>
@@ -354,7 +354,7 @@ export default function EntitiesView({
                 <tbody className="divide-y divide-neutral-border/50">
                   {activeEntityEmployees.map(emp => (
                     <tr key={emp.id} className="hover:bg-neutral-50">
-                      <td className="p-3 font-mono font-bold text-primary">{emp.id}</td>
+                      <td className="p-3 text-on-surface-variant font-mono">{emp.email}</td>
                       <td className="p-3 font-bold text-on-surface">{emp.name}</td>
                       <td className="p-3">
                         <div className="font-semibold text-on-surface">{emp.designation}</div>

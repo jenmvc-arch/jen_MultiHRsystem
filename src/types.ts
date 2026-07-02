@@ -19,7 +19,7 @@ export type AppTab =
   | 'hire-onboarding';
 
 export interface CorporateEntity {
-  id: string; // ENT-XX
+  id: string; // Mapped to name (company name) - ENT ID removed from DB
   name: string;
   registrationNumber: string; // e.g. SSM / Co ROC No
   address: string;
@@ -49,8 +49,8 @@ export interface CareerHistoryEntry {
 }
 
 export interface Employee {
-  id: string; // EMP-XXXX
-  entityId: string; // ENT-XX (corporate subsidiary)
+  id: string; // Mapped to email - EMP ID removed from DB
+  entityId: string; // Mapped to entityName (company name) - ENT ID removed from DB
   name: string;
   email: string;
   designation: string;
