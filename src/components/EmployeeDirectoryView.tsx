@@ -85,7 +85,7 @@ export default function EmployeeDirectoryView({
 
   // Add Employee Modal form states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [formEntityId, setFormEntityId] = useState('ENT-01');
+  const [formEntityId, setFormEntityId] = useState(entities[0]?.id || '');
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formDesignation, setFormDesignation] = useState('');
@@ -188,7 +188,7 @@ export default function EmployeeDirectoryView({
     setEditEmergencyContactName(selectedEmployee.emergencyContactName || '');
     setEditEmergencyContactRelation(selectedEmployee.emergencyContactRelation || '');
     setEditEmergencyContactPhone(selectedEmployee.emergencyContactPhone || '');
-    setEditEntityId(selectedEmployee.entityId || 'ENT-01');
+    setEditEntityId(selectedEmployee.entityId || entities[0]?.id || '');
     setIsEditingGeneralInfo(true);
   };
 
@@ -333,7 +333,7 @@ export default function EmployeeDirectoryView({
   });
 
   const handleOpenAddModal = () => {
-    setFormEntityId('ENT-01');
+    setFormEntityId(entities[0]?.id || '');
     setFormName('');
     setFormEmail('');
     setFormDesignation('');
@@ -2144,7 +2144,7 @@ export default function EmployeeDirectoryView({
                         <div className="text-primary font-bold text-[10px] uppercase tracking-wider mb-0.5">Corporate Subsidiary / Entity</div>
                         <div className="font-bold text-sm text-primary flex items-center gap-1.5">
                           <span className="bg-primary text-[#f7f0e0] text-[10px] font-bold px-1.5 py-0.5 rounded mr-1">OFFICIAL REGISTER</span>
-                          {entities.find(e => e.id === selectedEmployee.entityId)?.name || selectedEmployee.entityId} ({selectedEmployee.entityId})
+                          {entities.find(e => e.id === selectedEmployee.entityId)?.name || selectedEmployee.entityId}
                         </div>
                       </div>
                     </div>

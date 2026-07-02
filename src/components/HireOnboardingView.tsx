@@ -74,7 +74,7 @@ export default function HireOnboardingView({
       phone: formData.phone,
       designation: formData.designation,
       department: 'Engineering',
-      entityId: entities[0]?.id || 'ENT-01',
+      entityId: entities[0]?.id || '',
       stage: formData.stage,
       progress: 0,
       dateJoined: formData.dateJoined || getGmt8DateString()
@@ -111,7 +111,7 @@ export default function HireOnboardingView({
   const [candPhone, setCandPhone] = useState('');
   const [candRole, setCandRole] = useState('');
   const [candDept, setCandDept] = useState('Engineering');
-  const [candEntity, setCandEntity] = useState(entities[0]?.id || 'ENT-01');
+  const [candEntity, setCandEntity] = useState(entities[0]?.id || '');
   const [candErrors, setCandErrors] = useState<{ [key: string]: string }>({});
 
   const selectedCandidate = candidates.find(c => c.id === selectedCandidateId) || candidates[0];

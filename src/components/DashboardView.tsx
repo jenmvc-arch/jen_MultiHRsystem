@@ -445,20 +445,15 @@ export default function DashboardView({
                   <p className="text-xs text-on-surface-variant mt-1">Starting Nov 2023, voluntary employee contributions can exceed 11% directly via self-service.</p>
                 </div>
                 
-                {selectedEntityId === 'ENT-01' ? (
+                {selectedEntityId === 'Red Point Sdn Bhd' ? (
                   <div className="p-3 bg-blue-50/50 rounded border-l-4 border-primary text-sm animate-in fade-in duration-300">
                     <div className="font-semibold text-primary">LHDN Auto-Clearance Audit</div>
-                    <p className="text-xs text-on-surface-variant mt-1">Acme Technologies Sdn Bhd internal audit and clearance reports are scheduled for submission on Dec 15th.</p>
+                    <p className="text-xs text-on-surface-variant mt-1">Red Point Sdn Bhd internal audit and clearance reports are scheduled for submission on Dec 15th.</p>
                   </div>
-                ) : selectedEntityId === 'ENT-02' ? (
+                ) : selectedEntityId === 'YSYD Sdn Bhd' ? (
                   <div className="p-3 bg-teal-50/50 rounded border-l-4 border-teal-600 text-sm animate-in fade-in duration-300">
                     <div className="font-semibold text-teal-800">Labuan Tax Filings Extended</div>
-                    <p className="text-xs text-on-surface-variant mt-1">Acme Consulting Global international contractor incentive list and Labuan offshore tax deadlines updated to Dec 31st.</p>
-                  </div>
-                ) : selectedEntityId === 'ENT-03' ? (
-                  <div className="p-3 bg-amber-50/50 rounded border-l-4 border-amber-600 text-sm animate-in fade-in duration-300">
-                    <div className="font-semibold text-amber-800">SOCSO Logistical Crew Training</div>
-                    <p className="text-xs text-on-surface-variant mt-1">Acme Operations team members SOCSO safety declaration checklists and insurance certificates revised.</p>
+                    <p className="text-xs text-on-surface-variant mt-1">YSYD Sdn Bhd international contractor incentive list and Labuan offshore tax deadlines updated to Dec 31st.</p>
                   </div>
                 ) : (
                   <div className="p-3 bg-surface-container-low rounded border-l-4 border-outline text-sm">

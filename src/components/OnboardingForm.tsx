@@ -219,7 +219,7 @@ export default function OnboardingForm({
       setPhone('');
       setDesignation('');
       setDepartment('Engineering');
-      setEntityId(entities[0]?.id || 'ENT-01');
+      setEntityId(entities[0]?.id || '');
       return;
     }
 
@@ -230,7 +230,7 @@ export default function OnboardingForm({
       setPhone(cand.phone);
       setDesignation(cand.designation);
       setDepartment(cand.department || 'Engineering');
-      setEntityId(cand.entityId || entities[0]?.id || 'ENT-01');
+      setEntityId(cand.entityId || entities[0]?.id || '');
     }
   }, [selectedCandidateId, candidates, entities]);
 

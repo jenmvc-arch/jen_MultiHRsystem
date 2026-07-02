@@ -379,9 +379,16 @@ export default function App() {
             } catch (err) {
               console.error('Error parsing tp3Data for employee', e.id, err);
             }
+            let resolvedEntityId = e.entityName || e.entityId || '';
+            if (resolvedEntityId === 'ENT-01' || resolvedEntityId === 'ENT-92') {
+              resolvedEntityId = 'Red Point Sdn Bhd';
+            } else if (resolvedEntityId === 'ENT-02' || resolvedEntityId === 'ENT-86') {
+              resolvedEntityId = 'YSYD Sdn Bhd';
+            }
+
             return {
               id: e.email || '',
-              entityId: e.entityName || '',
+              entityId: resolvedEntityId,
               name: e.name,
               email: e.email,
               designation: e.designation,
@@ -516,7 +523,7 @@ export default function App() {
   }, []);
 
   // Active corporate views
-  const [activeEntityId, setActiveEntityId] = useState<string>('ENT-01');
+  const [activeEntityId, setActiveEntityId] = useState<string>('');
   const activeEntity = entities.find(e => e.id === activeEntityId) || entities[0];
 
   // Dynamic Theme style provider
