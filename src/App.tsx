@@ -48,6 +48,7 @@ import TaxSettingsView from './components/TaxSettingsView';
 import LeaveManagementView from './components/LeaveManagementView';
 import FormsDirectoryView from './components/FormsDirectoryView';
 import HireOnboardingView from './components/HireOnboardingView';
+import DepartmentRoleView from './components/DepartmentRoleView';
 import LoginView from './components/LoginView';
 import JobApplicationForm from './components/JobApplicationForm';
 import OnboardingForm from './components/OnboardingForm';
@@ -432,6 +433,7 @@ export default function App() {
               emergencyContactRelation: e.emergencyContactRelation || '',
               emergencyContactPhone: e.emergencyContactPhone || '',
               dateOfJoined: e.dateOfJoined || '',
+              dateOfConfirmation: e.dateOfConfirmation || '',
               allowanceGeneral: Number(e.allowanceGeneral || 0),
               allowanceTransport: Number(e.allowanceTransport !== undefined ? e.allowanceTransport : e.transportAllowance || 0),
               allowanceParking: Number(e.allowanceParking || 0),
@@ -736,6 +738,7 @@ export default function App() {
           emergencyContactRelation: newEmployee.emergencyContactRelation,
           emergencyContactPhone: newEmployee.emergencyContactPhone,
           dateOfJoined: newEmployee.dateOfJoined,
+          dateOfConfirmation: newEmployee.dateOfConfirmation || '',
           allowanceGeneral: newEmployee.allowanceGeneral || 0,
           allowanceTransport: newEmployee.allowanceTransport !== undefined ? newEmployee.allowanceTransport : newEmployee.transportAllowance || 0,
           allowanceParking: newEmployee.allowanceParking || 0,
@@ -851,6 +854,7 @@ export default function App() {
         if (updates.emergencyContactRelation !== undefined) payloadUpdates.emergencyContactRelation = updates.emergencyContactRelation;
         if (updates.emergencyContactPhone !== undefined) payloadUpdates.emergencyContactPhone = updates.emergencyContactPhone;
         if (updates.dateOfJoined !== undefined) payloadUpdates.dateOfJoined = updates.dateOfJoined;
+        if (updates.dateOfConfirmation !== undefined) payloadUpdates.dateOfConfirmation = updates.dateOfConfirmation;
         if (updates.housingAllowance !== undefined) payloadUpdates.housingAllowance = updates.housingAllowance;
         if (updates.transportAllowance !== undefined) payloadUpdates.transportAllowance = updates.transportAllowance;
         if (updates.overtime !== undefined) payloadUpdates.overtime = updates.overtime;
@@ -1320,6 +1324,12 @@ export default function App() {
               candidates={candidates}
               onAddCandidate={handleAddCandidate}
               onUpdateCandidate={handleUpdateCandidate}
+            />
+          )}
+
+          {currentTab === 'department-role' && (
+            <DepartmentRoleView 
+              onShowNotification={triggerNotification}
             />
           )}
 

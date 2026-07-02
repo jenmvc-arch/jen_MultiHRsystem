@@ -16,7 +16,8 @@ export type AppTab =
   | 'tax-settings'
   | 'leave-management'
   | 'forms-directory'
-  | 'hire-onboarding';
+  | 'hire-onboarding'
+  | 'department-role';
 
 export interface CorporateEntity {
   id: string; // Mapped to name (company name) - ENT ID removed from DB
@@ -127,6 +128,7 @@ export interface Employee {
   emergencyContactRelation: string;
   emergencyContactPhone: string;
   dateOfJoined: string;
+  dateOfConfirmation?: string;
   
   // Spouse Details
   spouseName?: string;

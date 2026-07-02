@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   UserPlus, 
   CheckSquare, 
@@ -65,6 +65,26 @@ export default function HireOnboardingView({
   const [tasks, setTasks] = useState<OnboardingTask[]>(INITIAL_ONBOARDING_TASKS);
   const [selectedCandidateId, setSelectedCandidateId] = useState('CAN-01');
   const [activeTab, setActiveTab] = useState<'pipeline' | 'application-form' | 'onboarding-form'>('pipeline');
+
+  // Load departments and roles dynamically
+  const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
+  const [availableRoles, setAvailableRoles] = useState<string[]>([]);
+
+  useEffect(() => {
+    const savedDepts = localStorage.getItem('company_departments');
+    let depts = ['Product & Engineering', 'Finance', 'Human Resources', 'Sales & Marketing', 'Strategy', 'Operations'];
+    if (savedDepts) {
+      depts = JSON.parse(savedDepts);
+    }
+    setAvailableDepartments(depts);
+
+    const savedRoles = localStorage.getItem('company_roles');
+    let rls = ['Software Engineer', 'Senior Software Engineer', 'Product Manager', 'UX Designer', 'HR Specialist', 'Finance Manager', 'Consultant'];
+    if (savedRoles) {
+      rls = JSON.parse(savedRoles);
+    }
+    setAvailableRoles(rls);
+  }, []);
 
   const handleApplicationSubmit = (formData: any) => {
     const newCandidate: Candidate = {
@@ -442,13 +462,21 @@ export default function HireOnboardingView({
               <label className="block font-bold text-on-surface-variant uppercase mb-1">
                 Job Designation Role <span className="text-error">*</span>
               </label>
-              <input 
-                type="text" 
-                placeholder="e.g. UI/UX Product Designer"
+              <select 
                 value={candRole}
                 onChange={(e) => setCandRole(e.target.value)}
-                className={`w-full bg-white border ${candErrors.candRole ? 'border-error' : 'border-neutral-border'} rounded p-2 focus:ring-1 focus:ring-primary outline-none`}
-              />
+                className={`w-full bg-white border ${candErrors.candRole ? 'border-error' : 'border-neutral-border'} rounded p-2 focus:ring-1 focus:ring-primary outline-none font-semibold text-primary`}
+              >
+                {(() => {
+                  const rolesToRender = [...availableRoles];
+                  if (candRole && !rolesToRender.includes(candRole)) {
+                    rolesToRender.push(candRole);
+                  }
+                  return rolesToRender.map(r => (
+                    <option key={r} value={r}>{r}</option>
+                  ));
+                })()}
+              </select>
               {candErrors.candRole && (
                 <span className="text-error text-[10px] mt-1 block font-semibold">{candErrors.candRole}</span>
               )}
@@ -460,13 +488,17 @@ export default function HireOnboardingView({
                 <select 
                   value={candDept}
                   onChange={(e) => setCandDept(e.target.value)}
-                  className="w-full bg-white border border-neutral-border rounded p-2 focus:ring-1 focus:ring-primary outline-none animate-none"
+                  className="w-full bg-white border border-neutral-border rounded p-2 focus:ring-1 focus:ring-primary outline-none font-semibold text-primary"
                 >
-                  <option>Engineering</option>
-                  <option>Human Resources</option>
-                  <option>Marketing</option>
-                  <option>Finance</option>
-                  <option>Strategy</option>
+                  {(() => {
+                    const deptsToRender = [...availableDepartments];
+                    if (candDept && !deptsToRender.includes(candDept)) {
+                      deptsToRender.push(candDept);
+                    }
+                    return deptsToRender.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ));
+                  })()}
                 </select>
               </div>
 

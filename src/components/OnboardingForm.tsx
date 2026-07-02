@@ -203,6 +203,26 @@ export default function OnboardingForm({
   const [emergencyContactRelation, setEmergencyContactRelation] = useState('Spouse');
   const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
 
+  // Load departments and roles dynamically
+  const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
+  const [availableRoles, setAvailableRoles] = useState<string[]>([]);
+
+  useEffect(() => {
+    const savedDepts = localStorage.getItem('company_departments');
+    let depts = ['Product & Engineering', 'Finance', 'Human Resources', 'Sales & Marketing', 'Strategy', 'Operations'];
+    if (savedDepts) {
+      depts = JSON.parse(savedDepts);
+    }
+    setAvailableDepartments(depts);
+
+    const savedRoles = localStorage.getItem('company_roles');
+    let rls = ['Software Engineer', 'Senior Software Engineer', 'Product Manager', 'UX Designer', 'HR Specialist', 'Finance Manager', 'Consultant'];
+    if (savedRoles) {
+      rls = JSON.parse(savedRoles);
+    }
+    setAvailableRoles(rls);
+  }, []);
+
   // Form Section 5: Required Document Uploads
   const [icFront, setIcFront] = useState<DocumentFile | null>(null);
   const [icBack, setIcBack] = useState<DocumentFile | null>(null);
@@ -570,13 +590,21 @@ export default function OnboardingForm({
                 <label className="block font-bold text-on-surface-variant uppercase mb-1">
                   Job Designation Role <span className="text-error">*</span>
                 </label>
-                <input
-                  type="text"
-                  placeholder="e.g. QA Automation Specialist"
+                <select
                   value={designation}
                   onChange={(e) => setDesignation(e.target.value)}
-                  className={`w-full bg-white border ${errors.designation ? 'border-error' : 'border-neutral-border'} rounded p-2 focus:ring-1 focus:ring-primary outline-none`}
-                />
+                  className={`w-full bg-white border ${errors.designation ? 'border-error' : 'border-neutral-border'} rounded p-2 focus:ring-1 focus:ring-primary outline-none font-semibold text-primary`}
+                >
+                  {(() => {
+                    const rolesToRender = [...availableRoles];
+                    if (designation && !rolesToRender.includes(designation)) {
+                      rolesToRender.push(designation);
+                    }
+                    return rolesToRender.map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ));
+                  })()}
+                </select>
                 {errors.designation && (
                   <span className="text-error text-[10px] mt-1 block font-semibold">{errors.designation}</span>
                 )}
@@ -587,13 +615,17 @@ export default function OnboardingForm({
                 <select
                   value={department}
                   onChange={(e) => setDepartment(e.target.value)}
-                  className="w-full bg-white border border-neutral-border rounded p-2 focus:ring-1 focus:ring-primary outline-none"
+                  className="w-full bg-white border border-neutral-border rounded p-2 focus:ring-1 focus:ring-primary outline-none font-semibold text-primary"
                 >
-                  <option>Engineering</option>
-                  <option>Human Resources</option>
-                  <option>Marketing</option>
-                  <option>Finance</option>
-                  <option>Strategy</option>
+                  {(() => {
+                    const deptsToRender = [...availableDepartments];
+                    if (department && !deptsToRender.includes(department)) {
+                      deptsToRender.push(department);
+                    }
+                    return deptsToRender.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ));
+                  })()}
                 </select>
               </div>
             </div>

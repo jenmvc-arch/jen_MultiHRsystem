@@ -23,8 +23,8 @@ import {
   Globe,
   Building2
 } from 'lucide-react';
-import { Employee, CorporateEntity } from '../types';
-import { calculatePayslip, getPayslipLabel, calculateYtd } from '../data';
+import { Employee, CorporateEntity, HistoricalPayrollRecord } from '../types';
+import { calculatePayslip, getPayslipLabel, calculateYtd, calculatePcb2026, recalculatePCBFromMonth } from '../data';
 import PayslipDocumentView from './PayslipDocumentView';
 
 interface PayrollViewProps {
@@ -58,6 +58,7 @@ export default function PayrollView({
   const [isEditing, setIsEditing] = useState(false);
   const [tempBasic, setTempBasic] = useState(0);
   const [tempTax, setTempTax] = useState(0);
+  const [hasAllowances, setHasAllowances] = useState(false);
 
   // Extended state variables for dynamic editing
   const [allowanceGen, setAllowanceGen] = useState(0);
@@ -111,8 +112,34 @@ export default function PayrollView({
 
   const payrollBreakdown = calculatePayslip(activeEmployee);
 
+  const isEligible = 
+    activeEmployee.employmentType === 'Probationary' || 
+    activeEmployee.employmentType === 'Confirmation' || 
+    (activeEmployee.employmentType === 'Independent Contractor / Freelance' && activeEmployee.eligibleForStatutory === 'Yes');
+
+  const epfEmployee = isEligible ? Math.round((tempBasic * (activeEmployee.epfRateEmployee || 11)) / 100) : 0;
+  const computedAutoPcb = isEligible 
+    ? calculatePcb2026(
+        tempBasic, 
+        activeEmployee.maritalStatus || 'Single', 
+        activeEmployee.spouseIsWorking || 'No', 
+        activeEmployee.dependants?.length || 0,
+        epfEmployee
+      )
+    : 0;
+
   const startEdit = () => {
     setTempBasic(activeEmployee.basicSalary || 0);
+    const hasAnyAllowance = (
+      (activeEmployee.allowanceGeneral || 0) > 0 ||
+      (activeEmployee.allowanceTransport !== undefined ? activeEmployee.allowanceTransport : activeEmployee.transportAllowance || 0) > 0 ||
+      (activeEmployee.allowanceParking || 0) > 0 ||
+      (activeEmployee.allowanceMeal || 0) > 0 ||
+      (activeEmployee.allowanceAccommodation !== undefined ? activeEmployee.allowanceAccommodation : activeEmployee.housingAllowance || 0) > 0 ||
+      (activeEmployee.allowancePhone || 0) > 0
+    );
+    setHasAllowances(hasAnyAllowance);
+
     setAllowanceGen(activeEmployee.allowanceGeneral || 0);
     setAllowanceTrans(activeEmployee.allowanceTransport !== undefined ? activeEmployee.allowanceTransport : (activeEmployee.transportAllowance || 0));
     setAllowancePark(activeEmployee.allowanceParking || 0);
@@ -149,14 +176,47 @@ export default function PayrollView({
   };
 
   const saveEdit = () => {
+    const MONTHS_LIST = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const parts = selectedPayPeriod.split(' ');
+    const monthName = parts[0] || 'October';
+    const payYear = Number(parts[1]) || 2026;
+    const payMonthIndex = MONTHS_LIST.indexOf(monthName) + 1;
+
+    const newRecord: HistoricalPayrollRecord = {
+      payrollMonth: payMonthIndex,
+      basicSalary: tempBasic,
+      allowanceGeneral: hasAllowances ? allowanceGen : 0,
+      overtime: activeEmployee.overtime || 0,
+      bonusAmount: bonusAmt,
+      commissionAmount: commissionAmt,
+      actualPCBDeducted: tempTax,
+      epfEmployee,
+      zakat: 0,
+      cp38: deductionCp38
+    };
+
+    const currentRecords = activeEmployee.historicalPayrollRecords || [];
+    const filtered = currentRecords.filter(r => r.payrollMonth !== payMonthIndex);
+    const updatedRecords = [...filtered, newRecord].sort((a, b) => a.payrollMonth - b.payrollMonth);
+
+    const recalculated = recalculatePCBFromMonth({
+      employee: { ...activeEmployee, historicalPayrollRecords: updatedRecords },
+      taxYear: payYear,
+      changedMonth: payMonthIndex,
+      calculationBasis: 'actual_deduction_history'
+    });
+
     onUpdateEmployeeSalary(activeEmployee.id, {
       basicSalary: tempBasic,
-      allowanceGeneral: allowanceGen,
-      allowanceTransport: allowanceTrans,
-      allowanceParking: allowancePark,
-      allowanceMeal: allowanceMl,
-      allowanceAccommodation: allowanceAccom,
-      allowancePhone: allowancePh,
+      allowanceGeneral: hasAllowances ? allowanceGen : 0,
+      allowanceTransport: hasAllowances ? allowanceTrans : 0,
+      allowanceParking: hasAllowances ? allowancePark : 0,
+      allowanceMeal: hasAllowances ? allowanceMl : 0,
+      allowanceAccommodation: hasAllowances ? allowanceAccom : 0,
+      allowancePhone: hasAllowances ? allowancePh : 0,
       
       reimbursementAmount: reimbursementAmt,
       reimbursementDesc: reimbursementDesc,
@@ -183,12 +243,14 @@ export default function PayrollView({
       deductionOthers: deductionOthers,
       deductionOthersDesc: deductionOthersDesc,
 
-      taxPcb: tempTax
+      taxPcb: tempTax,
+      historicalPayrollRecords: updatedRecords,
+      historicalPcbResults: recalculated
     });
     setIsEditing(false);
     onShowNotification(
-      'Payslip Updated',
-      `Live updates saved and recalculated for ${activeEmployee.name}.`
+      'Payslip & Past Records Updated',
+      `Live updates and historical records saved and recalculated for ${activeEmployee.name} in ${selectedPayPeriod}.`
     );
   };
 
@@ -490,6 +552,17 @@ export default function PayrollView({
                   <h3 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1">
                     <DollarSign className="w-4 h-4" /> 1. Base Pay & Monthly Allowances
                   </h3>
+                  <div className="pb-2 border-b border-neutral-border/40 text-left">
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={hasAllowances}
+                        onChange={(e) => setHasAllowances(e.target.checked)}
+                        className="rounded border-neutral-border text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                      />
+                      <span className="text-xs font-bold text-on-surface">Enable Monthly Allowances for this pay cycle</span>
+                    </label>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-xs font-semibold text-on-surface-variant mb-1">
@@ -502,60 +575,64 @@ export default function PayrollView({
                         className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
                       />
                     </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-on-surface-variant mb-1">General Allowance (RM)</label>
-                      <input 
-                        type="number" 
-                        value={allowanceGen} 
-                        onChange={(e) => setAllowanceGen(Number(e.target.value))} 
-                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-on-surface-variant mb-1">Transport Allowance (RM)</label>
-                      <input 
-                        type="number" 
-                        value={allowanceTrans} 
-                        onChange={(e) => setAllowanceTrans(Number(e.target.value))} 
-                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-on-surface-variant mb-1">Parking Allowance (RM)</label>
-                      <input 
-                        type="number" 
-                        value={allowancePark} 
-                        onChange={(e) => setAllowancePark(Number(e.target.value))} 
-                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-on-surface-variant mb-1">Meal Allowance (RM)</label>
-                      <input 
-                        type="number" 
-                        value={allowanceMl} 
-                        onChange={(e) => setAllowanceMl(Number(e.target.value))} 
-                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-on-surface-variant mb-1">Accommodation Allowance (RM)</label>
-                      <input 
-                        type="number" 
-                        value={allowanceAccom} 
-                        onChange={(e) => setAllowanceAccom(Number(e.target.value))} 
-                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-on-surface-variant mb-1">Phone Allowance (RM)</label>
-                      <input 
-                        type="number" 
-                        value={allowancePh} 
-                        onChange={(e) => setAllowancePh(Number(e.target.value))} 
-                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
-                      />
-                    </div>
+                    {hasAllowances && (
+                      <>
+                        <div>
+                          <label className="block text-xs font-semibold text-on-surface-variant mb-1">General Allowance (RM)</label>
+                          <input 
+                            type="number" 
+                            value={allowanceGen} 
+                            onChange={(e) => setAllowanceGen(Number(e.target.value))} 
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-on-surface-variant mb-1">Transport Allowance (RM)</label>
+                          <input 
+                            type="number" 
+                            value={allowanceTrans} 
+                            onChange={(e) => setAllowanceTrans(Number(e.target.value))} 
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-on-surface-variant mb-1">Parking Allowance (RM)</label>
+                          <input 
+                            type="number" 
+                            value={allowancePark} 
+                            onChange={(e) => setAllowancePark(Number(e.target.value))} 
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-on-surface-variant mb-1">Meal Allowance (RM)</label>
+                          <input 
+                            type="number" 
+                            value={allowanceMl} 
+                            onChange={(e) => setAllowanceMl(Number(e.target.value))} 
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-on-surface-variant mb-1">Accommodation Allowance (RM)</label>
+                          <input 
+                            type="number" 
+                            value={allowanceAccom} 
+                            onChange={(e) => setAllowanceAccom(Number(e.target.value))} 
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-on-surface-variant mb-1">Phone Allowance (RM)</label>
+                          <input 
+                            type="number" 
+                            value={allowancePh} 
+                            onChange={(e) => setAllowancePh(Number(e.target.value))} 
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -748,7 +825,17 @@ export default function PayrollView({
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-on-surface-variant mb-1">Monthly Income Tax (PCB) (RM)</label>
+                      <label className="block text-xs font-semibold text-on-surface-variant mb-1 flex justify-between">
+                        <span>Monthly Income Tax (PCB) (RM)</span>
+                        <button
+                          type="button"
+                          onClick={() => setTempTax(computedAutoPcb)}
+                          className="text-[10px] text-primary hover:underline font-bold"
+                          title="Apply Auto Calculated PCB"
+                        >
+                          Use Auto: RM {computedAutoPcb.toFixed(2)}
+                        </button>
+                      </label>
                       <input 
                         type="number" 
                         value={tempTax} 

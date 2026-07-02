@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { googleSheetsClient, isGoogleConfigured } from '../lib/googleSheetsClient';
 import { getGmt8Timestamp } from '../lib/dateUtils';
 import { 
@@ -66,6 +66,26 @@ export default function EmployeeDirectoryView({
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [entityFilter, setEntityFilter] = useState('All Subsidiaries');
 
+  // Load departments and roles dynamically
+  const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
+  const [availableRoles, setAvailableRoles] = useState<string[]>([]);
+
+  useEffect(() => {
+    const savedDepts = localStorage.getItem('company_departments');
+    let depts = ['Product & Engineering', 'Finance', 'Human Resources', 'Sales & Marketing', 'Strategy', 'Operations'];
+    if (savedDepts) {
+      depts = JSON.parse(savedDepts);
+    }
+    setAvailableDepartments(depts);
+
+    const savedRoles = localStorage.getItem('company_roles');
+    let rls = ['Software Engineer', 'Senior Software Engineer', 'Product Manager', 'UX Designer', 'HR Specialist', 'Finance Manager', 'Consultant'];
+    if (savedRoles) {
+      rls = JSON.parse(savedRoles);
+    }
+    setAvailableRoles(rls);
+  }, []);
+
   // Self-Service Mode & Preview States
   const [viewMode, setViewMode] = useState<'admin' | 'self-service'>('admin');
   const [previewEmployeeId, setPreviewEmployeeId] = useState<string>(employees[0]?.id || '');
@@ -110,6 +130,7 @@ export default function EmployeeDirectoryView({
   const [formEmergencyContactRelation, setFormEmergencyContactRelation] = useState('');
   const [formEmergencyContactPhone, setFormEmergencyContactPhone] = useState('');
   const [formDateOfJoined, setFormDateOfJoined] = useState('2026-06-29');
+  const [formDateOfConfirmation, setFormDateOfConfirmation] = useState('');
 
   // Spouse details form states
   const [formSpouseName, setFormSpouseName] = useState('');
@@ -153,6 +174,7 @@ export default function EmployeeDirectoryView({
   const [editContactNumber, setEditContactNumber] = useState('');
   const [editEmploymentType, setEditEmploymentType] = useState('');
   const [editDateOfJoined, setEditDateOfJoined] = useState('');
+  const [editDateOfConfirmation, setEditDateOfConfirmation] = useState('');
   const [editEpfRateEmployee, setEditEpfRateEmployee] = useState(11);
   const [editEpfRateEmployer, setEditEpfRateEmployer] = useState(13);
   const [editTaxPcb, setEditTaxPcb] = useState(0);
@@ -182,6 +204,7 @@ export default function EmployeeDirectoryView({
     setEditContactNumber(selectedEmployee.contactNumber || '');
     setEditEmploymentType(selectedEmployee.employmentType || '');
     setEditDateOfJoined(selectedEmployee.dateOfJoined || '');
+    setEditDateOfConfirmation(selectedEmployee.dateOfConfirmation || '');
     setEditEpfRateEmployee(selectedEmployee.epfRateEmployee !== undefined ? selectedEmployee.epfRateEmployee : 11);
     setEditEpfRateEmployer(selectedEmployee.epfRateEmployer !== undefined ? selectedEmployee.epfRateEmployer : 13);
     setEditTaxPcb(selectedEmployee.taxPcb || 0);
@@ -217,6 +240,7 @@ export default function EmployeeDirectoryView({
       contactNumber: editContactNumber,
       employmentType: editEmploymentType,
       dateOfJoined: editDateOfJoined,
+      dateOfConfirmation: editEmploymentType === 'Confirmation' ? editDateOfConfirmation : '',
       epfRateEmployee: Number(editEpfRateEmployee),
       epfRateEmployer: Number(editEpfRateEmployer),
       taxPcb: Number(editTaxPcb),
@@ -586,6 +610,7 @@ export default function EmployeeDirectoryView({
       emergencyContactRelation: formEmergencyContactRelation || 'Spouse',
       emergencyContactPhone: formEmergencyContactPhone || 'N/A',
       dateOfJoined: formDateOfJoined,
+      dateOfConfirmation: formEmploymentType === 'Confirmation' ? formDateOfConfirmation : '',
       
       ...spouseAndDependantFields,
       
@@ -1820,10 +1845,9 @@ export default function EmployeeDirectoryView({
                   className="rounded border border-neutral-border bg-white p-1.5 text-xs outline-none"
                 >
                   <option>All Departments</option>
-                  <option>Product & Engineering</option>
-                  <option>Engineering</option>
-                  <option>Product</option>
-                  <option>Human Resources</option>
+                  {availableDepartments.map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
                 </select>
 
                 {/* Subsidiary select */}
@@ -2139,6 +2163,15 @@ export default function EmployeeDirectoryView({
                         </div>
                       </div>
 
+                      {selectedEmployee.employmentType === 'Confirmation' && (
+                        <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
+                          <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Date of Confirmation</div>
+                          <div className="font-mono text-sm font-semibold text-on-surface flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-primary" /> {selectedEmployee.dateOfConfirmation || 'Pending'}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
                         <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Payroll Registry Status</div>
                         <div className="mt-0.5">
@@ -2238,28 +2271,38 @@ export default function EmployeeDirectoryView({
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Role / Designation</label>
-                          <input
-                            type="text"
+                          <select
                             value={editDesignation}
                             onChange={(e) => setEditDesignation(e.target.value)}
-                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
-                          />
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs font-semibold text-primary"
+                          >
+                            {(() => {
+                              const rolesToRender = [...availableRoles];
+                              if (editDesignation && !rolesToRender.includes(editDesignation)) {
+                                rolesToRender.push(editDesignation);
+                              }
+                              return rolesToRender.map(r => (
+                                <option key={r} value={r}>{r}</option>
+                              ));
+                            })()}
+                          </select>
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Department</label>
                           <select
                             value={editDepartment}
                             onChange={(e) => setEditDepartment(e.target.value)}
-                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs font-semibold text-primary"
                           >
-                            <option value="Engineering">Engineering</option>
-                            <option value="Product">Product</option>
-                            <option value="Marketing">Marketing</option>
-                            <option value="Sales">Sales</option>
-                            <option value="Operations">Operations</option>
-                            <option value="HR">HR</option>
-                            <option value="Finance">Finance</option>
-                            <option value="Legal">Legal</option>
+                            {(() => {
+                              const deptsToRender = [...availableDepartments];
+                              if (editDepartment && !deptsToRender.includes(editDepartment)) {
+                                deptsToRender.push(editDepartment);
+                              }
+                              return deptsToRender.map(d => (
+                                <option key={d} value={d}>{d}</option>
+                              ));
+                            })()}
                           </select>
                         </div>
                         <div>
@@ -2321,8 +2364,10 @@ export default function EmployeeDirectoryView({
                             onChange={(e) => setEditEmploymentType(e.target.value)}
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           >
-                            <option value="Confirmation">Confirmation</option>
                             <option value="Probationary">Probationary</option>
+                            <option value="Confirmation">Confirmation</option>
+                            <option value="Part Time">Part Time</option>
+                            <option value="Internship">Internship</option>
                             <option value="Independent Contractor / Freelance">Independent Contractor / Freelance</option>
                           </select>
                         </div>
@@ -2335,6 +2380,17 @@ export default function EmployeeDirectoryView({
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           />
                         </div>
+                        {editEmploymentType === 'Confirmation' && (
+                          <div>
+                            <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Date of Confirmation</label>
+                            <input
+                              type="date"
+                              value={editDateOfConfirmation}
+                              onChange={(e) => setEditDateOfConfirmation(e.target.value)}
+                              className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -3425,26 +3481,27 @@ export default function EmployeeDirectoryView({
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Department</label>
                     <select
                       value={formDepartment} onChange={(e) => setFormDepartment(e.target.value)}
-                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold text-primary"
                     >
-                      <option>Engineering</option>
-                      <option>Product & Engineering</option>
-                      <option>Product</option>
-                      <option>Human Resources</option>
+                      {availableDepartments.map(d => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Designation / Role *</label>
-                    <input 
-                      type="text" required
+                    <select
                       value={formDesignation} onChange={(e) => setFormDesignation(e.target.value)}
-                      placeholder="QA Automation Engineer"
-                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
-                    />
+                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold text-primary"
+                    >
+                      {availableRoles.map(r => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className={`grid grid-cols-1 ${formEmploymentType === 'Confirmation' ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-4`}>
                   <div>
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Type of Employment</label>
                     <select
@@ -3466,6 +3523,16 @@ export default function EmployeeDirectoryView({
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
                     />
                   </div>
+                  {formEmploymentType === 'Confirmation' && (
+                    <div>
+                      <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Date of Confirmation</label>
+                      <input 
+                        type="date"
+                        value={formDateOfConfirmation} onChange={(e) => setFormDateOfConfirmation(e.target.value)}
+                        className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                      />
+                    </div>
+                  )}
                   <div>
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Initial Status</label>
                     <select

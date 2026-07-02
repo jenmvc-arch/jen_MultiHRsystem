@@ -17,7 +17,8 @@ import {
   Percent,
   Calendar,
   ClipboardList,
-  UserPlus
+  UserPlus,
+  Tags
 } from 'lucide-react';
 import { AppTab, CorporateEntity } from '../types';
 
@@ -48,6 +49,7 @@ export default function Sidebar({
     { id: 'payroll' as AppTab, label: 'Payroll Management', icon: CreditCard },
     { id: 'performance' as AppTab, label: 'Appraisal Management', icon: Award },
     { id: 'directory' as AppTab, label: 'Employee Management', icon: Users },
+    { id: 'department-role' as AppTab, label: 'Department & Role', icon: Tags },
     { id: 'tax-settings' as AppTab, label: 'Tax Settings & Forms', icon: Percent },
     { id: 'leave-management' as AppTab, label: 'Leave Management', icon: Calendar },
     { id: 'forms-directory' as AppTab, label: 'Forms Directory', icon: ClipboardList },
