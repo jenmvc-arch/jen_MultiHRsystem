@@ -33,6 +33,14 @@ export const INITIAL_PERFORMANCES: EmployeePerformance[] = [];
 export interface PayslipBreakdown {
   grossEarnings: number;
   epfEmployeeValue: number;
+  epfEmployerValue: number;
+  socsoEmployeeVal: number;
+  socsoEmployerVal: number;
+  eisEmployeeVal: number;
+  eisEmployerVal: number;
+  taxPcbVal: number;
+  skbbkEmpVal: number;
+  skbbkEmplyrVal: number;
   totalDeductions: number;
   totalEmployerContributions: number;
   netPay: number;
@@ -320,6 +328,14 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
   return {
     grossEarnings,
     epfEmployeeValue,
+    epfEmployerValue,
+    socsoEmployeeVal,
+    socsoEmployerVal,
+    eisEmployeeVal,
+    eisEmployerVal,
+    taxPcbVal,
+    skbbkEmpVal,
+    skbbkEmplyrVal,
     totalDeductions,
     totalEmployerContributions,
     netPay,

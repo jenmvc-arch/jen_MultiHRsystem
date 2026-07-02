@@ -49,7 +49,44 @@ export default function PayslipDocumentView({
     );
   }
 
-  const breakdown = calculatePayslip(activeEmployee);
+  const params = new URLSearchParams(window.location.search);
+  const payMonth = params.get('month') ? parseInt(params.get('month')!, 10) : 10;
+  const payYear = params.get('year') ? parseInt(params.get('year')!, 10) : 2026;
+
+  const breakdown = calculatePayslip(activeEmployee, payMonth, payYear);
+
+  let baseSalaryBeforeProration = activeEmployee.basicSalary;
+  if (activeEmployee.salaryAdjustments && activeEmployee.salaryAdjustments.length > 0) {
+    const activeAdjustments = activeEmployee.salaryAdjustments
+      .filter(adj => {
+        const effDate = new Date(adj.effectiveDate);
+        const effYear = effDate.getFullYear();
+        const effMonth = effDate.getMonth() + 1;
+        return (effYear < payYear) || (effYear === payYear && effMonth <= payMonth);
+      })
+      .sort((a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime());
+    if (activeAdjustments.length > 0) {
+      baseSalaryBeforeProration = activeAdjustments[0].adjustedSalary;
+    }
+  }
+
+  const actualBasic = getAdjustedBasicSalary(activeEmployee, payMonth, payYear);
+  const prorationDeduction = parseFloat((baseSalaryBeforeProration - actualBasic).toFixed(2));
+
+  let prorationDetails = '';
+  if (prorationDeduction > 0 && activeEmployee.dateOfJoined) {
+    const joinDate = new Date(activeEmployee.dateOfJoined);
+    const joinYear = joinDate.getFullYear();
+    const joinMonth = joinDate.getMonth() + 1;
+    if (joinYear === payYear && joinMonth === payMonth) {
+      const joinDay = joinDate.getDate();
+      const calendarDays = new Date(payYear, payMonth, 0).getDate();
+      const unpaidDays = joinDay - 1;
+      prorationDetails = `Joined mid-month on ${joinDate.toLocaleDateString('en-MY', {day: 'numeric', month: 'short', year: 'numeric'})}. Deducted ${unpaidDays}/${calendarDays} unpaid days.`;
+    } else {
+      prorationDetails = `Deduction for incomplete month of service.`;
+    }
+  }
 
   const isEligible = 
     activeEmployee.employmentType === 'Probationary' || 
@@ -72,16 +109,18 @@ export default function PayslipDocumentView({
   };
 
   const handlePrint = () => {
-    onShowNotification('Print Job Sent', `Sending October_2026_Payslip_${activeEmployee.name.replace(/\s+/g, '_')}.pdf to your configured system printer.`);
+    const formattedPeriod = new Date(payYear, payMonth - 1).toLocaleDateString('en-US', {month: 'long', year: 'numeric'}).replace(/\s+/g, '_');
+    onShowNotification('Print Job Sent', `Sending ${formattedPeriod}_Payslip_${activeEmployee.name.replace(/\s+/g, '_')}.pdf to your configured system printer.`);
     window.print();
   };
 
   const handleDownload = async () => {
-    const fileName = `October_2026_Payslip_${activeEmployee.name.replace(/\s+/g, '_')}.pdf`;
+    const formattedPeriod = new Date(payYear, payMonth - 1).toLocaleDateString('en-US', {month: 'long', year: 'numeric'}).replace(/\s+/g, '_');
+    const fileName = `${formattedPeriod}_Payslip_${activeEmployee.name.replace(/\s+/g, '_')}.pdf`;
     onShowNotification('Download Started', `Generating and downloading ${fileName} in your browser...`);
     
     try {
-      const doc = <PayslipPDFDocument employee={activeEmployee} entity={activeEntity} />;
+      const doc = <PayslipPDFDocument employee={activeEmployee} entity={activeEntity} month={payMonth} year={payYear} />;
       const blob = await pdf(doc).toBlob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -129,7 +168,7 @@ export default function PayslipDocumentView({
             </button>
             <div className="flex flex-col text-left">
               <span className="text-white text-xs font-semibold truncate max-w-[200px] md:max-w-[400px]">
-                October_2026_Payslip_{activeEmployee.name.replace(/\s+/g, '_')}.pdf
+                {new Date(payYear, payMonth - 1).toLocaleDateString('en-US', {month: 'long', year: 'numeric'}).replace(/\s+/g, '_')}_Payslip_{activeEmployee.name.replace(/\s+/g, '_')}.pdf
               </span>
               <span className="text-gray-400 text-[10px] uppercase tracking-wider font-semibold">
                 Acme Global Enterprise
@@ -249,7 +288,9 @@ export default function PayslipDocumentView({
             
             <div className="text-right">
               <h2 className="text-lg font-bold text-primary-container uppercase tracking-widest font-sans">Payslip</h2>
-              <p className="text-sm text-on-surface mt-1 font-medium">October 2026</p>
+              <p className="text-sm text-on-surface mt-1 font-medium font-sans">
+                {new Date(payYear, payMonth - 1).toLocaleDateString('en-US', {month: 'long', year: 'numeric'})}
+              </p>
             </div>
           </div>
 
@@ -308,7 +349,7 @@ export default function PayslipDocumentView({
                 <tbody>
                   <tr className="border-b border-outline-variant/30">
                     <td className="py-2 text-on-surface text-left">{getPayslipLabel(activeEmployee.employmentType)}</td>
-                    <td className="py-2 text-right text-on-surface font-mono">RM {activeEmployee.basicSalary.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <td className="py-2 text-right text-on-surface font-mono">RM {baseSalaryBeforeProration.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
 
                   {/* Allowances */}
@@ -428,7 +469,7 @@ export default function PayslipDocumentView({
 
                   <tr className="font-bold text-primary">
                     <td className="py-3 text-on-surface text-left font-bold">Total Earnings & Additions</td>
-                    <td className="py-3 text-right font-mono">RM {(breakdown.grossEarnings + breakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <td className="py-3 text-right font-mono">RM {(breakdown.grossEarnings + prorationDeduction + breakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
                 </tbody>
               </table>
@@ -441,27 +482,38 @@ export default function PayslipDocumentView({
               </h3>
               <table className="w-full text-sm">
                 <tbody>
+                  {prorationDeduction > 0 && (
+                    <tr className="border-b border-outline-variant/30 bg-red-50/40">
+                      <td className="py-2 text-on-surface text-left pl-1">
+                        <div>
+                          <span className="font-semibold text-error">Prorated Basic Salary Deduction</span>
+                          <p className="text-[10px] text-on-surface-variant font-medium mt-0.5 leading-tight">{prorationDetails}</p>
+                        </div>
+                      </td>
+                      <td className="py-2 text-right text-error font-mono pr-1">RM {prorationDeduction.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    </tr>
+                  )}
                   <tr className="border-b border-outline-variant/30">
                     <td className="py-2 text-on-surface text-left">EPF (Employee {activeEmployee.epfRateEmployee}%)</td>
                     <td className="py-2 text-right text-error font-mono">RM {breakdown.epfEmployeeValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
                   <tr className="border-b border-outline-variant/30">
                     <td className="py-2 text-on-surface text-left">SOCSO</td>
-                    <td className="py-2 text-right text-error font-mono">RM {(activeEmployee.socsoEmployee || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <td className="py-2 text-right text-error font-mono">RM {breakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
-                  {skbbkEmployeeVal > 0 && (
+                  {breakdown.skbbkEmpVal > 0 && (
                     <tr className="border-b border-outline-variant/30">
                       <td className="py-2 text-on-surface text-left">SOCSO (SKBBK)</td>
-                      <td className="py-2 text-right text-error font-mono">RM {skbbkEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td className="py-2 text-right text-error font-mono">RM {breakdown.skbbkEmpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   <tr className="border-b border-outline-variant/30">
                     <td className="py-2 text-on-surface text-left">EIS</td>
-                    <td className="py-2 text-right text-error font-mono">RM {(activeEmployee.eisEmployee || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <td className="py-2 text-right text-error font-mono">RM {breakdown.eisEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
                   <tr className="border-b border-outline-variant/30">
                     <td className="py-2 text-on-surface text-left">Income Tax (PCB)</td>
-                    <td className="py-2 text-right text-error font-mono">RM {(activeEmployee.taxPcb || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <td className="py-2 text-right text-error font-mono">RM {breakdown.taxPcbVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
                   
                   {/* Unpaid Leave */}
@@ -503,7 +555,7 @@ export default function PayslipDocumentView({
 
                   <tr className="font-bold text-error">
                     <td className="py-3 text-on-surface text-left font-bold">Total Deductions</td>
-                    <td className="py-3 text-right font-mono">RM {breakdown.totalDeductions.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <td className="py-3 text-right font-mono">RM {(breakdown.totalDeductions + prorationDeduction).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
                 </tbody>
               </table>
@@ -518,21 +570,21 @@ export default function PayslipDocumentView({
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono font-medium text-on-surface">
               <div>
                 <span className="text-on-surface-variant text-[10px] uppercase block mb-1">EPF ({activeEmployee.epfRateEmployer}%)</span>
-                <span>RM {Math.round(activeEmployee.basicSalary * activeEmployee.epfRateEmployer / 100).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                <span>RM {breakdown.epfEmployerValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
               </div>
               <div>
                 <span className="text-on-surface-variant text-[10px] uppercase block mb-1">SOCSO</span>
-                <span>RM {activeEmployee.socsoEmployer.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                <span>RM {breakdown.socsoEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
               </div>
-              {skbbkEmployerVal > 0 && (
+              {breakdown.skbbkEmplyrVal > 0 && (
                 <div>
                   <span className="text-on-surface-variant text-[10px] uppercase block mb-1">SOCSO (SKBBK)</span>
-                  <span>RM {skbbkEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                  <span>RM {breakdown.skbbkEmplyrVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                 </div>
               )}
               <div>
                 <span className="text-on-surface-variant text-[10px] uppercase block mb-1">EIS</span>
-                <span>RM {activeEmployee.eisEmployer.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                <span>RM {breakdown.eisEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
               </div>
             </div>
           </div>

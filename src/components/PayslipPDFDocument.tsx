@@ -239,10 +239,12 @@ const styles = StyleSheet.create({
 interface PayslipPDFDocumentProps {
   employee: Employee;
   entity: CorporateEntity;
+  month?: number;
+  year?: number;
 }
 
-export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps) => {
-  const breakdown = calculatePayslip(employee);
+export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }: PayslipPDFDocumentProps) => {
+  const breakdown = calculatePayslip(employee, month, year);
 
   // Determine dynamic brand primary accent color based on active subsidiary's configuration
   let primaryColor = '#1c4e89'; // theme1 (blue)
@@ -262,8 +264,8 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
     employee.employmentType === 'Confirmation' || 
     (employee.employmentType === 'Independent Contractor / Freelance' && employee.eligibleForStatutory === 'Yes');
 
-  const skbbkEmployeeVal = employee.skbbkEmployee !== undefined ? employee.skbbkEmployee : (isEligible ? parseFloat(((employee.socsoEmployee || 0) * 0.25).toFixed(2)) : 0);
-  const skbbkEmployerVal = employee.skbbkEmployer !== undefined ? employee.skbbkEmployer : (isEligible ? parseFloat(((employee.socsoEmployer || 0) * 0.25).toFixed(2)) : 0);
+  const skbbkEmployeeVal = breakdown.skbbkEmpVal;
+  const skbbkEmployerVal = breakdown.skbbkEmplyrVal;
 
   // Complete allowances list matching the HTML Payslip preview
   const allowanceGen = employee.allowanceGeneral || 0;
@@ -283,21 +285,60 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
 
   // Deductions breakdown
   const epfRateEmp = employee.epfRateEmployee || 11;
-  const epfEmployeeValue = isEligible ? Math.round((employee.basicSalary * epfRateEmp) / 100) : 0;
-  const socsoEmployeeVal = isEligible ? (employee.socsoEmployee || 0) : 0;
-  const eisEmployeeVal = isEligible ? (employee.eisEmployee || 0) : 0;
-  const taxPcbVal = isEligible ? (employee.taxPcb || 0) : 0;
+  const epfEmployeeValue = breakdown.epfEmployeeValue;
+  const socsoEmployeeVal = breakdown.socsoEmployeeVal;
+  const eisEmployeeVal = breakdown.eisEmployeeVal;
+  const taxPcbVal = breakdown.taxPcbVal;
   const unpaidLeaveVal = employee.unpaidLeave || 0;
   const deductionInLieuVal = employee.deductionInLieu || 0;
   const deductionCp38Val = employee.deductionCp38 || 0;
   const deductionOthersVal = employee.deductionOthers || 0;
 
   // Employer breakdown
-  const epfRateEmployerCalculated = employee.basicSalary <= 5000 ? 13 : 12;
-  const epfRateEmployer = employee.epfRateEmployer || epfRateEmployerCalculated;
-  const epfEmployerValue = isEligible ? Math.round((employee.basicSalary * epfRateEmployer) / 100) : 0;
-  const socsoEmployerVal = isEligible ? (employee.socsoEmployer || 0) : 0;
-  const eisEmployerVal = isEligible ? (employee.eisEmployer || 0) : 0;
+  const epfRateEmployer = employee.epfRateEmployer || (employee.basicSalary <= 5000 ? 13 : 12);
+  const epfEmployerValue = breakdown.epfEmployerValue;
+  const socsoEmployerVal = breakdown.socsoEmployerVal;
+  const eisEmployerVal = breakdown.eisEmployerVal;
+
+  // Proration Deduction details
+  let baseSalaryBeforeProration = employee.basicSalary;
+  if (employee.salaryAdjustments && employee.salaryAdjustments.length > 0) {
+    const activeAdjustments = employee.salaryAdjustments
+      .filter(adj => {
+        const effDate = new Date(adj.effectiveDate);
+        const effYear = effDate.getFullYear();
+        const effMonth = effDate.getMonth() + 1;
+        return (effYear < year) || (effYear === year && effMonth <= month);
+      })
+      .sort((a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime());
+    if (activeAdjustments.length > 0) {
+      baseSalaryBeforeProration = activeAdjustments[0].adjustedSalary;
+    }
+  }
+
+  const actualBasic = getAdjustedBasicSalary(employee, month, year);
+  const prorationDeduction = parseFloat((baseSalaryBeforeProration - actualBasic).toFixed(2));
+
+  let prorationDetails = '';
+  if (prorationDeduction > 0 && employee.dateOfJoined) {
+    const joinDate = new Date(employee.dateOfJoined);
+    const joinYear = joinDate.getFullYear();
+    const joinMonth = joinDate.getMonth() + 1;
+    if (joinYear === year && joinMonth === month) {
+      const joinDay = joinDate.getDate();
+      const calendarDays = new Date(year, month, 0).getDate();
+      const unpaidDays = joinDay - 1;
+      prorationDetails = `Joined mid-month on ${joinDate.toLocaleDateString('en-MY', {day: 'numeric', month: 'short', year: 'numeric'})}. Deducted ${unpaidDays}/${calendarDays} unpaid days.`;
+    } else {
+      prorationDetails = `Deduction for incomplete month of service.`;
+    }
+  }
+
+  const monthsList = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  const periodText = `${monthsList[month - 1]} ${year}`;
 
   return (
     <Document>
@@ -330,7 +371,7 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
           </View>
           <View style={styles.titleContainer}>
             <Text style={[styles.title, { color: primaryColor }]}>Payslip</Text>
-            <Text style={styles.period}>October 2026</Text>
+            <Text style={styles.period}>{periodText}</Text>
           </View>
         </View>
 
@@ -388,7 +429,7 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
             
             <View style={styles.tableRow}>
               <Text style={styles.itemName}>{getPayslipLabel(employee.employmentType)}</Text>
-              <Text style={styles.itemVal}>{formatCurrency(employee.basicSalary)}</Text>
+              <Text style={styles.itemVal}>{formatCurrency(baseSalaryBeforeProration)}</Text>
             </View>
 
             {allowanceGen > 0 && (
@@ -503,13 +544,23 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
             {/* Total Earnings */}
             <View style={styles.tableRowBold}>
               <Text style={styles.itemNameBold}>Total Earnings & Additions</Text>
-              <Text style={[styles.itemValBold, { color: primaryColor }]}>{formatCurrency(breakdown.grossEarnings + breakdown.reimbursementsSum)}</Text>
+              <Text style={[styles.itemValBold, { color: primaryColor }]}>{formatCurrency(breakdown.grossEarnings + prorationDeduction + breakdown.reimbursementsSum)}</Text>
             </View>
           </View>
 
           {/* Deductions Column */}
           <View style={styles.tableCol}>
             <Text style={[styles.tableHeader, { color: primaryColor, borderBottomColor: primaryColor }]}>Deductions</Text>
+
+            {prorationDeduction > 0 && (
+              <View style={[styles.tableRow, { backgroundColor: '#fef2f2', paddingHorizontal: 3 }]}>
+                <View style={{ flexDirection: 'column', maxWidth: '75%' }}>
+                  <Text style={[styles.itemNameBold, { color: '#dc2626' }]}>Prorated Basic Salary Deduction</Text>
+                  {prorationDetails ? <Text style={styles.itemDesc}>{prorationDetails}</Text> : null}
+                </View>
+                <Text style={styles.itemValRed}>{formatCurrency(prorationDeduction)}</Text>
+              </View>
+            )}
 
             {epfEmployeeValue > 0 && (
               <View style={styles.tableRow}>
@@ -579,7 +630,7 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
             {/* Total Deductions */}
             <View style={styles.tableRowBold}>
               <Text style={styles.itemNameBold}>Total Deductions</Text>
-              <Text style={styles.itemValRedBold}>{formatCurrency(breakdown.totalDeductions)}</Text>
+              <Text style={styles.itemValRedBold}>{formatCurrency(breakdown.totalDeductions + prorationDeduction)}</Text>
             </View>
           </View>
         </View>
