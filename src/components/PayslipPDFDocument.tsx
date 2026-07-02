@@ -286,12 +286,12 @@ export const PayslipPDFDocument = ({ employee, entity }: PayslipPDFDocumentProps
               <Text style={styles.logoText}>HR</Text>
             </View>
             <View>
-              <Text style={styles.companyName}>{entity?.name || 'Acme Global Enterprise'}</Text>
+              <Text style={styles.companyName}>{entity?.name || 'Corporate Subsidiary'}</Text>
               {entity?.registrationNumber && (
                 <Text style={styles.companyReg}>Co. Reg: {entity.registrationNumber}</Text>
               )}
               <Text style={styles.companyAddress}>
-                {entity?.address || '123 Corporate Tower, Kuala Lumpur'}
+                {entity?.address || 'No registered corporate address'}
               </Text>
             </View>
           </View>

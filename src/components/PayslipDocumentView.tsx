@@ -222,7 +222,7 @@ export default function PayslipDocumentView({
 
               <div>
                 <h1 className="text-xl font-bold text-primary tracking-tight font-sans">
-                  {activeEntity?.name || 'Acme Global Enterprise'}
+                  {activeEntity?.name || 'Corporate Subsidiary'}
                 </h1>
                 {activeEntity?.registrationNumber && (
                   <p className="text-[10px] text-on-surface-variant font-mono font-semibold">
@@ -230,7 +230,7 @@ export default function PayslipDocumentView({
                   </p>
                 )}
                 <p className="text-xs text-on-surface-variant mt-1 leading-relaxed max-w-[400px]">
-                  {activeEntity?.address || '123 Corporate Tower, Business District, Kuala Lumpur'}
+                  {activeEntity?.address || 'No registered corporate address'}
                 </p>
               </div>
             </div>

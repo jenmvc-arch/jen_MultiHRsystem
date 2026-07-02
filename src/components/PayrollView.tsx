@@ -808,9 +808,10 @@ export default function PayrollView({
                   <p className="text-xs text-on-surface-variant mt-1">{selectedPayPeriod}</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-sm">Acme Global Enterprise</p>
-                  <p className="text-[10px] text-on-surface-variant">123 Corporate Tower, Business District</p>
-                  <p className="text-[10px] text-on-surface-variant">Kuala Lumpur, Malaysia 50000</p>
+                  <p className="font-bold text-sm">{activeEntity?.name || 'Mega HR'}</p>
+                  <p className="text-[10px] text-on-surface-variant max-w-[220px] ml-auto whitespace-pre-wrap">
+                    {activeEntity?.address || 'No registered corporate address'}
+                  </p>
                 </div>
               </div>
 
