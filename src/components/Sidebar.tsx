@@ -21,6 +21,7 @@ import {
   Tags
 } from 'lucide-react';
 import { AppTab, CorporateEntity } from '../types';
+import { getDirectLogoUrl } from '../data';
 
 interface SidebarProps {
   currentTab: AppTab;
