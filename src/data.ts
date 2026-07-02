@@ -160,12 +160,13 @@ export function calculatePcb2026(
 
 export function getProratedBasicSalary(employee: Employee, month: number, year: number): number {
   if (!employee.dateOfJoined) return employee.basicSalary;
-  const joinParts = employee.dateOfJoined.split('-');
-  const joinYear = Number(joinParts[0]);
-  const joinMonth = Number(joinParts[1]);
-  const joinDay = Number(joinParts[2]);
-
-  if (isNaN(joinYear) || isNaN(joinMonth) || isNaN(joinDay)) return employee.basicSalary;
+  
+  const joinDate = new Date(employee.dateOfJoined);
+  if (isNaN(joinDate.getTime())) return employee.basicSalary;
+  
+  const joinYear = joinDate.getFullYear();
+  const joinMonth = joinDate.getMonth() + 1;
+  const joinDay = joinDate.getDate();
 
   // If the pay period is before join year/month: salary is 0
   if (year < joinYear || (year === joinYear && month < joinMonth)) {

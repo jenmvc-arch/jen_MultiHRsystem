@@ -766,16 +766,17 @@ export default function PayrollView({
                         className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
                       />
                       {activeEmployee.dateOfJoined && (() => {
-                        const joinParts = activeEmployee.dateOfJoined.split('-');
-                        const joinYear = Number(joinParts[0]);
-                        const joinMonth = Number(joinParts[1]);
-                        const joinDay = Number(joinParts[2]);
+                        const joinDate = new Date(activeEmployee.dateOfJoined);
+                        if (isNaN(joinDate.getTime())) return null;
+                        const joinYear = joinDate.getFullYear();
+                        const joinMonth = joinDate.getMonth() + 1;
+                        const joinDay = joinDate.getDate();
                         if (joinYear === payYear && joinMonth === payMonthIndex) {
                           const calendarDays = new Date(payYear, payMonthIndex, 0).getDate();
                           const activeDays = calendarDays - joinDay + 1;
                           return (
                             <span className="text-[10px] text-primary font-bold mt-1 block">
-                              Joined {activeEmployee.dateOfJoined}. Prorated: {activeDays}/{calendarDays} days.
+                              Joined {joinDate.toLocaleDateString('en-MY', {day: 'numeric', month: 'short', year: 'numeric'})}. Prorated: {activeDays}/{calendarDays} days.
                             </span>
                           );
                         }
