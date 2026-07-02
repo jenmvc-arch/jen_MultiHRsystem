@@ -464,8 +464,9 @@ export default function App() {
           newValue: JSON.stringify(newEmployee),
           createdAt: new Date().toISOString()
         });
-      } catch (err) {
+      } catch (err: any) {
         console.error('[Google Sheets Insert] Failed to insert employee:', err);
+        triggerNotification('Sync Failed', `Could not save new employee: ${err.message || err}`, 'info');
       }
     }
   };
@@ -570,8 +571,9 @@ export default function App() {
           newValue: JSON.stringify(updates),
           createdAt: new Date().toISOString()
         });
-      } catch (err) {
+      } catch (err: any) {
         console.error('[Google Sheets Update] Failed to update employee:', err);
+        triggerNotification('Sync Failed', `Could not update employee: ${err.message || err}`, 'info');
       }
     }
   };
