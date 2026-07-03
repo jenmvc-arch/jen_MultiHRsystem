@@ -126,9 +126,9 @@ runTest("Test 2: Wages exactly RM30", emp2, "2026-06", [{ code: 'basic_salary', 
 const emp3 = { ...baseEmp };
 runTest("Test 3: Wages RM30.01", emp3, "2026-06", [{ code: 'basic_salary', amount: 30.01 }], {
   category: "FIRST_CATEGORY",
-  employerTotal: 0.90,
-  employeeTotal: 0.65,
-  lindung24: 0.40
+  employerTotal: 0.88,
+  employeeTotal: 0.63,
+  lindung24: 0.38
 });
 
 // 5. Wages exactly RM900 (post-June 2026 Phase 1)
@@ -154,8 +154,8 @@ const emp11 = { ...baseEmp };
 runTest("Test 11: Wages exactly RM6,000", emp11, "2026-06", [{ code: 'basic_salary', amount: 6000.00 }], {
   category: "FIRST_CATEGORY",
   employerTotal: 104.10,
-  employeeTotal: 74.40,
-  lindung24: 44.65
+  employeeTotal: 74.38,
+  lindung24: 44.63
 });
 
 // 12. Wages above RM6,000 (Capped at RM6k)
@@ -163,8 +163,8 @@ const emp12 = { ...baseEmp };
 runTest("Test 12: Wages above RM6,000 (Capped)", emp12, "2026-06", [{ code: 'basic_salary', amount: 8000.00 }], {
   category: "FIRST_CATEGORY",
   employerTotal: 104.10,
-  employeeTotal: 74.40,
-  lindung24: 44.65
+  employeeTotal: 74.38,
+  lindung24: 44.63
 });
 
 // 13. First Category employee pre-June 2026

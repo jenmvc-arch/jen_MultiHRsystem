@@ -155,8 +155,8 @@ export const DEFAULT_SOCSO_EARNING_COMPONENTS: SocsoEarningComponent[] = [
   { earningCode: 'reimbursement', earningName: 'Reimbursement', subjectToSocso: false, includedInSocsoWages: false, excludedFromSocsoWages: true, earningCategory: 'Reimbursement', effectiveFrom: '2020-01-01', effectiveTo: '9999-12-31', statutoryReference: 'Act 4', requiresReview: false }
 ];
 
-function roundToNearestFiveCents(val: number): number {
-  return Math.round(val * 20) / 20;
+function roundToTwoDecimals(val: number): number {
+  return Math.round(val * 100) / 100;
 }
 
 export function parseDobFromNric(nric: string): string {
@@ -235,13 +235,13 @@ export function generateOfficialSocsoBrackets(configId: string, category: 'FIRST
 
     if (phase === 'PRE_JUNE_2026') {
       if (category === 'FIRST_CATEGORY') {
-        const empTotal = roundToNearestFiveCents(assumed * 0.0175 - C_er);
-        employerInvalidity = roundToNearestFiveCents(assumed * 0.005);
-        employerEmploymentInjury = roundToNearestFiveCents(empTotal - employerInvalidity);
-        employeeInvalidity = roundToNearestFiveCents(assumed * 0.005);
+        const empTotal = roundToTwoDecimals(assumed * 0.0175 - C_er);
+        employerInvalidity = roundToTwoDecimals(assumed * 0.005);
+        employerEmploymentInjury = roundToTwoDecimals(empTotal - employerInvalidity);
+        employeeInvalidity = roundToTwoDecimals(assumed * 0.005);
         employeeNonEmploymentInjury = 0;
       } else {
-        employerEmploymentInjury = roundToNearestFiveCents(assumed * 0.0125 - C_er);
+        employerEmploymentInjury = roundToTwoDecimals(assumed * 0.0125 - C_er);
         employerInvalidity = 0;
         employeeInvalidity = 0;
         employeeNonEmploymentInjury = 0;
@@ -252,17 +252,17 @@ export function generateOfficialSocsoBrackets(configId: string, category: 'FIRST
       if (phase === 'LINDUNG24_PHASE_3') lindung24Rate = 0.0125;
 
       if (category === 'FIRST_CATEGORY') {
-        const empTotal = roundToNearestFiveCents(assumed * 0.0175 - C_er);
-        employerInvalidity = roundToNearestFiveCents(assumed * 0.005);
-        employerEmploymentInjury = roundToNearestFiveCents(empTotal - employerInvalidity);
+        const empTotal = roundToTwoDecimals(assumed * 0.0175 - C_er);
+        employerInvalidity = roundToTwoDecimals(assumed * 0.005);
+        employerEmploymentInjury = roundToTwoDecimals(empTotal - employerInvalidity);
 
-        employeeInvalidity = roundToNearestFiveCents(assumed * 0.005);
-        employeeNonEmploymentInjury = roundToNearestFiveCents(assumed * lindung24Rate - C_ee_l24);
+        employeeInvalidity = roundToTwoDecimals(assumed * 0.005);
+        employeeNonEmploymentInjury = roundToTwoDecimals(assumed * lindung24Rate - C_ee_l24);
       } else {
-        employerEmploymentInjury = roundToNearestFiveCents(assumed * 0.0125 - C_er);
+        employerEmploymentInjury = roundToTwoDecimals(assumed * 0.0125 - C_er);
         employerInvalidity = 0;
         employeeInvalidity = 0;
-        employeeNonEmploymentInjury = roundToNearestFiveCents(assumed * lindung24Rate - C_ee_l24);
+        employeeNonEmploymentInjury = roundToTwoDecimals(assumed * lindung24Rate - C_ee_l24);
       }
     }
 
@@ -289,9 +289,9 @@ export function generateOfficialSocsoBrackets(configId: string, category: 'FIRST
       }
     }
 
-    const employerTotal = roundToNearestFiveCents(employerEmploymentInjury + employerInvalidity);
-    const employeeTotal = roundToNearestFiveCents(employeeInvalidity + employeeNonEmploymentInjury);
-    const combinedTotal = roundToNearestFiveCents(employerTotal + employeeTotal);
+    const employerTotal = roundToTwoDecimals(employerEmploymentInjury + employerInvalidity);
+    const employeeTotal = roundToTwoDecimals(employeeInvalidity + employeeNonEmploymentInjury);
+    const combinedTotal = roundToTwoDecimals(employerTotal + employeeTotal);
 
     return {
       id: `${configId}-bracket-${index + 1}`,
