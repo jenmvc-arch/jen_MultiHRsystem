@@ -1062,6 +1062,19 @@ export default function PayrollView({
                 <SocsoCalculatorCard 
                   employee={activeEmployee}
                   payrollPeriod={`${payYear}-${String(payMonthIndex).padStart(2, '0')}`}
+                  payrollItems={[
+                    { code: 'basic_salary', amount: tempBasic },
+                    { code: 'overtime', amount: activeEmployee.overtime || 0 },
+                    { code: 'commission', amount: commissionAmt },
+                    { code: 'allowance_general', amount: hasAllowances ? allowanceGen : 0 },
+                    { code: 'allowance_transport', amount: hasAllowances ? allowanceTrans : 0 },
+                    { code: 'allowance_parking', amount: hasAllowances ? allowancePark : 0 },
+                    { code: 'allowance_meal', amount: hasAllowances ? allowanceMl : 0 },
+                    { code: 'allowance_accommodation', amount: hasAllowances ? allowanceAccom : 0 },
+                    { code: 'allowance_phone', amount: hasAllowances ? allowancePh : 0 },
+                    { code: 'backpay', amount: backPayAmt },
+                    ...(unpaidLeave > 0 ? [{ code: 'unpaid_leave', amount: unpaidLeave }] : [])
+                  ]}
                   onRecalculate={() => {
                     alert('Recalculated current pay run SOCSO contributions based on active statutory brackets!');
                   }}

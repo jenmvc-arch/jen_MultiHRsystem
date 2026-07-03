@@ -21,6 +21,7 @@ import { calculateSocsoContribution } from '../data';
 interface SocsoCalculatorCardProps {
   employee: Employee;
   payrollPeriod: string; // YYYY-MM
+  payrollItems?: { code: string; amount: number }[];
   onRecalculate?: () => void;
   onReviewCategory?: () => void;
 }
@@ -28,40 +29,44 @@ interface SocsoCalculatorCardProps {
 export default function SocsoCalculatorCard({
   employee,
   payrollPeriod,
+  payrollItems: propPayrollItems,
   onRecalculate,
   onReviewCategory
 }: SocsoCalculatorCardProps) {
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [showComparison, setShowComparison] = useState(false);
 
-  // Extract pay run items from employee current settings
-  const basicSalary = employee.basicSalary || 0;
-  const allowanceGen = employee.allowanceGeneral || 0;
-  const allowanceTrans = employee.allowanceTransport !== undefined ? employee.allowanceTransport : (employee.transportAllowance || 0);
-  const allowancePark = employee.allowanceParking || 0;
-  const allowanceMl = employee.allowanceMeal || 0;
-  const allowanceAccom = employee.allowanceAccommodation !== undefined ? employee.allowanceAccommodation : (employee.housingAllowance || 0);
-  const allowancePh = employee.allowancePhone || 0;
-  const overtimeVal = employee.overtime || 0;
-  const commissionVal = employee.commissionAmount || 0;
-  const backPayVal = employee.backPayAmount || 0;
-  const unpaidLeave = employee.unpaidLeave || 0;
+  // Extract pay run items from employee current settings or props
+  let payrollItems = propPayrollItems;
+  if (!payrollItems) {
+    const basicSalary = employee.basicSalary || 0;
+    const allowanceGen = employee.allowanceGeneral || 0;
+    const allowanceTrans = employee.allowanceTransport !== undefined ? employee.allowanceTransport : (employee.transportAllowance || 0);
+    const allowancePark = employee.allowanceParking || 0;
+    const allowanceMl = employee.allowanceMeal || 0;
+    const allowanceAccom = employee.allowanceAccommodation !== undefined ? employee.allowanceAccommodation : (employee.housingAllowance || 0);
+    const allowancePh = employee.allowancePhone || 0;
+    const overtimeVal = employee.overtime || 0;
+    const commissionVal = employee.commissionAmount || 0;
+    const backPayVal = employee.backPayAmount || 0;
+    const unpaidLeave = employee.unpaidLeave || 0;
 
-  const payrollItems = [
-    { code: 'basic_salary', amount: basicSalary },
-    { code: 'overtime', amount: overtimeVal },
-    { code: 'commission', amount: commissionVal },
-    { code: 'allowance_general', amount: allowanceGen },
-    { code: 'allowance_transport', amount: allowanceTrans },
-    { code: 'allowance_parking', amount: allowancePark },
-    { code: 'allowance_meal', amount: allowanceMl },
-    { code: 'allowance_accommodation', amount: allowanceAccom },
-    { code: 'allowance_phone', amount: allowancePh },
-    { code: 'backpay', amount: backPayVal }
-  ];
+    payrollItems = [
+      { code: 'basic_salary', amount: basicSalary },
+      { code: 'overtime', amount: overtimeVal },
+      { code: 'commission', amount: commissionVal },
+      { code: 'allowance_general', amount: allowanceGen },
+      { code: 'allowance_transport', amount: allowanceTrans },
+      { code: 'allowance_parking', amount: allowancePark },
+      { code: 'allowance_meal', amount: allowanceMl },
+      { code: 'allowance_accommodation', amount: allowanceAccom },
+      { code: 'allowance_phone', amount: allowancePh },
+      { code: 'backpay', amount: backPayVal }
+    ];
 
-  if (unpaidLeave > 0) {
-    payrollItems.push({ code: 'unpaid_leave', amount: unpaidLeave });
+    if (unpaidLeave > 0) {
+      payrollItems.push({ code: 'unpaid_leave', amount: unpaidLeave });
+    }
   }
 
   // Calculate contribution details using the engine

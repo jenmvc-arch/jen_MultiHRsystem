@@ -861,7 +861,12 @@ export function calculateSocsoContribution(params: {
   let eeTotal = 0;
   let grandTotal = 0;
 
-  if (category === 'FIRST_CATEGORY') {
+  let calcCategory = category;
+  if (calcCategory === 'REVIEW_REQUIRED') {
+    calcCategory = profile.contributionCategory || 'FIRST_CATEGORY';
+  }
+
+  if (calcCategory === 'FIRST_CATEGORY') {
     erEmploymentInjury = bracket.category1_employer_employment_injury_sen;
     erInvalidity = bracket.category1_employer_invalidity_sen;
     erTotal = bracket.category1_employer_total_sen;
