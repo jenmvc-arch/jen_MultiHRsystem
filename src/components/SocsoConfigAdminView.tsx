@@ -238,6 +238,112 @@ export default function SocsoConfigAdminView() {
     }
   };
 
+  const handleJsonUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const data = JSON.parse(text);
+        
+        if (!data.schedule_code || !data.rows || !Array.isArray(data.rows)) {
+          alert('Invalid JSON file format. Must contain schedule_code and rows array.');
+          return;
+        }
+
+        // Create/Update FIRST_CATEGORY and SECOND_CATEGORY configs
+        const c1Id = `cfg-${data.schedule_code.toLowerCase()}-c1`;
+        const c2Id = `cfg-${data.schedule_code.toLowerCase()}-c2`;
+
+        const newC1Config: SOCSOConfiguration = {
+          id: c1Id,
+          schemeCode: 'SOCSO_ACT4',
+          legislation: data.schedule_name || 'PERKESO Act 4',
+          contributionCategory: 'FIRST_CATEGORY',
+          phase: 'LINDUNG24_PHASE_1',
+          effectiveFrom: data.effective_from ? data.effective_from.substring(0, 7) : '2026-06',
+          effectiveTo: data.effective_to ? data.effective_to.substring(0, 7) : '9999-12',
+          wageCeiling: (data.wage_ceiling_sen || 600000) / 100,
+          sourceDocument: data.official_source || 'JSON Import',
+          sourceDocumentDate: new Date().toISOString().substring(0, 10),
+          sourceVersion: '1.0',
+          status: 'draft',
+          approvedBy: '',
+          approvedAt: '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        const newC2Config: SOCSOConfiguration = {
+          ...newC1Config,
+          id: c2Id,
+          contributionCategory: 'SECOND_CATEGORY',
+          schemeCode: 'LINDUNG_24_JAM'
+        };
+
+        // Create brackets
+        const newBrackets: SOCSOBracket[] = [];
+        data.rows.forEach((r: any) => {
+          // Category 1 Bracket
+          newBrackets.push({
+            id: `${c1Id}-imported-${r.bracket_number}`,
+            configurationId: c1Id,
+            contributionCategory: 'FIRST_CATEGORY',
+            lowerWageLimit: (r.lower_bound_sen || 0) / 100,
+            upperWageLimit: (r.upper_bound_sen || 0) / 100,
+            lowerLimitInclusive: r.lower_bound_inclusive ?? false,
+            upperLimitInclusive: r.upper_bound_inclusive ?? true,
+            wageBracketNumber: r.bracket_number,
+            assumedMonthlyWage: ((r.lower_bound_sen + r.upper_bound_sen) / 2) / 100,
+            employerEmploymentInjury: (r.category1_employer_employment_injury_sen || 0) / 100,
+            employerInvalidity: (r.category1_employer_invalidity_sen || 0) / 100,
+            employerTotal: (r.category1_employer_total_sen || 0) / 100,
+            employeeInvalidity: (r.category1_employee_invalidity_sen || 0) / 100,
+            employeeNonEmploymentInjury: (r.category1_employee_lindung24_sen || 0) / 100,
+            employeeTotal: (r.category1_employee_total_sen || 0) / 100,
+            combinedTotal: (r.category1_grand_total_sen || 0) / 100,
+            effectiveFrom: '2026-06-01',
+            effectiveTo: '9999-12-31'
+          });
+
+          // Category 2 Bracket
+          newBrackets.push({
+            id: `${c2Id}-imported-${r.bracket_number}`,
+            configurationId: c2Id,
+            contributionCategory: 'SECOND_CATEGORY',
+            lowerWageLimit: (r.lower_bound_sen || 0) / 100,
+            upperWageLimit: (r.upper_bound_sen || 0) / 100,
+            lowerLimitInclusive: r.lower_bound_inclusive ?? false,
+            upperLimitInclusive: r.upper_bound_inclusive ?? true,
+            wageBracketNumber: r.bracket_number,
+            assumedMonthlyWage: ((r.lower_bound_sen + r.upper_bound_sen) / 2) / 100,
+            employerEmploymentInjury: (r.category2_employer_employment_injury_sen || 0) / 100,
+            employerInvalidity: 0,
+            employerTotal: (r.category2_employer_total_sen || 0) / 100,
+            employeeInvalidity: 0,
+            employeeNonEmploymentInjury: (r.category2_employee_lindung24_sen || 0) / 100,
+            employeeTotal: (r.category2_employee_total_sen || 0) / 100,
+            combinedTotal: (r.category2_grand_total_sen || 0) / 100,
+            effectiveFrom: '2026-06-01',
+            effectiveTo: '9999-12-31'
+          });
+        });
+
+        // Filter out existing configs and add new ones
+        const filteredConfigs = configs.filter(c => c.id !== c1Id && c.id !== c2Id);
+        const filteredBrackets = brackets.filter(b => b.configurationId !== c1Id && b.configurationId !== c2Id);
+
+        saveToStorage([...filteredConfigs, newC1Config, newC2Config], [...filteredBrackets, ...newBrackets]);
+        setImportStatus({ type: 'success', message: `Successfully imported JSON config! Added ${data.rows.length * 2} brackets across FIRST & SECOND categories under drafts ${c1Id} & ${c2Id}.` });
+      } catch (err: any) {
+        setImportStatus({ type: 'error', message: 'Failed to parse JSON: ' + err.message });
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const getComparison = () => {
     const srcList = brackets.filter(b => b.configurationId === compareSourceId).sort((a, b) => a.wageBracketNumber - b.wageBracketNumber);
     const tgtList = brackets.filter(b => b.configurationId === compareTargetId).sort((a, b) => a.wageBracketNumber - b.wageBracketNumber);
@@ -531,55 +637,82 @@ export default function SocsoConfigAdminView() {
 
       {/* Tab 2: Bracket Importer */}
       {activeTab === 'brackets' && (
-        <div className="bg-white rounded-xl shadow border border-slate-200 p-6 text-sm text-slate-700">
-          <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-1">
-            <Upload className="w-5 h-5 text-rose-600" /> Bulk Import Brackets via CSV
-          </h4>
-          <p className="text-xs text-slate-500 mb-4">
-            Overwrite bracket details for any draft configuration. Paste your CSV raw contents matching this schema: <br/>
-            <code>LowerWageLimit,UpperWageLimit,LowerLimitInclusive,UpperLimitInclusive,WageBracketNumber,AssumedMonthlyWage,EmployerEmploymentInjury,EmployerInvalidity,EmployeeInvalidity,EmployeeNonEmploymentInjury</code>
-          </p>
-
-          <div className="space-y-4 mb-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Target Configuration</label>
-              <select
-                value={selectedConfigIdForImport}
-                onChange={e => setSelectedConfigIdForImport(e.target.value)}
-                className="w-full md:w-1/3 p-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500"
-              >
-                <option value="">-- Select Target Draft Configuration --</option>
-                {configs.filter(c => c.status === 'draft').map(cfg => (
-                  <option key={cfg.id} value={cfg.id}>{cfg.id} ({cfg.contributionCategory})</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 mb-1">Paste CSV content:</label>
-              <textarea
-                rows={8}
-                value={csvText}
-                onChange={e => setCsvText(e.target.value)}
-                placeholder="0.00,30.00,false,true,1,30.00,0.40,0.15,0.15,0.25"
-                className="w-full p-3 font-mono text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500"
+        <div className="space-y-6">
+          {/* JSON Importer */}
+          <div className="bg-white rounded-xl shadow border border-slate-200 p-6 text-sm text-slate-700">
+            <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-1">
+              <Upload className="w-5 h-5 text-rose-600" /> Statutory JSON Importer
+            </h4>
+            <p className="text-xs text-slate-500 mb-4">
+              Import a complete statutory configuration and bracket list directly from a standard JSON table file (like the official <code>PERKESO_ACT4_LINDUNG24</code> schema).
+            </p>
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleJsonUpload}
+                className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-rose-50 file:text-rose-700 hover:file:bg-rose-100 cursor-pointer"
               />
             </div>
+            {importStatus.type && importStatus.message.includes('JSON') && (
+              <div className={`mt-4 p-3 rounded text-xs font-semibold flex items-center gap-2 ${importStatus.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 'bg-rose-50 text-rose-800 border border-rose-100'}`}>
+                {importStatus.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 text-rose-600" />}
+                <span>{importStatus.message}</span>
+              </div>
+            )}
           </div>
 
-          {importStatus.type && (
-            <div className={`p-3 rounded mb-4 text-xs font-semibold flex items-center gap-2 ${importStatus.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 'bg-rose-50 text-rose-800 border border-rose-100'}`}>
-              {importStatus.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 text-rose-600" />}
-              <span>{importStatus.message}</span>
-            </div>
-          )}
+          {/* CSV Importer */}
+          <div className="bg-white rounded-xl shadow border border-slate-200 p-6 text-sm text-slate-700">
+            <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-1">
+              <Upload className="w-5 h-5 text-rose-600" /> Bulk Import Brackets via CSV
+            </h4>
+            <p className="text-xs text-slate-500 mb-4">
+              Overwrite bracket details for any draft configuration. Paste your CSV raw contents matching this schema: <br/>
+              <code>LowerWageLimit,UpperWageLimit,LowerLimitInclusive,UpperLimitInclusive,WageBracketNumber,AssumedMonthlyWage,EmployerEmploymentInjury,EmployerInvalidity,EmployeeInvalidity,EmployeeNonEmploymentInjury</code>
+            </p>
 
-          <button
-            onClick={handleImportCsv}
-            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold transition flex items-center gap-1.5 shadow-sm"
-          >
-            <Upload className="w-4 h-4" /> Import CSV Brackets
-          </button>
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Target Configuration</label>
+                <select
+                  value={selectedConfigIdForImport}
+                  onChange={e => setSelectedConfigIdForImport(e.target.value)}
+                  className="w-full md:w-1/3 p-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500"
+                >
+                  <option value="">-- Select Target Draft Configuration --</option>
+                  {configs.filter(c => c.status === 'draft').map(cfg => (
+                    <option key={cfg.id} value={cfg.id}>{cfg.id} ({cfg.contributionCategory})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">Paste CSV content:</label>
+                <textarea
+                  rows={8}
+                  value={csvText}
+                  onChange={e => setCsvText(e.target.value)}
+                  placeholder="0.00,30.00,false,true,1,30.00,0.40,0.15,0.15,0.25"
+                  className="w-full p-3 font-mono text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500"
+                />
+              </div>
+            </div>
+
+            {importStatus.type && !importStatus.message.includes('JSON') && (
+              <div className={`p-3 rounded mb-4 text-xs font-semibold flex items-center gap-2 ${importStatus.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 'bg-rose-50 text-rose-800 border border-rose-100'}`}>
+                {importStatus.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 text-rose-600" />}
+                <span>{importStatus.message}</span>
+              </div>
+            )}
+
+            <button
+              onClick={handleImportCsv}
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold transition flex items-center gap-1.5 shadow-sm"
+            >
+              <Upload className="w-4 h-4" /> Import CSV Brackets
+            </button>
+          </div>
         </div>
       )}
 
