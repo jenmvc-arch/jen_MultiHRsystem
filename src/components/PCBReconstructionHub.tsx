@@ -68,6 +68,7 @@ export default function PCBReconstructionHub({
   const [profMarital, setProfMarital] = useState<'Single' | 'Married' | 'Divorced' | 'Widowed'>('Single');
   const [profSpouseWorking, setProfSpouseWorking] = useState<'Yes' | 'No'>('No');
   const [profDependants, setProfDependants] = useState(0);
+  const [selectedBreakdownResult, setSelectedBreakdownResult] = useState<HistoricalPCBResult | null>(null);
 
   const activeEmployee = employees.find(e => e.id === selectedEmpId) || employees[0];
 
@@ -372,12 +373,13 @@ export default function PCBReconstructionHub({
                     <th className="p-3 text-right font-bold">Actual PCB Deducted</th>
                     <th className="p-3 text-right">PCB Variance</th>
                     <th className="p-3 text-center">Status</th>
+                    <th className="p-3 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-border/60">
                   {activeResults.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-on-surface-variant italic">
+                      <td colSpan={9} className="p-8 text-center text-on-surface-variant italic">
                         No calculations have been run. Click "Run & Save Reconstruction" to analyze history.
                       </td>
                     </tr>
@@ -402,6 +404,14 @@ export default function PCBReconstructionHub({
                             {res.status}
                           </span>
                         </td>
+                        <td className="p-3 text-center">
+                          <button
+                            onClick={() => setSelectedBreakdownResult(res)}
+                            className="bg-primary/10 text-primary border border-primary/20 rounded py-1 px-2.5 hover:bg-primary/20 text-[10px] font-bold cursor-pointer transition-colors uppercase tracking-wider"
+                          >
+                            View Details
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -409,6 +419,115 @@ export default function PCBReconstructionHub({
               </table>
             </div>
           </div>
+
+          {/* View PCB Calculation Breakdown Modal (Requirement 29) */}
+          {selectedBreakdownResult && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+              <div className="bg-white rounded-lg border border-neutral-border shadow-2xl w-full max-w-3xl overflow-hidden max-h-[90vh] flex flex-col text-left">
+                <div className="p-4 border-b border-neutral-border bg-neutral-50 flex justify-between items-center">
+                  <h3 className="font-bold text-sm text-primary uppercase tracking-wider flex items-center gap-1.5">
+                    <FileText className="w-4 h-4" /> MTD / PCB Detailed Calculation Breakdown
+                  </h3>
+                  <button 
+                    onClick={() => setSelectedBreakdownResult(null)}
+                    className="text-on-surface-variant hover:text-on-surface font-bold text-xs"
+                  >
+                    ✕ Close
+                  </button>
+                </div>
+
+                <div className="p-6 overflow-y-auto space-y-6 text-xs leading-relaxed">
+                  {/* Section A: Employee info */}
+                  <div>
+                    <h4 className="font-bold text-xs text-primary border-b pb-1 mb-2">A. Employee Statutory Profile</h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-neutral-50 p-3 rounded border border-neutral-border/40">
+                      <div><span className="text-zinc-500 block">Residence Status:</span> <strong>{selectedBreakdownResult.taxResidenceStatus || 'RESIDENT'}</strong></div>
+                      <div><span className="text-zinc-500 block">Calculation Type:</span> <strong>{selectedBreakdownResult.calculationType || 'RESIDENT_PROGRESSIVE'}</strong></div>
+                      <div><span className="text-zinc-500 block">Tax Category:</span> <strong>{selectedBreakdownResult.employeeCategory || 'CATEGORY_1'}</strong></div>
+                      <div><span className="text-zinc-500 block">Qualifying Children (C):</span> <strong>{selectedBreakdownResult.C || 0}</strong></div>
+                    </div>
+                  </div>
+
+                  {/* Section B & C: Remuneration & EPF inputs */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="font-bold text-xs text-primary border-b pb-1 mb-2">B. Accumulated YTD Earnings</h4>
+                      <table className="w-full">
+                        <tbody>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Prior Remuneration (ΣY):</td><td className="py-1 text-right font-mono">RM {selectedBreakdownResult.Y.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Prior EPF (ΣK):</td><td className="py-1 text-right font-mono">RM {selectedBreakdownResult.K.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Prior PCB Paid (X):</td><td className="py-1 text-right font-mono">RM {selectedBreakdownResult.accumulatedPriorPCB.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Prior Zakat Paid (Z):</td><td className="py-1 text-right font-mono">RM {selectedBreakdownResult.accumulatedPriorZakat.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-xs text-primary border-b pb-1 mb-2">C. Current Month Earning Items</h4>
+                      <table className="w-full">
+                        <tbody>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Normal Remuneration (Y1):</td><td className="py-1 text-right font-mono">RM {selectedBreakdownResult.currentNormalRemuneration.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Normal EPF (K1):</td><td className="py-1 text-right font-mono">RM {selectedBreakdownResult.currentMonthEmployeeEPF.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Additional Remuneration (Yt):</td><td className="py-1 text-right font-mono">RM {selectedBreakdownResult.currentAdditionalRemuneration.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Current Zakat Offset:</td><td className="py-1 text-right font-mono">RM {(selectedBreakdownResult.currentZakat || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Section D & E: Projection & Reliefs */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="font-bold text-xs text-primary border-b pb-1 mb-2">D. Future Projections</h4>
+                      <table className="w-full">
+                        <tbody>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Remaining Months (n):</td><td className="py-1 text-right font-mono">{selectedBreakdownResult.n}</td></tr>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Projected Remuneration (Y2):</td><td className="py-1 text-right font-mono">RM {selectedBreakdownResult.Y1.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Projected EPF Relief (K2):</td><td className="py-1 text-right font-mono">RM {selectedBreakdownResult.K2?.toLocaleString('en-US', {minimumFractionDigits: 2}) || '0.00'}</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-xs text-primary border-b pb-1 mb-2">E. Deductions & Reliefs Capped</h4>
+                      <table className="w-full">
+                        <tbody>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Individual Relief (D):</td><td className="py-1 text-right font-mono">RM {selectedBreakdownResult.D.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Spouse Relief (S):</td><td className="py-1 text-right font-mono">RM {selectedBreakdownResult.S.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Child Relief (Q × C):</td><td className="py-1 text-right font-mono">RM {((selectedBreakdownResult.Q || 0) * 2000).toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">TP1 Relief (ΣLP + LP1):</td><td className="py-1 text-right font-mono">RM {(selectedBreakdownResult.qualifyingDeductions).toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Section F, G: Chargeable Income, brackets & results */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="font-bold text-xs text-primary border-b pb-1 mb-2">F. Chargeable Income (P) & Tax Table</h4>
+                      <table className="w-full">
+                        <tbody>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">P (Excl. Additional):</td><td className="py-1 text-right font-mono">RM {selectedBreakdownResult.PWithoutCurrentAdditional.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">P (Incl. Additional):</td><td className="py-1 text-right font-mono">RM {selectedBreakdownResult.PWithCurrentAdditional.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Progressive Bracket Base (M):</td><td className="py-1 text-right font-mono">RM {selectedBreakdownResult.M.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Rate (R) / Rebate (B):</td><td className="py-1 text-right font-mono">{(selectedBreakdownResult.R * 100).toFixed(1)}% / RM {selectedBreakdownResult.B.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-xs text-primary border-b pb-1 mb-2">G. Calculations & Final Output</h4>
+                      <table className="w-full">
+                        <tbody>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1 font-semibold text-primary">Normal PCB:</td><td className="py-1 text-right font-mono font-bold">RM {selectedBreakdownResult.normalRemunerationPCB.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1 font-semibold text-primary">Additional PCB:</td><td className="py-1 text-right font-mono font-bold">RM {selectedBreakdownResult.additionalRemunerationPCB.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                          <tr className="border-b border-neutral-border/20"><td className="py-1">Pre-rounded PCB:</td><td className="py-1 text-right font-mono font-mono">RM {selectedBreakdownResult.finalPCBPreFiveSenRounding.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                          <tr className="border-b font-bold text-green-700 bg-green-50/50"><td className="py-1.5 px-2">Final Payable MTD / PCB:</td><td className="py-1.5 px-2 text-right font-mono font-mono">RM {selectedBreakdownResult.calculatedPCB.toLocaleString('en-US', {minimumFractionDigits: 2})}</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -1192,7 +1192,7 @@ export function calculatePCB2026(params: PCB2026Params) {
   const Y2 = Y1;
 
   const annualQualifyingLimit = dec(4000);
-  const totalEPFSoFar = accumulatedEPF.add(K1).add(Kt);
+  const totalEPFSoFar = accumulatedEPF.add(K1);
   const remainingEPFLimit = Decimal.fromCents(Math.max(0, annualQualifyingLimit.toIntegerCents() - totalEPFSoFar.toIntegerCents()));
   
   let K2 = dec(0);
@@ -1282,20 +1282,21 @@ export function calculatePCB2026(params: PCB2026Params) {
     accumulatedLP = accumulatedLP.add(tp3QualDeductions);
   }
 
+  // Normal reliefs (without additional remuneration)
+  const annualEpf = accumulatedEPF.add(K1).add(K2.mul(n));
+  const epfRelief = annualEpf.toIntegerCents() > 400000 ? dec(4000) : annualEpf;
+
   const reliefsTotal = dec(9000)
     .add(category === 'CATEGORY_2' ? 4000 : 0)
     .add(employeeTaxProfile.employeeDisabled ? 6000 : 0)
     .add((category === 'CATEGORY_2' && employeeTaxProfile.spouseDisabled) ? 5000 : 0)
     .add(childReliefTotal)
     .add(accumulatedLP)
-    .add(currentLP1);
+    .add(currentLP1)
+    .add(epfRelief);
 
-  const Y_minus_K_prior = Decimal.fromCents(Math.max(0, accumulatedNormal.toIntegerCents() - accumulatedEPF.toIntegerCents()));
-  const Y1_minus_K1_current = Decimal.fromCents(Math.max(0, Y1.toIntegerCents() - K1.toIntegerCents()));
-  const Y2_minus_K2_future = Decimal.fromCents(Math.max(0, Y2.toIntegerCents() - K2.toIntegerCents()));
-  const projectedIncome = Y_minus_K_prior.add(Y1_minus_K1_current).add(Y2_minus_K2_future.mul(n));
-
-  const PWithoutCurrentAdditional = Decimal.fromCents(Math.max(0, projectedIncome.toIntegerCents() - reliefsTotal.toIntegerCents()));
+  const totalNormalIncome = accumulatedNormal.add(Y1).add(Y2.mul(n));
+  const PWithoutCurrentAdditional = Decimal.fromCents(Math.max(0, totalNormalIncome.toIntegerCents() - reliefsTotal.toIntegerCents()));
 
   let M = 0;
   let R = 0.0;
@@ -1372,17 +1373,20 @@ export function calculatePCB2026(params: PCB2026Params) {
     K2WithBonus = projectedLimit.toIntegerCents() < K1.toIntegerCents() ? projectedLimit : K1;
   }
 
-  const Y_minus_K_prior_with_bonus = Y_minus_K_prior;
-  const Y1_minus_K1_current_with_bonus = Y1_minus_K1_current;
-  const Yt_minus_Kt_additional = Decimal.fromCents(Math.max(0, Yt.toIntegerCents() - Kt.toIntegerCents()));
-  const Y2_minus_K2_future_with_bonus = Decimal.fromCents(Math.max(0, Y2.toIntegerCents() - K2WithBonus.toIntegerCents()));
+  const annualEpfWithBonus = accumulatedEPF.add(K1).add(Kt).add(K2WithBonus.mul(n));
+  const epfReliefWithBonus = annualEpfWithBonus.toIntegerCents() > 400000 ? dec(4000) : annualEpfWithBonus;
 
-  const projectedIncomeWithBonus = Y_minus_K_prior_with_bonus
-    .add(Y1_minus_K1_current_with_bonus)
-    .add(Yt_minus_Kt_additional)
-    .add(Y2_minus_K2_future_with_bonus.mul(n));
+  const reliefsTotalWithBonus = dec(9000)
+    .add(category === 'CATEGORY_2' ? 4000 : 0)
+    .add(employeeTaxProfile.employeeDisabled ? 6000 : 0)
+    .add((category === 'CATEGORY_2' && employeeTaxProfile.spouseDisabled) ? 5000 : 0)
+    .add(childReliefTotal)
+    .add(accumulatedLP)
+    .add(currentLP1)
+    .add(epfReliefWithBonus);
 
-  const PWithCurrentAdditional = Decimal.fromCents(Math.max(0, projectedIncomeWithBonus.toIntegerCents() - reliefsTotal.toIntegerCents()));
+  const totalIncomeWithBonus = accumulatedNormal.add(Y1).add(Yt).add(Y2.mul(n));
+  const PWithCurrentAdditional = Decimal.fromCents(Math.max(0, totalIncomeWithBonus.toIntegerCents() - reliefsTotalWithBonus.toIntegerCents()));
 
   let annualTaxWithCurrentAdditional = dec(0);
   if (employeeTaxProfile.taxResidenceStatus === 'NON_RESIDENT') {
