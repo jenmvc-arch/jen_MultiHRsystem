@@ -107,7 +107,31 @@ export default function PayrollView({
   const payYear = Number(parts[1]) || 2026;
   const payMonthIndex = MONTHS_LIST.indexOf(monthName) + 1;
 
-  const activeEmployee = getEmployeeForMonth(rawActiveEmployee, payMonthIndex);
+  const dbActiveEmployee = getEmployeeForMonth(rawActiveEmployee, payMonthIndex);
+
+  const activeEmployee = isEditing ? {
+    ...dbActiveEmployee,
+    basicSalary: tempBasic,
+    allowanceGeneral: hasAllowances ? allowanceGen : 0,
+    allowanceTransport: hasAllowances ? allowanceTrans : 0,
+    allowanceParking: hasAllowances ? allowancePark : 0,
+    allowanceMeal: hasAllowances ? allowanceMl : 0,
+    allowanceAccommodation: hasAllowances ? allowanceAccom : 0,
+    allowancePhone: hasAllowances ? allowancePh : 0,
+    overtime: dbActiveEmployee.overtime || 0,
+    bonusAmount: bonusAmt,
+    commissionAmount: commissionAmt,
+    backPayAmount: backPayAmt,
+    awsAmount: awsAmt,
+    compensationAmount: compensationAmt,
+    reimbursementAmount: reimbursementAmt,
+    unpaidLeave: unpaidLeave,
+    deductionInLieu: deductionInLieu,
+    deductionCp38: deductionCp38,
+    deductionOthers: deductionOthers,
+    deductionOthersDesc: deductionOthersDesc,
+    taxPcb: tempTax
+  } : dbActiveEmployee;
 
   const payrollBreakdown = calculatePayslip(activeEmployee, payMonthIndex, payYear);
 

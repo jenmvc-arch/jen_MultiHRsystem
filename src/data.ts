@@ -1209,7 +1209,7 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
 
   // Dynamic 2026 PCB calculation if basicSalary changed from original or if taxPcb is missing
   const baseEmp = INITIAL_EMPLOYEES.find(e => e.id === mergedEmployee.id);
-  const isSalaryChanged = baseEmp ? baseEmp.basicSalary !== basicSalary : true;
+  const isSalaryChanged = baseEmp ? baseEmp.basicSalary !== basicSalary : false;
   const taxPcbVal = isEligible 
     ? (isSalaryChanged || mergedEmployee.taxPcb === undefined
        ? calculatePcb2026(basicSalary, mergedEmployee.maritalStatus || 'Single', mergedEmployee.spouseIsWorking || 'No', mergedEmployee.dependants?.length || 0, epfEmployeeValue)
