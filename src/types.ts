@@ -17,7 +17,8 @@ export type AppTab =
   | 'leave-management'
   | 'forms-directory'
   | 'hire-onboarding'
-  | 'department-role';
+  | 'department-role'
+  | 'socso-config';
 
 export interface CorporateEntity {
   id: string; // Mapped to name (company name) - ENT ID removed from DB
@@ -157,6 +158,7 @@ export interface Employee {
   tp1Declarations?: TP1Declaration[];
   tp3Data?: TP3Data;
   salaryAdjustments?: SalaryAdjustment[];
+  socsoProfile?: EmployeeSocsoProfile;
 }
 
 export interface SalaryAdjustment {
@@ -440,8 +442,167 @@ export interface PayrollRecord2026 {
   epfEmployer: number;
   socsoEmployee: number;
   socsoEmployer: number;
+  lindung24Employee?: number;
   eisEmployee: number;
   eisEmployer: number;
   netPay: number;
   createdAt: string;
 }
+
+export type SOCSOSchemeCode =
+  | 'SOCSO_ACT4'
+  | 'EMPLOYMENT_INJURY'
+  | 'INVALIDITY'
+  | 'NON_EMPLOYMENT_INJURY'
+  | 'LINDUNG_24_JAM';
+
+export type SOCSOCategory =
+  | 'FIRST_CATEGORY'
+  | 'SECOND_CATEGORY'
+  | 'EXEMPT'
+  | 'REVIEW_REQUIRED';
+
+export type SOCSOPhase =
+  | 'PRE_JUNE_2026'
+  | 'LINDUNG24_PHASE_1'
+  | 'LINDUNG24_PHASE_2'
+  | 'LINDUNG24_PHASE_3';
+
+export interface EmployeeSocsoProfile {
+  employeeId: string;
+  nationality: string;
+  identityNumber: string;
+  dateOfBirth: string;
+  employmentStartDate: string;
+  employmentEndDate?: string | null;
+  contractType: 'Permanent' | 'Contract' | 'Temporary' | 'Part Time';
+  isUnderContractOfService: boolean;
+  socsoRegistrationNumber: string;
+  socsoRegistered: boolean;
+  socsoCoverageStatus: 'Covered' | 'Not Covered' | 'Exempt';
+  firstSocsoContributionDate?: string | null;
+  ageAtFirstSocsoContribution?: number | null;
+  hasPreviousSocsoContribution: boolean;
+  contributionCategory: SOCSOCategory;
+  multipleEmployerStatus: 'Single Employer' | 'Multiple Employers';
+  selectedEmployerForLindung24: boolean;
+  foreignWorkerStatus: 'Local' | 'Foreigner' | 'Permanent Resident';
+  domesticWorkerStatus: boolean;
+  exemptionReason?: string | null;
+  effectiveFrom: string;
+  effectiveTo: string;
+}
+
+export interface SOCSOConfiguration {
+  id: string;
+  schemeCode: SOCSOSchemeCode;
+  legislation: string;
+  contributionCategory: 'FIRST_CATEGORY' | 'SECOND_CATEGORY';
+  phase: SOCSOPhase;
+  effectiveFrom: string;
+  effectiveTo: string;
+  wageCeiling: number;
+  sourceDocument: string;
+  sourceDocumentDate: string;
+  sourceVersion: string;
+  status: 'draft' | 'pending_approval' | 'approved' | 'active' | 'deactivated';
+  approvedBy?: string;
+  approvedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SOCSOBracket {
+  id: string;
+  configurationId: string;
+  contributionCategory: 'FIRST_CATEGORY' | 'SECOND_CATEGORY';
+  lowerWageLimit: number;
+  upperWageLimit: number;
+  lowerLimitInclusive: boolean;
+  upperLimitInclusive: boolean;
+  wageBracketNumber: number;
+  assumedMonthlyWage: number;
+  employerEmploymentInjury: number;
+  employerInvalidity: number;
+  employerTotal: number;
+  employeeInvalidity: number;
+  employeeNonEmploymentInjury: number; // LINDUNG 24 Jam
+  employeeTotal: number;
+  combinedTotal: number;
+  effectiveFrom: string;
+  effectiveTo: string;
+}
+
+export interface SocsoEarningComponent {
+  earningCode: string;
+  earningName: string;
+  subjectToSocso: boolean;
+  includedInSocsoWages: boolean;
+  excludedFromSocsoWages: boolean;
+  earningCategory: string;
+  effectiveFrom: string;
+  effectiveTo: string;
+  statutoryReference: string;
+  requiresReview: boolean;
+}
+
+export interface SocsoManualOverride {
+  id: string;
+  employeeId: string;
+  payrollPeriod: string;
+  originalCalculatedEmployerSocso: number;
+  originalCalculatedEmployeeSocso: number;
+  correctedEmployerSocso: number;
+  correctedEmployeeSocso: number;
+  differenceEmployer: number;
+  differenceEmployee: number;
+  reason: string;
+  supportingDocumentUrl?: string;
+  requestedBy: string;
+  approvedBy: string;
+  approvedAt: string;
+  assistReconciliationRequired: boolean;
+}
+
+export interface SocsoAuditLog {
+  id: string;
+  userId: string;
+  action: string;
+  dateTime: string;
+  oldValue: string;
+  newValue: string;
+  reason: string;
+  employeeId?: string;
+  payrollPeriod?: string;
+  configurationVersion?: string;
+  sessionId?: string;
+}
+
+export interface SocsoContributionResult {
+  employeeId: string;
+  payrollPeriod: string;
+  effectiveDate: string;
+  socsoCoverageStatus: string;
+  contributionCategory: SOCSOCategory;
+  grossRemuneration: number;
+  includedSocsoWages: number;
+  excludedSocsoWages: number;
+  socsoWages: number;
+  contributionWage: number;
+  wageCeilingApplied: boolean;
+  wageBracketNumber: number;
+  wageBracketDescription: string;
+  employerEmploymentInjury: number;
+  employerInvalidity: number;
+  employerSocsoTotal: number;
+  employeeInvalidity: number;
+  employeeLindung24: number;
+  employeeSocsoTotal: number;
+  totalSocsoContribution: number;
+  configurationVersion: string;
+  calculationTimestamp: string;
+  warningMessages: string[];
+  validationErrors: string[];
+  calculationStatus: 'calculated' | 'exempt' | 'review_required' | 'override_applied' | 'error';
+}
+

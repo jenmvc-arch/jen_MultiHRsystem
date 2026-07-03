@@ -18,7 +18,8 @@ import {
   Calendar,
   ClipboardList,
   UserPlus,
-  Tags
+  Tags,
+  Shield
 } from 'lucide-react';
 import { AppTab, CorporateEntity } from '../types';
 import { getDirectLogoUrl } from '../data';
@@ -52,6 +53,7 @@ export default function Sidebar({
     { id: 'directory' as AppTab, label: 'Employee Management', icon: Users },
     { id: 'department-role' as AppTab, label: 'Department & Role', icon: Tags },
     { id: 'tax-settings' as AppTab, label: 'Tax Settings & Forms', icon: Percent },
+    { id: 'socso-config' as AppTab, label: 'PERKESO Statutory Config', icon: Shield },
     { id: 'leave-management' as AppTab, label: 'Leave Management', icon: Calendar },
     { id: 'forms-directory' as AppTab, label: 'Forms Directory', icon: ClipboardList },
     { id: 'hire-onboarding' as AppTab, label: 'Hire & Onboarding', icon: UserPlus },

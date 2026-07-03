@@ -6,8 +6,9 @@
 import React, { useState } from 'react';
 import { CreditCard, Search, Plus, Printer, Download, Image, Mail, Share2, Eye, CheckCircle, TrendingUp, Sliders, DollarSign, Briefcase, FileText, Globe, Building2, Clock } from 'lucide-react';
 import { Employee, CorporateEntity, HistoricalPayrollRecord, PayrollRecord2026 } from '../types';
-import { calculatePayslip, getPayslipLabel, calculateYtd, calculatePcb2026, recalculatePCBFromMonth, getProratedBasicSalary, getAdjustedBasicSalary, getStatutoryDeductions2026 } from '../data';
+import { calculatePayslip, getPayslipLabel, calculateYtd, calculatePcb2026, recalculatePCBFromMonth, getProratedBasicSalary, getAdjustedBasicSalary, getStatutoryDeductions2026, calculateSocsoContribution } from '../data';
 import PayslipDocumentView from './PayslipDocumentView';
+import SocsoCalculatorCard from './SocsoCalculatorCard';
 
 interface PayrollViewProps {
   employees: Employee[];
@@ -213,9 +214,31 @@ export default function PayrollView({
     const epfEmployeeVal = isEligible ? Math.round((tempBasic * epfRateEmp) / 100) : 0;
     const epfEmployerVal = isEligible ? Math.round((tempBasic * epfRateEmployer) / 100) : 0;
 
+    const payrollItemsForSocso = [
+      { code: 'basic_salary', amount: tempBasic },
+      { code: 'overtime', amount: activeEmployee.overtime || 0 },
+      { code: 'commission', amount: commissionAmt },
+      { code: 'allowance_general', amount: hasAllowances ? allowanceGen : 0 },
+      { code: 'allowance_transport', amount: hasAllowances ? allowanceTrans : 0 },
+      { code: 'allowance_parking', amount: hasAllowances ? allowancePark : 0 },
+      { code: 'allowance_meal', amount: hasAllowances ? allowanceMl : 0 },
+      { code: 'allowance_accommodation', amount: hasAllowances ? allowanceAccom : 0 },
+      { code: 'allowance_phone', amount: hasAllowances ? allowancePh : 0 },
+      { code: 'backpay', amount: backPayAmt }
+    ];
+    if (unpaidLeave > 0) {
+      payrollItemsForSocso.push({ code: 'unpaid_leave', amount: unpaidLeave });
+    }
+
+    const socsoRes = calculateSocsoContribution({
+      employee: activeEmployee,
+      payrollPeriod: `${payYear}-${String(payMonthIndex).padStart(2, '0')}`,
+      payrollItems: payrollItemsForSocso
+    });
+
     const stat2026 = getStatutoryDeductions2026(tempBasic);
-    const socsoEmployee = isEligible ? stat2026.socsoEmployee : 0;
-    const socsoEmployer = isEligible ? stat2026.socsoEmployer : 0;
+    const socsoEmployee = isEligible ? socsoRes.employeeSocsoTotal : 0;
+    const socsoEmployer = isEligible ? socsoRes.employerSocsoTotal : 0;
     const eisEmployee = isEligible ? stat2026.eisEmployee : 0;
     const eisEmployer = isEligible ? stat2026.eisEmployer : 0;
 
@@ -257,6 +280,7 @@ export default function PayrollView({
       epfEmployer: epfEmployerVal,
       socsoEmployee,
       socsoEmployer,
+      lindung24Employee: isEligible ? socsoRes.employeeLindung24 : 0,
       eisEmployee,
       eisEmployer,
       netPay,
@@ -1034,6 +1058,17 @@ export default function PayrollView({
                     </div>
                   </div>
                 </div>
+
+                <SocsoCalculatorCard 
+                  employee={activeEmployee}
+                  payrollPeriod={`${payYear}-${String(payMonthIndex).padStart(2, '0')}`}
+                  onRecalculate={() => {
+                    alert('Recalculated current pay run SOCSO contributions based on active statutory brackets!');
+                  }}
+                  onReviewCategory={() => {
+                    alert('Please go to the Employee Management tab to review the employee\'s statutory profile, date of birth, NRIC, and multiple employer selections.');
+                  }}
+                />
 
                 {/* 3. Deductions Panel */}
                 <div className="bg-white p-4 rounded border border-neutral-border/60 space-y-3">

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import { Employee, CorporateEntity } from '../types';
-import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getAdjustedBasicSalary } from '../data';
+import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getAdjustedBasicSalary, calculateSocsoContribution } from '../data';
 
 // Create styles for React PDF
 const styles = StyleSheet.create({
@@ -264,8 +264,6 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
     employee.employmentType === 'Confirmation' || 
     (employee.employmentType === 'Independent Contractor / Freelance' && employee.eligibleForStatutory === 'Yes');
 
-  const skbbkEmployeeVal = breakdown.skbbkEmpVal;
-  const skbbkEmployerVal = breakdown.skbbkEmplyrVal;
 
   // Complete allowances list matching the HTML Payslip preview
   const allowanceGen = employee.allowanceGeneral || 0;
@@ -282,14 +280,40 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
   const awsVal = employee.awsAmount || 0;
   const compensationVal = employee.compensationAmount || 0;
   const reimbursementVal = employee.reimbursementAmount || 0;
+  const unpaidLeaveVal = employee.unpaidLeave || 0;
+
+  const basicSalaryForSocso = getAdjustedBasicSalary(employee, month, year);
+  const payrollItemsForSocso = [
+    { code: 'basic_salary', amount: basicSalaryForSocso },
+    { code: 'overtime', amount: overtimeVal },
+    { code: 'commission', amount: commissionVal },
+    { code: 'allowance_general', amount: allowanceGen },
+    { code: 'allowance_transport', amount: allowanceTrans },
+    { code: 'allowance_parking', amount: allowancePark },
+    { code: 'allowance_meal', amount: allowancePark }, // Fallback to meal allowance
+    { code: 'allowance_accommodation', amount: allowanceAccom },
+    { code: 'allowance_phone', amount: allowancePhone },
+    { code: 'backpay', amount: backPayVal }
+  ];
+  if (unpaidLeaveVal > 0) {
+    payrollItemsForSocso.push({ code: 'unpaid_leave', amount: unpaidLeaveVal });
+  }
+
+  const socsoRes = calculateSocsoContribution({
+    employee,
+    payrollPeriod: `${year}-${String(month).padStart(2, '0')}`,
+    payrollItems: payrollItemsForSocso
+  });
+
+  const skbbkEmployeeVal = isEligible ? socsoRes.employeeLindung24 : 0;
+  const skbbkEmployerVal = 0; // LINDUNG 24 is employee-borne
 
   // Deductions breakdown
   const epfRateEmp = employee.epfRateEmployee || 11;
   const epfEmployeeValue = breakdown.epfEmployeeValue;
-  const socsoEmployeeVal = breakdown.socsoEmployeeVal;
+  const socsoEmployeeVal = isEligible ? socsoRes.employeeInvalidity : 0;
   const eisEmployeeVal = breakdown.eisEmployeeVal;
   const taxPcbVal = breakdown.taxPcbVal;
-  const unpaidLeaveVal = employee.unpaidLeave || 0;
   const deductionInLieuVal = employee.deductionInLieu || 0;
   const deductionCp38Val = employee.deductionCp38 || 0;
   const deductionOthersVal = employee.deductionOthers || 0;
@@ -297,7 +321,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
   // Employer breakdown
   const epfRateEmployer = employee.epfRateEmployer || (employee.basicSalary <= 5000 ? 13 : 12);
   const epfEmployerValue = breakdown.epfEmployerValue;
-  const socsoEmployerVal = breakdown.socsoEmployerVal;
+  const socsoEmployerVal = isEligible ? socsoRes.employerSocsoTotal : 0;
   const eisEmployerVal = breakdown.eisEmployerVal;
 
   // Proration Deduction details
@@ -569,18 +593,28 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
               </View>
             )}
 
-            {socsoEmployeeVal > 0 && (
-              <View style={styles.tableRow}>
-                <Text style={styles.itemName}>SOCSO</Text>
-                <Text style={styles.itemValRed}>{formatCurrency(socsoEmployeeVal)}</Text>
-              </View>
-            )}
-
-            {skbbkEmployeeVal > 0 && (
-              <View style={styles.tableRow}>
-                <Text style={styles.itemName}>SOCSO (SKBBK)</Text>
-                <Text style={styles.itemValRed}>{formatCurrency(skbbkEmployeeVal)}</Text>
-              </View>
+            {skbbkEmployeeVal > 0 ? (
+              <>
+                <View style={styles.tableRow}>
+                  <Text style={styles.itemName}>SOCSO - Invalidity</Text>
+                  <Text style={styles.itemValRed}>{formatCurrency(socsoEmployeeVal)}</Text>
+                </View>
+                <View style={styles.tableRow}>
+                  <Text style={styles.itemName}>SOCSO - LINDUNG 24 Jam</Text>
+                  <Text style={styles.itemValRed}>{formatCurrency(skbbkEmployeeVal)}</Text>
+                </View>
+                <View style={[styles.tableRow, { backgroundColor: '#f9fafb', paddingHorizontal: 2 }]}>
+                  <Text style={[styles.itemName, { fontWeight: 'bold', fontSize: 8 }]}>SOCSO Employee Total</Text>
+                  <Text style={[styles.itemValRed, { fontWeight: 'bold', fontSize: 8 }]}>{formatCurrency(socsoEmployeeVal + skbbkEmployeeVal)}</Text>
+                </View>
+              </>
+            ) : (
+              socsoEmployeeVal > 0 && (
+                <View style={styles.tableRow}>
+                  <Text style={styles.itemName}>SOCSO</Text>
+                  <Text style={styles.itemValRed}>{formatCurrency(socsoEmployeeVal)}</Text>
+                </View>
+              )
             )}
 
             {eisEmployeeVal > 0 && (
@@ -645,17 +679,28 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
                 <Text style={styles.detailValue}>{formatCurrency(epfEmployerValue)}</Text>
               </View>
             )}
-            {socsoEmployerVal > 0 && (
-              <View style={styles.employerCol}>
-                <Text style={styles.detailLabel}>SOCSO</Text>
-                <Text style={styles.detailValue}>{formatCurrency(socsoEmployerVal)}</Text>
-              </View>
-            )}
-            {skbbkEmployerVal > 0 && (
-              <View style={styles.employerCol}>
-                <Text style={styles.detailLabel}>SOCSO (SKBBK)</Text>
-                <Text style={styles.detailValue}>{formatCurrency(skbbkEmployerVal)}</Text>
-              </View>
+            {skbbkEmployeeVal > 0 ? (
+              <>
+                <View style={styles.employerCol}>
+                  <Text style={styles.detailLabel}>SOCSO - Employment Injury</Text>
+                  <Text style={styles.detailValue}>{formatCurrency(socsoRes.employerEmploymentInjury)}</Text>
+                </View>
+                <View style={styles.employerCol}>
+                  <Text style={styles.detailLabel}>SOCSO - Invalidity</Text>
+                  <Text style={styles.detailValue}>{formatCurrency(socsoRes.employerInvalidity)}</Text>
+                </View>
+                <View style={styles.employerCol}>
+                  <Text style={styles.detailLabel}>SOCSO Employer Total</Text>
+                  <Text style={styles.detailValue}>{formatCurrency(socsoRes.employerSocsoTotal)}</Text>
+                </View>
+              </>
+            ) : (
+              socsoEmployerVal > 0 && (
+                <View style={styles.employerCol}>
+                  <Text style={styles.detailLabel}>SOCSO</Text>
+                  <Text style={styles.detailValue}>{formatCurrency(socsoEmployerVal)}</Text>
+                </View>
+              )
             )}
             {eisEmployerVal > 0 && (
               <View style={styles.employerCol}>

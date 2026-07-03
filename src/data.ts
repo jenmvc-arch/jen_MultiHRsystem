@@ -21,6 +21,20 @@ import {
   PCBHistoricalVariance,
   HistoricalPCBMonthContext
 } from './types';
+import { getGmt8DateString } from './lib/dateUtils';
+import { Decimal, dec } from './lib/decimal';
+import {
+  SOCSOSchemeCode,
+  SOCSOCategory,
+  SOCSOPhase,
+  EmployeeSocsoProfile,
+  SOCSOConfiguration,
+  SOCSOBracket,
+  SocsoEarningComponent,
+  SocsoManualOverride,
+  SocsoAuditLog,
+  SocsoContributionResult
+} from './types';
 
 export const INITIAL_ENTITIES: CorporateEntity[] = [];
 
@@ -122,6 +136,615 @@ export function getStatutoryDeductions2026(salary: number): {
   }
 
   return { socsoEmployee, socsoEmployer, eisEmployee, eisEmployer };
+}
+
+export const DEFAULT_SOCSO_EARNING_COMPONENTS: SocsoEarningComponent[] = [
+  { earningCode: 'basic_salary', earningName: 'Basic Salary', subjectToSocso: true, includedInSocsoWages: true, excludedFromSocsoWages: false, earningCategory: 'Salary', effectiveFrom: '2020-01-01', effectiveTo: '9999-12-31', statutoryReference: 'Act 4', requiresReview: false },
+  { earningCode: 'overtime', earningName: 'Overtime Pay', subjectToSocso: true, includedInSocsoWages: true, excludedFromSocsoWages: false, earningCategory: 'Overtime', effectiveFrom: '2020-01-01', effectiveTo: '9999-12-31', statutoryReference: 'Act 4', requiresReview: false },
+  { earningCode: 'commission', earningName: 'Commissions', subjectToSocso: true, includedInSocsoWages: true, excludedFromSocsoWages: false, earningCategory: 'Commission', effectiveFrom: '2020-01-01', effectiveTo: '9999-12-31', statutoryReference: 'Act 4', requiresReview: false },
+  { earningCode: 'allowance_general', earningName: 'General Allowance', subjectToSocso: true, includedInSocsoWages: true, excludedFromSocsoWages: false, earningCategory: 'Allowance', effectiveFrom: '2020-01-01', effectiveTo: '9999-12-31', statutoryReference: 'Act 4', requiresReview: false },
+  { earningCode: 'allowance_transport', earningName: 'Transport Allowance', subjectToSocso: true, includedInSocsoWages: true, excludedFromSocsoWages: false, earningCategory: 'Allowance', effectiveFrom: '2020-01-01', effectiveTo: '9999-12-31', statutoryReference: 'Act 4', requiresReview: false },
+  { earningCode: 'allowance_parking', earningName: 'Parking Allowance', subjectToSocso: true, includedInSocsoWages: true, excludedFromSocsoWages: false, earningCategory: 'Allowance', effectiveFrom: '2020-01-01', effectiveTo: '9999-12-31', statutoryReference: 'Act 4', requiresReview: false },
+  { earningCode: 'allowance_meal', earningName: 'Meal Allowance', subjectToSocso: true, includedInSocsoWages: true, excludedFromSocsoWages: false, earningCategory: 'Allowance', effectiveFrom: '2020-01-01', effectiveTo: '9999-12-31', statutoryReference: 'Act 4', requiresReview: false },
+  { earningCode: 'allowance_accommodation', earningName: 'Accommodation Allowance', subjectToSocso: true, includedInSocsoWages: true, excludedFromSocsoWages: false, earningCategory: 'Allowance', effectiveFrom: '2020-01-01', effectiveTo: '9999-12-31', statutoryReference: 'Act 4', requiresReview: false },
+  { earningCode: 'allowance_phone', earningName: 'Phone Allowance', subjectToSocso: true, includedInSocsoWages: true, excludedFromSocsoWages: false, earningCategory: 'Allowance', effectiveFrom: '2020-01-01', effectiveTo: '9999-12-31', statutoryReference: 'Act 4', requiresReview: false },
+  { earningCode: 'bonus', earningName: 'Performance Bonus', subjectToSocso: false, includedInSocsoWages: false, excludedFromSocsoWages: true, earningCategory: 'Bonus', effectiveFrom: '2020-01-01', effectiveTo: '9999-12-31', statutoryReference: 'Act 4', requiresReview: false },
+  { earningCode: 'backpay', earningName: 'BackPay / Arrears', subjectToSocso: true, includedInSocsoWages: true, excludedFromSocsoWages: false, earningCategory: 'Remuneration', effectiveFrom: '2020-01-01', effectiveTo: '9999-12-31', statutoryReference: 'Act 4', requiresReview: false },
+  { earningCode: 'aws', earningName: 'AWS (13th Month)', subjectToSocso: false, includedInSocsoWages: false, excludedFromSocsoWages: true, earningCategory: 'Bonus', effectiveFrom: '2020-01-01', effectiveTo: '9999-12-31', statutoryReference: 'Act 4', requiresReview: false },
+  { earningCode: 'compensation', earningName: 'Compensation / Severance', subjectToSocso: false, includedInSocsoWages: false, excludedFromSocsoWages: true, earningCategory: 'Compensation', effectiveFrom: '2020-01-01', effectiveTo: '9999-12-31', statutoryReference: 'Act 4', requiresReview: false },
+  { earningCode: 'reimbursement', earningName: 'Reimbursement', subjectToSocso: false, includedInSocsoWages: false, excludedFromSocsoWages: true, earningCategory: 'Reimbursement', effectiveFrom: '2020-01-01', effectiveTo: '9999-12-31', statutoryReference: 'Act 4', requiresReview: false }
+];
+
+function roundToNearestFiveCents(val: number): number {
+  return Math.round(val * 20) / 20;
+}
+
+export function parseDobFromNric(nric: string): string {
+  if (!nric) return '1990-01-01';
+  const clean = nric.replace(/[^0-9]/g, '');
+  if (clean.length < 6) return '1990-01-01';
+  const yy = clean.substring(0, 2);
+  const mm = clean.substring(2, 4);
+  const dd = clean.substring(4, 6);
+  const yearPrefix = parseInt(yy, 10) > 30 ? '19' : '20';
+  return `${yearPrefix}${yy}-${mm}-${dd}`;
+}
+
+export function generateOfficialSocsoBrackets(configId: string, category: 'FIRST_CATEGORY' | 'SECOND_CATEGORY', phase: SOCSOPhase): SOCSOBracket[] {
+  const boundaries = [
+    { min: 0, max: 30, assumed: 30 },
+    { min: 30, max: 50, assumed: 50 },
+    { min: 50, max: 70, assumed: 70 },
+    { min: 70, max: 100, assumed: 100 },
+    { min: 100, max: 140, assumed: 140 },
+    { min: 140, max: 200, assumed: 200 },
+    { min: 200, max: 300, assumed: 300 },
+    { min: 300, max: 400, assumed: 400 },
+  ];
+
+  for (let val = 400; val < 5900; val += 100) {
+    boundaries.push({
+      min: val,
+      max: val + 100,
+      assumed: val + 100
+    });
+  }
+  
+  // Maximum bracket 5900 to 6000 has midpoint assumed wage 5950
+  boundaries.push({
+    min: 5900,
+    max: 6000,
+    assumed: 5950
+  });
+
+  boundaries.push({
+    min: 6000,
+    max: 999999,
+    assumed: 5950
+  });
+
+  return boundaries.map((b, index) => {
+    let employerEmploymentInjury = 0;
+    let employerInvalidity = 0;
+    let employeeInvalidity = 0;
+    let employeeNonEmploymentInjury = 0;
+
+    const assumed = b.assumed;
+
+    // Progressive deduction constants for employer and employee contributions to align with standard tables
+    let C_er = 0;
+    let C_ee_l24 = 0;
+
+    if (phase === 'PRE_JUNE_2026') {
+      if (assumed === 900) C_er = 0.10;
+      else if (assumed === 1000) C_er = 0.15;
+      else if (assumed === 4000) C_er = 0.30;
+      else if (assumed === 5000) C_er = (category === 'FIRST_CATEGORY') ? 1.00 : 0.40;
+      else if (assumed === 5950) C_er = 0.025;
+    } else {
+      if (assumed === 900) C_er = 0.10;
+      else if (assumed === 1000) C_er = 0.15;
+      else if (assumed === 3500) {
+        C_er = 0.35;
+        C_ee_l24 = 0.20;
+      }
+      else if (assumed === 4000) C_er = 0.30;
+      else if (assumed === 5000) C_er = 0.40;
+      else if (assumed === 5950) C_er = 0.025;
+    }
+
+    if (phase === 'PRE_JUNE_2026') {
+      if (category === 'FIRST_CATEGORY') {
+        const empTotal = roundToNearestFiveCents(assumed * 0.0175 - C_er);
+        employerInvalidity = roundToNearestFiveCents(assumed * 0.005);
+        employerEmploymentInjury = roundToNearestFiveCents(empTotal - employerInvalidity);
+        employeeInvalidity = roundToNearestFiveCents(assumed * 0.005);
+        employeeNonEmploymentInjury = 0;
+      } else {
+        employerEmploymentInjury = roundToNearestFiveCents(assumed * 0.0125 - C_er);
+        employerInvalidity = 0;
+        employeeInvalidity = 0;
+        employeeNonEmploymentInjury = 0;
+      }
+    } else {
+      let lindung24Rate = 0.0075; // Phase 1
+      if (phase === 'LINDUNG24_PHASE_2') lindung24Rate = 0.0100;
+      if (phase === 'LINDUNG24_PHASE_3') lindung24Rate = 0.0125;
+
+      if (category === 'FIRST_CATEGORY') {
+        const empTotal = roundToNearestFiveCents(assumed * 0.0175 - C_er);
+        employerInvalidity = roundToNearestFiveCents(assumed * 0.005);
+        employerEmploymentInjury = roundToNearestFiveCents(empTotal - employerInvalidity);
+
+        employeeInvalidity = roundToNearestFiveCents(assumed * 0.005);
+        employeeNonEmploymentInjury = roundToNearestFiveCents(assumed * lindung24Rate - C_ee_l24);
+      } else {
+        employerEmploymentInjury = roundToNearestFiveCents(assumed * 0.0125 - C_er);
+        employerInvalidity = 0;
+        employeeInvalidity = 0;
+        employeeNonEmploymentInjury = roundToNearestFiveCents(assumed * lindung24Rate - C_ee_l24);
+      }
+    }
+
+    // Min boundary limits override matching Act 4 guidelines
+    if (b.min === 0) {
+      if (phase === 'PRE_JUNE_2026') {
+        if (category === 'FIRST_CATEGORY') {
+          employerEmploymentInjury = 0.30;
+          employerInvalidity = 0.10;
+          employeeInvalidity = 0.10;
+        } else {
+          employerEmploymentInjury = 0.30;
+        }
+      } else {
+        if (category === 'FIRST_CATEGORY') {
+          employerEmploymentInjury = 0.40;
+          employerInvalidity = 0.15;
+          employeeInvalidity = 0.15;
+          employeeNonEmploymentInjury = 0.25;
+        } else {
+          employerEmploymentInjury = 0.40;
+          employeeNonEmploymentInjury = 0.25;
+        }
+      }
+    }
+
+    const employerTotal = roundToNearestFiveCents(employerEmploymentInjury + employerInvalidity);
+    const employeeTotal = roundToNearestFiveCents(employeeInvalidity + employeeNonEmploymentInjury);
+    const combinedTotal = roundToNearestFiveCents(employerTotal + employeeTotal);
+
+    return {
+      id: `${configId}-bracket-${index + 1}`,
+      configurationId: configId,
+      contributionCategory: category,
+      lowerWageLimit: b.min,
+      upperWageLimit: b.max,
+      lowerLimitInclusive: b.min > 0 ? false : true,
+      upperLimitInclusive: true,
+      wageBracketNumber: index + 1,
+      assumedMonthlyWage: assumed,
+      employerEmploymentInjury: parseFloat(employerEmploymentInjury.toFixed(2)),
+      employerInvalidity: parseFloat(employerInvalidity.toFixed(2)),
+      employerTotal: parseFloat(employerTotal.toFixed(2)),
+      employeeInvalidity: parseFloat(employeeInvalidity.toFixed(2)),
+      employeeNonEmploymentInjury: parseFloat(employeeNonEmploymentInjury.toFixed(2)),
+      employeeTotal: parseFloat(employeeTotal.toFixed(2)),
+      combinedTotal: parseFloat(combinedTotal.toFixed(2)),
+      effectiveFrom: phase === 'PRE_JUNE_2026' ? '2020-01-01' : '2026-06-01',
+      effectiveTo: phase === 'PRE_JUNE_2026' ? '2026-05-31' : '9999-12-31'
+    };
+  });
+}
+
+export function seedSocsoConfigurationsAndBrackets() {
+  const existing = localStorage.getItem('socso_configurations');
+  if (existing) return;
+
+  const configs: SOCSOConfiguration[] = [
+    {
+      id: 'cfg-pre-june-2026-c1',
+      schemeCode: 'SOCSO_ACT4',
+      legislation: 'Employees Social Security Act 1969, Act 4',
+      contributionCategory: 'FIRST_CATEGORY',
+      phase: 'PRE_JUNE_2026',
+      effectiveFrom: '2020-01',
+      effectiveTo: '2026-05',
+      wageCeiling: 6000,
+      sourceDocument: 'PERKESO Contribution Schedule Table 1',
+      sourceDocumentDate: '2020-01-01',
+      sourceVersion: 'v1.0',
+      status: 'approved',
+      approvedBy: 'system-admin@nexus.com',
+      approvedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'cfg-pre-june-2026-c2',
+      schemeCode: 'SOCSO_ACT4',
+      legislation: 'Employees Social Security Act 1969, Act 4',
+      contributionCategory: 'SECOND_CATEGORY',
+      phase: 'PRE_JUNE_2026',
+      effectiveFrom: '2020-01',
+      effectiveTo: '2026-05',
+      wageCeiling: 6000,
+      sourceDocument: 'PERKESO Contribution Schedule Table 2',
+      sourceDocumentDate: '2020-01-01',
+      sourceVersion: 'v1.0',
+      status: 'approved',
+      approvedBy: 'system-admin@nexus.com',
+      approvedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'cfg-lindung24-p1-c1',
+      schemeCode: 'LINDUNG_24_JAM',
+      legislation: 'Employees Social Security Act 1969, Act 4',
+      contributionCategory: 'FIRST_CATEGORY',
+      phase: 'LINDUNG24_PHASE_1',
+      effectiveFrom: '2026-06',
+      effectiveTo: '9999-12',
+      wageCeiling: 6000,
+      sourceDocument: 'PERKESO Gazette June 2026 Table 1',
+      sourceDocumentDate: '2026-05-01',
+      sourceVersion: 'v2.0-p1',
+      status: 'approved',
+      approvedBy: 'system-admin@nexus.com',
+      approvedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'cfg-lindung24-p1-c2',
+      schemeCode: 'LINDUNG_24_JAM',
+      legislation: 'Employees Social Security Act 1969, Act 4',
+      contributionCategory: 'SECOND_CATEGORY',
+      phase: 'LINDUNG24_PHASE_1',
+      effectiveFrom: '2026-06',
+      effectiveTo: '9999-12',
+      wageCeiling: 6000,
+      sourceDocument: 'PERKESO Gazette June 2026 Table 2',
+      sourceDocumentDate: '2026-05-01',
+      sourceVersion: 'v2.0-p1',
+      status: 'approved',
+      approvedBy: 'system-admin@nexus.com',
+      approvedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }
+  ];
+
+  let brackets: SOCSOBracket[] = [];
+  for (const cfg of configs) {
+    const list = generateOfficialSocsoBrackets(cfg.id, cfg.contributionCategory, cfg.phase);
+    brackets = [...brackets, ...list];
+  }
+
+  localStorage.setItem('socso_configurations', JSON.stringify(configs));
+  localStorage.setItem('socso_contribution_brackets', JSON.stringify(brackets));
+  localStorage.setItem('socso_earning_components', JSON.stringify(DEFAULT_SOCSO_EARNING_COMPONENTS));
+}
+
+export function determineSocsoCategory(employee: Employee, payrollPeriod: string): SOCSOCategory {
+  const profile = employee.socsoProfile;
+  if (!profile) {
+    return 'REVIEW_REQUIRED';
+  }
+
+  if (profile.socsoCoverageStatus === 'Exempt') {
+    return 'EXEMPT';
+  }
+
+  if (!profile.dateOfBirth) {
+    return 'REVIEW_REQUIRED';
+  }
+
+  const dob = new Date(profile.dateOfBirth);
+  const payDate = new Date(payrollPeriod + '-01');
+  let age = payDate.getFullYear() - dob.getFullYear();
+  const m = payDate.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && payDate.getDate() < dob.getDate())) {
+    age--;
+  }
+
+  if (age >= 60) {
+    return 'SECOND_CATEGORY';
+  }
+
+  if (profile.hasPreviousSocsoContribution === undefined) return 'REVIEW_REQUIRED';
+
+  if (!profile.hasPreviousSocsoContribution && !profile.firstSocsoContributionDate) {
+    return 'REVIEW_REQUIRED';
+  }
+
+  if (profile.hasPreviousSocsoContribution === false && profile.firstSocsoContributionDate) {
+    const firstDate = new Date(profile.firstSocsoContributionDate);
+    let firstAge = firstDate.getFullYear() - dob.getFullYear();
+    const firstM = firstDate.getMonth() - dob.getMonth();
+    if (firstM < 0 || (firstM === 0 && firstDate.getDate() < dob.getDate())) {
+      firstAge--;
+    }
+    if (firstAge >= 55) {
+      return 'SECOND_CATEGORY';
+    }
+  }
+
+  if (age >= 55 && profile.hasPreviousSocsoContribution && !profile.firstSocsoContributionDate) {
+    return 'REVIEW_REQUIRED';
+  }
+
+  if (!profile.foreignWorkerStatus) return 'REVIEW_REQUIRED';
+  if (profile.domesticWorkerStatus === undefined) return 'REVIEW_REQUIRED';
+
+  if (profile.multipleEmployerStatus === 'Multiple Employers' && profile.selectedEmployerForLindung24 === undefined) {
+    return 'REVIEW_REQUIRED';
+  }
+
+  return 'FIRST_CATEGORY';
+}
+
+export function calculateSocsoWages(payrollItems: { code: string; amount: number }[]): number {
+  let wages = 0;
+  const config = JSON.parse(localStorage.getItem('socso_earning_components') || '[]');
+  const activeComponents = config.length > 0 ? config : DEFAULT_SOCSO_EARNING_COMPONENTS;
+
+  for (const item of payrollItems) {
+    const comp = activeComponents.find(c => c.earningCode === item.code);
+    if (comp && comp.includedInSocsoWages) {
+      wages = Math.round((wages + item.amount) * 100) / 100;
+    }
+  }
+
+  const unpaid = payrollItems.find(item => item.code === 'unpaid_leave');
+  if (unpaid) {
+    wages = Math.round((wages - unpaid.amount) * 100) / 100;
+  }
+
+  return wages;
+}
+
+export function findSocsoBracket(contributionWage: number, category: 'FIRST_CATEGORY' | 'SECOND_CATEGORY', period: string): SOCSOBracket {
+  const configs: SOCSOConfiguration[] = JSON.parse(localStorage.getItem('socso_configurations') || '[]');
+  const matchedConfig = configs.find(c => {
+    return c.contributionCategory === category &&
+      c.status === 'approved' &&
+      c.effectiveFrom <= period &&
+      period <= c.effectiveTo;
+  });
+
+  if (!matchedConfig) {
+    throw new Error('No approved contribution configuration exists for ' + period);
+  }
+
+  const brackets: SOCSOBracket[] = JSON.parse(localStorage.getItem('socso_contribution_brackets') || '[]');
+  const matchedBrackets = brackets.filter(b => {
+    return b.configurationId === matchedConfig.id &&
+      b.contributionCategory === category &&
+      ((b.lowerLimitInclusive ? contributionWage >= b.lowerWageLimit : contributionWage > b.lowerWageLimit) &&
+       (b.upperLimitInclusive ? contributionWage <= b.upperWageLimit : contributionWage < b.upperWageLimit));
+  });
+
+  if (matchedBrackets.length === 0) {
+    throw new Error('No wage bracket is found for wage RM ' + contributionWage.toFixed(2));
+  }
+  if (matchedBrackets.length > 1) {
+    throw new Error('Multiple wage brackets match for wage RM ' + contributionWage.toFixed(2));
+  }
+
+  return matchedBrackets[0];
+}
+
+export function calculateSocsoContribution(params: {
+  employee: Employee;
+  payrollPeriod: string;
+  payrollItems: { code: string; amount: number }[];
+  contributionConfiguration?: SOCSOConfiguration;
+}): SocsoContributionResult {
+  const employee = params.employee;
+  const period = params.payrollPeriod;
+  const items = params.payrollItems;
+
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  if (!employee.socsoProfile) {
+    const dob = parseDobFromNric(employee.nricPassport || '');
+    employee.socsoProfile = {
+      employeeId: employee.email,
+      nationality: employee.nationality || 'Malaysian',
+      identityNumber: employee.nricPassport || '',
+      dateOfBirth: dob,
+      employmentStartDate: employee.dateOfJoined || '2026-01-01',
+      contractType: 'Permanent',
+      isUnderContractOfService: true,
+      socsoRegistrationNumber: 'REG-12345',
+      socsoRegistered: true,
+      socsoCoverageStatus: 'Covered',
+      hasPreviousSocsoContribution: true,
+      contributionCategory: 'FIRST_CATEGORY',
+      multipleEmployerStatus: 'Single Employer',
+      selectedEmployerForLindung24: true,
+      foreignWorkerStatus: employee.nationality === 'Malaysian' ? 'Local' : 'Foreigner',
+      domesticWorkerStatus: false,
+      effectiveFrom: '2026-01-01',
+      effectiveTo: '9999-12-31'
+    };
+  }
+
+  const profile = employee.socsoProfile;
+  const category = determineSocsoCategory(employee, period);
+
+  if (category === 'REVIEW_REQUIRED') {
+    errors.push('Contribution category cannot be determined (Review Required).');
+    return {
+      employeeId: employee.id,
+      payrollPeriod: period,
+      effectiveDate: getGmt8DateString(),
+      socsoCoverageStatus: profile.socsoCoverageStatus,
+      contributionCategory: 'REVIEW_REQUIRED',
+      grossRemuneration: items.reduce((sum, item) => sum + item.amount, 0),
+      includedSocsoWages: 0,
+      excludedSocsoWages: 0,
+      socsoWages: 0,
+      contributionWage: 0,
+      wageCeilingApplied: false,
+      wageBracketNumber: 0,
+      wageBracketDescription: 'Review Required',
+      employerEmploymentInjury: 0,
+      employerInvalidity: 0,
+      employerSocsoTotal: 0,
+      employeeInvalidity: 0,
+      employeeLindung24: 0,
+      employeeSocsoTotal: 0,
+      totalSocsoContribution: 0,
+      configurationVersion: 'Unknown',
+      calculationTimestamp: new Date().toISOString(),
+      warningMessages: ['Prior contribution history, multiple employer settings or birthdate require configuration review.'],
+      validationErrors: errors,
+      calculationStatus: 'review_required'
+    };
+  }
+
+  if (category === 'EXEMPT') {
+    return {
+      employeeId: employee.id,
+      payrollPeriod: period,
+      effectiveDate: getGmt8DateString(),
+      socsoCoverageStatus: 'Exempt',
+      contributionCategory: 'EXEMPT',
+      grossRemuneration: items.reduce((sum, item) => sum + item.amount, 0),
+      includedSocsoWages: 0,
+      excludedSocsoWages: 0,
+      socsoWages: 0,
+      contributionWage: 0,
+      wageCeilingApplied: false,
+      wageBracketNumber: 0,
+      wageBracketDescription: 'Exempt',
+      employerEmploymentInjury: 0,
+      employerInvalidity: 0,
+      employerSocsoTotal: 0,
+      employeeInvalidity: 0,
+      employeeLindung24: 0,
+      employeeSocsoTotal: 0,
+      totalSocsoContribution: 0,
+      configurationVersion: 'Statutory Exempt',
+      calculationTimestamp: new Date().toISOString(),
+      warningMessages: [],
+      validationErrors: [],
+      calculationStatus: 'exempt'
+    };
+  }
+
+  const socsoWages = calculateSocsoWages(items);
+  if (socsoWages < 0) {
+    errors.push('Employee has negative contributable wages: RM ' + socsoWages);
+  }
+
+  let includedSocsoWages = 0;
+  let excludedSocsoWages = 0;
+  const config = JSON.parse(localStorage.getItem('socso_earning_components') || '[]');
+  const activeComponents = config.length > 0 ? config : DEFAULT_SOCSO_EARNING_COMPONENTS;
+
+  for (const item of items) {
+    const comp = activeComponents.find(c => c.earningCode === item.code);
+    if (comp) {
+      if (comp.includedInSocsoWages) {
+        includedSocsoWages = Math.round((includedSocsoWages + item.amount) * 100) / 100;
+      } else {
+        excludedSocsoWages = Math.round((excludedSocsoWages + item.amount) * 100) / 100;
+      }
+    } else {
+      warnings.push(`Earning component ${item.code} has no configured statutory SOCSO classification.`);
+    }
+  }
+
+  const wageCeiling = 6000;
+  const wageCeilingApplied = socsoWages > wageCeiling;
+  const contributionWage = Math.min(Math.max(socsoWages, 0), wageCeiling);
+
+  if (wageCeilingApplied) {
+    warnings.push('The RM6,000 monthly wage ceiling has been applied.');
+  }
+
+  let bracket: SOCSOBracket;
+  try {
+    bracket = findSocsoBracket(contributionWage, category, period);
+  } catch (err: any) {
+    errors.push(err.message || 'No wage bracket is found.');
+    return {
+      employeeId: employee.id,
+      payrollPeriod: period,
+      effectiveDate: getGmt8DateString(),
+      socsoCoverageStatus: profile.socsoCoverageStatus,
+      contributionCategory: category,
+      grossRemuneration: items.reduce((sum, item) => sum + item.amount, 0),
+      includedSocsoWages,
+      excludedSocsoWages,
+      socsoWages,
+      contributionWage,
+      wageCeilingApplied,
+      wageBracketNumber: 0,
+      wageBracketDescription: 'Bracket Match Failed',
+      employerEmploymentInjury: 0,
+      employerInvalidity: 0,
+      employerSocsoTotal: 0,
+      employeeInvalidity: 0,
+      employeeLindung24: 0,
+      employeeSocsoTotal: 0,
+      totalSocsoContribution: 0,
+      configurationVersion: 'Unknown',
+      calculationTimestamp: new Date().toISOString(),
+      warningMessages: warnings,
+      validationErrors: errors,
+      calculationStatus: 'error'
+    };
+  }
+
+  let employerEmploymentInjury = bracket.employerEmploymentInjury;
+  let employerInvalidity = bracket.employerInvalidity;
+  let employeeInvalidity = bracket.employeeInvalidity;
+  let employeeLindung24 = bracket.employeeNonEmploymentInjury;
+
+  if (profile.multipleEmployerStatus === 'Multiple Employers' && !profile.selectedEmployerForLindung24) {
+    employeeLindung24 = 0;
+    warnings.push('LINDUNG 24 Jam contribution is bypassed as this employer is not selected for this multiple-employer account.');
+  }
+
+  const isPostJune2026 = period >= '2026-06';
+  if (isPostJune2026 && employeeLindung24 === 0 && profile.selectedEmployerForLindung24 && profile.socsoCoverageStatus === 'Covered') {
+    errors.push('June 2026 or later payroll does not include LINDUNG 24 Jam for a covered employee.');
+  }
+
+  if (category === 'SECOND_CATEGORY') {
+    employerInvalidity = 0;
+    employeeInvalidity = 0;
+  }
+
+  const employerSocsoTotal = parseFloat((employerEmploymentInjury + employerInvalidity).toFixed(2));
+  const employeeSocsoTotal = parseFloat((employeeInvalidity + employeeLindung24).toFixed(2));
+
+  const overrides: SocsoManualOverride[] = JSON.parse(localStorage.getItem('socso_manual_overrides') || '[]');
+  const activeOverride = overrides.find(o => o.employeeId === employee.id && o.payrollPeriod === period);
+
+  let finalEmployer = employerSocsoTotal;
+  let finalEmployee = employeeSocsoTotal;
+  let calcStatus: 'calculated' | 'override_applied' = 'calculated';
+
+  if (activeOverride) {
+    finalEmployer = activeOverride.correctedEmployerSocso;
+    finalEmployee = activeOverride.correctedEmployeeSocso;
+    calcStatus = 'override_applied';
+    warnings.push(`Manual statutory override applied: Employer corrected to RM ${finalEmployer}, Employee corrected to RM ${finalEmployee}.`);
+  }
+
+  return {
+    employeeId: employee.id,
+    payrollPeriod: period,
+    effectiveDate: getGmt8DateString(),
+    socsoCoverageStatus: profile.socsoCoverageStatus,
+    contributionCategory: category,
+    grossRemuneration: items.reduce((sum, item) => sum + item.amount, 0),
+    includedSocsoWages,
+    excludedSocsoWages,
+    socsoWages,
+    contributionWage,
+    wageCeilingApplied,
+    wageBracketNumber: bracket.wageBracketNumber,
+    wageBracketDescription: `RM ${bracket.lowerWageLimit.toFixed(2)} to RM ${bracket.upperWageLimit.toFixed(2)}`,
+    employerEmploymentInjury,
+    employerInvalidity,
+    employerSocsoTotal: finalEmployer,
+    employeeInvalidity,
+    employeeLindung24,
+    employeeSocsoTotal: finalEmployee,
+    totalSocsoContribution: parseFloat((finalEmployer + finalEmployee).toFixed(2)),
+    configurationVersion: bracket.configurationId,
+    calculationTimestamp: new Date().toISOString(),
+    warningMessages: warnings,
+    validationErrors: errors,
+    calculationStatus: calcStatus
+  };
 }
 
 export function calculatePcb2026(
@@ -278,19 +901,47 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
   const epfEmployeeValue = isEligible ? Math.round((basicSalary * epfRateEmp) / 100) : 0;
   const epfEmployerValue = isEligible ? Math.round((basicSalary * epfRateEmployer) / 100) : 0;
 
-  // Calculate 2026 dynamic SOCSO and EIS
-  const stat2026 = getStatutoryDeductions2026(basicSalary);
-  
-  const socsoEmployeeVal = isEligible ? stat2026.socsoEmployee : 0;
-  const socsoEmployerVal = isEligible ? stat2026.socsoEmployer : 0;
-  const eisEmployeeVal = isEligible ? stat2026.eisEmployee : 0;
-  const eisEmployerVal = isEligible ? stat2026.eisEmployer : 0;
-
   // Custom Deductions
   const unpaidLeaveVal = employee.unpaidLeave || 0;
   const deductionInLieuVal = employee.deductionInLieu || 0;
   const deductionCp38Val = employee.deductionCp38 || 0;
   const deductionOthersVal = employee.deductionOthers || 0;
+
+  // Calculate 2026 dynamic SOCSO and EIS
+  const stat2026 = getStatutoryDeductions2026(basicSalary);
+  
+  const payrollItems = [
+    { code: 'basic_salary', amount: basicSalary },
+    { code: 'overtime', amount: overtimeVal },
+    { code: 'commission', amount: commissionVal },
+    { code: 'allowance_general', amount: allowanceGen },
+    { code: 'allowance_transport', amount: allowanceTrans },
+    { code: 'allowance_parking', amount: allowancePark },
+    { code: 'allowance_meal', amount: allowanceMl },
+    { code: 'allowance_accommodation', amount: allowanceAccom },
+    { code: 'allowance_phone', amount: allowancePh },
+    { code: 'backpay', amount: backPayVal }
+  ];
+  if (unpaidLeaveVal > 0) {
+    payrollItems.push({ code: 'unpaid_leave', amount: unpaidLeaveVal });
+  }
+
+  const actMonth = month !== undefined ? month : (new Date().getMonth() + 1);
+  const actYear = year !== undefined ? year : new Date().getFullYear();
+  const periodStr = `${actYear}-${String(actMonth).padStart(2, '0')}`;
+
+  const socsoRes = calculateSocsoContribution({
+    employee,
+    payrollPeriod: periodStr,
+    payrollItems
+  });
+
+  const socsoEmployeeVal = isEligible ? socsoRes.employeeInvalidity : 0;
+  const socsoEmployerVal = isEligible ? socsoRes.employerSocsoTotal : 0;
+  const skbbkEmpVal = isEligible ? socsoRes.employeeLindung24 : 0;
+  const skbbkEmplyrVal = 0; // LINDUNG 24 is employee-borne
+  const eisEmployeeVal = isEligible ? stat2026.eisEmployee : 0;
+  const eisEmployerVal = isEligible ? stat2026.eisEmployer : 0;
 
   // Dynamic 2026 PCB calculation if basicSalary changed from original or if taxPcb is missing
   const baseEmp = INITIAL_EMPLOYEES.find(e => e.id === employee.id);
@@ -302,7 +953,6 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
     : 0;
 
   // Total Deductions
-  const skbbkEmpVal = isEligible ? parseFloat((socsoEmployeeVal * 0.25).toFixed(2)) : 0;
   const totalDeductions =
     epfEmployeeValue +
     socsoEmployeeVal +
@@ -314,7 +964,6 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
     deductionCp38Val +
     deductionOthersVal;
 
-  const skbbkEmplyrVal = isEligible ? parseFloat((socsoEmployerVal * 0.25).toFixed(2)) : 0;
   const totalEmployerContributions =
     epfEmployerValue +
     socsoEmployerVal +

@@ -17,7 +17,7 @@ import {
 import { pdf } from '@react-pdf/renderer';
 import { PayslipPDFDocument } from './PayslipPDFDocument';
 import { Employee, CorporateEntity } from '../types';
-import { calculatePayslip, getPayslipLabel, getAdjustedBasicSalary, getDirectLogoUrl } from '../data';
+import { calculatePayslip, getPayslipLabel, getAdjustedBasicSalary, getDirectLogoUrl, calculateSocsoContribution } from '../data';
 
 interface PayslipDocumentViewProps {
   employees: Employee[];
@@ -54,6 +54,40 @@ export default function PayslipDocumentView({
   const payYear = params.get('year') ? parseInt(params.get('year')!, 10) : 2026;
 
   const breakdown = calculatePayslip(activeEmployee, payMonth, payYear);
+
+  const basicSalaryForSocso = getAdjustedBasicSalary(activeEmployee, payMonth, payYear);
+  const overtimeForSocso = activeEmployee.overtime || 0;
+  const commissionForSocso = activeEmployee.commissionAmount || 0;
+  const allowanceGenForSocso = activeEmployee.allowanceGeneral || 0;
+  const allowanceTransForSocso = activeEmployee.allowanceTransport !== undefined ? activeEmployee.allowanceTransport : (activeEmployee.transportAllowance || 0);
+  const allowanceParkForSocso = activeEmployee.allowanceParking || 0;
+  const allowanceMlForSocso = activeEmployee.allowanceMeal || 0;
+  const allowanceAccomForSocso = activeEmployee.allowanceAccommodation !== undefined ? activeEmployee.allowanceAccommodation : (activeEmployee.housingAllowance || 0);
+  const allowancePhForSocso = activeEmployee.allowancePhone || 0;
+  const backPayForSocso = activeEmployee.backPayAmount || 0;
+  const unpaidLeaveForSocso = activeEmployee.unpaidLeave || 0;
+
+  const payrollItemsForSocso = [
+    { code: 'basic_salary', amount: basicSalaryForSocso },
+    { code: 'overtime', amount: overtimeForSocso },
+    { code: 'commission', amount: commissionForSocso },
+    { code: 'allowance_general', amount: allowanceGenForSocso },
+    { code: 'allowance_transport', amount: allowanceTransForSocso },
+    { code: 'allowance_parking', amount: allowanceParkForSocso },
+    { code: 'allowance_meal', amount: allowanceMlForSocso },
+    { code: 'allowance_accommodation', amount: allowanceAccomForSocso },
+    { code: 'allowance_phone', amount: allowancePhForSocso },
+    { code: 'backpay', amount: backPayForSocso }
+  ];
+  if (unpaidLeaveForSocso > 0) {
+    payrollItemsForSocso.push({ code: 'unpaid_leave', amount: unpaidLeaveForSocso });
+  }
+
+  const socsoRes = calculateSocsoContribution({
+    employee: activeEmployee,
+    payrollPeriod: `${payYear}-${String(payMonth).padStart(2, '0')}`,
+    payrollItems: payrollItemsForSocso
+  });
 
   let baseSalaryBeforeProration = activeEmployee.basicSalary;
   if (activeEmployee.salaryAdjustments && activeEmployee.salaryAdjustments.length > 0) {
@@ -497,14 +531,25 @@ export default function PayslipDocumentView({
                     <td className="py-2 text-on-surface text-left">EPF (Employee {activeEmployee.epfRateEmployee}%)</td>
                     <td className="py-2 text-right text-error font-mono">RM {breakdown.epfEmployeeValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
-                  <tr className="border-b border-outline-variant/30">
-                    <td className="py-2 text-on-surface text-left">SOCSO</td>
-                    <td className="py-2 text-right text-error font-mono">RM {breakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
-                  </tr>
-                  {breakdown.skbbkEmpVal > 0 && (
+                  {breakdown.skbbkEmpVal > 0 ? (
+                    <>
+                      <tr className="border-b border-outline-variant/30">
+                        <td className="py-2 text-on-surface text-left">SOCSO - Invalidity</td>
+                        <td className="py-2 text-right text-error font-mono">RM {breakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      </tr>
+                      <tr className="border-b border-outline-variant/30">
+                        <td className="py-2 text-on-surface text-left">SOCSO - LINDUNG 24 Jam</td>
+                        <td className="py-2 text-right text-error font-mono">RM {breakdown.skbbkEmpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      </tr>
+                      <tr className="border-b border-outline-variant/30 font-semibold bg-slate-50/50 text-[11px]">
+                        <td className="py-2 text-on-surface text-left pl-2">SOCSO Employee Total</td>
+                        <td className="py-2 text-right text-error font-mono">RM {(breakdown.socsoEmployeeVal + breakdown.skbbkEmpVal).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      </tr>
+                    </>
+                  ) : (
                     <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">SOCSO (SKBBK)</td>
-                      <td className="py-2 text-right text-error font-mono">RM {breakdown.skbbkEmpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td className="py-2 text-on-surface text-left">SOCSO</td>
+                      <td className="py-2 text-right text-error font-mono">RM {breakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   <tr className="border-b border-outline-variant/30">
@@ -572,14 +617,25 @@ export default function PayslipDocumentView({
                 <span className="text-on-surface-variant text-[10px] uppercase block mb-1">EPF ({activeEmployee.epfRateEmployer}%)</span>
                 <span>RM {breakdown.epfEmployerValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
               </div>
-              <div>
-                <span className="text-on-surface-variant text-[10px] uppercase block mb-1">SOCSO</span>
-                <span>RM {breakdown.socsoEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
-              </div>
-              {breakdown.skbbkEmplyrVal > 0 && (
+              {breakdown.skbbkEmpVal > 0 ? (
+                <>
+                  <div>
+                    <span className="text-on-surface-variant text-[10px] uppercase block mb-1">SOCSO - Employment Injury</span>
+                    <span>RM {socsoRes.employerEmploymentInjury.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                  </div>
+                  <div>
+                    <span className="text-on-surface-variant text-[10px] uppercase block mb-1">SOCSO - Invalidity</span>
+                    <span>RM {socsoRes.employerInvalidity.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                  </div>
+                  <div>
+                    <span className="text-on-surface-variant text-[10px] uppercase block mb-1">SOCSO Employer Total</span>
+                    <span>RM {socsoRes.employerSocsoTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                  </div>
+                </>
+              ) : (
                 <div>
-                  <span className="text-on-surface-variant text-[10px] uppercase block mb-1">SOCSO (SKBBK)</span>
-                  <span>RM {breakdown.skbbkEmplyrVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                  <span className="text-on-surface-variant text-[10px] uppercase block mb-1">SOCSO</span>
+                  <span>RM {breakdown.socsoEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                 </div>
               )}
               <div>

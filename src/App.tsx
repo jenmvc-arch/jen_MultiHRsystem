@@ -32,7 +32,8 @@ import {
   SEED_EMPLOYEES,
   SEED_ENTITIES,
   SEED_PERFORMANCES,
-  SEED_CANDIDATES
+  SEED_CANDIDATES,
+  seedSocsoConfigurationsAndBrackets
 } from './data';
 import { getGmt8Timestamp, getGmt8DateString } from './lib/dateUtils';
 
@@ -49,6 +50,7 @@ import LeaveManagementView from './components/LeaveManagementView';
 import FormsDirectoryView from './components/FormsDirectoryView';
 import HireOnboardingView from './components/HireOnboardingView';
 import DepartmentRoleView from './components/DepartmentRoleView';
+import SocsoConfigAdminView from './components/SocsoConfigAdminView';
 import LoginView from './components/LoginView';
 import JobApplicationForm from './components/JobApplicationForm';
 import OnboardingForm from './components/OnboardingForm';
@@ -293,6 +295,8 @@ export default function App() {
       setCurrentUserName(localStorage.getItem('hr-nexus-user-name'));
       setCurrentUserRole(localStorage.getItem('hr-nexus-user-role'));
     }
+    // Seed statutory configurations and brackets on mount
+    seedSocsoConfigurationsAndBrackets();
   }, []);
 
   // Load data from Google Sheets dynamically if configured
@@ -1432,6 +1436,10 @@ export default function App() {
             <DepartmentRoleView 
               onShowNotification={triggerNotification}
             />
+          )}
+
+          {currentTab === 'socso-config' && (
+            <SocsoConfigAdminView />
           )}
 
           {/* Tab: Settings Panel */}
