@@ -1085,31 +1085,62 @@ export function getAdjustedBasicSalary(employee: Employee, month: number, year: 
   return baseline;
 }
 
+export function getEmployeeForMonth(employee: Employee, month: number): Employee {
+  const histRecord = (employee.historicalPayrollRecords || []).find(r => r.payrollMonth === month);
+  if (!histRecord) {
+    return employee;
+  }
+  
+  return {
+    ...employee,
+    basicSalary: histRecord.basicSalary !== undefined ? histRecord.basicSalary : employee.basicSalary,
+    allowanceGeneral: histRecord.allowanceGeneral !== undefined ? histRecord.allowanceGeneral : employee.allowanceGeneral,
+    allowanceTransport: histRecord.allowanceTransport !== undefined ? histRecord.allowanceTransport : employee.allowanceTransport,
+    allowanceParking: histRecord.allowanceParking !== undefined ? histRecord.allowanceParking : employee.allowanceParking,
+    allowanceMeal: histRecord.allowanceMeal !== undefined ? histRecord.allowanceMeal : employee.allowanceMeal,
+    allowanceAccommodation: histRecord.allowanceAccommodation !== undefined ? histRecord.allowanceAccommodation : employee.allowanceAccommodation,
+    allowancePhone: histRecord.allowancePhone !== undefined ? histRecord.allowancePhone : employee.allowancePhone,
+    overtime: histRecord.overtime !== undefined ? histRecord.overtime : employee.overtime,
+    bonusAmount: histRecord.bonusAmount !== undefined ? histRecord.bonusAmount : (histRecord.performanceBonus !== undefined ? histRecord.performanceBonus : employee.bonusAmount),
+    commissionAmount: histRecord.commissionAmount !== undefined ? histRecord.commissionAmount : employee.commissionAmount,
+    backPayAmount: histRecord.backPayAmount !== undefined ? histRecord.backPayAmount : employee.backPayAmount,
+    awsAmount: histRecord.awsAmount !== undefined ? histRecord.awsAmount : employee.awsAmount,
+    compensationAmount: histRecord.compensationAmount !== undefined ? histRecord.compensationAmount : employee.compensationAmount,
+    reimbursementAmount: histRecord.reimbursementAmount !== undefined ? histRecord.reimbursementAmount : employee.reimbursementAmount,
+    unpaidLeave: histRecord.unpaidLeave !== undefined ? histRecord.unpaidLeave : employee.unpaidLeave,
+    deductionInLieu: histRecord.deductionInLieu !== undefined ? histRecord.deductionInLieu : employee.deductionInLieu,
+    deductionCp38: histRecord.deductionCp38 !== undefined ? histRecord.deductionCp38 : (histRecord.cp38 !== undefined ? histRecord.cp38 : employee.deductionCp38),
+    deductionOthers: histRecord.deductionOthers !== undefined ? histRecord.deductionOthers : employee.deductionOthers,
+    taxPcb: histRecord.actualPCBDeducted !== undefined ? histRecord.actualPCBDeducted : employee.taxPcb
+  };
+}
+
 export function calculatePayslip(employee: Employee, month?: number, year?: number): PayslipBreakdown {
+  const mergedEmployee = month !== undefined ? getEmployeeForMonth(employee, month) : employee;
   const basicSalary = (month !== undefined && year !== undefined)
-    ? getAdjustedBasicSalary(employee, month, year)
-    : (employee.basicSalary || 0);
+    ? getAdjustedBasicSalary(mergedEmployee, month, year)
+    : (mergedEmployee.basicSalary || 0);
 
   // Compute individual allowances, falling back to old ones for backwards compatibility
-  const allowanceGen = employee.allowanceGeneral || 0;
-  const allowanceTrans = employee.allowanceTransport !== undefined ? employee.allowanceTransport : (employee.transportAllowance || 0);
-  const allowancePark = employee.allowanceParking || 0;
-  const allowanceMl = employee.allowanceMeal || 0;
-  const allowanceAccom = employee.allowanceAccommodation !== undefined ? employee.allowanceAccommodation : (employee.housingAllowance || 0);
-  const allowancePh = employee.allowancePhone || 0;
+  const allowanceGen = mergedEmployee.allowanceGeneral || 0;
+  const allowanceTrans = mergedEmployee.allowanceTransport !== undefined ? mergedEmployee.allowanceTransport : (mergedEmployee.transportAllowance || 0);
+  const allowancePark = mergedEmployee.allowanceParking || 0;
+  const allowanceMl = mergedEmployee.allowanceMeal || 0;
+  const allowanceAccom = mergedEmployee.allowanceAccommodation !== undefined ? mergedEmployee.allowanceAccommodation : (mergedEmployee.housingAllowance || 0);
+  const allowancePh = mergedEmployee.allowancePhone || 0;
   
   const allowancesSum = allowanceGen + allowanceTrans + allowancePark + allowanceMl + allowanceAccom + allowancePh;
 
   // Other dynamic earnings
-  const overtimeVal = employee.overtime || 0;
-  const bonusVal = employee.bonusAmount !== undefined ? employee.bonusAmount : (employee.performanceBonus || 0);
-  const commissionVal = employee.commissionAmount || 0;
-  const backPayVal = employee.backPayAmount || 0;
-  const awsVal = employee.awsAmount || 0;
-  const compensationVal = employee.compensationAmount || 0;
+  const overtimeVal = mergedEmployee.overtime || 0;
+  const bonusVal = mergedEmployee.bonusAmount !== undefined ? mergedEmployee.bonusAmount : (mergedEmployee.performanceBonus || 0);
+  const commissionVal = mergedEmployee.commissionAmount || 0;
+  const backPayVal = mergedEmployee.backPayAmount || 0;
+  const awsVal = mergedEmployee.awsAmount || 0;
+  const compensationVal = mergedEmployee.compensationAmount || 0;
   
   // Reimbursements (usually non-taxable)
-  const reimbursementsSum = employee.reimbursementAmount || 0;
+  const reimbursementsSum = mergedEmployee.reimbursementAmount || 0;
 
   // Gross Earnings subject to statutory deductions / standard gross
   const grossEarnings = 
@@ -1123,22 +1154,22 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
     compensationVal;
 
   const isEligible = 
-    employee.employmentType === 'Probationary' || 
-    employee.employmentType === 'Confirmation' || 
-    (employee.employmentType === 'Independent Contractor / Freelance' && employee.eligibleForStatutory === 'Yes');
+    mergedEmployee.employmentType === 'Probationary' || 
+    mergedEmployee.employmentType === 'Confirmation' || 
+    (mergedEmployee.employmentType === 'Independent Contractor / Freelance' && mergedEmployee.eligibleForStatutory === 'Yes');
 
-  const epfRateEmp = employee.epfRateEmployee || 11;
+  const epfRateEmp = mergedEmployee.epfRateEmployee || 11;
   const epfRateEmployerCalculated = basicSalary <= 5000 ? 13 : 12;
-  const epfRateEmployer = employee.epfRateEmployer || epfRateEmployerCalculated;
+  const epfRateEmployer = mergedEmployee.epfRateEmployer || epfRateEmployerCalculated;
 
   const epfEmployeeValue = isEligible ? Math.round((basicSalary * epfRateEmp) / 100) : 0;
   const epfEmployerValue = isEligible ? Math.round((basicSalary * epfRateEmployer) / 100) : 0;
 
   // Custom Deductions
-  const unpaidLeaveVal = employee.unpaidLeave || 0;
-  const deductionInLieuVal = employee.deductionInLieu || 0;
-  const deductionCp38Val = employee.deductionCp38 || 0;
-  const deductionOthersVal = employee.deductionOthers || 0;
+  const unpaidLeaveVal = mergedEmployee.unpaidLeave || 0;
+  const deductionInLieuVal = mergedEmployee.deductionInLieu || 0;
+  const deductionCp38Val = mergedEmployee.deductionCp38 || 0;
+  const deductionOthersVal = mergedEmployee.deductionOthers || 0;
 
   // Calculate 2026 dynamic SOCSO and EIS
   const stat2026 = getStatutoryDeductions2026(basicSalary);
@@ -1164,7 +1195,7 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
   const periodStr = `${actYear}-${String(actMonth).padStart(2, '0')}`;
 
   const socsoRes = calculateSocsoContribution({
-    employee,
+    employee: mergedEmployee,
     payrollPeriod: periodStr,
     payrollItems
   });
@@ -1177,12 +1208,12 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
   const eisEmployerVal = isEligible ? stat2026.eisEmployer : 0;
 
   // Dynamic 2026 PCB calculation if basicSalary changed from original or if taxPcb is missing
-  const baseEmp = INITIAL_EMPLOYEES.find(e => e.id === employee.id);
+  const baseEmp = INITIAL_EMPLOYEES.find(e => e.id === mergedEmployee.id);
   const isSalaryChanged = baseEmp ? baseEmp.basicSalary !== basicSalary : true;
   const taxPcbVal = isEligible 
-    ? (isSalaryChanged || employee.taxPcb === undefined
-       ? calculatePcb2026(basicSalary, employee.maritalStatus || 'Single', employee.spouseIsWorking || 'No', employee.dependants?.length || 0, epfEmployeeValue)
-       : employee.taxPcb)
+    ? (isSalaryChanged || mergedEmployee.taxPcb === undefined
+       ? calculatePcb2026(basicSalary, mergedEmployee.maritalStatus || 'Single', mergedEmployee.spouseIsWorking || 'No', mergedEmployee.dependants?.length || 0, epfEmployeeValue)
+       : mergedEmployee.taxPcb)
     : 0;
 
   // Total Deductions

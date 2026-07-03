@@ -17,7 +17,7 @@ import {
 import { pdf } from '@react-pdf/renderer';
 import { PayslipPDFDocument } from './PayslipPDFDocument';
 import { Employee, CorporateEntity } from '../types';
-import { calculatePayslip, getPayslipLabel, getAdjustedBasicSalary, getDirectLogoUrl, calculateSocsoContribution } from '../data';
+import { calculatePayslip, getPayslipLabel, getAdjustedBasicSalary, getDirectLogoUrl, calculateSocsoContribution, getEmployeeForMonth } from '../data';
 
 interface PayslipDocumentViewProps {
   employees: Employee[];
@@ -43,9 +43,9 @@ export default function PayslipDocumentView({
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
 
-  const activeEmployee = employees.find(e => e.id === selectedEmployeeId) || employees[0];
+  const rawActiveEmployee = employees.find(e => e.id === selectedEmployeeId) || employees[0];
 
-  if (!activeEmployee) {
+  if (!rawActiveEmployee) {
     return (
       <div className="p-8 text-center bg-white rounded-lg border border-neutral-border">
         No active employee found for document viewing.
@@ -57,6 +57,7 @@ export default function PayslipDocumentView({
   const payMonth = propPayMonth !== undefined ? propPayMonth : (params.get('month') ? parseInt(params.get('month')!, 10) : 10);
   const payYear = propPayYear !== undefined ? propPayYear : (params.get('year') ? parseInt(params.get('year')!, 10) : 2026);
 
+  const activeEmployee = getEmployeeForMonth(rawActiveEmployee, payMonth);
   const breakdown = calculatePayslip(activeEmployee, payMonth, payYear);
 
   const basicSalaryForSocso = getAdjustedBasicSalary(activeEmployee, payMonth, payYear);

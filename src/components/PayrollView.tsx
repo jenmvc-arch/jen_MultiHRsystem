@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { CreditCard, Search, Plus, Printer, Download, Image, Mail, Share2, Eye, CheckCircle, TrendingUp, Sliders, DollarSign, Briefcase, FileText, Globe, Building2, Clock } from 'lucide-react';
 import { Employee, CorporateEntity, HistoricalPayrollRecord, PayrollRecord2026 } from '../types';
-import { calculatePayslip, getPayslipLabel, calculateYtd, calculatePcb2026, recalculatePCBFromMonth, getProratedBasicSalary, getAdjustedBasicSalary, getStatutoryDeductions2026, calculateSocsoContribution } from '../data';
+import { calculatePayslip, getPayslipLabel, calculateYtd, calculatePcb2026, recalculatePCBFromMonth, getProratedBasicSalary, getAdjustedBasicSalary, getStatutoryDeductions2026, calculateSocsoContribution, getEmployeeForMonth } from '../data';
 import PayslipDocumentView from './PayslipDocumentView';
 import SocsoCalculatorCard from './SocsoCalculatorCard';
 
@@ -88,9 +88,9 @@ export default function PayrollView({
     return matchesEntity && matchesDept && matchesSearch;
   });
 
-  const activeEmployee = filteredEmployees.find(e => e.id === selectedEmployeeId) || filteredEmployees[0] || employees[0];
+  const rawActiveEmployee = filteredEmployees.find(e => e.id === selectedEmployeeId) || filteredEmployees[0] || employees[0];
 
-  if (!activeEmployee) {
+  if (!rawActiveEmployee) {
     return (
       <div className="p-8 text-center bg-white rounded-lg border border-neutral-border">
         No employees found. Please register an employee in the directory.
@@ -106,6 +106,8 @@ export default function PayrollView({
   const monthName = parts[0] || 'October';
   const payYear = Number(parts[1]) || 2026;
   const payMonthIndex = MONTHS_LIST.indexOf(monthName) + 1;
+
+  const activeEmployee = getEmployeeForMonth(rawActiveEmployee, payMonthIndex);
 
   const payrollBreakdown = calculatePayslip(activeEmployee, payMonthIndex, payYear);
 
@@ -770,7 +772,7 @@ export default function PayrollView({
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-neutral-border pb-4 mb-6 gap-4">
               <div>
                 <h2 className="text-xl font-bold text-primary tracking-tight">Active Payslip Preview</h2>
-                <p className="text-xs text-on-surface-variant mt-0.5">Pay period: October 2026 · Employee status: <span className="font-semibold">{generatedMap[activeEmployee.id] ? 'Generated' : 'Draft'}</span></p>
+                <p className="text-xs text-on-surface-variant mt-0.5">Pay period: {selectedPayPeriod} · Employee status: <span className="font-semibold">{generatedMap[activeEmployee.id] ? 'Generated' : 'Draft'}</span></p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button 
