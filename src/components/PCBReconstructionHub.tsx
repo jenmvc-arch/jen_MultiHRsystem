@@ -26,7 +26,9 @@ import {
   reconstructPCBHistory, 
   recalculatePCBFromMonth,
   getEffectiveProfileForMonth,
-  getPayrollRecordForMonth 
+  getPayrollRecordForMonth,
+  calculateAccumulatedPCBHistory,
+  recalculatePCBForward
 } from '../data';
 
 interface PCBReconstructionHubProps {
@@ -46,7 +48,7 @@ export default function PCBReconstructionHub({
   const [calcBasis, setCalcBasis] = useState<HistoricalCalculationBasis>('actual_deduction_history');
   
   // UI Tab state
-  const [activeSubTab, setActiveSubTab] = useState<'input_payroll' | 'input_profiles' | 'reconstruction'>('reconstruction');
+  const [activeSubTab, setActiveSubTab] = useState<'input_payroll' | 'input_profiles' | 'reconstruction' | 'ledger_tp3'>('reconstruction');
 
   // Preview / Computed results state
   const [previewResults, setPreviewResults] = useState<HistoricalPCBResult[]>([]);
@@ -69,6 +71,29 @@ export default function PCBReconstructionHub({
   const [profSpouseWorking, setProfSpouseWorking] = useState<'Yes' | 'No'>('No');
   const [profDependants, setProfDependants] = useState(0);
   const [selectedBreakdownResult, setSelectedBreakdownResult] = useState<HistoricalPCBResult | null>(null);
+
+  // TP3 states
+  const [tp3Remuneration, setTp3Remuneration] = useState(5000);
+  const [tp3AddRemuneration, setTp3AddRemuneration] = useState(0);
+  const [tp3Epf, setTp3Epf] = useState(550);
+  const [tp3AllowableDeductions, setTp3AllowableDeductions] = useState(0);
+  const [tp3Pcb, setTp3Pcb] = useState(80);
+  const [tp3Zakat, setTp3Zakat] = useState(0);
+  const [tp3StartDate, setTp3StartDate] = useState('2026-01-01');
+  const [tp3EndDate, setTp3EndDate] = useState('2026-02-28');
+  const [tp3DeclDate, setTp3DeclDate] = useState('2026-03-01');
+  const [tp3Status, setTp3Status] = useState<'VERIFIED' | 'UNVERIFIED' | 'CANCELLED'>('VERIFIED');
+  const [tp3Doc, setTp3Doc] = useState('verified_tp3_copy.pdf');
+
+  // Adjustment states
+  const [adjMonth, setAdjMonth] = useState(1);
+  const [adjOriginal, setAdjOriginal] = useState(0);
+  const [adjCorrected, setAdjCorrected] = useState(0);
+  const [adjReason, setAdjReason] = useState('Administrative tax profile alignment');
+  const [adjDoc, setAdjDoc] = useState('supporting_ledger_correction.pdf');
+  const [adjRemitted, setAdjRemitted] = useState<'Yes' | 'No'>('No');
+  const [adjRequestedBy, setAdjRequestedBy] = useState('Jenny Law');
+  const [adjApprovedBy, setAdjApprovedBy] = useState('Jenny Law');
 
   const activeEmployee = employees.find(e => e.id === selectedEmpId) || employees[0];
 
@@ -180,8 +205,35 @@ export default function PCBReconstructionHub({
       calculationBasis: calcBasis
     });
 
+    const newLedgers = computed.map(res => ({
+      id: `pay_${res.payrollMonth}_2026`,
+      employee_id: activeEmployee.id,
+      assessment_year: 2026,
+      payroll_month: res.payrollMonth,
+      source_type: 'CURRENT_EMPLOYER_PAYROLL' as const,
+      source_reference: `Month ${res.payrollMonth} Payroll`,
+      source_record_id: `rec_${res.payrollMonth}`,
+      original_amount: res.actualPCBDeducted || 0,
+      adjustment_amount: 0,
+      effective_amount: res.calculatedPCB,
+      normal_remuneration_pcb: res.normalRemunerationPCB,
+      additional_remuneration_pcb: res.additionalRemunerationPCB,
+      total_pcb: res.calculatedPCB,
+      status: 'FINALIZED' as const,
+      finalized_at: new Date().toISOString(),
+      included_in_accumulated_x: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }));
+
+    const existingAdjustments = (activeEmployee.employee_pcb_history_ledger || [])
+      .filter(l => l.source_type !== 'CURRENT_EMPLOYER_PAYROLL');
+    
+    const updatedLedger = [...existingAdjustments, ...newLedgers].sort((a, b) => a.payroll_month - b.payroll_month);
+
     onUpdateEmployee(activeEmployee.id, {
-      historicalPcbResults: computed
+      historicalPcbResults: computed,
+      employee_pcb_history_ledger: updatedLedger
     });
 
     setPreviewResults(computed.filter(r => r.payrollMonth >= Number(startMonth) && r.payrollMonth <= Number(endMonth)));
@@ -189,9 +241,147 @@ export default function PCBReconstructionHub({
     setLastUsedBasis(calcBasis);
     onShowNotification(
       'Reconstruction Finalized', 
-      `Committed chronological calculation results for months 1-12 to the employee's registry.`, 
+      `Committed chronological calculation results for months 1-12 to the employee's registry and updated the history ledger.`, 
       'success'
     );
+  };
+
+  const handleSaveTP3 = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newDecl = {
+      id: `tp3_${Date.now()}`,
+      employee_id: activeEmployee.id,
+      taxYear: 2026,
+      previousEmployerRemuneration: Number(tp3Remuneration),
+      previousEmployerAdditionalRemuneration: Number(tp3AddRemuneration),
+      previousEmployerEpf: Number(tp3Epf),
+      previousEmployerAllowableDeductions: Number(tp3AllowableDeductions),
+      previousEmployerPcb: Number(tp3Pcb),
+      previousEmployerZakat: Number(tp3Zakat),
+      previousEmployerStartDate: tp3StartDate,
+      previousEmployerEndDate: tp3EndDate,
+      declarationDate: tp3DeclDate,
+      verificationStatus: tp3Status,
+      supportingDocument: tp3Doc
+    };
+
+    const currentDecls = activeEmployee.employee_tp3_declarations || [];
+    const filtered = currentDecls.filter(t => t.taxYear !== 2026);
+    const updated = [...filtered, newDecl];
+
+    onUpdateEmployee(activeEmployee.id, {
+      employee_tp3_declarations: updated
+    });
+
+    onShowNotification(
+      'TP3 Declaration Saved',
+      `TP3 form status is ${tp3Status}. Forward recalculations will be updated.`,
+      'success'
+    );
+  };
+
+  const handleAddAdjustment = (e: React.FormEvent) => {
+    e.preventDefault();
+    const userRole = localStorage.getItem('hr-nexus-user-role') || 'Employee';
+    const isApprover = userRole === 'Global Administrator' || userRole === 'Payroll Tax Approver' || userRole === 'Administrator';
+    if (!isApprover) {
+      onShowNotification('Permission Denied', 'Only a Payroll Tax Approver or Global Administrator can authorize manual adjustments.', 'error');
+      return;
+    }
+
+    const diff = Number(adjCorrected) - Number(adjOriginal);
+    const newEntry = {
+      id: `adj_${Date.now()}`,
+      employee_id: activeEmployee.id,
+      assessment_year: 2026,
+      payroll_month: Number(adjMonth),
+      source_type: 'APPROVED_ADJUSTMENT' as const,
+      source_reference: adjDoc || 'Manual Correction',
+      source_record_id: `manual_${Date.now()}`,
+      original_amount: Number(adjOriginal),
+      adjustment_amount: diff,
+      effective_amount: Number(adjCorrected),
+      normal_remuneration_pcb: Number(adjCorrected),
+      additional_remuneration_pcb: 0,
+      total_pcb: Number(adjCorrected),
+      status: 'APPROVED' as const,
+      finalized_at: new Date().toISOString(),
+      included_in_accumulated_x: true,
+      exclusion_reason: adjReason,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const currentLedger = activeEmployee.employee_pcb_history_ledger || [];
+    const updated = [...currentLedger, newEntry];
+
+    onUpdateEmployee(activeEmployee.id, {
+      employee_pcb_history_ledger: updated
+    });
+
+    const recalcResult = recalculatePCBForward({
+      employee: { ...activeEmployee, employee_pcb_history_ledger: updated },
+      assessmentYear: 2026,
+      changedEffectiveMonth: Number(adjMonth),
+      reason: adjReason,
+      changedBy: 'Jenny Law'
+    });
+
+    onShowNotification(
+      'Manual Adjustment Approved',
+      `Manual adjustment of RM ${diff.toFixed(2)} applied. Forward recalculation completed across ${recalcResult.monthsRecalculated.length} months.`,
+      'success'
+    );
+  };
+
+  const handleReverseLedger = (item: any) => {
+    const userRole = localStorage.getItem('hr-nexus-user-role') || 'Employee';
+    const isApprover = userRole === 'Global Administrator' || userRole === 'Payroll Tax Approver' || userRole === 'Administrator';
+    if (!isApprover) {
+      onShowNotification('Permission Denied', 'Only a Payroll Tax Approver or Global Administrator can authorize reversals.', 'error');
+      return;
+    }
+
+    const reversalEntry = {
+      id: `rev_${Date.now()}`,
+      employee_id: activeEmployee.id,
+      assessment_year: 2026,
+      payroll_month: item.payroll_month,
+      source_type: 'REVERSAL' as const,
+      source_reference: `Reversal of ${item.id}`,
+      source_record_id: item.id,
+      original_amount: item.total_pcb,
+      adjustment_amount: -item.total_pcb,
+      effective_amount: -item.total_pcb,
+      normal_remuneration_pcb: -item.normal_remuneration_pcb,
+      additional_remuneration_pcb: -item.additional_remuneration_pcb,
+      total_pcb: -item.total_pcb,
+      status: 'APPROVED' as const,
+      reversed_at: new Date().toISOString(),
+      reversal_reference: item.id,
+      included_in_accumulated_x: true,
+      exclusion_reason: `Reversal of entry ${item.id}`,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const currentLedger = activeEmployee.employee_pcb_history_ledger || [];
+    const updated = currentLedger.map(l => l.id === item.id ? { ...l, status: 'REVERSED' as const } : l);
+    updated.push(reversalEntry);
+
+    onUpdateEmployee(activeEmployee.id, {
+      employee_pcb_history_ledger: updated
+    });
+
+    recalculatePCBForward({
+      employee: { ...activeEmployee, employee_pcb_history_ledger: updated },
+      assessmentYear: 2026,
+      changedEffectiveMonth: item.payroll_month,
+      reason: `Reversal of entry ${item.id}`,
+      changedBy: 'Jenny Law'
+    });
+
+    onShowNotification('Entry Reversed', `Successfully reversed tax entry for month ${item.payroll_month}.`, 'success');
   };
 
   // Summarize Reconciliation Totals
@@ -321,6 +511,16 @@ export default function PCBReconstructionHub({
           }`}
         >
           3. Manage Effective-Dated Profiles
+        </button>
+        <button
+          onClick={() => setActiveSubTab('ledger_tp3')}
+          className={`py-2.5 px-4 cursor-pointer transition-colors border-b-2 ${
+            activeSubTab === 'ledger_tp3' 
+              ? 'border-primary text-primary' 
+              : 'border-transparent text-on-surface-variant hover:text-on-surface'
+          }`}
+        >
+          4. PCB History Ledger & TP3
         </button>
       </div>
 
@@ -766,6 +966,373 @@ export default function PCBReconstructionHub({
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeSubTab === 'ledger_tp3' && (
+        <div className="space-y-6 text-xs">
+          {/* Comparison Panel */}
+          <div className="bg-surface-container-low border border-neutral-border rounded-lg p-5 shadow-sm">
+            <h4 className="font-bold text-sm text-primary uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <TrendingUp className="w-4 h-4 text-primary" /> PCB Expected vs. Actual Comparison Panel
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4 text-center font-mono">
+              <div className="bg-white border p-3 rounded">
+                <div className="text-[10px] text-on-surface-variant font-bold uppercase mb-1">Expected Accumulated PCB</div>
+                <div className="text-sm font-bold text-neutral-800">RM {expectedAccumulated.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+              </div>
+              <div className="bg-white border p-3 rounded">
+                <div className="text-[10px] text-on-surface-variant font-bold uppercase mb-1">Actual Accumulated PCB (X)</div>
+                <div className="text-sm font-bold text-primary">RM {actualAccumulated.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+              </div>
+              <div className="bg-white border p-3 rounded">
+                <div className="text-[10px] text-on-surface-variant font-bold uppercase mb-1">Accumulated Shortfall</div>
+                <div className="text-sm font-bold text-red-600">RM {shortfall.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+              </div>
+              <div className="bg-white border p-3 rounded">
+                <div className="text-[10px] text-on-surface-variant font-bold uppercase mb-1">Remaining Months (Incl. Current)</div>
+                <div className="text-sm font-bold text-neutral-800">{remainingMonthsCount}</div>
+              </div>
+              <div className="bg-white border p-3 rounded">
+                <div className="text-[10px] text-on-surface-variant font-bold uppercase mb-1">Spread Monthly Adjustment</div>
+                <div className="text-sm font-bold text-neutral-800">RM {monthlyAdjVal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-neutral-50 border rounded text-on-surface leading-relaxed text-[11px]">
+              <strong>Explanation:</strong> The current PCB is RM {Math.abs(monthlyAdjVal).toFixed(2)} {monthlyAdjVal >= 0 ? 'higher' : 'lower'} because RM {Math.abs(shortfall).toFixed(2)} {shortfall >= 0 ? 'less' : 'more'} PCB was deducted during earlier months and the shortfall is being spread over {remainingMonthsCount} months.
+            </div>
+
+            <div className="mt-3 text-[10px] text-on-surface-variant leading-relaxed">
+              <strong>Cumulative Formula:</strong> Current PCB = <code>(Estimated annual tax &minus; X &minus; Z) &divide; current and remaining payroll months</code>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left Col - TP3 Declarations */}
+            <div className="lg:col-span-5 space-y-6">
+              <div className="bg-white border border-neutral-border rounded-lg p-5 shadow-sm">
+                <h4 className="font-bold text-xs uppercase tracking-wider text-primary border-b border-neutral-100 pb-2 mb-4">
+                  Form TP3 (Previous Employer) Declaration
+                </h4>
+                <form onSubmit={handleSaveTP3} className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Previous Remuneration (RM)</label>
+                      <input
+                        type="number" required
+                        value={tp3Remuneration}
+                        onChange={(e) => setTp3Remuneration(Number(e.target.value))}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Previous Add. Remuneration (RM)</label>
+                      <input
+                        type="number"
+                        value={tp3AddRemuneration}
+                        onChange={(e) => setTp3AddRemuneration(Number(e.target.value))}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Previous EPF (RM)</label>
+                      <input
+                        type="number" required
+                        value={tp3Epf}
+                        onChange={(e) => setTp3Epf(Number(e.target.value))}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Previous Allowable Deduct (RM)</label>
+                      <input
+                        type="number"
+                        value={tp3AllowableDeductions}
+                        onChange={(e) => setTp3AllowableDeductions(Number(e.target.value))}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Previous PCB Paid (RM)</label>
+                      <input
+                        type="number" required
+                        value={tp3Pcb}
+                        onChange={(e) => setTp3Pcb(Number(e.target.value))}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Previous Zakat (RM)</label>
+                      <input
+                        type="number"
+                        value={tp3Zakat}
+                        onChange={(e) => setTp3Zakat(Number(e.target.value))}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Start Date</label>
+                      <input
+                        type="date" required
+                        value={tp3StartDate}
+                        onChange={(e) => setTp3StartDate(e.target.value)}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">End Date</label>
+                      <input
+                        type="date" required
+                        value={tp3EndDate}
+                        onChange={(e) => setTp3EndDate(e.target.value)}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Declaration Date</label>
+                      <input
+                        type="date" required
+                        value={tp3DeclDate}
+                        onChange={(e) => setTp3DeclDate(e.target.value)}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Verification Status</label>
+                      <select
+                        value={tp3Status}
+                        onChange={(e) => setTp3Status(e.target.value as any)}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none"
+                      >
+                        <option value="VERIFIED">Verified</option>
+                        <option value="UNVERIFIED">Unverified</option>
+                        <option value="CANCELLED">Cancelled</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Supporting Document File</label>
+                    <input
+                      type="text" required
+                      value={tp3Doc}
+                      onChange={(e) => setTp3Doc(e.target.value)}
+                      className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full bg-primary text-[#f7f0e0] font-semibold py-2 rounded hover:opacity-95 cursor-pointer mt-2"
+                  >
+                    Save & Apply TP3 Form
+                  </button>
+                </form>
+              </div>
+
+              {/* Add Manual Adjustment */}
+              <div className="bg-white border border-neutral-border rounded-lg p-5 shadow-sm">
+                <h4 className="font-bold text-xs uppercase tracking-wider text-primary border-b border-neutral-100 pb-2 mb-4">
+                  Add Approved Ledger Adjustment
+                </h4>
+                <form onSubmit={handleAddAdjustment} className="space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Target Month</label>
+                      <select
+                        value={adjMonth}
+                        onChange={(e) => setAdjMonth(Number(e.target.value))}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono"
+                      >
+                        {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
+                          <option key={m} value={m}>{MONTH_NAMES[m]}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Original PCB</label>
+                      <input
+                        type="number" required
+                        value={adjOriginal}
+                        onChange={(e) => setAdjOriginal(Number(e.target.value))}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Corrected PCB</label>
+                      <input
+                        type="number" required
+                        value={adjCorrected}
+                        onChange={(e) => setAdjCorrected(Number(e.target.value))}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Reason for Adjustment</label>
+                    <input
+                      type="text" required
+                      value={adjReason}
+                      onChange={(e) => setAdjReason(e.target.value)}
+                      className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Document Ref</label>
+                      <input
+                        type="text" required
+                        value={adjDoc}
+                        onChange={(e) => setAdjDoc(e.target.value)}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Already Remitted?</label>
+                      <select
+                        value={adjRemitted}
+                        onChange={(e) => setAdjRemitted(e.target.value as any)}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none"
+                      >
+                        <option value="No">No</option>
+                        <option value="Yes">Yes (Will warn HR)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Requested By</label>
+                      <input
+                        type="text" required
+                        value={adjRequestedBy}
+                        onChange={(e) => setAdjRequestedBy(e.target.value)}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Approver Signature</label>
+                      <input
+                        type="text" required
+                        value={adjApprovedBy}
+                        onChange={(e) => setAdjApprovedBy(e.target.value)}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full bg-green-700 text-[#f7f0e0] font-semibold py-2 rounded hover:opacity-95 cursor-pointer mt-2"
+                  >
+                    Add Approved Adjustment
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            {/* Right Col - Ledger Table */}
+            <div className="lg:col-span-7 space-y-6">
+              {/* Compliance & Validation Summary */}
+              {historyX.exclusionReasons.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-900 leading-relaxed text-[11px] space-y-1">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <XCircle className="w-4 h-4 text-red-600 shrink-0" />
+                    Ledger Validation Blocks ({historyX.exclusionReasons.length})
+                  </div>
+                  <ul className="list-disc pl-4 space-y-0.5 font-mono text-[10px]">
+                    {historyX.exclusionReasons.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Warnings panel */}
+              {(!activeEmployee.employee_tp3_declarations || activeEmployee.employee_tp3_declarations.length === 0) && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-amber-900 leading-relaxed text-[11px] flex gap-2">
+                  <AlertCircle className="w-4.5 h-4.5 text-amber-600 shrink-0 font-bold" />
+                  <div>
+                    <strong>Compliance Warning:</strong> Employee joined after January without a verified TP3 previous employer declaration. Please register a verified TP3 or declare that there was no previous employment this year.
+                  </div>
+                </div>
+              )}
+
+              {/* Ledger Entries List */}
+              <div className="bg-white border border-neutral-border rounded-lg p-5 shadow-sm">
+                <h4 className="font-bold text-xs uppercase tracking-wider text-on-surface-variant border-b border-neutral-100 pb-2 mb-4">
+                  Canonical PCB History Ledger Entries (X Ledger)
+                </h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left border-collapse">
+                    <thead>
+                      <tr className="bg-neutral-50 text-on-surface-variant font-bold border-b border-neutral-border uppercase tracking-wider text-[9px]">
+                        <th className="p-2.5">Month</th>
+                        <th className="p-2.5">Source Type</th>
+                        <th className="p-2.5">Reference</th>
+                        <th className="p-2.5 text-right">Original</th>
+                        <th className="p-2.5 text-right">Effective</th>
+                        <th className="p-2.5 text-center">X Status</th>
+                        <th className="p-2.5 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-border/60 font-mono text-[11px]">
+                      {(!activeEmployee.employee_pcb_history_ledger || activeEmployee.employee_pcb_history_ledger.length === 0) ? (
+                        <tr>
+                          <td colSpan={7} className="p-6 text-center text-on-surface-variant italic font-sans text-xs">
+                            No ledger entries found. Please run reconstruction to populate payroll items.
+                          </td>
+                        </tr>
+                      ) : (
+                        activeEmployee.employee_pcb_history_ledger.map((item, idx) => (
+                          <tr key={idx} className="hover:bg-neutral-50/40">
+                            <td className="p-2.5 font-bold">{item.payroll_month === 0 ? 'TP3' : MONTH_NAMES[item.payroll_month].slice(0, 3)}</td>
+                            <td className="p-2.5 text-[9px] uppercase font-sans text-on-surface-variant">{item.source_type.replace(/_/g, ' ')}</td>
+                            <td className="p-2.5 text-[10px] text-primary truncate max-w-[120px]" title={item.source_reference}>{item.source_reference}</td>
+                            <td className="p-2.5 text-right">RM {item.original_amount.toFixed(2)}</td>
+                            <td className="p-2.5 text-right font-bold">RM {item.effective_amount.toFixed(2)}</td>
+                            <td className="p-2.5 text-center">
+                              <span className={`text-[9px] font-sans font-bold px-1.5 py-0.5 rounded ${
+                                item.status === 'REVERSED' ? 'bg-red-100 text-red-800' :
+                                item.status === 'APPROVED' ? 'bg-green-100 text-green-800' :
+                                'bg-zinc-100 text-zinc-800'
+                              }`}>{item.status}</span>
+                            </td>
+                            <td className="p-2.5 text-center">
+                              {item.status !== 'REVERSED' && item.source_type !== 'REVERSAL' && (
+                                <button
+                                  onClick={() => handleReverseLedger(item)}
+                                  className="text-red-600 hover:text-red-800 text-[10px] font-bold border border-red-200 px-1.5 py-0.5 rounded bg-red-50/50 hover:bg-red-50 transition-colors"
+                                >
+                                  Reverse
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
             </div>
           </div>
         </div>

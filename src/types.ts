@@ -153,7 +153,6 @@ export interface Employee {
   icBackUrl?: string;
   educationCertUrl?: string;
   
-  // Historical PCB Reconstruction Fields
   historicalPayrollRecords?: HistoricalPayrollRecord[];
   effectiveDatedProfiles?: EmployeeTaxProfile[];
   historicalPcbResults?: HistoricalPCBResult[];
@@ -162,6 +161,8 @@ export interface Employee {
   tp3Data?: TP3Data;
   salaryAdjustments?: SalaryAdjustment[];
   socsoProfile?: EmployeeSocsoProfile;
+  employee_pcb_history_ledger?: EmployeePCBHistoryLedgerEntry[];
+  employee_tp3_declarations?: EmployeeTP3Declaration[];
 }
 
 export interface SalaryAdjustment {
@@ -306,6 +307,48 @@ export interface TP1Declaration {
   approvalStatus: string;
 }
 
+export interface EmployeePCBHistoryLedgerEntry {
+  id: string;
+  employee_id: string;
+  assessment_year: number;
+  payroll_month: number;
+  source_type: 'TP3_PREVIOUS_EMPLOYER' | 'CURRENT_EMPLOYER_PAYROLL' | 'APPROVED_ADJUSTMENT' | 'REVERSAL';
+  source_reference: string;
+  source_record_id: string;
+  original_amount: number;
+  adjustment_amount: number;
+  effective_amount: number;
+  normal_remuneration_pcb: number;
+  additional_remuneration_pcb: number;
+  total_pcb: number;
+  status: 'FINALIZED' | 'APPROVED' | 'LOCKED' | 'PAID' | 'SUBMITTED' | 'DRAFT' | 'CALCULATED' | 'PENDING_APPROVAL' | 'CANCELLED' | 'VOID' | 'REVERSED' | 'FAILED';
+  finalized_at?: string;
+  submitted_at?: string;
+  reversed_at?: string;
+  reversal_reference?: string;
+  included_in_accumulated_x: boolean;
+  exclusion_reason?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmployeeTP3Declaration {
+  id: string;
+  employee_id: string;
+  taxYear: number;
+  previousEmployerRemuneration: number;
+  previousEmployerAdditionalRemuneration: number;
+  previousEmployerEpf: number;
+  previousEmployerAllowableDeductions: number;
+  previousEmployerPcb: number;
+  previousEmployerZakat: number;
+  previousEmployerStartDate: string;
+  previousEmployerEndDate: string;
+  declarationDate: string;
+  verificationStatus: 'VERIFIED' | 'UNVERIFIED' | 'CANCELLED';
+  supportingDocument?: string;
+}
+
 export interface TP3Data {
   taxYear?: number;
   previousEmployerRemuneration?: number;
@@ -381,6 +424,32 @@ export interface HistoricalPCBResult {
   warnings: string[];
   errors: string[];
   calculationBreakdown: PCBCalculationStep[];
+
+  // Section 17 compliant fields
+  assessmentYear?: number;
+  taxResidenceStatus?: string;
+  taxCategory?: string;
+  accumulatedPreviousEmployerRemuneration?: number;
+  accumulatedCurrentEmployerRemuneration?: number;
+  accumulatedQualifyingEPF?: number;
+  accumulatedAllowableDeductions?: number;
+  accumulatedPreviousEmployerPCB?: number;
+  accumulatedCurrentEmployerPCB?: number;
+  accumulatedAdjustedPCB?: number;
+  accumulatedPCB_X?: number;
+  accumulatedZakat_Z?: number;
+  estimatedAnnualChargeableIncome_P?: number;
+  selectedTaxBracket?: string;
+  M?: number;
+  R?: number;
+  B?: number;
+  remainingEstimatedTax?: number;
+  currentAndRemainingMonthCount?: number;
+  currentMonthZakatOffset?: number;
+  finalPCB?: number;
+  CP38?: number;
+  totalTaxDeduction?: number;
+  configurationVersion?: string;
 }
 
 export interface PCBHistoricalVariance {
@@ -422,6 +491,8 @@ export interface HistoricalPCBMonthContext {
   projectedRemainingNormalRemuneration: number;
   remainingApplicableMonths: number;
   calculationBasis: HistoricalCalculationBasis;
+  employee_pcb_history_ledger?: EmployeePCBHistoryLedgerEntry[];
+  employee_tp3_declarations?: EmployeeTP3Declaration[];
 }
 
 export interface PayrollRecord2026 {

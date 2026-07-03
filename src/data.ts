@@ -21,7 +21,9 @@ import {
   PCBCalculationStep,
   HistoricalPCBResult,
   PCBHistoricalVariance,
-  HistoricalPCBMonthContext
+  HistoricalPCBMonthContext,
+  EmployeePCBHistoryLedgerEntry,
+  EmployeeTP3Declaration
 } from './types';
 import { getGmt8DateString } from './lib/dateUtils';
 import { Decimal, dec } from './lib/decimal';
@@ -1092,6 +1094,8 @@ export interface PCB2026Params {
   accumulatedEPF?: number;
   cp38Instruction?: number;
   statutoryConfiguration?: PCBConfiguration;
+  employee_pcb_history_ledger?: EmployeePCBHistoryLedgerEntry[];
+  employee_tp3_declarations?: EmployeeTP3Declaration[];
 }
 
 export interface PCBConfiguration {
@@ -1137,7 +1141,9 @@ export function calculatePCB2026(params: PCB2026Params) {
     accumulatedNormal: paramAccumulatedNormal,
     accumulatedEPF: paramAccumulatedEPF,
     cp38Instruction,
-    statutoryConfiguration
+    statutoryConfiguration,
+    employee_pcb_history_ledger,
+    employee_tp3_declarations
   } = params;
 
   const Y1 = dec(currentNormalRemuneration);
@@ -1147,6 +1153,13 @@ export function calculatePCB2026(params: PCB2026Params) {
 
   const n = 12 - payrollMonth;
 
+  const validationErrors: string[] = [];
+  const validationWarnings: string[] = [];
+
+  if (payrollMonth < 1 || payrollMonth > 12) {
+    validationErrors.push("Current payroll month is invalid.");
+  }
+
   let accumulatedNormal = dec(paramAccumulatedNormal || 0);
   let accumulatedAdditional = dec(0);
   let accumulatedEPF = dec(paramAccumulatedEPF || 0);
@@ -1154,43 +1167,146 @@ export function calculatePCB2026(params: PCB2026Params) {
   let accumulatedPaidZakat = dec(accumulatedZakat || 0);
   let accumulatedPaidLevy = dec(accumulatedDepartureLevy || 0);
 
-  if (payrollHistory && payrollHistory.length > 0) {
-    for (const record of payrollHistory) {
-      if (record.payrollMonth < payrollMonth) {
-        const recordNormal = (record.basicSalary || 0) + 
-          (record.allowanceGeneral || 0) +
-          (record.allowanceTransport || 0) +
-          (record.allowanceParking || 0) +
-          (record.allowanceMeal || 0) +
-          (record.allowanceAccommodation || 0) +
-          (record.allowancePhone || 0);
-        
-        accumulatedNormal = accumulatedNormal.add(recordNormal);
+  let previousEmployerPCB = 0;
+  let currentEmployerPreviousPCB = 0;
+  let reversedPCB = 0;
+  let validAdjustmentPCB = 0;
 
-        const recordAdditional = 
-          (record.overtime || 0) +
-          (record.performanceBonus || 0) +
-          (record.bonusAmount || 0) +
-          (record.commissionAmount || 0) +
-          (record.backPayAmount || 0) +
-          (record.awsAmount || 0) +
-          (record.compensationAmount || 0);
-
-        accumulatedAdditional = accumulatedAdditional.add(recordAdditional);
-        accumulatedEPF = accumulatedEPF.add(record.epfEmployee || 0);
-        accumulatedPaidPCB = accumulatedPaidPCB.add(record.actualPCBDeducted || 0);
-        accumulatedPaidZakat = accumulatedPaidZakat.add(record.zakat || 0);
-        accumulatedPaidLevy = accumulatedPaidLevy.add(0);
+  if (employee_pcb_history_ledger) {
+    const verifiedTP3 = employee_tp3_declarations 
+      ? employee_tp3_declarations.filter(t => t.verificationStatus === 'VERIFIED') 
+      : [];
+    
+    // 1. Unverified/cancelled TP3 check
+    if (employee_tp3_declarations) {
+      for (const t of employee_tp3_declarations) {
+        if (t.verificationStatus === 'UNVERIFIED') {
+          validationErrors.push("TP3 values are unverified but included in calculations.");
+        }
       }
     }
-  }
 
-  if (tp3Declaration) {
-    accumulatedNormal = accumulatedNormal.add(tp3Declaration.previousEmployerRemuneration || tp3Declaration.accumulatedPriorRemuneration || 0);
-    accumulatedAdditional = accumulatedAdditional.add(tp3Declaration.previousEmployerAdditionalRemuneration || 0);
-    accumulatedEPF = accumulatedEPF.add(tp3Declaration.previousEmployerEpf || tp3Declaration.accumulatedPriorEPF || 0);
-    accumulatedPaidPCB = accumulatedPaidPCB.add(tp3Declaration.previousEmployerPcb || tp3Declaration.accumulatedPriorPCB || 0);
-    accumulatedPaidZakat = accumulatedPaidZakat.add(tp3Declaration.previousEmployerZakat || 0);
+    // 2. Draft payroll / missing status check / current/future X check
+    for (const l of employee_pcb_history_ledger) {
+      if (l.status === 'DRAFT') {
+        validationErrors.push("Draft payroll is included in history ledger.");
+      }
+      if (!l.status) {
+        validationErrors.push("A historical PCB source has no status.");
+      }
+      if (l.payroll_month === payrollMonth) {
+        validationErrors.push("Current month is included in X.");
+      }
+      if (l.payroll_month > payrollMonth) {
+        validationErrors.push("Future payroll is included in X.");
+      }
+      if (l.source_type === 'APPROVED_ADJUSTMENT' && l.source_reference?.toLowerCase().includes('cp38')) {
+        validationErrors.push("CP38 is included in X.");
+      }
+    }
+
+    // 3. Duplicate key check
+    const keys = new Set<string>();
+    for (const l of employee_pcb_history_ledger) {
+      const key = `${l.employee_id}-${l.assessment_year}-${l.source_type}-${l.source_reference || 'ref'}-${l.payroll_month}`;
+      if (keys.has(key)) {
+        validationErrors.push(`Accumulated PCB contains duplicate records: ${key}`);
+      }
+      keys.add(key);
+    }
+
+    // Run calculateAccumulatedPCBHistory
+    const hist = calculateAccumulatedPCBHistory({
+      employeeId: employeeTaxProfile.nricPassport || 'emp',
+      assessmentYear: 2026,
+      currentPayrollMonth: payrollMonth,
+      verifiedTP3Records: verifiedTP3,
+      finalizedPayrollHistory: employee_pcb_history_ledger
+    });
+
+    accumulatedPaidPCB = dec(hist.accumulatedPCB_X);
+    previousEmployerPCB = hist.previousEmployerPCB;
+    currentEmployerPreviousPCB = hist.currentEmployerPreviousPCB;
+    reversedPCB = hist.reversedPCB;
+    validAdjustmentPCB = hist.validAdjustmentPCB;
+
+    // Accumulate prior normal income and EPF from verified TP3
+    let tp3Normal = 0;
+    let tp3Additional = 0;
+    let tp3EPF = 0;
+    let tp3Zakat = 0;
+    for (const t of verifiedTP3) {
+      tp3Normal += t.previousEmployerRemuneration || 0;
+      tp3Additional += t.previousEmployerAdditionalRemuneration || 0;
+      tp3EPF += t.previousEmployerEpf || 0;
+      tp3Zakat += t.previousEmployerZakat || 0;
+    }
+
+    // Accumulate current employer prior payrolls
+    if (payrollHistory && payrollHistory.length > 0) {
+      let calcNormal = 0;
+      let calcEPF = 0;
+      for (const p of payrollHistory) {
+        if (p.payrollMonth < payrollMonth) {
+          const recordNormal = (p.basicSalary || 0) + 
+            (p.allowanceGeneral || 0) +
+            (p.allowanceTransport || 0) +
+            (p.allowanceParking || 0) +
+            (p.allowanceMeal || 0) +
+            (p.allowanceAccommodation || 0) +
+            (p.allowancePhone || 0);
+          calcNormal += recordNormal;
+          calcEPF += p.epfEmployee || 0;
+        }
+      }
+      accumulatedNormal = dec(tp3Normal + calcNormal);
+      accumulatedEPF = dec(tp3EPF + calcEPF);
+    } else {
+      accumulatedNormal = dec(tp3Normal + (paramAccumulatedNormal || 0));
+      accumulatedEPF = dec(tp3EPF + (paramAccumulatedEPF || 0));
+    }
+
+    accumulatedPaidZakat = dec(tp3Zakat + (accumulatedZakat || 0));
+  } else {
+    // Fallback to legacy behaviour
+    if (payrollHistory && payrollHistory.length > 0) {
+      for (const record of payrollHistory) {
+        if (record.payrollMonth < payrollMonth) {
+          const recordNormal = (record.basicSalary || 0) + 
+            (record.allowanceGeneral || 0) +
+            (record.allowanceTransport || 0) +
+            (record.allowanceParking || 0) +
+            (record.allowanceMeal || 0) +
+            (record.allowanceAccommodation || 0) +
+            (record.allowancePhone || 0);
+          
+          accumulatedNormal = accumulatedNormal.add(recordNormal);
+
+          const recordAdditional = 
+            (record.overtime || 0) +
+            (record.performanceBonus || 0) +
+            (record.bonusAmount || 0) +
+            (record.commissionAmount || 0) +
+            (record.backPayAmount || 0) +
+            (record.awsAmount || 0) +
+            (record.compensationAmount || 0);
+
+          accumulatedAdditional = accumulatedAdditional.add(recordAdditional);
+          accumulatedEPF = accumulatedEPF.add(record.epfEmployee || 0);
+          accumulatedPaidPCB = accumulatedPaidPCB.add(record.actualPCBDeducted || 0);
+          accumulatedPaidZakat = accumulatedPaidZakat.add(record.zakat || 0);
+          accumulatedPaidLevy = accumulatedPaidLevy.add(0);
+        }
+      }
+    }
+
+    if (tp3Declaration) {
+      accumulatedNormal = accumulatedNormal.add(tp3Declaration.previousEmployerRemuneration || tp3Declaration.accumulatedPriorRemuneration || 0);
+      accumulatedAdditional = accumulatedAdditional.add(tp3Declaration.previousEmployerAdditionalRemuneration || 0);
+      accumulatedEPF = accumulatedEPF.add(tp3Declaration.previousEmployerEpf || tp3Declaration.accumulatedPriorEPF || 0);
+      accumulatedPaidPCB = accumulatedPaidPCB.add(tp3Declaration.previousEmployerPcb || tp3Declaration.accumulatedPriorPCB || 0);
+      accumulatedPaidZakat = accumulatedPaidZakat.add(tp3Declaration.previousEmployerZakat || 0);
+    }
   }
 
   const Y2 = Y1;
@@ -1477,9 +1593,25 @@ export function calculatePCB2026(params: PCB2026Params) {
     configurationVersion: statutoryConfiguration?.configurationVersion || 'v1.0.0',
     formulaVersion: 'HASiL 2026 progressive v1',
     calculationTimestamp: new Date().toISOString(),
-    warnings: [] as string[],
-    errors: [] as string[],
-    status: 'calculated'
+    warnings: validationWarnings,
+    errors: validationErrors,
+    status: validationErrors.length > 0 ? 'failed' : 'calculated',
+    
+    // Section 17 compliant fields
+    taxCategory: category,
+    accumulatedPreviousEmployerRemuneration: previousEmployerPCB,
+    accumulatedPreviousEmployerPCB: previousEmployerPCB,
+    accumulatedCurrentEmployerPCB: currentEmployerPreviousPCB,
+    accumulatedAdjustedPCB: validAdjustmentPCB,
+    accumulatedPCB_X: X.toNumber(),
+    accumulatedZakat_Z: Z.toNumber(),
+    estimatedAnnualChargeableIncome_P: PWithoutCurrentAdditional.toNumber(),
+    selectedTaxBracket: `Bracket (M=${M}, R=${R})`,
+    estimatedAnnualTax: annualTaxWithoutCurrentAdditional.toNumber(),
+    remainingEstimatedTax: Math.max(0, annualTaxWithoutCurrentAdditional.toNumber() - X.toNumber() - Z.toNumber()),
+    currentAndRemainingMonthCount: n + 1,
+    CP38: cp38Instruction || 0,
+    totalTaxDeduction: finalPCB.add(cp38Instruction || 0).toNumber()
   };
 }
 
@@ -2179,7 +2311,9 @@ export function buildPCBContext(params: {
     projectedRemainingNormalRemuneration,
     remainingApplicableMonths: remainingMonths,
     calculationBasis: params.calculationBasis,
-    employeeId: params.employee.id
+    employeeId: params.employee.id,
+    employee_pcb_history_ledger: params.employee.employee_pcb_history_ledger,
+    employee_tp3_declarations: params.employee.employee_tp3_declarations
   };
 }
 
@@ -2236,7 +2370,9 @@ export function calculateMonthlyPCB(context: HistoricalPCBMonthContext): Histori
     currentZakat: context.currentMonthZakat,
     cp38Instruction: context.currentMonthCP38,
     payrollHistory: [],
-    tp1Declarations: tp1Declarations
+    tp1Declarations: tp1Declarations,
+    employee_pcb_history_ledger: context.employee_pcb_history_ledger,
+    employee_tp3_declarations: context.employee_tp3_declarations
   });
 
   const steps: PCBCalculationStep[] = [
@@ -2304,9 +2440,385 @@ export function calculateMonthlyPCB(context: HistoricalPCBMonthContext): Histori
     calculationTimestamp: new Date().toISOString(),
     calculationVersion: 1,
     status,
-    warnings: [] as string[],
-    errors: [] as string[],
-    calculationBreakdown: steps
+    warnings: res2026.warnings || [],
+    errors: res2026.errors || [],
+    calculationBreakdown: steps,
+
+    // Section 17 fields
+    assessmentYear: res2026.assessmentYear,
+    taxResidenceStatus: res2026.taxResidenceStatus,
+    taxCategory: res2026.taxCategory,
+    accumulatedPreviousEmployerRemuneration: res2026.accumulatedPreviousEmployerRemuneration,
+    accumulatedCurrentEmployerRemuneration: res2026.accumulatedCurrentEmployerRemuneration,
+    accumulatedQualifyingEPF: res2026.accumulatedQualifyingEPF,
+    accumulatedAllowableDeductions: res2026.accumulatedAllowableDeductions,
+    accumulatedPreviousEmployerPCB: res2026.accumulatedPreviousEmployerPCB,
+    accumulatedCurrentEmployerPCB: res2026.accumulatedCurrentEmployerPCB,
+    accumulatedAdjustedPCB: res2026.accumulatedAdjustedPCB,
+    accumulatedPCB_X: res2026.accumulatedPCB_X,
+    accumulatedZakat_Z: res2026.accumulatedZakat_Z,
+    estimatedAnnualChargeableIncome_P: res2026.estimatedAnnualChargeableIncome_P,
+    selectedTaxBracket: res2026.selectedTaxBracket,
+    M: res2026.M,
+    R: res2026.R,
+    B: res2026.B,
+    remainingEstimatedTax: res2026.remainingEstimatedTax,
+    currentAndRemainingMonthCount: res2026.currentAndRemainingMonthCount,
+    currentMonthZakatOffset: res2026.currentMonthZakatOffset,
+    finalPCB: res2026.finalPCB,
+    CP38: res2026.CP38,
+    totalTaxDeduction: res2026.totalTaxDeduction,
+    configurationVersion: res2026.configurationVersion
+  };
+}
+
+export interface AccumulatedPCBHistoryResult {
+  previousEmployerPCB: number;
+  currentEmployerPreviousPCB: number;
+  reversedPCB: number;
+  validAdjustmentPCB: number;
+  accumulatedPCB_X: number;
+  sourceBreakdown: Array<{
+    month: number;
+    sourceType: string;
+    ref: string;
+    amount: number;
+    status: string;
+    details?: string;
+  }>;
+  excludedRecords: Array<{
+    id: string;
+    reason: string;
+  }>;
+  exclusionReasons: string[];
+}
+
+export function calculateAccumulatedPCBHistory(params: {
+  employeeId: string;
+  assessmentYear: number;
+  currentPayrollMonth: number;
+  verifiedTP3Records: EmployeeTP3Declaration[];
+  finalizedPayrollHistory: EmployeePCBHistoryLedgerEntry[];
+  payrollAdjustments?: any[];
+}): AccumulatedPCBHistoryResult {
+  const { employeeId, assessmentYear, currentPayrollMonth, verifiedTP3Records, finalizedPayrollHistory } = params;
+
+  let previousEmployerPCB = 0;
+  let currentEmployerPreviousPCB = 0;
+  let reversedPCB = 0;
+  let validAdjustmentPCB = 0;
+
+  const sourceBreakdown: AccumulatedPCBHistoryResult['sourceBreakdown'] = [];
+  const excludedRecords: AccumulatedPCBHistoryResult['excludedRecords'] = [];
+  const exclusionReasonsSet = new Set<string>();
+
+  const uniqueKeys = new Map<string, any>();
+
+  // 1. Process verified TP3 records
+  for (const tp3 of verifiedTP3Records) {
+    if (tp3.taxYear !== assessmentYear) {
+      excludedRecords.push({ id: tp3.id || 'tp3', reason: `Tax year ${tp3.taxYear} does not match assessment year ${assessmentYear}` });
+      exclusionReasonsSet.add(`TP3 tax year mismatch`);
+      continue;
+    }
+    if (tp3.verificationStatus !== 'VERIFIED') {
+      excludedRecords.push({ id: tp3.id || 'tp3', reason: `Verification status is ${tp3.verificationStatus}` });
+      exclusionReasonsSet.add(`TP3 unverified or cancelled`);
+      continue;
+    }
+    
+    const amt = tp3.previousEmployerPcb || 0;
+    const key = `${employeeId}-${assessmentYear}-TP3_PREVIOUS_EMPLOYER-tp3-${currentPayrollMonth}`;
+    if (uniqueKeys.has(key)) {
+      excludedRecords.push({ id: tp3.id || 'tp3', reason: `Duplicate TP3 entry key: ${key}` });
+      exclusionReasonsSet.add(`Duplicate TP3 record`);
+      continue;
+    }
+    uniqueKeys.set(key, tp3);
+    previousEmployerPCB += amt;
+    sourceBreakdown.push({
+      month: 0,
+      sourceType: 'TP3_PREVIOUS_EMPLOYER',
+      ref: 'TP3 Form',
+      amount: amt,
+      status: tp3.verificationStatus,
+      details: 'Verified previous employer TP3'
+    });
+  }
+
+  // Eligible statuses
+  const ELIGIBLE_STATUSES = ['FINALIZED', 'APPROVED', 'LOCKED', 'PAID', 'SUBMITTED', 'REVERSED'];
+
+  // 2. Process finalized payroll history (current employer)
+  for (const ledger of finalizedPayrollHistory) {
+    if (ledger.assessment_year !== assessmentYear) {
+      excludedRecords.push({ id: ledger.id, reason: `Ledger year ${ledger.assessment_year} mismatch` });
+      exclusionReasonsSet.add(`Ledger year mismatch`);
+      continue;
+    }
+    if (ledger.payroll_month >= currentPayrollMonth) {
+      excludedRecords.push({ id: ledger.id, reason: `Ledger month ${ledger.payroll_month} is >= current month ${currentPayrollMonth}` });
+      exclusionReasonsSet.add(`Ledger month is current/future`);
+      continue;
+    }
+
+    const key = `${employeeId}-${assessmentYear}-${ledger.source_type}-${ledger.source_reference || 'ref'}-${ledger.payroll_month}`;
+    if (uniqueKeys.has(key)) {
+      excludedRecords.push({ id: ledger.id, reason: `Duplicate ledger entry key: ${key}` });
+      exclusionReasonsSet.add(`Duplicate ledger record`);
+      continue;
+    }
+    uniqueKeys.set(key, ledger);
+
+    if (!ELIGIBLE_STATUSES.includes(ledger.status)) {
+      excludedRecords.push({ id: ledger.id, reason: `Status is ${ledger.status}` });
+      exclusionReasonsSet.add(`Ledger status not final/eligible`);
+      continue;
+    }
+
+    const effectiveAmount = ledger.effective_amount !== undefined ? ledger.effective_amount : ledger.total_pcb;
+
+    if (ledger.source_type === 'CURRENT_EMPLOYER_PAYROLL') {
+      currentEmployerPreviousPCB += effectiveAmount;
+      sourceBreakdown.push({
+        month: ledger.payroll_month,
+        sourceType: 'CURRENT_EMPLOYER_PAYROLL',
+        ref: ledger.source_reference,
+        amount: effectiveAmount,
+        status: ledger.status,
+        details: `Finalized payroll for Month ${ledger.payroll_month}`
+      });
+    } else if (ledger.source_type === 'APPROVED_ADJUSTMENT') {
+      validAdjustmentPCB += effectiveAmount;
+      sourceBreakdown.push({
+        month: ledger.payroll_month,
+        sourceType: 'APPROVED_ADJUSTMENT',
+        ref: ledger.source_reference,
+        amount: effectiveAmount,
+        status: ledger.status,
+        details: `Approved manual adjustment: ${ledger.exclusion_reason || ''}`
+      });
+    } else if (ledger.source_type === 'REVERSAL') {
+      reversedPCB += Math.abs(effectiveAmount);
+      sourceBreakdown.push({
+        month: ledger.payroll_month,
+        sourceType: 'REVERSAL',
+        ref: ledger.source_reference,
+        amount: effectiveAmount,
+        status: ledger.status,
+        details: `Reversed deduction reference ${ledger.reversal_reference || ''}`
+      });
+    }
+  }
+
+  const accumulatedPCB_X = Math.max(0, previousEmployerPCB + currentEmployerPreviousPCB + validAdjustmentPCB - reversedPCB);
+
+  return {
+    previousEmployerPCB,
+    currentEmployerPreviousPCB,
+    reversedPCB,
+    validAdjustmentPCB,
+    accumulatedPCB_X,
+    sourceBreakdown,
+    excludedRecords,
+    exclusionReasons: Array.from(exclusionReasonsSet)
+  };
+}
+
+export interface RecalculatePCBForwardResult {
+  earliestAffectedMonth: number;
+  monthsReviewed: number[];
+  monthsRecalculated: number[];
+  lockedMonthsSkipped: number[];
+  originalPCBTotal: number;
+  recalculatedPCBTotal: number;
+  difference: number;
+  currentMonthAdjustment: number;
+  warnings: string[];
+  submissionAmendmentRequired: boolean;
+}
+
+export function recalculatePCBForward(params: {
+  employee: Employee;
+  assessmentYear: number;
+  changedEffectiveMonth: number;
+  reason: string;
+  changedBy: string;
+}): RecalculatePCBForwardResult {
+  const { employee, assessmentYear, changedEffectiveMonth } = params;
+  
+  const monthsReviewed: number[] = [];
+  const monthsRecalculated: number[] = [];
+  const lockedMonthsSkipped: number[] = [];
+  const warnings: string[] = [];
+
+  const ledger = employee.employee_pcb_history_ledger || [];
+  const tp3 = employee.employee_tp3_declarations || [];
+
+  // Original total PCB
+  const originalPCBTotal = ledger
+    .filter(l => l.assessment_year === assessmentYear && l.status !== 'CANCELLED')
+    .reduce((sum, l) => sum + (l.source_type === 'REVERSAL' ? -l.effective_amount : l.effective_amount), 0);
+
+  const start = Math.max(1, changedEffectiveMonth);
+  
+  const lockedMonths = new Set(
+    ledger
+      .filter(l => l.assessment_year === assessmentYear && (l.status === 'LOCKED' || l.status === 'PAID' || l.status === 'SUBMITTED'))
+      .map(l => l.payroll_month)
+  );
+
+  let recalculatedPCBTotal = 0;
+  const results: HistoricalPCBResult[] = [];
+  const joinDate = employee.dateOfJoined || '2026-01-01';
+  const joinParts = joinDate.split('-');
+  const joinYear = joinParts[0] ? Number(joinParts[0]) : 2026;
+  const joinMonth = (joinYear === assessmentYear && joinParts[1]) ? Number(joinParts[1]) : 1;
+
+  for (let m = 1; m <= 12; m++) {
+    monthsReviewed.push(m);
+    if (m < joinMonth) continue;
+
+    const profile = getEffectiveProfileForMonth(employee, m, assessmentYear);
+    const payroll = getPayrollRecordForMonth(employee, m);
+
+    const isLocked = lockedMonths.has(m);
+    if (m < start || isLocked) {
+      if (isLocked) {
+        lockedMonthsSkipped.push(m);
+      }
+      const monthLedgerSum = ledger
+        .filter(l => l.assessment_year === assessmentYear && l.payroll_month === m && l.status !== 'CANCELLED')
+        .reduce((sum, l) => sum + (l.source_type === 'REVERSAL' ? -l.effective_amount : l.effective_amount), 0);
+      
+      const calcVal = monthLedgerSum || payroll.actualPCBDeducted || 0;
+      recalculatedPCBTotal += calcVal;
+
+      results.push({
+        employeeId: employee.id,
+        taxYear: assessmentYear,
+        payrollMonth: m,
+        calculatedPCB: calcVal,
+        actualPCBDeducted: calcVal,
+        currentNormalRemuneration: payroll.basicSalary + ((payroll.allowanceGeneral || 0) + (payroll.allowanceTransport || 0) + (payroll.allowanceParking || 0) + (payroll.allowanceMeal || 0) + (payroll.allowanceAccommodation || 0) + (payroll.allowancePhone || 0)),
+        currentAdditionalRemuneration: (payroll.overtime || 0) + (payroll.performanceBonus || 0) + (payroll.bonusAmount || 0) + (payroll.commissionAmount || 0) + (payroll.backPayAmount || 0) + (payroll.awsAmount || 0) + (payroll.compensationAmount || 0),
+        currentMonthEmployeeEPF: payroll.epfEmployee || 0,
+        currentZakat: payroll.zakat || 0,
+        currentCP38: payroll.cp38 || 0,
+        pcbVariance: 0,
+        processingMode: 'RECONSTRUCT_CHRONOLOGICAL',
+        calculationBasis: 'actual_deduction_history',
+        effectiveEmployeeProfileVersion: profile.effectiveDate || 'default',
+        taxConfigurationVersion: '2026-v1',
+        accumulatedPriorRemuneration: 0,
+        accumulatedPriorAdditionalRemuneration: 0,
+        accumulatedPriorEPF: 0,
+        accumulatedPriorPCB: 0,
+        accumulatedPriorZakat: 0,
+        previousEmployerRemuneration: 0,
+        previousEmployerEPF: 0,
+        previousEmployerPCB: 0,
+        previousEmployerZakat: 0,
+        projectedRemainingRemuneration: 0,
+        estimatedAnnualIncome: 0,
+        qualifyingDeductions: 0,
+        personalAndFamilyReliefs: 0,
+        approvedTP1Reliefs: 0,
+        estimatedChargeableIncome: 0,
+        estimatedAnnualTax: 0,
+        normalRemunerationPCB: calcVal,
+        additionalRemunerationPCB: 0,
+        totalActualTaxDeduction: calcVal,
+        totalCalculatedTaxDeduction: calcVal,
+        calculationTimestamp: new Date().toISOString(),
+        calculationVersion: 1,
+        status: 'calculated',
+        warnings: [],
+        errors: [],
+        calculationBreakdown: []
+      });
+      continue;
+    }
+
+    monthsRecalculated.push(m);
+    const priorVerifiedTP3 = tp3.filter(t => t.verificationStatus === 'VERIFIED');
+    const priorLedgers: any[] = [];
+    
+    for (const t of priorVerifiedTP3) {
+      priorLedgers.push({
+        id: t.id,
+        assessment_year: t.taxYear,
+        payroll_month: 0,
+        source_type: 'TP3_PREVIOUS_EMPLOYER',
+        source_reference: 'TP3 Form',
+        effective_amount: t.previousEmployerPcb,
+        total_pcb: t.previousEmployerPcb,
+        status: 'FINALIZED'
+      });
+    }
+
+    for (const res of results) {
+      priorLedgers.push({
+        id: `payroll-${res.payrollMonth}`,
+        assessment_year: assessmentYear,
+        payroll_month: res.payrollMonth,
+        source_type: 'CURRENT_EMPLOYER_PAYROLL',
+        source_reference: `Month ${res.payrollMonth}`,
+        effective_amount: res.calculatedPCB,
+        total_pcb: res.calculatedPCB,
+        status: 'FINALIZED'
+      });
+    }
+
+    const historyX = calculateAccumulatedPCBHistory({
+      employeeId: employee.id,
+      assessmentYear,
+      currentPayrollMonth: m,
+      verifiedTP3Records: priorVerifiedTP3,
+      finalizedPayrollHistory: priorLedgers
+    });
+
+    const accumulatedPCB = historyX.accumulatedPCB_X;
+    const tp3Zakat = priorVerifiedTP3.reduce((sum, t) => sum + t.previousEmployerZakat, 0);
+    const prevZakat = results.reduce((sum, r) => sum + r.currentZakat, 0);
+    const accumulatedZakat = tp3Zakat + prevZakat;
+
+    const context = buildPCBContext({
+      employee,
+      taxYear: assessmentYear,
+      month: m,
+      currentPayroll: payroll,
+      priorResults: results,
+      calculationBasis: 'actual_deduction_history',
+      profile
+    });
+
+    context.accumulatedPCBBeforeCurrentMonth = accumulatedPCB;
+    context.accumulatedZakatBeforeCurrentMonth = accumulatedZakat;
+
+    const res = calculateMonthlyPCB(context);
+    recalculatedPCBTotal += res.calculatedPCB;
+    results.push(res);
+  }
+
+  const difference = recalculatedPCBTotal - originalPCBTotal;
+  const submissionAmendmentRequired = lockedMonthsSkipped.length > 0 && Math.abs(difference) > 0.01;
+
+  if (submissionAmendmentRequired) {
+    warnings.push(`Statutory submission amendment may be required: historical locked months were skipped, but recalculated values changed by RM ${difference.toFixed(2)}.`);
+  }
+
+  return {
+    earliestAffectedMonth: start,
+    monthsReviewed,
+    monthsRecalculated,
+    lockedMonthsSkipped,
+    originalPCBTotal,
+    recalculatedPCBTotal,
+    difference,
+    currentMonthAdjustment: difference,
+    warnings,
+    submissionAmendmentRequired
   };
 }
 
