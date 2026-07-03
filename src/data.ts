@@ -980,6 +980,501 @@ export function calculateSocsoContribution(params: {
   return result;
 }
 
+export function truncateToTwoDecimals(value: number): number {
+  const str = value.toString();
+  if (str.includes('.')) {
+    const parts = str.split('.');
+    return parseFloat(parts[0] + '.' + parts[1].slice(0, 2));
+  }
+  return value;
+}
+
+export function roundUpToFiveSen(value: number): number {
+  const amountInSen = Math.round(value * 100);
+  if (amountInSen % 5 === 0) {
+    return amountInSen / 100;
+  }
+  return (amountInSen + (5 - (amountInSen % 5))) / 100;
+}
+
+export function calculateAnnualTaxProgressive(P: Decimal, category: string): { annualTax: Decimal, M: number, R: number, B: number } {
+  const pVal = P.toNumber();
+  let M = 0;
+  let R = 0;
+  let B = 0;
+
+  if (pVal <= 5000) {
+    return { annualTax: dec(0), M: 0, R: 0, B: 0 };
+  } else if (pVal <= 20000) {
+    M = 5000;
+    R = 0.01;
+    B = category === 'CATEGORY_2' ? -800 : -400;
+  } else if (pVal <= 35000) {
+    M = 20000;
+    R = 0.03;
+    B = category === 'CATEGORY_2' ? -650 : -250;
+  } else if (pVal <= 50000) {
+    M = 35000;
+    R = 0.06;
+    B = 600;
+  } else if (pVal <= 70000) {
+    M = 50000;
+    R = 0.11;
+    B = 1500;
+  } else if (pVal <= 100000) {
+    M = 70000;
+    R = 0.19;
+    B = 3700;
+  } else if (pVal <= 400000) {
+    M = 100000;
+    R = 0.25;
+    B = 9400;
+  } else if (pVal <= 600000) {
+    M = 400000;
+    R = 0.26;
+    B = 84400;
+  } else if (pVal <= 2000000) {
+    M = 600000;
+    R = 0.28;
+    B = 136400;
+  } else {
+    M = 2000000;
+    R = 0.30;
+    B = 528400;
+  }
+
+  const pMinusM = P.sub(M);
+  const tax = pMinusM.mul(R).add(B);
+  const annualTax = Decimal.fromCents(Math.max(0, tax.toIntegerCents()));
+  return { annualTax, M, R, B };
+}
+
+export function determineTaxCategory(
+  maritalStatus: string,
+  spouseIsWorking: string,
+  hasChildren: boolean
+): 'CATEGORY_1' | 'CATEGORY_2' | 'CATEGORY_3' {
+  if (maritalStatus === 'Single' || maritalStatus === 'Divorced' || maritalStatus === 'Widowed') {
+    return hasChildren ? 'CATEGORY_3' : 'CATEGORY_1';
+  }
+  if (maritalStatus === 'Married') {
+    if (spouseIsWorking === 'No') {
+      return 'CATEGORY_2';
+    } else {
+      return 'CATEGORY_3';
+    }
+  }
+  return 'CATEGORY_1';
+}
+
+export interface PCB2026Params {
+  employeeTaxProfile: EmployeeTaxProfile;
+  employeeChildren?: Dependant[];
+  payrollMonth: number;
+  currentNormalRemuneration: number;
+  currentAdditionalRemuneration: number;
+  taxableBenefitsInKind?: number;
+  valueOfLivingAccommodation?: number;
+  taxablePerquisites?: number;
+  taxExemptRemuneration?: number;
+  currentQualifyingEPF: number;
+  additionalRemunerationQualifyingEPF?: number;
+  currentSocsoRelief?: number;
+  payrollHistory?: HistoricalPayrollRecord[];
+  tp1Declarations?: TP1Declaration[];
+  tp3Declaration?: TP3Data;
+  currentZakat?: number;
+  accumulatedZakat?: number;
+  currentDepartureLevy?: number;
+  accumulatedDepartureLevy?: number;
+  accumulatedPCB?: number;
+  cp38Instruction?: number;
+  statutoryConfiguration?: PCBConfiguration;
+}
+
+export interface PCBConfiguration {
+  id: string;
+  assessmentYear: number;
+  configurationCode: string;
+  configurationVersion: string;
+  effectiveFrom: string;
+  effectiveTo: string;
+  status: 'DRAFT' | 'UNDER_REVIEW' | 'APPROVED' | 'ACTIVE' | 'ARCHIVED' | 'REJECTED';
+  sourceDocumentName: string;
+  sourceDocumentVersion: string;
+  sourceDocumentDate: string;
+  officialCalculatorReference: string;
+  createdBy: string;
+  createdAt: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  activatedBy?: string;
+  activatedAt?: string;
+}
+
+export function calculatePCB2026(params: PCB2026Params) {
+  const {
+    employeeTaxProfile,
+    employeeChildren,
+    payrollMonth,
+    currentNormalRemuneration,
+    currentAdditionalRemuneration,
+    taxableBenefitsInKind,
+    valueOfLivingAccommodation,
+    taxablePerquisites,
+    currentQualifyingEPF,
+    additionalRemunerationQualifyingEPF,
+    payrollHistory,
+    tp1Declarations,
+    tp3Declaration,
+    currentZakat,
+    accumulatedZakat,
+    currentDepartureLevy,
+    accumulatedDepartureLevy,
+    accumulatedPCB,
+    cp38Instruction,
+    statutoryConfiguration
+  } = params;
+
+  const Y1 = dec(currentNormalRemuneration);
+  const Yt = dec(currentAdditionalRemuneration);
+  const K1 = dec(currentQualifyingEPF);
+  const Kt = dec(additionalRemunerationQualifyingEPF || 0);
+
+  const n = 12 - payrollMonth;
+
+  let accumulatedNormal = dec(0);
+  let accumulatedAdditional = dec(0);
+  let accumulatedEPF = dec(0);
+  let accumulatedPaidPCB = dec(accumulatedPCB || 0);
+  let accumulatedPaidZakat = dec(accumulatedZakat || 0);
+  let accumulatedPaidLevy = dec(accumulatedDepartureLevy || 0);
+
+  if (payrollHistory && payrollHistory.length > 0) {
+    for (const record of payrollHistory) {
+      if (record.payrollMonth < payrollMonth) {
+        const recordNormal = (record.basicSalary || 0) + 
+          (record.allowanceGeneral || 0) +
+          (record.allowanceTransport || 0) +
+          (record.allowanceParking || 0) +
+          (record.allowanceMeal || 0) +
+          (record.allowanceAccommodation || 0) +
+          (record.allowancePhone || 0);
+        
+        accumulatedNormal = accumulatedNormal.add(recordNormal);
+
+        const recordAdditional = 
+          (record.overtime || 0) +
+          (record.performanceBonus || 0) +
+          (record.bonusAmount || 0) +
+          (record.commissionAmount || 0) +
+          (record.backPayAmount || 0) +
+          (record.awsAmount || 0) +
+          (record.compensationAmount || 0);
+
+        accumulatedAdditional = accumulatedAdditional.add(recordAdditional);
+        accumulatedEPF = accumulatedEPF.add(record.epfEmployee || 0);
+        accumulatedPaidPCB = accumulatedPaidPCB.add(record.actualPCBDeducted || 0);
+        accumulatedPaidZakat = accumulatedPaidZakat.add(record.zakat || 0);
+        accumulatedPaidLevy = accumulatedPaidLevy.add(0);
+      }
+    }
+  }
+
+  if (tp3Declaration) {
+    accumulatedNormal = accumulatedNormal.add(tp3Declaration.previousEmployerRemuneration || tp3Declaration.accumulatedPriorRemuneration || 0);
+    accumulatedAdditional = accumulatedAdditional.add(tp3Declaration.previousEmployerAdditionalRemuneration || 0);
+    accumulatedEPF = accumulatedEPF.add(tp3Declaration.previousEmployerEpf || tp3Declaration.accumulatedPriorEPF || 0);
+    accumulatedPaidPCB = accumulatedPaidPCB.add(tp3Declaration.previousEmployerPcb || tp3Declaration.accumulatedPriorPCB || 0);
+    accumulatedPaidZakat = accumulatedPaidZakat.add(tp3Declaration.previousEmployerZakat || 0);
+  }
+
+  const Y2 = Y1;
+
+  const annualQualifyingLimit = dec(4000);
+  const totalEPFSoFar = accumulatedEPF.add(K1).add(Kt);
+  const remainingEPFLimit = Decimal.fromCents(Math.max(0, annualQualifyingLimit.toIntegerCents() - totalEPFSoFar.toIntegerCents()));
+  
+  let K2 = dec(0);
+  if (n > 0) {
+    const projectedLimit = remainingEPFLimit.div(n);
+    K2 = projectedLimit.toIntegerCents() < K1.toIntegerCents() ? projectedLimit : K1;
+  }
+
+  const hasChildren = (employeeChildren && employeeChildren.length > 0) || (employeeTaxProfile.dependantsCount || 0) > 0;
+  const category = determineTaxCategory(
+    employeeTaxProfile.maritalStatus || 'Single',
+    employeeTaxProfile.spouseIsWorking || 'No',
+    hasChildren
+  );
+
+  let childReliefTotal = 0;
+  if (employeeChildren && employeeChildren.length > 0) {
+    for (const child of employeeChildren) {
+      let childBase = child.isDisabled ? 6000 : 2000;
+      if (child.inTertiaryEducation) {
+        childReliefTotal += childBase + 8000;
+      } else {
+        childReliefTotal += childBase;
+      }
+    }
+  } else {
+    childReliefTotal = (employeeTaxProfile.dependantsCount || 0) * 2000;
+  }
+
+  const tp1Limits: Record<string, number> = {
+    tp1_parent_medical: 8000,
+    tp1_disabled_equipment: 6000,
+    tp1_serious_medical: 10000,
+    tp1_medical_exam: 1000,
+    tp1_study_fees: 7000,
+    tp1_childcare: 3000,
+    tp1_life_insurance: 3000,
+    tp1_prs: 3000,
+    tp1_medical_insurance: 3000,
+    tp1_socso_relief: 1000,
+    tp1_lifestyle: 2500,
+    tp1_breastfeeding: 1000,
+    tp1_child_takaful: 3000,
+    tp1_child_rehab: 4000,
+    tp1_tourism: 1000,
+    tp1_sustainability: 2500
+  };
+
+  const claimsByCategory: Record<string, { prior: number; current: number }> = {};
+  for (const key of Object.keys(tp1Limits)) {
+    claimsByCategory[key] = { prior: 0, current: 0 };
+  }
+
+  if (tp1Declarations && tp1Declarations.length > 0) {
+    for (const d of tp1Declarations) {
+      if (d.taxYear === 2026 && (d.approvalStatus === 'APPROVED' || d.approvalStatus === 'Approved')) {
+        const cat = d.claimCategory;
+        if (claimsByCategory[cat]) {
+          if (d.effectivePayrollMonth < payrollMonth) {
+            claimsByCategory[cat].prior += d.claimedAmount;
+          } else if (d.effectivePayrollMonth === payrollMonth) {
+            claimsByCategory[cat].current += d.claimedAmount;
+          }
+        }
+      }
+    }
+  }
+
+  let accumulatedLP = dec(0);
+  let currentLP1 = dec(0);
+
+  for (const [cat, limitVal] of Object.entries(tp1Limits)) {
+    const limit = dec(limitVal);
+    const priorClaimed = dec(claimsByCategory[cat].prior);
+    const currentClaimed = dec(claimsByCategory[cat].current);
+
+    const cappedPrior = priorClaimed.toIntegerCents() > limit.toIntegerCents() ? limit : priorClaimed;
+    const remainingLimit = Decimal.fromCents(Math.max(0, limit.toIntegerCents() - cappedPrior.toIntegerCents()));
+    const cappedCurrent = currentClaimed.toIntegerCents() > remainingLimit.toIntegerCents() ? remainingLimit : currentClaimed;
+
+    accumulatedLP = accumulatedLP.add(cappedPrior);
+    currentLP1 = currentLP1.add(cappedCurrent);
+  }
+
+  if (tp3Declaration) {
+    const tp3QualDeductions = (tp3Declaration as any).previousQualifyingDeductions || 0;
+    accumulatedLP = accumulatedLP.add(tp3QualDeductions);
+  }
+
+  const reliefsTotal = dec(9000)
+    .add(category === 'CATEGORY_2' ? 4000 : 0)
+    .add(employeeTaxProfile.employeeDisabled ? 6000 : 0)
+    .add((category === 'CATEGORY_2' && employeeTaxProfile.spouseDisabled) ? 5000 : 0)
+    .add(childReliefTotal)
+    .add(accumulatedLP)
+    .add(currentLP1);
+
+  const Y_minus_K_prior = Decimal.fromCents(Math.max(0, accumulatedNormal.toIntegerCents() - accumulatedEPF.toIntegerCents()));
+  const Y1_minus_K1_current = Decimal.fromCents(Math.max(0, Y1.toIntegerCents() - K1.toIntegerCents()));
+  const Y2_minus_K2_future = Decimal.fromCents(Math.max(0, Y2.toIntegerCents() - K2.toIntegerCents()));
+  const projectedIncome = Y_minus_K_prior.add(Y1_minus_K1_current).add(Y2_minus_K2_future.mul(n));
+
+  const PWithoutCurrentAdditional = Decimal.fromCents(Math.max(0, projectedIncome.toIntegerCents() - reliefsTotal.toIntegerCents()));
+
+  let M = 0;
+  let R = 0.0;
+  let B = 0;
+  let T = 0;
+  let annualTaxWithoutCurrentAdditional = dec(0);
+
+  const calcType = employeeTaxProfile.taxCalculationType || 'RESIDENT_PROGRESSIVE';
+
+  if (employeeTaxProfile.taxResidenceStatus === 'NON_RESIDENT') {
+    // Non-resident
+  } else if (calcType === 'RETURNING_EXPERT_PROGRAMME' || calcType === 'KNOWLEDGE_WORKER_SPECIFIED_REGION') {
+    R = 0.15;
+    const pVal = PWithoutCurrentAdditional.toNumber();
+    if (pVal <= 35000) {
+      T = category === 'CATEGORY_2' ? 800 : 400;
+    } else {
+      T = 0;
+    }
+    const tax = PWithoutCurrentAdditional.mul(0.15).sub(T);
+    annualTaxWithoutCurrentAdditional = Decimal.fromCents(Math.max(0, tax.toIntegerCents()));
+  } else if (calcType === 'NON_CITIZEN_C_SUITE_APPROVED_COMPANY') {
+    R = 0.15;
+    const tax = PWithoutCurrentAdditional.mul(0.15);
+    annualTaxWithoutCurrentAdditional = Decimal.fromCents(Math.max(0, tax.toIntegerCents()));
+  } else {
+    const prog = calculateAnnualTaxProgressive(PWithoutCurrentAdditional, category);
+    annualTaxWithoutCurrentAdditional = prog.annualTax;
+    M = prog.M;
+    R = prog.R;
+    B = prog.B;
+  }
+
+  const Z = accumulatedPaidZakat.add(accumulatedPaidLevy);
+  const X = accumulatedPaidPCB;
+
+  let normalPCBUntruncated = dec(0);
+  if (employeeTaxProfile.taxResidenceStatus === 'NON_RESIDENT') {
+    const nonResTaxable = Y1.add(taxableBenefitsInKind || 0).add(valueOfLivingAccommodation || 0).add(taxablePerquisites || 0);
+    normalPCBUntruncated = nonResTaxable.mul(0.30);
+  } else {
+    const annualTaxNetOfXAndZ = Decimal.fromCents(Math.max(0, annualTaxWithoutCurrentAdditional.toIntegerCents() - (Z.toIntegerCents() + X.toIntegerCents())));
+    if (n + 1 > 0) {
+      normalPCBUntruncated = annualTaxNetOfXAndZ.div(n + 1);
+    }
+  }
+
+  const normalPCBTruncated = Decimal.fromCents(Math.trunc(normalPCBUntruncated.toNumber() * 100));
+
+  let normalPCBAfterMinimumRule = normalPCBTruncated;
+  if (employeeTaxProfile.taxResidenceStatus !== 'NON_RESIDENT') {
+    if (normalPCBTruncated.toIntegerCents() < 1000) {
+      normalPCBAfterMinimumRule = dec(0);
+    }
+  }
+
+  const currentMonthZakatVal = dec(currentZakat || 0);
+  const currentMonthLevyVal = dec(currentDepartureLevy || 0);
+
+  let netNormalPCBCents = normalPCBAfterMinimumRule.toIntegerCents() - (currentMonthZakatVal.toIntegerCents() + currentMonthLevyVal.toIntegerCents());
+  if (netNormalPCBCents < 0) {
+    netNormalPCBCents = 0;
+  }
+  const netNormalPCB = Decimal.fromCents(netNormalPCBCents);
+
+  const totalPCBForYearWithoutCurrentAdditional = X.add(normalPCBAfterMinimumRule.mul(n + 1));
+
+  const totalEPFWithBonus = accumulatedEPF.add(K1).add(Kt);
+  const remainingEPFLimitWithBonus = Decimal.fromCents(Math.max(0, annualQualifyingLimit.toIntegerCents() - totalEPFWithBonus.toIntegerCents()));
+  
+  let K2WithBonus = dec(0);
+  if (n > 0) {
+    const projectedLimit = remainingEPFLimitWithBonus.div(n);
+    K2WithBonus = projectedLimit.toIntegerCents() < K1.toIntegerCents() ? projectedLimit : K1;
+  }
+
+  const Y_minus_K_prior_with_bonus = Y_minus_K_prior;
+  const Y1_minus_K1_current_with_bonus = Y1_minus_K1_current;
+  const Yt_minus_Kt_additional = Decimal.fromCents(Math.max(0, Yt.toIntegerCents() - Kt.toIntegerCents()));
+  const Y2_minus_K2_future_with_bonus = Decimal.fromCents(Math.max(0, Y2.toIntegerCents() - K2WithBonus.toIntegerCents()));
+
+  const projectedIncomeWithBonus = Y_minus_K_prior_with_bonus
+    .add(Y1_minus_K1_current_with_bonus)
+    .add(Yt_minus_Kt_additional)
+    .add(Y2_minus_K2_future_with_bonus.mul(n));
+
+  const PWithCurrentAdditional = Decimal.fromCents(Math.max(0, projectedIncomeWithBonus.toIntegerCents() - reliefsTotal.toIntegerCents()));
+
+  let annualTaxWithCurrentAdditional = dec(0);
+  if (employeeTaxProfile.taxResidenceStatus === 'NON_RESIDENT') {
+    // Non-resident
+  } else if (calcType === 'RETURNING_EXPERT_PROGRAMME' || calcType === 'KNOWLEDGE_WORKER_SPECIFIED_REGION') {
+    const tax = PWithCurrentAdditional.mul(0.15).sub(T);
+    annualTaxWithCurrentAdditional = Decimal.fromCents(Math.max(0, tax.toIntegerCents()));
+  } else if (calcType === 'NON_CITIZEN_C_SUITE_APPROVED_COMPANY') {
+    const tax = PWithCurrentAdditional.mul(0.15);
+    annualTaxWithCurrentAdditional = Decimal.fromCents(Math.max(0, tax.toIntegerCents()));
+  } else {
+    const prog = calculateAnnualTaxProgressive(PWithCurrentAdditional, category);
+    annualTaxWithCurrentAdditional = prog.annualTax;
+  }
+
+  let additionalPCBUntruncated = dec(0);
+  if (employeeTaxProfile.taxResidenceStatus === 'NON_RESIDENT') {
+    additionalPCBUntruncated = Yt.mul(0.30);
+  } else {
+    const diff = annualTaxWithCurrentAdditional.toIntegerCents() - totalPCBForYearWithoutCurrentAdditional.toIntegerCents();
+    additionalPCBUntruncated = Decimal.fromCents(Math.max(0, diff));
+  }
+
+  const additionalPCBTruncated = Decimal.fromCents(Math.trunc(additionalPCBUntruncated.toNumber() * 100));
+
+  let additionalPCBAfterMinimumRule = additionalPCBTruncated;
+  if (employeeTaxProfile.taxResidenceStatus !== 'NON_RESIDENT') {
+    if (additionalPCBTruncated.toIntegerCents() < 1000) {
+      additionalPCBAfterMinimumRule = dec(0);
+    }
+  }
+
+  const finalPCBPreFiveSenRounding = netNormalPCB.add(additionalPCBAfterMinimumRule);
+  const finalPCBCents = finalPCBPreFiveSenRounding.toIntegerCents();
+  const roundedPCBCents = roundUpToFiveSen(finalPCBCents / 100) * 100;
+  const finalPCB = Decimal.fromCents(roundedPCBCents);
+
+  return {
+    employeeId: employeeTaxProfile.nricPassport || '',
+    assessmentYear: 2026,
+    payrollMonth,
+    taxResidenceStatus: employeeTaxProfile.taxResidenceStatus || 'RESIDENT',
+    calculationType: calcType,
+    employeeCategory: category,
+    Y: accumulatedNormal.toNumber(),
+    K: accumulatedEPF.toNumber(),
+    Y1: Y1.toNumber(),
+    K1: K1.toNumber(),
+    Y2: Y2.toNumber(),
+    K2: K2.toNumber(),
+    Yt: Yt.toNumber(),
+    Kt: Kt.toNumber(),
+    n,
+    D: 9000,
+    S: category === 'CATEGORY_2' ? 4000 : 0,
+    Du: employeeTaxProfile.employeeDisabled ? 6000 : 0,
+    Su: (category === 'CATEGORY_2' && employeeTaxProfile.spouseDisabled) ? 5000 : 0,
+    Q: childReliefTotal / 2000,
+    C: employeeChildren ? employeeChildren.length : (employeeTaxProfile.dependantsCount || 0),
+    accumulatedLP: accumulatedLP.toNumber(),
+    currentLP1: currentLP1.toNumber(),
+    PWithoutCurrentAdditional: PWithoutCurrentAdditional.toNumber(),
+    PWithCurrentAdditional: PWithCurrentAdditional.toNumber(),
+    M,
+    R,
+    B,
+    T,
+    annualTaxWithoutCurrentAdditional: annualTaxWithoutCurrentAdditional.toNumber(),
+    normalPCBUntruncated: normalPCBUntruncated.toNumber(),
+    normalPCBTruncated: normalPCBTruncated.toNumber(),
+    normalPCBAfterMinimumRule: normalPCBAfterMinimumRule.toNumber(),
+    currentMonthZakatOffset: currentMonthZakatVal.toNumber(),
+    currentMonthDepartureLevyOffset: currentMonthLevyVal.toNumber(),
+    netNormalPCB: netNormalPCB.toNumber(),
+    totalPCBForYearWithoutCurrentAdditional: totalPCBForYearWithoutCurrentAdditional.toNumber(),
+    annualTaxWithCurrentAdditional: annualTaxWithCurrentAdditional.toNumber(),
+    additionalPCBUntruncated: additionalPCBUntruncated.toNumber(),
+    additionalPCBTruncated: additionalPCBTruncated.toNumber(),
+    additionalPCBAfterMinimumRule: additionalPCBAfterMinimumRule.toNumber(),
+    finalPCBPreFiveSenRounding: finalPCBPreFiveSenRounding.toNumber(),
+    finalPCB: finalPCB.toNumber(),
+    cp38: cp38Instruction || 0,
+    totalTaxPayrollDeduction: finalPCB.add(cp38Instruction || 0).toNumber(),
+    configurationVersion: statutoryConfiguration?.configurationVersion || 'v1.0.0',
+    formulaVersion: 'HASiL 2026 progressive v1',
+    calculationTimestamp: new Date().toISOString(),
+    warnings: [] as string[],
+    errors: [] as string[],
+    status: 'calculated'
+  };
+}
+
 export function calculatePcb2026(
   salary: number,
   maritalStatus: string,
@@ -987,39 +1482,24 @@ export function calculatePcb2026(
   dependantsCount: number,
   epfMonthly: number
 ): number {
-  const annualGross = salary * 12;
-  const annualEpfRelief = Math.min(4000, epfMonthly * 12);
-  const personalRelief = 9000;
-  const spouseRelief = (maritalStatus === 'Married' && spouseIsWorking === 'No') ? 4000 : 0;
-  const childRelief = dependantsCount * 2000;
-  
-  const totalRelief = personalRelief + spouseRelief + childRelief + annualEpfRelief;
-  const taxableIncome = Math.max(0, annualGross - totalRelief);
-  
-  let annualTax = 0;
-  if (taxableIncome <= 5000) {
-    annualTax = 0;
-  } else if (taxableIncome <= 20000) {
-    annualTax = (taxableIncome - 5000) * 0.01;
-  } else if (taxableIncome <= 35000) {
-    annualTax = 150 + (taxableIncome - 20000) * 0.03;
-  } else if (taxableIncome <= 50000) {
-    annualTax = 600 + (taxableIncome - 35000) * 0.06;
-  } else if (taxableIncome <= 70000) {
-    annualTax = 1500 + (taxableIncome - 50000) * 0.11;
-  } else if (taxableIncome <= 100000) {
-    annualTax = 3700 + (taxableIncome - 70000) * 0.19;
-  } else if (taxableIncome <= 400000) {
-    annualTax = 9400 + (taxableIncome - 100000) * 0.25;
-  } else if (taxableIncome <= 600000) {
-    annualTax = 84400 + (taxableIncome - 400000) * 0.26;
-  } else if (taxableIncome <= 2000000) {
-    annualTax = 136400 + (taxableIncome - 600000) * 0.28;
-  } else {
-    annualTax = 528400 + (taxableIncome - 2000000) * 0.30;
-  }
-  
-  return parseFloat((annualTax / 12).toFixed(2));
+  const profile: EmployeeTaxProfile = {
+    maritalStatus: maritalStatus as any,
+    spouseIsWorking: spouseIsWorking as any,
+    dependantsCount: dependantsCount,
+    eligibleForStatutory: 'Yes',
+    taxResidenceStatus: 'RESIDENT',
+    taxCalculationType: 'RESIDENT_PROGRESSIVE'
+  } as any;
+
+  const result = calculatePCB2026({
+    employeeTaxProfile: profile,
+    payrollMonth: 10,
+    currentNormalRemuneration: salary,
+    currentQualifyingEPF: epfMonthly,
+    currentAdditionalRemuneration: 0
+  });
+
+  return result.finalPCB;
 }
 
 export function getProratedBasicSalary(employee: Employee, month: number, year: number): number {
@@ -1697,132 +2177,56 @@ export function calculateAnnualTaxSpec(taxableIncome: number): number {
 }
 
 export function calculateMonthlyPCB(context: HistoricalPCBMonthContext): HistoricalPCBResult {
-  const steps: PCBCalculationStep[] = [];
-  const warnings: string[] = [];
-  const errors: string[] = [];
-
   const profile = context.employeeProfileEffectiveForMonth;
   const tp3 = context.previousEmployerTP3;
   const m = context.payrollMonth;
-  const n = context.remainingApplicableMonths;
 
-  // Step 1: Calculate Normal Annual Income without additional remuneration
-  const normalAnnualGross = 
-    context.accumulatedRemunerationBeforeCurrentMonth +
-    tp3.previousEmployerRemuneration +
-    context.currentMonthNormalRemuneration +
-    (context.projectedRemainingNormalRemuneration * n);
+  // Group TP1 claims from employee profile
+  const tp1Declarations = context.employeeProfileEffectiveForMonth ? (context as any).employee?.tp1Declarations : [];
 
-  steps.push({
-    stepName: "Estimate Annual Normal Remuneration",
-    inputs: {
-      accumulatedPrior: context.accumulatedRemunerationBeforeCurrentMonth,
-      previousEmployer: tp3.previousEmployerRemuneration,
-      currentMonth: context.currentMonthNormalRemuneration,
-      projectedFuture: context.projectedRemainingNormalRemuneration,
-      remainingMonths: n
+  const res2026 = calculatePCB2026({
+    employeeTaxProfile: profile,
+    employeeChildren: profile.dependantsCount ? Array(profile.dependantsCount).fill({ isDisabled: false }) : [],
+    payrollMonth: m,
+    currentNormalRemuneration: context.currentMonthNormalRemuneration,
+    currentAdditionalRemuneration: context.currentMonthAdditionalRemuneration,
+    currentQualifyingEPF: context.currentMonthEmployeeEPF,
+    tp3Declaration: {
+      previousEmployerRemuneration: tp3.previousEmployerRemuneration,
+      previousEmployerAdditionalRemuneration: tp3.previousEmployerAdditionalRemuneration,
+      previousEmployerEpf: tp3.previousEmployerEpf,
+      previousEmployerPcb: tp3.previousEmployerPcb,
+      previousEmployerZakat: tp3.previousEmployerZakat
     },
-    output: normalAnnualGross
+    accumulatedPCB: context.accumulatedPCBBeforeCurrentMonth,
+    accumulatedZakat: context.accumulatedZakatBeforeCurrentMonth,
+    currentZakat: context.currentMonthZakat,
+    cp38Instruction: context.currentMonthCP38,
+    payrollHistory: [],
+    tp1Declarations: tp1Declarations
   });
 
-  // Step 2: Calculate Annual EPF relief (capped at 4000)
-  const annualEpf = 
-    context.accumulatedEmployeeEPFBeforeCurrentMonth +
-    tp3.previousEmployerEpf +
-    context.currentMonthEmployeeEPF +
-    (context.currentMonthEmployeeEPF * n);
-
-  const epfRelief = Math.min(4000, annualEpf);
-
-  steps.push({
-    stepName: "Estimate EPF Relief",
-    inputs: { annualEpf, limit: 4000 },
-    output: epfRelief
-  });
-
-  // Step 3: Compute reliefs
-  const personalRelief = 9000;
-  const spouseRelief = (profile.maritalStatus === 'Married' && profile.spouseIsWorking === 'No') ? 4000 : 0;
-  const childRelief = (profile.dependantsCount || 0) * 2000;
-  
-  const totalReliefs = personalRelief + spouseRelief + childRelief + epfRelief;
-
-  steps.push({
-    stepName: "Compute Total Reliefs",
-    inputs: { personalRelief, spouseRelief, childRelief, epfRelief },
-    output: totalReliefs
-  });
-
-  // Step 4: Taxable Income (Chargeable Income) for Normal Remuneration
-  const chargeableIncomeNormal = Math.max(0, normalAnnualGross - totalReliefs);
-
-  steps.push({
-    stepName: "Compute Chargeable Income (Normal)",
-    output: chargeableIncomeNormal
-  });
-
-  // Step 5: Annual Tax Liability for Normal Remuneration
-  const annualTaxNormal = calculateAnnualTaxSpec(chargeableIncomeNormal);
-
-  steps.push({
-    stepName: "Calculate Annual Tax Liability (Normal)",
-    output: annualTaxNormal
-  });
-
-  // Step 6: Normal PCB Deduction
-  const accumulatedPCBPaid = context.accumulatedPCBBeforeCurrentMonth + tp3.previousEmployerPcb;
-  
-  const netAnnualTaxNormal = Math.max(0, annualTaxNormal);
-  const normalPCB = parseFloat(Math.max(0, (netAnnualTaxNormal - accumulatedPCBPaid) / (n + 1)).toFixed(2));
-
-  steps.push({
-    stepName: "Calculate Monthly PCB (Normal)",
-    inputs: {
-      netAnnualTaxNormal,
-      accumulatedPCBPaid,
-      remainingMonthsPlusOne: n + 1
-    },
-    output: normalPCB
-  });
-
-  // Step 7: Additional Remuneration PCB (if any)
-  let additionalPCB = 0;
-  let estimatedAnnualIncomeWithBonus = normalAnnualGross;
-  let estimatedAnnualTaxWithBonus = annualTaxNormal;
+  const steps: PCBCalculationStep[] = [
+    { stepName: "Estimate Annual Normal Remuneration", output: res2026.Y + res2026.Y1 + res2026.Y2 * res2026.n },
+    { stepName: "Estimate EPF Relief", output: Math.min(4000, res2026.K + res2026.K1 + res2026.K2 * res2026.n) },
+    { stepName: "Compute Total Reliefs", output: res2026.D + (res2026.S || 0) + (res2026.Q || 0) * (res2026.C || 0) + Math.min(4000, res2026.K + res2026.K1 + res2026.K2 * res2026.n) },
+    { stepName: "Compute Chargeable Income (Normal)", output: res2026.PWithoutCurrentAdditional },
+    { stepName: "Calculate Annual Tax Liability (Normal)", output: res2026.annualTaxWithoutCurrentAdditional },
+    { stepName: "Calculate Monthly PCB (Normal)", output: res2026.normalPCBAfterMinimumRule }
+  ];
 
   if (context.currentMonthAdditionalRemuneration > 0) {
-    estimatedAnnualIncomeWithBonus = normalAnnualGross + context.currentMonthAdditionalRemuneration + context.accumulatedAdditionalRemunerationBeforeCurrentMonth + (tp3.previousEmployerAdditionalRemuneration || 0);
-    
-    steps.push({
-      stepName: "Estimate Annual Remuneration with Additional Remuneration",
-      output: estimatedAnnualIncomeWithBonus
-    });
-
-    const chargeableIncomeAdditional = Math.max(0, estimatedAnnualIncomeWithBonus - totalReliefs);
-    estimatedAnnualTaxWithBonus = calculateAnnualTaxSpec(chargeableIncomeAdditional);
-
-    steps.push({
-      stepName: "Calculate Annual Tax Liability (with Additional Remuneration)",
-      output: estimatedAnnualTaxWithBonus
-    });
-
-    additionalPCB = parseFloat(Math.max(0, estimatedAnnualTaxWithBonus - annualTaxNormal).toFixed(2));
-    
-    steps.push({
-      stepName: "Calculate Monthly PCB (Additional)",
-      inputs: {
-        estimatedAnnualTaxWithBonus,
-        annualTaxNormal
-      },
-      output: additionalPCB
-    });
+    steps.push(
+      { stepName: "Estimate Annual Remuneration with Additional Remuneration", output: res2026.Y + res2026.Y1 + res2026.Yt + res2026.Y2 * res2026.n },
+      { stepName: "Calculate Annual Tax Liability (with Additional Remuneration)", output: res2026.annualTaxWithCurrentAdditional },
+      { stepName: "Calculate Monthly PCB (Additional)", output: res2026.additionalPCBAfterMinimumRule }
+    );
   }
 
-  const calculatedPCB = parseFloat((normalPCB + additionalPCB).toFixed(2));
+  const calculatedPCB = res2026.finalPCB;
   const actualPCBDeducted = context.currentMonthPayroll.actualPCBDeducted;
   const pcbVariance = parseFloat((actualPCBDeducted - calculatedPCB).toFixed(2));
 
-  // Determine status
   let status: HistoricalPCBStatus = "calculated";
   if (pcbVariance !== 0) {
     status = "variance_detected";
@@ -1835,7 +2239,7 @@ export function calculateMonthlyPCB(context: HistoricalPCBMonthContext): Histori
     processingMode: "historical_reconstruction",
     calculationBasis: context.calculationBasis,
     effectiveEmployeeProfileVersion: profile.effectiveDate,
-    taxConfigurationVersion: "HASiL 2026 spec v1",
+    taxConfigurationVersion: "HASiL 2026 progressive v1",
     currentNormalRemuneration: context.currentMonthNormalRemuneration,
     currentAdditionalRemuneration: context.currentMonthAdditionalRemuneration,
     currentMonthEmployeeEPF: context.currentMonthEmployeeEPF,
@@ -1849,14 +2253,14 @@ export function calculateMonthlyPCB(context: HistoricalPCBMonthContext): Histori
     previousEmployerPCB: tp3.previousEmployerPcb,
     previousEmployerZakat: tp3.previousEmployerZakat,
     projectedRemainingRemuneration: context.projectedRemainingNormalRemuneration,
-    estimatedAnnualIncome: estimatedAnnualIncomeWithBonus,
-    qualifyingDeductions: totalReliefs - personalRelief - spouseRelief - childRelief,
-    personalAndFamilyReliefs: personalRelief + spouseRelief + childRelief,
-    approvedTP1Reliefs: 0,
-    estimatedChargeableIncome: Math.max(0, estimatedAnnualIncomeWithBonus - totalReliefs),
-    estimatedAnnualTax: estimatedAnnualTaxWithBonus,
-    normalRemunerationPCB: normalPCB,
-    additionalRemunerationPCB: additionalPCB,
+    estimatedAnnualIncome: res2026.PWithCurrentAdditional,
+    qualifyingDeductions: res2026.accumulatedLP + res2026.currentLP1,
+    personalAndFamilyReliefs: res2026.D + (res2026.S || 0) + (res2026.Du || 0) + (res2026.Su || 0) + (res2026.Q || 0) * (res2026.C || 0),
+    approvedTP1Reliefs: res2026.currentLP1,
+    estimatedChargeableIncome: res2026.PWithCurrentAdditional,
+    estimatedAnnualTax: res2026.annualTaxWithCurrentAdditional,
+    normalRemunerationPCB: res2026.netNormalPCB,
+    additionalRemunerationPCB: res2026.additionalPCBAfterMinimumRule,
     calculatedPCB,
     actualPCBDeducted,
     pcbVariance,
@@ -1867,8 +2271,8 @@ export function calculateMonthlyPCB(context: HistoricalPCBMonthContext): Histori
     calculationTimestamp: new Date().toISOString(),
     calculationVersion: 1,
     status,
-    warnings,
-    errors,
+    warnings: [] as string[],
+    errors: [] as string[],
     calculationBreakdown: steps
   };
 }

@@ -70,11 +70,11 @@ export function dec(val: number | string): Decimal {
 }
 
 export function validateInputAmount(val: string): number {
-  const clean = val.trim();
+  const clean = val.trim().replace(/,/g, '');
   if (clean.includes('.')) {
     const decimals = clean.split('.')[1];
     if (decimals.length > 2) {
-      throw new Error("Payroll monetary values may contain a maximum of 2 decimal places.");
+      throw new Error("Payroll monetary input may contain a maximum of two decimal places.");
     }
   }
   return dec(clean).toIntegerCents();

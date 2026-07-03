@@ -39,6 +39,9 @@ export interface Dependant {
   name: string;
   gender: 'Male' | 'Female';
   dob: string; // YYYY-MM-DD
+  isDisabled?: boolean;
+  inTertiaryEducation?: boolean;
+  isOver18?: boolean;
 }
 
 export interface CareerHistoryEntry {
@@ -256,7 +259,14 @@ export interface EmployeeTaxProfile {
   taxNumber?: string;
   nricPassport?: string;
   dateOfJoined?: string;
-  dateOfTermination?: string;
+  taxResidenceStatus?: 'RESIDENT' | 'NON_RESIDENT' | 'KNOWN_TO_BE_RESIDENT' | 'RESIDENCE_PENDING' | 'REVIEW_REQUIRED';
+  taxCalculationType?: 'NON_RESIDENT' | 'RESIDENT_PROGRESSIVE' | 'RETURNING_EXPERT_PROGRAMME' | 'KNOWLEDGE_WORKER_SPECIFIED_REGION' | 'NON_CITIZEN_C_SUITE_APPROVED_COMPANY' | 'REVIEW_REQUIRED';
+  employeeDisabled?: boolean;
+  spouseDisabled?: boolean;
+  specialProgrammeCode?: string;
+  specialProgrammeApprovalReference?: string;
+  specialProgrammeEffectiveFrom?: string;
+  specialProgrammeEffectiveTo?: string;
 }
 
 export interface HistoricalPayrollRecord {
@@ -658,4 +668,25 @@ export interface SOCSOContributionBracket {
   created_at: string;
   updated_at: string;
 }
+
+export interface PCBConfiguration {
+  id: string;
+  assessmentYear: number;
+  configurationCode: string;
+  configurationVersion: string;
+  effectiveFrom: string;
+  effectiveTo: string;
+  status: 'DRAFT' | 'UNDER_REVIEW' | 'APPROVED' | 'ACTIVE' | 'ARCHIVED' | 'REJECTED';
+  sourceDocumentName: string;
+  sourceDocumentVersion: string;
+  sourceDocumentDate: string;
+  officialCalculatorReference: string;
+  createdBy: string;
+  createdAt: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  activatedBy?: string;
+  activatedAt?: string;
+}
+
 
