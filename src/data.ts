@@ -1088,6 +1088,8 @@ export interface PCB2026Params {
   currentDepartureLevy?: number;
   accumulatedDepartureLevy?: number;
   accumulatedPCB?: number;
+  accumulatedNormal?: number;
+  accumulatedEPF?: number;
   cp38Instruction?: number;
   statutoryConfiguration?: PCBConfiguration;
 }
@@ -1132,6 +1134,8 @@ export function calculatePCB2026(params: PCB2026Params) {
     currentDepartureLevy,
     accumulatedDepartureLevy,
     accumulatedPCB,
+    accumulatedNormal: paramAccumulatedNormal,
+    accumulatedEPF: paramAccumulatedEPF,
     cp38Instruction,
     statutoryConfiguration
   } = params;
@@ -1143,9 +1147,9 @@ export function calculatePCB2026(params: PCB2026Params) {
 
   const n = 12 - payrollMonth;
 
-  let accumulatedNormal = dec(0);
+  let accumulatedNormal = dec(paramAccumulatedNormal || 0);
   let accumulatedAdditional = dec(0);
-  let accumulatedEPF = dec(0);
+  let accumulatedEPF = dec(paramAccumulatedEPF || 0);
   let accumulatedPaidPCB = dec(accumulatedPCB || 0);
   let accumulatedPaidZakat = dec(accumulatedZakat || 0);
   let accumulatedPaidLevy = dec(accumulatedDepartureLevy || 0);
@@ -1496,12 +1500,36 @@ export function calculatePcb2026(
     taxCalculationType: 'RESIDENT_PROGRESSIVE'
   } as any;
 
+  // 1. Calculate stateless annual tax first to estimate prior PCB
+  const annualIncome = salary * 12;
+  const annualEpf = epfMonthly * 12;
+  const epfRelief = Math.min(4000, annualEpf);
+  const childRelief = dependantsCount * 2000;
+  const spouseRelief = (maritalStatus === 'Married' && spouseIsWorking === 'No') ? 4000 : 0;
+  const totalReliefs = 9000 + spouseRelief + childRelief + epfRelief;
+  const chargeableIncome = Math.max(0, annualIncome - totalReliefs);
+  
+  const hasChildren = dependantsCount > 0;
+  const category = determineTaxCategory(maritalStatus, spouseIsWorking, hasChildren);
+  const prog = calculateAnnualTaxProgressive(Decimal.fromCents(chargeableIncome * 100), category);
+  const estimatedAnnualTax = prog.annualTax.toNumber();
+  const estimatedMonthlyPCB = estimatedAnnualTax / 12;
+
+  // 2. Build simulated accumulated values for prior months
+  const priorMonths = Math.max(0, month - 1);
+  const accumulatedNormal = salary * priorMonths;
+  const accumulatedEPF = epfMonthly * priorMonths;
+  const accumulatedPCB = estimatedMonthlyPCB * priorMonths;
+
   const result = calculatePCB2026({
     employeeTaxProfile: profile,
     payrollMonth: month,
     currentNormalRemuneration: salary,
     currentQualifyingEPF: epfMonthly,
-    currentAdditionalRemuneration: 0
+    currentAdditionalRemuneration: 0,
+    accumulatedNormal,
+    accumulatedEPF,
+    accumulatedPCB
   });
 
   return result.finalPCB;
