@@ -1004,20 +1004,28 @@ export default function App() {
 
   const handleSavePayrollRecord2026 = async (record: PayrollRecord2026) => {
     setPayrollRecords2026(prev => {
-      const filtered = prev.filter(r => r.id !== record.id);
+      const filtered = prev.filter(r => 
+        r.id !== record.id && 
+        !(r.employeeEmail.toLowerCase() === record.employeeEmail.toLowerCase() && 
+          r.payrollMonth === record.payrollMonth && 
+          r.payrollYear === record.payrollYear)
+      );
       return [...filtered, record];
     });
 
     if (isGoogleConfigured) {
       try {
-        const exists = payrollRecords2026.some(r => r.id === record.id);
-        if (exists) {
+        try {
           await googleSheetsClient.update('payroll_records_2026', record.id, record, 'id');
-        } else {
+          console.log('[Google Sheets] Updated payroll record successfully:', record.id);
+        } catch (updateErr: any) {
+          console.warn('[Google Sheets] Update failed or record not found, inserting:', updateErr);
           await googleSheetsClient.insert('payroll_records_2026', record);
+          console.log('[Google Sheets] Inserted payroll record successfully:', record.id);
         }
       } catch (err: any) {
         console.error('[Google Sheets] Failed to save payroll record 2026:', err);
+        triggerNotification('Sync Failed', `Could not save payroll record: ${err.message || err}`, 'info');
       }
     }
   };
