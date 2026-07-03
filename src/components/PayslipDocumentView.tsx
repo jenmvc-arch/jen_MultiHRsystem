@@ -26,6 +26,8 @@ interface PayslipDocumentViewProps {
   onShowNotification: (title: string, message: string) => void;
   activeEntity?: CorporateEntity;
   isPrintView?: boolean;
+  payMonth?: number;
+  payYear?: number;
 }
 
 export default function PayslipDocumentView({
@@ -34,7 +36,9 @@ export default function PayslipDocumentView({
   onBack,
   onShowNotification,
   activeEntity,
-  isPrintView = false
+  isPrintView = false,
+  payMonth: propPayMonth,
+  payYear: propPayYear
 }: PayslipDocumentViewProps) {
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
@@ -50,8 +54,8 @@ export default function PayslipDocumentView({
   }
 
   const params = new URLSearchParams(window.location.search);
-  const payMonth = params.get('month') ? parseInt(params.get('month')!, 10) : 10;
-  const payYear = params.get('year') ? parseInt(params.get('year')!, 10) : 2026;
+  const payMonth = propPayMonth !== undefined ? propPayMonth : (params.get('month') ? parseInt(params.get('month')!, 10) : 10);
+  const payYear = propPayYear !== undefined ? propPayYear : (params.get('year') ? parseInt(params.get('year')!, 10) : 2026);
 
   const breakdown = calculatePayslip(activeEmployee, payMonth, payYear);
 

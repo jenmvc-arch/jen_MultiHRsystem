@@ -316,6 +316,7 @@ export default function PayrollView({
     });
 
     onUpdateEmployeeSalary(activeEmployee.id, {
+      basicSalary: tempBasic,
       allowanceGeneral: hasAllowances ? allowanceGen : 0,
       allowanceTransport: hasAllowances ? allowanceTrans : 0,
       allowanceParking: hasAllowances ? allowancePark : 0,
@@ -609,6 +610,8 @@ export default function PayrollView({
             onBack={() => setActiveSubTab('processing')}
             onShowNotification={onShowNotification}
             activeEntity={activeEntity}
+            payMonth={payMonthIndex}
+            payYear={payYear}
           />
         </div>
       ) : (
