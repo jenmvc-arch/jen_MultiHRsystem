@@ -606,3 +606,56 @@ export interface SocsoContributionResult {
   calculationStatus: 'calculated' | 'exempt' | 'review_required' | 'override_applied' | 'error';
 }
 
+export interface SOCSOContributionSchedule {
+  id: string;
+  schedule_code: string;
+  schedule_name: string;
+  effective_from: string;
+  effective_to: string | null;
+  currency: string;
+  storage_unit: 'sen' | 'ringgit';
+  wage_ceiling_sen: number;
+  status: 'DRAFT' | 'VALIDATION_FAILED' | 'UNDER_REVIEW' | 'APPROVED' | 'ACTIVE' | 'ARCHIVED' | 'REJECTED';
+  official_source: string;
+  compatibility_reference: string;
+  source_file_name: string;
+  source_file_hash: string;
+  created_by: string;
+  created_at: string;
+  approved_by: string;
+  approved_at: string;
+  activated_by: string;
+  activated_at: string;
+}
+
+export interface SOCSOContributionBracket {
+  id: string;
+  schedule_id: string;
+  bracket_number: number; // 1 to 65
+  description: string;
+  lower_bound_sen: number;
+  upper_bound_sen: number | null;
+  lower_bound_inclusive: boolean;
+  upper_bound_inclusive: boolean;
+  is_maximum_bracket: boolean;
+
+  category1_employer_invalidity_sen: number;
+  category1_employer_employment_injury_sen: number;
+  category1_employer_total_sen: number;
+
+  category1_employee_invalidity_sen: number;
+  category1_employee_lindung24_sen: number;
+  category1_employee_total_sen: number;
+  category1_grand_total_sen: number;
+
+  category2_employer_employment_injury_sen: number;
+  category2_employer_total_sen: number;
+
+  category2_employee_lindung24_sen: number;
+  category2_employee_total_sen: number;
+  category2_grand_total_sen: number;
+
+  created_at: string;
+  updated_at: string;
+}
+

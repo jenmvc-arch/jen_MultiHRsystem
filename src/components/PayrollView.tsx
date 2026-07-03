@@ -1331,9 +1331,11 @@ export default function PayrollView({
                       </div>
                     )}
                     <div className="flex justify-between"><span>EPF (Employee {activeEmployee.epfRateEmployee}%)</span><span className="font-mono">RM {payrollBreakdown.epfEmployeeValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
-                    <div className="flex justify-between"><span>SOCSO</span><span className="font-mono">RM {payrollBreakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                    {payrollBreakdown.socsoEmployeeVal > 0 && (
+                      <div className="flex justify-between"><span>SOCSO (Invalidity)</span><span className="font-mono">RM {payrollBreakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                    )}
                     {payrollBreakdown.skbbkEmpVal > 0 && (
-                      <div className="flex justify-between"><span>SOCSO (SKBBK)</span><span className="font-mono">RM {payrollBreakdown.skbbkEmpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                      <div className="flex justify-between"><span>SOCSO (LINDUNG 24 Jam)</span><span className="font-mono">RM {payrollBreakdown.skbbkEmpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     )}
                     <div className="flex justify-between"><span>EIS</span><span className="font-mono">RM {payrollBreakdown.eisEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     <div className="flex justify-between"><span>Income Tax (PCB)</span><span className="font-mono">RM {payrollBreakdown.taxPcbVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>

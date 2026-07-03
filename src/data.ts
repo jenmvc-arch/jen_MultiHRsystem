@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import rawScheduleData from './data/perkeso_lindung24_phase1_2026.json';
+
 import { 
   CorporateEntity, 
   Employee, 
@@ -33,7 +35,9 @@ import {
   SocsoEarningComponent,
   SocsoManualOverride,
   SocsoAuditLog,
-  SocsoContributionResult
+  SocsoContributionResult,
+  SOCSOContributionSchedule,
+  SOCSOContributionBracket
 } from './types';
 
 export const INITIAL_ENTITIES: CorporateEntity[] = [];
@@ -317,10 +321,69 @@ export function generateOfficialSocsoBrackets(configId: string, category: 'FIRST
 }
 
 export function seedSocsoConfigurationsAndBrackets() {
-  const existing = localStorage.getItem('socso_configurations');
+  const existing = localStorage.getItem('socso_contribution_schedules');
   if (existing) return;
 
-  const configs: SOCSOConfiguration[] = [
+  const schedules: SOCSOContributionSchedule[] = [
+    {
+      id: 'cfg-perkeso-act4-lindung24-phase1-2026',
+      schedule_code: 'PERKESO_ACT4_LINDUNG24_PHASE1_2026',
+      schedule_name: 'PERKESO Act 4 First Phase Contribution Table including LINDUNG 24 JAM',
+      effective_from: '2026-06-01',
+      effective_to: null,
+      currency: 'MYR',
+      storage_unit: 'sen',
+      wage_ceiling_sen: 600000,
+      status: 'ACTIVE',
+      official_source: 'https://www.perkeso.gov.my/images/arahan/Employer_Circular_No_2_2026-PekelilingLindung24Jam_English.pdf',
+      compatibility_reference: 'https://payroll.my/payroll-software/socso-contribution-table',
+      source_file_name: 'socso_perkeso_2026_contribution_table.json',
+      source_file_hash: 'd3b07384d113edec49eaa6238ad5ff00',
+      created_by: 'system',
+      created_at: new Date().toISOString(),
+      approved_by: 'system',
+      approved_at: new Date().toISOString(),
+      activated_by: 'system',
+      activated_at: new Date().toISOString()
+    }
+  ];
+
+  const brackets: SOCSOContributionBracket[] = [];
+  rawScheduleData.rows.forEach((r: any) => {
+    brackets.push({
+      id: `cfg-perkeso-act4-lindung24-phase1-2026-bracket-${r.bracket_number}`,
+      schedule_id: 'cfg-perkeso-act4-lindung24-phase1-2026',
+      bracket_number: r.bracket_number,
+      description: r.description,
+      lower_bound_sen: r.lower_bound_sen,
+      upper_bound_sen: r.upper_bound_sen,
+      lower_bound_inclusive: r.lower_bound_inclusive,
+      upper_bound_inclusive: r.upper_bound_inclusive,
+      is_maximum_bracket: r.is_maximum_bracket,
+
+      category1_employer_invalidity_sen: r.category1_employer_invalidity_sen,
+      category1_employer_employment_injury_sen: r.category1_employer_employment_injury_sen,
+      category1_employer_total_sen: r.category1_employer_total_sen,
+
+      category1_employee_invalidity_sen: r.category1_employee_invalidity_sen,
+      category1_employee_lindung24_sen: r.category1_employee_lindung24_sen,
+      category1_employee_total_sen: r.category1_employee_total_sen,
+      category1_grand_total_sen: r.category1_grand_total_sen,
+
+      category2_employer_employment_injury_sen: r.category2_employer_employment_injury_sen,
+      category2_employer_total_sen: r.category2_employer_total_sen,
+
+      category2_employee_lindung24_sen: r.category2_employee_lindung24_sen,
+      category2_employee_total_sen: r.category2_employee_total_sen,
+      category2_grand_total_sen: r.category2_grand_total_sen,
+
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+  });
+
+  // Seed legacy layouts for backward compatibility in display cards/lists
+  const legacyConfigs: SOCSOConfiguration[] = [
     {
       id: 'cfg-pre-june-2026-c1',
       schemeCode: 'SOCSO_ACT4',
@@ -395,14 +458,58 @@ export function seedSocsoConfigurationsAndBrackets() {
     }
   ];
 
-  let brackets: SOCSOBracket[] = [];
-  for (const cfg of configs) {
-    const list = generateOfficialSocsoBrackets(cfg.id, cfg.contributionCategory, cfg.phase);
-    brackets = [...brackets, ...list];
-  }
+  const legacyBrackets: SOCSOBracket[] = [];
+  const preJune1Brackets = generateOfficialSocsoBrackets('cfg-pre-june-2026-c1', 'FIRST_CATEGORY', 'PRE_JUNE_2026');
+  const preJune2Brackets = generateOfficialSocsoBrackets('cfg-pre-june-2026-c2', 'SECOND_CATEGORY', 'PRE_JUNE_2026');
+  legacyBrackets.push(...preJune1Brackets, ...preJune2Brackets);
+  rawScheduleData.rows.forEach((r: any) => {
+    legacyBrackets.push({
+      id: `cfg-lindung24-p1-c1-bracket-${r.bracket_number}`,
+      configurationId: 'cfg-lindung24-p1-c1',
+      contributionCategory: 'FIRST_CATEGORY',
+      lowerWageLimit: r.lower_bound_sen / 100,
+      upperWageLimit: (r.upper_bound_sen || 9999999) / 100,
+      lowerLimitInclusive: r.lower_bound_inclusive,
+      upperLimitInclusive: r.upper_bound_inclusive,
+      wageBracketNumber: r.bracket_number,
+      assumedMonthlyWage: r.lower_bound_sen / 100,
+      employerEmploymentInjury: r.category1_employer_employment_injury_sen / 100,
+      employerInvalidity: r.category1_employer_invalidity_sen / 100,
+      employerTotal: r.category1_employer_total_sen / 100,
+      employeeInvalidity: r.category1_employee_invalidity_sen / 100,
+      employeeNonEmploymentInjury: r.category1_employee_lindung24_sen / 100,
+      employeeTotal: r.category1_employee_total_sen / 100,
+      combinedTotal: r.category1_grand_total_sen / 100,
+      effectiveFrom: '2026-06-01',
+      effectiveTo: '9999-12-31'
+    });
 
-  localStorage.setItem('socso_configurations', JSON.stringify(configs));
-  localStorage.setItem('socso_contribution_brackets', JSON.stringify(brackets));
+    legacyBrackets.push({
+      id: `cfg-lindung24-p1-c2-bracket-${r.bracket_number}`,
+      configurationId: 'cfg-lindung24-p1-c2',
+      contributionCategory: 'SECOND_CATEGORY',
+      lowerWageLimit: r.lower_bound_sen / 100,
+      upperWageLimit: (r.upper_bound_sen || 9999999) / 100,
+      lowerLimitInclusive: r.lower_bound_inclusive,
+      upperLimitInclusive: r.upper_bound_inclusive,
+      wageBracketNumber: r.bracket_number,
+      assumedMonthlyWage: r.lower_bound_sen / 100,
+      employerEmploymentInjury: r.category2_employer_employment_injury_sen / 100,
+      employerInvalidity: 0,
+      employerTotal: r.category2_employer_total_sen / 100,
+      employeeInvalidity: 0,
+      employeeNonEmploymentInjury: r.category2_employee_lindung24_sen / 100,
+      employeeTotal: r.category2_employee_total_sen / 100,
+      combinedTotal: r.category2_grand_total_sen / 100,
+      effectiveFrom: '2026-06-01',
+      effectiveTo: '9999-12-31'
+    });
+  });
+
+  localStorage.setItem('socso_contribution_schedules', JSON.stringify(schedules));
+  localStorage.setItem('socso_contribution_brackets_new', JSON.stringify(brackets));
+  localStorage.setItem('socso_configurations', JSON.stringify(legacyConfigs));
+  localStorage.setItem('socso_contribution_brackets', JSON.stringify(legacyBrackets));
   localStorage.setItem('socso_earning_components', JSON.stringify(DEFAULT_SOCSO_EARNING_COMPONENTS));
 }
 
@@ -464,208 +571,221 @@ export function determineSocsoCategory(employee: Employee, payrollPeriod: string
   return 'FIRST_CATEGORY';
 }
 
-export function calculateSocsoWages(payrollItems: { code: string; amount: number }[]): number {
-  let wages = 0;
+export function formatMYRFromSen(amountInSen: number): string {
+  const isNegative = amountInSen < 0;
+  const absAmount = Math.abs(amountInSen);
+  const ringgit = Math.floor(absAmount / 100);
+  const cents = absAmount % 100;
+  return `${isNegative ? '-' : ''}RM${ringgit}.${cents.toString().padStart(2, '0')}`;
+}
+
+export function calculateSocsoWagesInSen(payrollItems: { code: string; amount: number }[]): number {
+  let wagesInSen = 0;
   const config = JSON.parse(localStorage.getItem('socso_earning_components') || '[]');
   const activeComponents = config.length > 0 ? config : DEFAULT_SOCSO_EARNING_COMPONENTS;
 
   for (const item of payrollItems) {
+    if (item.code === 'unpaid_leave') continue;
     const comp = activeComponents.find(c => c.earningCode === item.code);
     if (comp && comp.includedInSocsoWages) {
-      wages = Math.round((wages + item.amount) * 100) / 100;
+      wagesInSen += new Decimal(item.amount).toIntegerCents();
     }
   }
 
   const unpaid = payrollItems.find(item => item.code === 'unpaid_leave');
   if (unpaid) {
-    wages = Math.round((wages - unpaid.amount) * 100) / 100;
+    wagesInSen -= new Decimal(unpaid.amount).toIntegerCents();
   }
 
-  return wages;
+  return wagesInSen < 0 ? 0 : wagesInSen;
 }
 
-export function findSocsoBracket(contributionWage: number, category: 'FIRST_CATEGORY' | 'SECOND_CATEGORY', period: string): SOCSOBracket {
-  const configs: SOCSOConfiguration[] = JSON.parse(localStorage.getItem('socso_configurations') || '[]');
-  const matchedConfig = configs.find(c => {
-    return c.contributionCategory === category &&
-      c.status === 'approved' &&
-      c.effectiveFrom <= period &&
-      period <= c.effectiveTo;
-  });
+export function calculateSocsoWages(payrollItems: { code: string; amount: number }[]): number {
+  return calculateSocsoWagesInSen(payrollItems) / 100;
+}
 
-  if (!matchedConfig) {
-    throw new Error('No approved contribution configuration exists for ' + period);
+export function findSocsoBracket(
+  scheduleOrWage: SOCSOContributionSchedule | number,
+  socsoWagesInSenOrCategory?: number | 'FIRST_CATEGORY' | 'SECOND_CATEGORY',
+  period?: string
+): any {
+  if (typeof scheduleOrWage === 'object') {
+    const schedule = scheduleOrWage as SOCSOContributionSchedule;
+    const wagesInSen = socsoWagesInSenOrCategory as number;
+
+    const brackets: SOCSOContributionBracket[] = JSON.parse(localStorage.getItem('socso_contribution_brackets_new') || '[]');
+    const matched = brackets.filter(b => {
+      if (b.schedule_id !== schedule.id) return false;
+      const isAboveLower = b.lower_bound_inclusive ? (wagesInSen >= b.lower_bound_sen) : (wagesInSen > b.lower_bound_sen);
+      if (!isAboveLower) return false;
+
+      if (b.is_maximum_bracket || b.upper_bound_sen === null) {
+        return true;
+      }
+      const isBelowUpper = b.upper_bound_inclusive ? (wagesInSen <= b.upper_bound_sen) : (wagesInSen < b.upper_bound_sen);
+      return isBelowUpper;
+    });
+
+    if (matched.length === 0) {
+      throw new Error(`No wage bracket is found for wage in sen: ${wagesInSen}`);
+    }
+    return matched[0];
+  } else {
+    // Legacy compatibility mode:
+    const contributionWage = scheduleOrWage as number;
+    const category = socsoWagesInSenOrCategory as 'FIRST_CATEGORY' | 'SECOND_CATEGORY';
+    const activePeriod = period || '2026-06';
+    const wagesInSen = Math.round(contributionWage * 100);
+
+    // Find active schedule for that period and category
+    const schedules: SOCSOContributionSchedule[] = JSON.parse(localStorage.getItem('socso_contribution_schedules') || '[]');
+    let schedule = schedules.find(s => {
+      const matchCat = s.schedule_code.includes(category === 'FIRST_CATEGORY' ? 'C1' : 'C2') || s.schedule_code.includes('PHASE1_2026') || s.schedule_code.includes('LINDUNG24');
+      const startMonth = s.effective_from.substring(0, 7);
+      const endMonth = s.effective_to ? s.effective_to.substring(0, 7) : null;
+      return s.status === 'ACTIVE' && startMonth <= activePeriod && (endMonth === null || activePeriod <= endMonth);
+    });
+
+    if (!schedule) {
+      // Fallback: use legacy SOCSOBracket mapping if no schedule active
+      const brackets: SOCSOBracket[] = JSON.parse(localStorage.getItem('socso_contribution_brackets') || '[]');
+      const legacyConfig = JSON.parse(localStorage.getItem('socso_configurations') || '[]').find((c: any) => c.status === 'approved' && c.effectiveFrom <= activePeriod && activePeriod <= c.effectiveTo && c.contributionCategory === category);
+      if (legacyConfig) {
+        const matched = brackets.filter(b => b.configurationId === legacyConfig.id && b.contributionCategory === category && contributionWage > b.lowerWageLimit && contributionWage <= b.upperWageLimit);
+        if (matched.length > 0) return matched[0];
+      }
+      throw new Error('No active schedule found for period: ' + activePeriod);
+    }
+
+    const bracket = findSocsoBracket(schedule, wagesInSen);
+    // Map SOCSOContributionBracket to legacy SOCSOBracket
+    return {
+      id: bracket.id,
+      configurationId: bracket.schedule_id,
+      contributionCategory: category,
+      lowerWageLimit: bracket.lower_bound_sen / 100,
+      upperWageLimit: (bracket.upper_bound_sen || 9999999) / 100,
+      lowerLimitInclusive: bracket.lower_bound_inclusive,
+      upperLimitInclusive: bracket.upper_bound_inclusive,
+      wageBracketNumber: bracket.bracket_number,
+      assumedMonthlyWage: bracket.lower_bound_sen / 100, // placeholder
+      employerEmploymentInjury: (category === 'FIRST_CATEGORY' ? bracket.category1_employer_employment_injury_sen : bracket.category2_employer_employment_injury_sen) / 100,
+      employerInvalidity: (category === 'FIRST_CATEGORY' ? bracket.category1_employer_invalidity_sen : 0) / 100,
+      employerTotal: (category === 'FIRST_CATEGORY' ? bracket.category1_employer_total_sen : bracket.category2_employer_total_sen) / 100,
+      employeeInvalidity: (category === 'FIRST_CATEGORY' ? bracket.category1_employee_invalidity_sen : 0) / 100,
+      employeeNonEmploymentInjury: (category === 'FIRST_CATEGORY' ? bracket.category1_employee_lindung24_sen : bracket.category2_employee_lindung24_sen) / 100,
+      employeeTotal: (category === 'FIRST_CATEGORY' ? bracket.category1_employee_total_sen : bracket.category2_employee_total_sen) / 100,
+      combinedTotal: (category === 'FIRST_CATEGORY' ? bracket.category1_grand_total_sen : bracket.category2_grand_total_sen) / 100,
+      effectiveFrom: schedule.effective_from,
+      effectiveTo: schedule.effective_to || '9999-12-31'
+    };
   }
-
-  const brackets: SOCSOBracket[] = JSON.parse(localStorage.getItem('socso_contribution_brackets') || '[]');
-  const matchedBrackets = brackets.filter(b => {
-    return b.configurationId === matchedConfig.id &&
-      b.contributionCategory === category &&
-      ((b.lowerLimitInclusive ? contributionWage >= b.lowerWageLimit : contributionWage > b.lowerWageLimit) &&
-       (b.upperLimitInclusive ? contributionWage <= b.upperWageLimit : contributionWage < b.upperWageLimit));
-  });
-
-  if (matchedBrackets.length === 0) {
-    throw new Error('No wage bracket is found for wage RM ' + contributionWage.toFixed(2));
-  }
-  if (matchedBrackets.length > 1) {
-    throw new Error('Multiple wage brackets match for wage RM ' + contributionWage.toFixed(2));
-  }
-
-  return matchedBrackets[0];
 }
 
 export function calculateSocsoContribution(params: {
-  employee: Employee;
-  payrollPeriod: string;
+  employeeSocsoProfile?: EmployeeSocsoProfile;
+  payrollContributionMonth?: string;
   payrollItems: { code: string; amount: number }[];
-  contributionConfiguration?: SOCSOConfiguration;
-}): SocsoContributionResult {
-  const employee = params.employee;
-  const period = params.payrollPeriod;
+  contributionSchedule?: SOCSOContributionSchedule;
+  // Compatibility:
+  employee?: Employee;
+  payrollPeriod?: string;
+}): SocsoContributionResult & { display: any } {
+  const profile = params.employeeSocsoProfile || params.employee?.socsoProfile;
+  const rawPeriod = params.payrollContributionMonth || params.payrollPeriod || '2026-06';
+  const period = rawPeriod.substring(0, 7); // e.g. "2026-06"
   const items = params.payrollItems;
 
   const warnings: string[] = [];
   const errors: string[] = [];
 
-  if (!employee.socsoProfile) {
-    const dob = parseDobFromNric(employee.nricPassport || '');
-    employee.socsoProfile = {
-      employeeId: employee.email,
-      nationality: employee.nationality || 'Malaysian',
-      identityNumber: employee.nricPassport || '',
-      dateOfBirth: dob,
-      employmentStartDate: employee.dateOfJoined || '2026-01-01',
-      contractType: 'Permanent',
-      isUnderContractOfService: true,
-      socsoRegistrationNumber: 'REG-12345',
-      socsoRegistered: true,
-      socsoCoverageStatus: 'Covered',
-      hasPreviousSocsoContribution: true,
-      contributionCategory: 'FIRST_CATEGORY',
-      multipleEmployerStatus: 'Single Employer',
-      selectedEmployerForLindung24: true,
-      foreignWorkerStatus: employee.nationality === 'Malaysian' ? 'Local' : 'Foreigner',
-      domesticWorkerStatus: false,
-      effectiveFrom: '2026-01-01',
-      effectiveTo: '9999-12-31'
-    };
+  if (!profile) {
+    throw new Error('Employee SOCSO Profile is required.');
   }
 
-  const profile = employee.socsoProfile;
-  const category = determineSocsoCategory(employee, period);
+  const category = params.employee ? determineSocsoCategory(params.employee, period) : profile.contributionCategory;
 
-  if (category === 'REVIEW_REQUIRED') {
-    errors.push('Contribution category cannot be determined (Review Required).');
-    return {
-      employeeId: employee.id,
-      payrollPeriod: period,
-      effectiveDate: getGmt8DateString(),
-      socsoCoverageStatus: profile.socsoCoverageStatus,
-      contributionCategory: 'REVIEW_REQUIRED',
-      grossRemuneration: items.reduce((sum, item) => sum + item.amount, 0),
-      includedSocsoWages: 0,
-      excludedSocsoWages: 0,
-      socsoWages: 0,
-      contributionWage: 0,
-      wageCeilingApplied: false,
-      wageBracketNumber: 0,
-      wageBracketDescription: 'Review Required',
-      employerEmploymentInjury: 0,
-      employerInvalidity: 0,
-      employerSocsoTotal: 0,
-      employeeInvalidity: 0,
-      employeeLindung24: 0,
-      employeeSocsoTotal: 0,
-      totalSocsoContribution: 0,
-      configurationVersion: 'Unknown',
-      calculationTimestamp: new Date().toISOString(),
-      warningMessages: ['Prior contribution history, multiple employer settings or birthdate require configuration review.'],
-      validationErrors: errors,
-      calculationStatus: 'review_required'
-    };
-  }
+  const actualWagesInSen = calculateSocsoWagesInSen(items);
 
-  if (category === 'EXEMPT') {
-    return {
-      employeeId: employee.id,
-      payrollPeriod: period,
-      effectiveDate: getGmt8DateString(),
-      socsoCoverageStatus: 'Exempt',
-      contributionCategory: 'EXEMPT',
-      grossRemuneration: items.reduce((sum, item) => sum + item.amount, 0),
-      includedSocsoWages: 0,
-      excludedSocsoWages: 0,
-      socsoWages: 0,
-      contributionWage: 0,
-      wageCeilingApplied: false,
-      wageBracketNumber: 0,
-      wageBracketDescription: 'Exempt',
-      employerEmploymentInjury: 0,
-      employerInvalidity: 0,
-      employerSocsoTotal: 0,
-      employeeInvalidity: 0,
-      employeeLindung24: 0,
-      employeeSocsoTotal: 0,
-      totalSocsoContribution: 0,
-      configurationVersion: 'Statutory Exempt',
-      calculationTimestamp: new Date().toISOString(),
-      warningMessages: [],
-      validationErrors: [],
-      calculationStatus: 'exempt'
-    };
-  }
+  if (period < '2026-06') {
+    // Legacy fallback path:
+    const bracket = findSocsoBracket(actualWagesInSen / 100, category, period);
+    const erEmploymentInjury = bracket.employerEmploymentInjury;
+    const erInvalidity = bracket.employerInvalidity;
+    const erTotal = bracket.employerTotal;
+    const eeInvalidity = bracket.employeeInvalidity;
+    const eeLindung24 = bracket.employeeNonEmploymentInjury || 0;
+    const eeTotal = bracket.employeeTotal;
 
-  const socsoWages = calculateSocsoWages(items);
-  if (socsoWages < 0) {
-    errors.push('Employee has negative contributable wages: RM ' + socsoWages);
-  }
+    // Overrides check
+    let finalEmployer = erTotal;
+    let finalEmployee = eeTotal;
+    let calcStatus: 'calculated' | 'override_applied' = 'calculated';
 
-  let includedSocsoWages = 0;
-  let excludedSocsoWages = 0;
-  const config = JSON.parse(localStorage.getItem('socso_earning_components') || '[]');
-  const activeComponents = config.length > 0 ? config : DEFAULT_SOCSO_EARNING_COMPONENTS;
+    const employeeId = params.employee?.id || profile.employeeId;
+    const overrides: SocsoManualOverride[] = JSON.parse(localStorage.getItem('socso_manual_overrides') || '[]');
+    const activeOverride = overrides.find(o => o.employeeId === employeeId && o.payrollPeriod === period);
 
-  for (const item of items) {
-    const comp = activeComponents.find(c => c.earningCode === item.code);
-    if (comp) {
-      if (comp.includedInSocsoWages) {
-        includedSocsoWages = Math.round((includedSocsoWages + item.amount) * 100) / 100;
-      } else {
-        excludedSocsoWages = Math.round((excludedSocsoWages + item.amount) * 100) / 100;
-      }
-    } else {
-      warnings.push(`Earning component ${item.code} has no configured statutory SOCSO classification.`);
+    if (activeOverride) {
+      finalEmployer = activeOverride.correctedEmployerSocso;
+      finalEmployee = activeOverride.correctedEmployeeSocso;
+      calcStatus = 'override_applied';
+      warnings.push(`Manual statutory override applied: Employer corrected to RM ${finalEmployer}, Employee corrected to RM ${finalEmployee}.`);
     }
-  }
 
-  const wageCeiling = 6000;
-  const wageCeilingApplied = socsoWages > wageCeiling;
-  const contributionWage = Math.min(Math.max(socsoWages, 0), wageCeiling);
-
-  if (wageCeilingApplied) {
-    warnings.push('The RM6,000 monthly wage ceiling has been applied.');
-  }
-
-  let bracket: SOCSOBracket;
-  try {
-    bracket = findSocsoBracket(contributionWage, category, period);
-  } catch (err: any) {
-    errors.push(err.message || 'No wage bracket is found.');
     return {
-      employeeId: employee.id,
+      employeeId,
       payrollPeriod: period,
       effectiveDate: getGmt8DateString(),
       socsoCoverageStatus: profile.socsoCoverageStatus,
       contributionCategory: category,
       grossRemuneration: items.reduce((sum, item) => sum + item.amount, 0),
-      includedSocsoWages,
-      excludedSocsoWages,
-      socsoWages,
-      contributionWage,
-      wageCeilingApplied,
+      includedSocsoWages: actualWagesInSen / 100,
+      excludedSocsoWages: (items.reduce((sum, item) => sum + item.amount, 0) * 100 - actualWagesInSen) / 100,
+      socsoWages: actualWagesInSen / 100,
+      contributionWage: actualWagesInSen / 100,
+      wageCeilingApplied: actualWagesInSen > 600000,
+      wageBracketNumber: bracket.wageBracketNumber,
+      wageBracketDescription: `${bracket.lowerWageLimit} to ${bracket.upperWageLimit}`,
+      employerEmploymentInjury: erEmploymentInjury,
+      employerInvalidity: erInvalidity,
+      employerSocsoTotal: finalEmployer,
+      employeeInvalidity: eeInvalidity,
+      employeeLindung24: eeLindung24,
+      employeeSocsoTotal: finalEmployee,
+      totalSocsoContribution: finalEmployer + finalEmployee,
+      configurationVersion: bracket.configurationId,
+      calculationTimestamp: new Date().toISOString(),
+      warningMessages: warnings,
+      validationErrors: errors,
+      calculationStatus: calcStatus,
+      display: {
+        actualSocsoWagesFormatted: `RM${(actualWagesInSen / 100).toFixed(2)}`,
+        employerTotalFormatted: `RM${finalEmployer.toFixed(2)}`,
+        employeeInvalidityFormatted: `RM${eeInvalidity.toFixed(2)}`,
+        employeeLindung24Formatted: `RM${eeLindung24.toFixed(2)}`,
+        employeeTotalFormatted: `RM${finalEmployee.toFixed(2)}`,
+        grandTotalFormatted: `RM${(finalEmployer + finalEmployee).toFixed(2)}`
+      }
+    } as any;
+  }
+
+  // If wages are exactly RM0.00:
+  if (actualWagesInSen === 0) {
+    return {
+      employeeId: profile.employeeId,
+      payrollPeriod: period,
+      effectiveDate: getGmt8DateString(),
+      socsoCoverageStatus: profile.socsoCoverageStatus,
+      contributionCategory: category,
+      grossRemuneration: items.reduce((sum, item) => sum + item.amount, 0),
+      includedSocsoWages: 0,
+      excludedSocsoWages: 0,
+      socsoWages: 0,
+      contributionWage: 0,
+      wageCeilingApplied: false,
       wageBracketNumber: 0,
-      wageBracketDescription: 'Bracket Match Failed',
+      wageBracketDescription: 'No wages payable',
       employerEmploymentInjury: 0,
       employerInvalidity: 0,
       employerSocsoTotal: 0,
@@ -673,78 +793,167 @@ export function calculateSocsoContribution(params: {
       employeeLindung24: 0,
       employeeSocsoTotal: 0,
       totalSocsoContribution: 0,
-      configurationVersion: 'Unknown',
+      configurationVersion: 'PERKESO_ACT4_LINDUNG24_PHASE1_2026',
       calculationTimestamp: new Date().toISOString(),
-      warningMessages: warnings,
-      validationErrors: errors,
-      calculationStatus: 'error'
-    };
+      warningMessages: [],
+      validationErrors: [],
+      calculationStatus: 'exempt',
+      display: {
+        actualSocsoWagesFormatted: 'RM0.00',
+        employerTotalFormatted: 'RM0.00',
+        employeeInvalidityFormatted: 'RM0.00',
+        employeeLindung24Formatted: 'RM0.00',
+        employeeTotalFormatted: 'RM0.00',
+        grandTotalFormatted: 'RM0.00'
+      }
+    } as any;
   }
 
-  let employerEmploymentInjury = bracket.employerEmploymentInjury;
-  let employerInvalidity = bracket.employerInvalidity;
-  let employeeInvalidity = bracket.employeeInvalidity;
-  let employeeLindung24 = bracket.employeeNonEmploymentInjury;
+  // Get active schedule for period
+  let schedule = params.contributionSchedule;
+  if (!schedule) {
+    const schedules: SOCSOContributionSchedule[] = JSON.parse(localStorage.getItem('socso_contribution_schedules') || '[]');
+    schedule = schedules.find(s => {
+      const startMonth = s.effective_from.substring(0, 7);
+      const endMonth = s.effective_to ? s.effective_to.substring(0, 7) : null;
+      return s.status === 'ACTIVE' && startMonth <= period && (endMonth === null || period <= endMonth);
+    });
+  }
 
+  if (!schedule) {
+    throw new Error('No active SOCSO contribution schedule found for period: ' + period);
+  }
+
+  const lookupWagesInSen = Math.min(actualWagesInSen, schedule.wage_ceiling_sen);
+  const wageCeilingApplied = actualWagesInSen > schedule.wage_ceiling_sen;
+
+  if (wageCeilingApplied) {
+    warnings.push('The Monthly wage ceiling has been applied.');
+  }
+
+  // Exact lookup:
+  const bracket = findSocsoBracket(schedule, actualWagesInSen);
+
+  let erEmploymentInjury = 0;
+  let erInvalidity = 0;
+  let erTotal = 0;
+  let eeInvalidity = 0;
+  let eeLindung24 = 0;
+  let eeTotal = 0;
+  let grandTotal = 0;
+
+  if (category === 'FIRST_CATEGORY') {
+    erEmploymentInjury = bracket.category1_employer_employment_injury_sen;
+    erInvalidity = bracket.category1_employer_invalidity_sen;
+    erTotal = bracket.category1_employer_total_sen;
+
+    eeInvalidity = bracket.category1_employee_invalidity_sen;
+    eeLindung24 = bracket.category1_employee_lindung24_sen;
+    eeTotal = bracket.category1_employee_total_sen;
+    
+    grandTotal = bracket.category1_grand_total_sen;
+  } else {
+    erEmploymentInjury = bracket.category2_employer_employment_injury_sen;
+    erInvalidity = 0;
+    erTotal = bracket.category2_employer_total_sen;
+
+    eeInvalidity = 0;
+    eeLindung24 = bracket.category2_employee_lindung24_sen;
+    eeTotal = bracket.category2_employee_total_sen;
+
+    grandTotal = bracket.category2_grand_total_sen;
+  }
+
+  // LINDUNG 24 Jam bypass logic
   if (profile.multipleEmployerStatus === 'Multiple Employers' && !profile.selectedEmployerForLindung24) {
-    employeeLindung24 = 0;
+    eeLindung24 = 0;
+    eeTotal = eeInvalidity; // Employee total drops to just invalidity
+    erTotal = erEmploymentInjury + erInvalidity;
+    grandTotal = erTotal + eeTotal;
     warnings.push('LINDUNG 24 Jam contribution is bypassed as this employer is not selected for this multiple-employer account.');
   }
 
-  const isPostJune2026 = period >= '2026-06';
-  if (isPostJune2026 && employeeLindung24 === 0 && profile.selectedEmployerForLindung24 && profile.socsoCoverageStatus === 'Covered') {
-    errors.push('June 2026 or later payroll does not include LINDUNG 24 Jam for a covered employee.');
-  }
-
-  if (category === 'SECOND_CATEGORY') {
-    employerInvalidity = 0;
-    employeeInvalidity = 0;
-  }
-
-  const employerSocsoTotal = parseFloat((employerEmploymentInjury + employerInvalidity).toFixed(2));
-  const employeeSocsoTotal = parseFloat((employeeInvalidity + employeeLindung24).toFixed(2));
-
-  const overrides: SocsoManualOverride[] = JSON.parse(localStorage.getItem('socso_manual_overrides') || '[]');
-  const activeOverride = overrides.find(o => o.employeeId === employee.id && o.payrollPeriod === period);
-
-  let finalEmployer = employerSocsoTotal;
-  let finalEmployee = employeeSocsoTotal;
+  // Overrides check
+  let finalEmployer = erTotal;
+  let finalEmployee = eeTotal;
   let calcStatus: 'calculated' | 'override_applied' = 'calculated';
 
+  const employeeId = params.employee?.id || profile.employeeId;
+  const overrides: SocsoManualOverride[] = JSON.parse(localStorage.getItem('socso_manual_overrides') || '[]');
+  const activeOverride = overrides.find(o => o.employeeId === employeeId && o.payrollPeriod === period);
+
   if (activeOverride) {
-    finalEmployer = activeOverride.correctedEmployerSocso;
-    finalEmployee = activeOverride.correctedEmployeeSocso;
+    finalEmployer = Math.round(activeOverride.correctedEmployerSocso * 100);
+    finalEmployee = Math.round(activeOverride.correctedEmployeeSocso * 100);
     calcStatus = 'override_applied';
-    warnings.push(`Manual statutory override applied: Employer corrected to RM ${finalEmployer}, Employee corrected to RM ${finalEmployee}.`);
+    warnings.push(`Manual statutory override applied: Employer corrected to ${formatMYRFromSen(finalEmployer)}, Employee corrected to ${formatMYRFromSen(finalEmployee)}.`);
   }
 
-  return {
-    employeeId: employee.id,
+  // Map to result object (both legacy fields and new ones)
+  const result: any = {
+    // New calculation values (as requested)
+    employeeId: employeeId,
+    payrollContributionMonth: period,
+    contributionCategory: category,
+    scheduleCode: schedule.schedule_code,
+    scheduleVersion: '1.0',
+    actualSocsoWagesInSen: actualWagesInSen,
+    lookupWagesInSen: lookupWagesInSen,
+    wageCeilingInSen: schedule.wage_ceiling_sen,
+    wageCeilingApplied: wageCeilingApplied,
+    bracketNumber: bracket.bracket_number,
+    bracketDescription: bracket.description,
+
+    employerInvalidityContributionInSen: erInvalidity,
+    employerEmploymentInjuryContributionInSen: erEmploymentInjury,
+    employerTotalContributionInSen: finalEmployer,
+
+    employeeInvalidityContributionInSen: eeInvalidity,
+    employeeLindung24ContributionInSen: eeLindung24,
+    employeeTotalContributionInSen: finalEmployee,
+
+    grandTotalContributionInSen: finalEmployer + finalEmployee,
+
+    calculationStatus: calcStatus,
+    warnings: warnings,
+    errors: errors,
+    calculatedAt: new Date().toISOString(),
+
+    // Legacy fields for backward compatibility inside Payslips Views and Delta calculations
     payrollPeriod: period,
     effectiveDate: getGmt8DateString(),
     socsoCoverageStatus: profile.socsoCoverageStatus,
-    contributionCategory: category,
     grossRemuneration: items.reduce((sum, item) => sum + item.amount, 0),
-    includedSocsoWages,
-    excludedSocsoWages,
-    socsoWages,
-    contributionWage,
-    wageCeilingApplied,
-    wageBracketNumber: bracket.wageBracketNumber,
-    wageBracketDescription: `RM ${bracket.lowerWageLimit.toFixed(2)} to RM ${bracket.upperWageLimit.toFixed(2)}`,
-    employerEmploymentInjury,
-    employerInvalidity,
-    employerSocsoTotal: finalEmployer,
-    employeeInvalidity,
-    employeeLindung24,
-    employeeSocsoTotal: finalEmployee,
-    totalSocsoContribution: parseFloat((finalEmployer + finalEmployee).toFixed(2)),
-    configurationVersion: bracket.configurationId,
+    includedSocsoWages: actualWagesInSen / 100,
+    excludedSocsoWages: (items.reduce((sum, item) => sum + item.amount, 0) * 100 - actualWagesInSen) / 100,
+    socsoWages: actualWagesInSen / 100,
+    contributionWage: lookupWagesInSen / 100,
+    wageBracketNumber: bracket.bracket_number,
+    wageBracketDescription: bracket.description,
+    employerEmploymentInjury: erEmploymentInjury / 100,
+    employerInvalidity: erInvalidity / 100,
+    employerSocsoTotal: finalEmployer / 100,
+    employeeInvalidity: eeInvalidity / 100,
+    employeeLindung24: eeLindung24 / 100,
+    employeeSocsoTotal: finalEmployee / 100,
+    totalSocsoContribution: (finalEmployer + finalEmployee) / 100,
+    configurationVersion: schedule.schedule_code,
     calculationTimestamp: new Date().toISOString(),
     warningMessages: warnings,
     validationErrors: errors,
-    calculationStatus: calcStatus
+
+    // Separate display object
+    display: {
+      actualSocsoWagesFormatted: formatMYRFromSen(actualWagesInSen),
+      employerTotalFormatted: formatMYRFromSen(finalEmployer),
+      employeeInvalidityFormatted: formatMYRFromSen(eeInvalidity),
+      employeeLindung24Formatted: formatMYRFromSen(eeLindung24),
+      employeeTotalFormatted: formatMYRFromSen(finalEmployee),
+      grandTotalFormatted: formatMYRFromSen(finalEmployer + finalEmployee)
+    }
   };
+
+  return result;
 }
 
 export function calculatePcb2026(

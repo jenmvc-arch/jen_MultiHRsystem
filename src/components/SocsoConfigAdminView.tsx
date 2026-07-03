@@ -19,7 +19,7 @@ import {
   Calendar,
   Lock
 } from 'lucide-react';
-import { SOCSOConfiguration, SOCSOBracket, SOCSOPhase } from '../types';
+import { SOCSOConfiguration, SOCSOBracket, SOCSOPhase, SOCSOContributionSchedule, SOCSOContributionBracket } from '../types';
 import { generateOfficialSocsoBrackets } from '../data';
 
 export default function SocsoConfigAdminView() {
@@ -48,10 +48,15 @@ export default function SocsoConfigAdminView() {
     status: 'draft'
   });
 
+  const [schedules, setSchedules] = useState<SOCSOContributionSchedule[]>([]);
+  const [scheduleBrackets, setScheduleBrackets] = useState<SOCSOContributionBracket[]>([]);
+
   // CSV Import states
   const [csvText, setCsvText] = useState('');
   const [selectedConfigIdForImport, setSelectedConfigIdForImport] = useState('');
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
+  const [validationReport, setValidationReport] = useState<{ valid: boolean; errors: string[] } | null>(null);
+  const [selectedScheduleIdForBrackets, setSelectedScheduleIdForBrackets] = useState<string | null>(null);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -59,6 +64,12 @@ export default function SocsoConfigAdminView() {
     const savedBrackets = localStorage.getItem('socso_contribution_brackets');
     if (savedConfigs) setConfigs(JSON.parse(savedConfigs));
     if (savedBrackets) setBrackets(JSON.parse(savedBrackets));
+
+    const savedSchedules = localStorage.getItem('socso_contribution_schedules');
+    if (savedSchedules) setSchedules(JSON.parse(savedSchedules));
+
+    const savedScheduleBrackets = localStorage.getItem('socso_contribution_brackets_new');
+    if (savedScheduleBrackets) setScheduleBrackets(JSON.parse(savedScheduleBrackets));
   }, []);
 
   const saveToStorage = (newConfigs: SOCSOConfiguration[], newBrackets: SOCSOBracket[]) => {
@@ -66,6 +77,13 @@ export default function SocsoConfigAdminView() {
     localStorage.setItem('socso_contribution_brackets', JSON.stringify(newBrackets));
     setConfigs(newConfigs);
     setBrackets(newBrackets);
+  };
+
+  const saveSchedulesToStorage = (newSchedules: SOCSOContributionSchedule[], newBrackets: SOCSOContributionBracket[]) => {
+    localStorage.setItem('socso_contribution_schedules', JSON.stringify(newSchedules));
+    localStorage.setItem('socso_contribution_brackets_new', JSON.stringify(newBrackets));
+    setSchedules(newSchedules);
+    setScheduleBrackets(newBrackets);
   };
 
   // Helper validation
@@ -247,101 +265,240 @@ export default function SocsoConfigAdminView() {
       try {
         const text = event.target?.result as string;
         const data = JSON.parse(text);
-        
-        if (!data.schedule_code || !data.rows || !Array.isArray(data.rows)) {
-          alert('Invalid JSON file format. Must contain schedule_code and rows array.');
-          return;
+
+        const errors: string[] = [];
+
+        // 1. Metadata Validation
+        if (data.schedule_code !== 'PERKESO_ACT4_LINDUNG24_PHASE1_2026') {
+          errors.push(`Metadata Error: Invalid schedule_code. Expected "PERKESO_ACT4_LINDUNG24_PHASE1_2026", got "${data.schedule_code}"`);
+        }
+        if (data.effective_from !== '2026-06-01') {
+          errors.push(`Metadata Error: Invalid effective_from. Expected "2026-06-01", got "${data.effective_from}"`);
+        }
+        if (data.storage_unit !== 'sen') {
+          errors.push(`Metadata Error: Invalid storage_unit. Expected "sen", got "${data.storage_unit}"`);
+        }
+        if (data.wage_ceiling_sen !== 600000) {
+          errors.push(`Metadata Error: Invalid wage_ceiling_sen. Expected 600000, got "${data.wage_ceiling_sen}"`);
         }
 
-        // Create/Update FIRST_CATEGORY and SECOND_CATEGORY configs
-        const c1Id = `cfg-${data.schedule_code.toLowerCase()}-c1`;
-        const c2Id = `cfg-${data.schedule_code.toLowerCase()}-c2`;
+        // 2. Rows count validation
+        if (!data.rows || !Array.isArray(data.rows)) {
+          errors.push("Validation Error: rows field is missing or not an array.");
+          setValidationReport({ valid: false, errors });
+          return;
+        }
+        if (data.rows.length !== 65) {
+          errors.push(`Validation Error: Expected exactly 65 rows, got ${data.rows.length} rows.`);
+        }
 
-        const newC1Config: SOCSOConfiguration = {
-          id: c1Id,
-          schemeCode: 'SOCSO_ACT4',
-          legislation: data.schedule_name || 'PERKESO Act 4',
-          contributionCategory: 'FIRST_CATEGORY',
-          phase: 'LINDUNG24_PHASE_1',
-          effectiveFrom: data.effective_from ? data.effective_from.substring(0, 7) : '2026-06',
-          effectiveTo: data.effective_to ? data.effective_to.substring(0, 7) : '9999-12',
-          wageCeiling: (data.wage_ceiling_sen || 600000) / 100,
-          sourceDocument: data.official_source || 'JSON Import',
-          sourceDocumentDate: new Date().toISOString().substring(0, 10),
-          sourceVersion: '1.0',
-          status: 'draft',
-          approvedBy: '',
-          approvedAt: '',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
+        const seenBracketNumbers = new Set<number>();
 
-        const newC2Config: SOCSOConfiguration = {
-          ...newC1Config,
-          id: c2Id,
-          contributionCategory: 'SECOND_CATEGORY',
-          schemeCode: 'LINDUNG_24_JAM'
-        };
+        data.rows.forEach((r: any, idx: number) => {
+          const bNum = r.bracket_number;
+          if (bNum === undefined || bNum === null) {
+            errors.push(`Row ${idx + 1}: Missing bracket_number.`);
+          } else {
+            if (seenBracketNumbers.has(bNum)) {
+              errors.push(`Row ${idx + 1}: Duplicate bracket_number ${bNum} detected.`);
+            }
+            seenBracketNumbers.add(bNum);
+          }
 
-        // Create brackets
-        const newBrackets: SOCSOBracket[] = [];
-        data.rows.forEach((r: any) => {
-          // Category 1 Bracket
-          newBrackets.push({
-            id: `${c1Id}-imported-${r.bracket_number}`,
-            configurationId: c1Id,
-            contributionCategory: 'FIRST_CATEGORY',
-            lowerWageLimit: (r.lower_bound_sen || 0) / 100,
-            upperWageLimit: (r.upper_bound_sen || 0) / 100,
-            lowerLimitInclusive: r.lower_bound_inclusive ?? false,
-            upperLimitInclusive: r.upper_bound_inclusive ?? true,
-            wageBracketNumber: r.bracket_number,
-            assumedMonthlyWage: ((r.lower_bound_sen + r.upper_bound_sen) / 2) / 100,
-            employerEmploymentInjury: (r.category1_employer_employment_injury_sen || 0) / 100,
-            employerInvalidity: (r.category1_employer_invalidity_sen || 0) / 100,
-            employerTotal: (r.category1_employer_total_sen || 0) / 100,
-            employeeInvalidity: (r.category1_employee_invalidity_sen || 0) / 100,
-            employeeNonEmploymentInjury: (r.category1_employee_lindung24_sen || 0) / 100,
-            employeeTotal: (r.category1_employee_total_sen || 0) / 100,
-            combinedTotal: (r.category1_grand_total_sen || 0) / 100,
-            effectiveFrom: '2026-06-01',
-            effectiveTo: '9999-12-31'
+          // Check integer values for sen fields
+          const senFields = [
+            'lower_bound_sen', 'upper_bound_sen',
+            'category1_employer_invalidity_sen', 'category1_employer_employment_injury_sen', 'category1_employer_total_sen',
+            'category1_employee_invalidity_sen', 'category1_employee_lindung24_sen', 'category1_employee_total_sen',
+            'category1_grand_total_sen',
+            'category2_employer_employment_injury_sen', 'category2_employer_total_sen',
+            'category2_employee_lindung24_sen', 'category2_employee_total_sen', 'category2_grand_total_sen'
+          ];
+
+          senFields.forEach(field => {
+            const val = r[field];
+            if (val !== undefined && val !== null) {
+              if (!Number.isInteger(val)) {
+                errors.push(`Row ${idx + 1}: Field "${field}" contains a non-integer value: ${val}`);
+              }
+              if (val < 0) {
+                errors.push(`Row ${idx + 1}: Field "${field}" contains a negative amount: ${val}`);
+              }
+            } else {
+              if (field === 'upper_bound_sen' && r.is_maximum_bracket) {
+                // OK for ceiling bracket
+              } else {
+                errors.push(`Row ${idx + 1}: Mandatory field "${field}" is missing.`);
+              }
+            }
           });
 
-          // Category 2 Bracket
-          newBrackets.push({
-            id: `${c2Id}-imported-${r.bracket_number}`,
-            configurationId: c2Id,
-            contributionCategory: 'SECOND_CATEGORY',
-            lowerWageLimit: (r.lower_bound_sen || 0) / 100,
-            upperWageLimit: (r.upper_bound_sen || 0) / 100,
-            lowerLimitInclusive: r.lower_bound_inclusive ?? false,
-            upperLimitInclusive: r.upper_bound_inclusive ?? true,
-            wageBracketNumber: r.bracket_number,
-            assumedMonthlyWage: ((r.lower_bound_sen + r.upper_bound_sen) / 2) / 100,
-            employerEmploymentInjury: (r.category2_employer_employment_injury_sen || 0) / 100,
-            employerInvalidity: 0,
-            employerTotal: (r.category2_employer_total_sen || 0) / 100,
-            employeeInvalidity: 0,
-            employeeNonEmploymentInjury: (r.category2_employee_lindung24_sen || 0) / 100,
-            employeeTotal: (r.category2_employee_total_sen || 0) / 100,
-            combinedTotal: (r.category2_grand_total_sen || 0) / 100,
-            effectiveFrom: '2026-06-01',
-            effectiveTo: '9999-12-31'
-          });
+          // Check boundaries
+          const lower = r.lower_bound_sen || 0;
+          const upper = r.upper_bound_sen;
+          if (upper !== null && upper !== undefined && upper <= lower) {
+            errors.push(`Row ${idx + 1}: upper_bound_sen (${upper}) must be greater than lower_bound_sen (${lower}).`);
+          }
+
+          // Continuity and gap check
+          if (idx > 0) {
+            const prev = data.rows[idx - 1];
+            if (prev.upper_bound_sen !== lower) {
+              errors.push(`Row ${idx + 1}: Gap or overlap detected between bracket ${prev.bracket_number} (upper: ${prev.upper_bound_sen}) and bracket ${bNum} (lower: ${lower}).`);
+            }
+          }
+
+          // Reconciliation calculations
+          if (r.category1_employer_invalidity_sen + r.category1_employer_employment_injury_sen !== r.category1_employer_total_sen) {
+            errors.push(`Row ${idx + 1}: Cat 1 Employer Invalidity + Employment Injury !== Employer Total.`);
+          }
+          if (r.category1_employee_invalidity_sen + r.category1_employee_lindung24_sen !== r.category1_employee_total_sen) {
+            errors.push(`Row ${idx + 1}: Cat 1 Employee Invalidity + LINDUNG 24 Jam !== Employee Total.`);
+          }
+          if (r.category1_employer_total_sen + r.category1_employee_total_sen !== r.category1_grand_total_sen) {
+            errors.push(`Row ${idx + 1}: Cat 1 Employer Total + Employee Total !== Grand Total.`);
+          }
+
+          if (r.category2_employer_total_sen !== r.category2_employer_employment_injury_sen) {
+            errors.push(`Row ${idx + 1}: Cat 2 Employer Total !== Employment Injury.`);
+          }
+          if (r.category2_employee_total_sen !== r.category2_employee_lindung24_sen) {
+            errors.push(`Row ${idx + 1}: Cat 2 Employee Total !== LINDUNG 24 Jam.`);
+          }
+          if (r.category2_employer_total_sen + r.category2_employee_total_sen !== r.category2_grand_total_sen) {
+            errors.push(`Row ${idx + 1}: Cat 2 Employer Total + Employee Total !== Grand Total.`);
+          }
         });
 
-        // Filter out existing configs and add new ones
-        const filteredConfigs = configs.filter(c => c.id !== c1Id && c.id !== c2Id);
-        const filteredBrackets = brackets.filter(b => b.configurationId !== c1Id && b.configurationId !== c2Id);
+        // Verify missing brackets
+        for (let i = 1; i <= 65; i++) {
+          if (!seenBracketNumbers.has(i)) {
+            errors.push(`Validation Error: Bracket number ${i} is missing.`);
+          }
+        }
 
-        saveToStorage([...filteredConfigs, newC1Config, newC2Config], [...filteredBrackets, ...newBrackets]);
-        setImportStatus({ type: 'success', message: `Successfully imported JSON config! Added ${data.rows.length * 2} brackets across FIRST & SECOND categories under drafts ${c1Id} & ${c2Id}.` });
+        // Bracket 64 and 65 contribution values comparison (must be identical)
+        if (data.rows.length >= 65) {
+          const b64 = data.rows[63];
+          const b65 = data.rows[64];
+          if (
+            b64.category1_employer_total_sen !== b65.category1_employer_total_sen ||
+            b64.category1_employee_total_sen !== b65.category1_employee_total_sen ||
+            b64.category2_employer_total_sen !== b65.category2_employer_total_sen ||
+            b64.category2_employee_total_sen !== b65.category2_employee_total_sen
+          ) {
+            errors.push("Validation Error: Bracket 64 and Bracket 65 maximum contribution amounts differ.");
+          }
+        }
+
+        const isValid = errors.length === 0;
+
+        // Save schedule
+        const newSchedule: SOCSOContributionSchedule = {
+          id: `cfg-${data.schedule_code.toLowerCase()}`,
+          schedule_code: data.schedule_code,
+          schedule_name: data.schedule_name || 'Imported Schedule',
+          effective_from: data.effective_from || '2026-06-01',
+          effective_to: data.effective_to || null,
+          currency: data.currency || 'MYR',
+          storage_unit: 'sen',
+          wage_ceiling_sen: data.wage_ceiling_sen || 600000,
+          status: isValid ? 'DRAFT' : 'VALIDATION_FAILED',
+          official_source: data.official_source || '',
+          compatibility_reference: data.compatibility_reference || '',
+          source_file_name: file.name,
+          source_file_hash: 'uploaded-hash-placeholder',
+          created_by: 'administrator@nexus.com',
+          created_at: new Date().toISOString(),
+          approved_by: '',
+          approved_at: '',
+          activated_by: '',
+          activated_at: ''
+        };
+
+        const newBrackets: SOCSOContributionBracket[] = [];
+        if (isValid) {
+          data.rows.forEach((r: any) => {
+            newBrackets.push({
+              id: `${newSchedule.id}-bracket-${r.bracket_number}`,
+              schedule_id: newSchedule.id,
+              bracket_number: r.bracket_number,
+              description: r.description || '',
+              lower_bound_sen: r.lower_bound_sen,
+              upper_bound_sen: r.upper_bound_sen,
+              lower_bound_inclusive: r.lower_bound_inclusive ?? false,
+              upper_bound_inclusive: r.upper_bound_inclusive ?? true,
+              is_maximum_bracket: r.is_maximum_bracket ?? false,
+              category1_employer_invalidity_sen: r.category1_employer_invalidity_sen || 0,
+              category1_employer_employment_injury_sen: r.category1_employer_employment_injury_sen || 0,
+              category1_employer_total_sen: r.category1_employer_total_sen || 0,
+              category1_employee_invalidity_sen: r.category1_employee_invalidity_sen || 0,
+              category1_employee_lindung24_sen: r.category1_employee_lindung24_sen || 0,
+              category1_employee_total_sen: r.category1_employee_total_sen || 0,
+              category1_grand_total_sen: r.category1_grand_total_sen || 0,
+              category2_employer_employment_injury_sen: r.category2_employer_employment_injury_sen || 0,
+              category2_employer_total_sen: r.category2_employer_total_sen || 0,
+              category2_employee_lindung24_sen: r.category2_employee_lindung24_sen || 0,
+              category2_employee_total_sen: r.category2_employee_total_sen || 0,
+              category2_grand_total_sen: r.category2_grand_total_sen || 0,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+          });
+        }
+
+        const filteredSchedules = schedules.filter(s => s.id !== newSchedule.id);
+        const filteredBrackets = scheduleBrackets.filter(b => b.schedule_id !== newSchedule.id);
+
+        saveSchedulesToStorage([...filteredSchedules, newSchedule], [...filteredBrackets, ...newBrackets]);
+        setValidationReport({ valid: isValid, errors });
+        setImportStatus({
+          type: isValid ? 'success' : 'error',
+          message: isValid ? `JSON imported successfully! Status set to DRAFT.` : `JSON validation failed. Status set to VALIDATION_FAILED.`
+        });
       } catch (err: any) {
         setImportStatus({ type: 'error', message: 'Failed to parse JSON: ' + err.message });
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleApproveSchedule = (scheduleId: string) => {
+    const updated = schedules.map(s => {
+      if (s.id === scheduleId) {
+        return {
+          ...s,
+          status: 'APPROVED' as const,
+          approved_by: 'administrator@nexus.com',
+          approved_at: new Date().toISOString()
+        };
+      }
+      return s;
+    });
+    saveSchedulesToStorage(updated, scheduleBrackets);
+    alert('Schedule approved successfully!');
+  };
+
+  const handleActivateSchedule = (scheduleId: string) => {
+    const updated = schedules.map(s => {
+      if (s.id === scheduleId) {
+        return {
+          ...s,
+          status: 'ACTIVE' as const,
+          activated_by: 'administrator@nexus.com',
+          activated_at: new Date().toISOString()
+        };
+      }
+      if (s.status === 'ACTIVE') {
+        return {
+          ...s,
+          status: 'ARCHIVED' as const
+        };
+      }
+      return s;
+    });
+    saveSchedulesToStorage(updated, scheduleBrackets);
+    alert('Schedule activated successfully! All other active schedules have been archived.');
   };
 
   const getComparison = () => {
@@ -400,6 +557,12 @@ export default function SocsoConfigAdminView() {
           className={`px-4 py-2.5 font-bold text-sm border-b-2 transition ${activeTab === 'compare' ? 'border-rose-600 text-rose-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
         >
           Rate Table Comparison
+        </button>
+        <button
+          onClick={() => setActiveTab('schedules')}
+          className={`px-4 py-2.5 font-bold text-sm border-b-2 transition ${activeTab === 'schedules' ? 'border-rose-600 text-rose-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+        >
+          Statutory JSON Schedules
         </button>
       </div>
 
@@ -783,6 +946,188 @@ export default function SocsoConfigAdminView() {
           ) : (
             <p className="text-xs text-slate-400 text-center py-6">Select both statutory configurations above to compare rates side-by-side.</p>
           )}
+        </div>
+      )}
+
+      {/* Tab 4: JSON Schedules (Database tables) */}
+      {activeTab === 'schedules' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* JSON Upload card */}
+          <div className="bg-white rounded-xl shadow border border-slate-200 p-6 text-sm text-slate-700">
+            <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-1.5">
+              <Upload className="w-5 h-5 text-rose-600" /> Upload Statutory JSON Table
+            </h4>
+            <p className="text-xs text-slate-500 mb-4">
+              Upload a statutory contribution table in JSON format. The importer will automatically execute comprehensive validations on the schema, bracket boundaries, continuity, and Category 1/Category 2 totals.
+            </p>
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleJsonUpload}
+                className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-rose-50 file:text-rose-700 hover:file:bg-rose-100 cursor-pointer"
+              />
+            </div>
+
+            {/* Validation report box */}
+            {validationReport && (
+              <div className={`mt-6 p-4 rounded-lg border text-xs ${validationReport.valid ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+                <div className="flex items-center gap-2 mb-2 font-bold text-sm">
+                  {validationReport.valid ? (
+                    <>
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                      <span>Statutory validation checks passed!</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="w-5 h-5 text-rose-600" />
+                      <span>Statutory validation checks failed ({validationReport.errors.length} errors)</span>
+                    </>
+                  )}
+                </div>
+                {validationReport.errors.length > 0 ? (
+                  <ul className="list-disc pl-5 space-y-1 max-h-48 overflow-y-auto font-mono">
+                    {validationReport.errors.map((err, i) => (
+                      <li key={i}>{err}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>All 65 statutory brackets parsed correctly. The schedule has been imported in <strong>DRAFT</strong> status and is waiting for administrator approval.</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Schedules list */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-bold text-slate-800">Statutory Schedules DB</h3>
+            {schedules.length === 0 ? (
+              <div className="bg-white rounded-xl shadow border border-slate-200 p-8 text-center text-slate-400">
+                No statutory schedules imported yet.
+              </div>
+            ) : (
+              schedules.map(sch => {
+                const statusColors = {
+                  ACTIVE: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                  DRAFT: 'bg-amber-50 text-amber-700 border-amber-200',
+                  APPROVED: 'bg-blue-50 text-blue-700 border-blue-200',
+                  VALIDATION_FAILED: 'bg-rose-50 text-rose-700 border-rose-200',
+                  ARCHIVED: 'bg-slate-100 text-slate-600 border-slate-200',
+                  UNDER_REVIEW: 'bg-purple-50 text-purple-700 border-purple-200',
+                  REJECTED: 'bg-rose-50 text-rose-700 border-rose-200'
+                };
+                const statusBadge = statusColors[sch.status as keyof typeof statusColors] || 'bg-slate-100 text-slate-600 border-slate-200';
+
+                return (
+                  <div key={sch.id} className="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
+                    <div className="p-5 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <span className="p-2 bg-rose-50 text-rose-600 rounded-lg font-bold text-xs uppercase">
+                          {sch.storage_unit}
+                        </span>
+                        <div>
+                          <h4 className="font-extrabold text-slate-800 text-base">{sch.schedule_name}</h4>
+                          <p className="text-xs text-slate-500">Code: <code className="bg-slate-200/60 px-1 rounded text-slate-700">{sch.schedule_code}</code> | Currency: {sch.currency}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${statusBadge}`}>
+                          {sch.status}
+                        </span>
+
+                        {sch.status === 'DRAFT' && (
+                          <button
+                            onClick={() => handleApproveSchedule(sch.id)}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-xs transition flex items-center gap-1"
+                          >
+                            <Check className="w-3.5 h-3.5" /> Approve Schedule
+                          </button>
+                        )}
+
+                        {sch.status === 'APPROVED' && (
+                          <button
+                            onClick={() => handleActivateSchedule(sch.id)}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs transition flex items-center gap-1"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Activate Approved
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => setSelectedScheduleIdForBrackets(selectedScheduleIdForBrackets === sch.id ? null : sch.id)}
+                          className="px-3 py-1.5 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-lg font-semibold text-xs transition"
+                        >
+                          {selectedScheduleIdForBrackets === sch.id ? 'Hide Brackets' : 'View Brackets'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-slate-600">
+                      <div>
+                        <span className="block font-semibold text-slate-400">Effective Date Range</span>
+                        <span className="font-medium text-slate-700">{sch.effective_from} to {sch.effective_to || 'Indefinite'}</span>
+                      </div>
+                      <div>
+                        <span className="block font-semibold text-slate-400">Wage Ceiling</span>
+                        <span className="font-medium text-slate-700">RM {(sch.wage_ceiling_sen / 100).toFixed(2)}</span>
+                      </div>
+                      <div>
+                        <span className="block font-semibold text-slate-400">Import Source File</span>
+                        <span className="font-medium text-slate-700 truncate block max-w-[200px]" title={sch.source_file_name}>{sch.source_file_name}</span>
+                      </div>
+                      <div>
+                        <span className="block font-semibold text-slate-400">Audit Status</span>
+                        {sch.status === 'ACTIVE' ? (
+                          <span className="text-emerald-600 font-semibold">Active & Audited</span>
+                        ) : sch.status === 'APPROVED' ? (
+                          <span className="text-blue-600 font-semibold">Approved by {sch.approved_by || 'Admin'}</span>
+                        ) : sch.status === 'DRAFT' ? (
+                          <span className="text-amber-600 font-semibold">Awaiting Approval</span>
+                        ) : (
+                          <span className="text-slate-400 font-semibold">Inactive</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Brackets collapsed view */}
+                    {selectedScheduleIdForBrackets === sch.id && (
+                      <div className="border-t border-slate-100 bg-slate-50/50 p-5">
+                        <h5 className="font-bold text-slate-800 text-sm mb-3">Statutory Brackets (65 Rows)</h5>
+                        <div className="overflow-x-auto max-h-96 overflow-y-auto border rounded-lg bg-white">
+                          <table className="min-w-full text-left text-[11px] text-slate-600">
+                            <thead className="bg-slate-100 text-slate-700 uppercase font-bold sticky top-0">
+                              <tr>
+                                <th className="px-3 py-2">No.</th>
+                                <th className="px-3 py-2">Lower (sen)</th>
+                                <th className="px-3 py-2">Upper (sen)</th>
+                                <th className="px-3 py-2 text-right">Cat 1 ER (sen)</th>
+                                <th className="px-3 py-2 text-right">Cat 1 EE (sen)</th>
+                                <th className="px-3 py-2 text-right">Cat 2 ER (sen)</th>
+                                <th className="px-3 py-2 text-right">Cat 2 EE (sen)</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-mono">
+                              {scheduleBrackets.filter(b => b.schedule_id === sch.id).map(b => (
+                                <tr key={b.id} className="hover:bg-slate-50">
+                                  <td className="px-3 py-2 font-bold text-slate-700">{b.bracket_number}</td>
+                                  <td className="px-3 py-2">{b.lower_bound_sen}</td>
+                                  <td className="px-3 py-2">{b.upper_bound_sen !== null ? b.upper_bound_sen : 'Max'}</td>
+                                  <td className="px-3 py-2 text-right text-slate-700 font-medium">{b.category1_employer_total_sen}</td>
+                                  <td className="px-3 py-2 text-right text-slate-700 font-medium">{b.category1_employee_total_sen}</td>
+                                  <td className="px-3 py-2 text-right text-slate-700 font-medium">{b.category2_employer_total_sen}</td>
+                                  <td className="px-3 py-2 text-right text-slate-700 font-medium">{b.category2_employee_total_sen}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
       )}
     </div>
