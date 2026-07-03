@@ -180,7 +180,8 @@ export default function PayrollView({
         activeEmployee.maritalStatus || 'Single', 
         activeEmployee.spouseIsWorking || 'No', 
         activeEmployee.dependants?.length || 0,
-        epfEmployee
+        epfEmployee,
+        payMonthIndex
       )
     : 0;
 

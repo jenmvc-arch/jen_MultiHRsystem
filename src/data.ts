@@ -1484,7 +1484,8 @@ export function calculatePcb2026(
   maritalStatus: string,
   spouseIsWorking: string,
   dependantsCount: number,
-  epfMonthly: number
+  epfMonthly: number,
+  month: number = 1
 ): number {
   const profile: EmployeeTaxProfile = {
     maritalStatus: maritalStatus as any,
@@ -1497,7 +1498,7 @@ export function calculatePcb2026(
 
   const result = calculatePCB2026({
     employeeTaxProfile: profile,
-    payrollMonth: 10,
+    payrollMonth: month,
     currentNormalRemuneration: salary,
     currentQualifyingEPF: epfMonthly,
     currentAdditionalRemuneration: 0
@@ -1696,7 +1697,7 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
   const isSalaryChanged = baseEmp ? baseEmp.basicSalary !== basicSalary : false;
   const taxPcbVal = isEligible 
     ? (isSalaryChanged || mergedEmployee.taxPcb === undefined
-       ? calculatePcb2026(basicSalary, mergedEmployee.maritalStatus || 'Single', mergedEmployee.spouseIsWorking || 'No', mergedEmployee.dependants?.length || 0, epfEmployeeValue)
+       ? calculatePcb2026(basicSalary, mergedEmployee.maritalStatus || 'Single', mergedEmployee.spouseIsWorking || 'No', mergedEmployee.dependants?.length || 0, epfEmployeeValue, actMonth)
        : mergedEmployee.taxPcb)
     : 0;
 
@@ -1858,7 +1859,7 @@ export function calculateYtd(employee: Employee, period: string): YtdBreakdown {
         const baseEmp = INITIAL_EMPLOYEES.find(e => e.id === employee.id);
         const isSalaryChanged = baseEmp ? baseEmp.basicSalary !== basicSal : true;
         const taxPcbVal = isSalaryChanged || employee.taxPcb === undefined
-          ? calculatePcb2026(basicSal, employee.maritalStatus || 'Single', employee.spouseIsWorking || 'No', employee.dependants?.length || 0, epfEmployeeValue)
+          ? calculatePcb2026(basicSal, employee.maritalStatus || 'Single', employee.spouseIsWorking || 'No', employee.dependants?.length || 0, epfEmployeeValue, m)
           : employee.taxPcb;
         ytdTaxPcb += taxPcbVal;
       }
