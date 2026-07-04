@@ -32,6 +32,7 @@ export interface CorporateEntity {
   isActive: boolean;
   logoUrl?: string;
   theme?: 'theme1' | 'theme2' | 'theme3';
+  googleScriptUrl?: string;
 }
 
 export interface Dependant {

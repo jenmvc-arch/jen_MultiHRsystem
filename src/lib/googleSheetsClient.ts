@@ -23,11 +23,12 @@ export interface SheetsDataPayload {
 }
 
 export const googleSheetsClient = {
-  async loadData(): Promise<SheetsDataPayload> {
-    if (!isGoogleConfigured) {
+  async loadData(customScriptUrl?: string): Promise<SheetsDataPayload> {
+    const targetUrl = customScriptUrl || googleScriptUrl;
+    if (!targetUrl) {
       throw new Error('Google Sheets client is not configured.');
     }
-    const response = await fetch(googleScriptUrl, {
+    const response = await fetch(targetUrl, {
       method: 'GET',
       headers: { 'Accept': 'application/json' }
     });
@@ -38,11 +39,12 @@ export const googleSheetsClient = {
     return result.data;
   },
 
-  async insert(sheetName: string, data: any): Promise<void> {
-    if (!isGoogleConfigured) return;
+  async insert(sheetName: string, data: any, customScriptUrl?: string): Promise<void> {
+    const targetUrl = customScriptUrl || googleScriptUrl;
+    if (!targetUrl) return;
     console.log('[Google Sheets Client] Inserting record:', { sheetName, data });
-    console.log('[Google Sheets Client] Target Web App URL:', googleScriptUrl);
-    const response = await fetch(googleScriptUrl, {
+    console.log('[Google Sheets Client] Target Web App URL:', targetUrl);
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
@@ -58,11 +60,12 @@ export const googleSheetsClient = {
     }
   },
 
-  async update(sheetName: string, keyValue: string, data: any, keyName: string = 'id'): Promise<void> {
-    if (!isGoogleConfigured) return;
+  async update(sheetName: string, keyValue: string, data: any, keyName: string = 'id', customScriptUrl?: string): Promise<void> {
+    const targetUrl = customScriptUrl || googleScriptUrl;
+    if (!targetUrl) return;
     console.log('[Google Sheets Client] Updating record:', { sheetName, keyName, keyValue, data });
-    console.log('[Google Sheets Client] Target Web App URL:', googleScriptUrl);
-    const response = await fetch(googleScriptUrl, {
+    console.log('[Google Sheets Client] Target Web App URL:', targetUrl);
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
@@ -80,11 +83,12 @@ export const googleSheetsClient = {
     }
   },
 
-  async delete(sheetName: string, keyValue: string, keyName: string = 'id'): Promise<void> {
-    if (!isGoogleConfigured) return;
+  async delete(sheetName: string, keyValue: string, keyName: string = 'id', customScriptUrl?: string): Promise<void> {
+    const targetUrl = customScriptUrl || googleScriptUrl;
+    if (!targetUrl) return;
     console.log('[Google Sheets Client] Deleting record:', { sheetName, keyName, keyValue });
-    console.log('[Google Sheets Client] Target Web App URL:', googleScriptUrl);
-    const response = await fetch(googleScriptUrl, {
+    console.log('[Google Sheets Client] Target Web App URL:', targetUrl);
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
@@ -101,11 +105,12 @@ export const googleSheetsClient = {
     }
   },
 
-  async upsert(sheetName: string, query: Record<string, string>, data: any): Promise<void> {
-    if (!isGoogleConfigured) return;
+  async upsert(sheetName: string, query: Record<string, string>, data: any, customScriptUrl?: string): Promise<void> {
+    const targetUrl = customScriptUrl || googleScriptUrl;
+    if (!targetUrl) return;
     console.log('[Google Sheets Client] Upserting record:', { sheetName, query, data });
-    console.log('[Google Sheets Client] Target Web App URL:', googleScriptUrl);
-    const response = await fetch(googleScriptUrl, {
+    console.log('[Google Sheets Client] Target Web App URL:', targetUrl);
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
@@ -122,8 +127,9 @@ export const googleSheetsClient = {
     }
   },
 
-  async uploadFile(file: File): Promise<string> {
-    if (!isGoogleConfigured) {
+  async uploadFile(file: File, customScriptUrl?: string): Promise<string> {
+    const targetUrl = customScriptUrl || googleScriptUrl;
+    if (!targetUrl) {
       throw new Error('Google Sheets client is not configured.');
     }
     return new Promise((resolve, reject) => {
@@ -131,7 +137,7 @@ export const googleSheetsClient = {
       reader.onload = async () => {
         try {
           const base64 = (reader.result as string).split(',')[1];
-          const response = await fetch(googleScriptUrl, {
+          const response = await fetch(targetUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify({

@@ -308,17 +308,18 @@ export default function App() {
 
     async function loadData() {
       try {
-        const payload = await googleSheetsClient.loadData();
+        const mainPayload = await googleSheetsClient.loadData();
 
         // Auto-seed if corporate entities is empty (fresh spreadsheet database)
-        if (!payload.corporate_entities || payload.corporate_entities.length === 0) {
+        if (!mainPayload.corporate_entities || mainPayload.corporate_entities.length === 0) {
           await handleSeedDatabase();
           return;
         }
         
         // 1. Fetch corporate entities
-        if (payload.corporate_entities) {
-          const loadedEntities = payload.corporate_entities.map((e: any) => ({
+        let loadedEntities: CorporateEntity[] = [];
+        if (mainPayload.corporate_entities) {
+          loadedEntities = mainPayload.corporate_entities.map((e: any) => ({
             id: e.name || '',
             name: e.name || '',
             registrationNumber: e.registrationNumber || '',
@@ -329,7 +330,8 @@ export default function App() {
             currency: e.currency || 'RM',
             isActive: String(e.isActive) !== 'false' && e.isActive !== false,
             theme: e.theme as any,
-            logoUrl: e.logoUrl || ''
+            logoUrl: e.logoUrl || '',
+            googleScriptUrl: e.googleScriptUrl || ''
           }));
           setEntities(loadedEntities);
           if (loadedEntities.length > 0) {
@@ -337,272 +339,336 @@ export default function App() {
           }
         }
 
-        // 2. Fetch employees
-        if (payload.employees) {
-          setEmployees(payload.employees.map((e: any) => {
-            let careerHistory = [];
-            let dependants = [];
-            let historicalPayrollRecords = [];
-            let effectiveDatedProfiles = [];
-            let historicalPcbResults = [];
-            let historicalVariances = [];
-            let tp1Declarations = [];
-            let tp3Data = undefined;
-            
-            try {
-              if (e.careerHistory && typeof e.careerHistory === 'string') {
-                careerHistory = JSON.parse(e.careerHistory);
-              } else if (Array.isArray(e.careerHistory)) {
-                careerHistory = e.careerHistory;
-              }
-            } catch (err) {
-              console.error('Error parsing career history for employee', e.id, err);
-            }
-            try {
-              if (e.dependants && typeof e.dependants === 'string') {
-                dependants = JSON.parse(e.dependants);
-              } else if (Array.isArray(e.dependants)) {
-                dependants = e.dependants;
-              }
-            } catch (err) {
-              console.error('Error parsing dependants for employee', e.id, err);
-            }
-            try {
-              if (e.historicalPayrollRecords && typeof e.historicalPayrollRecords === 'string') {
-                historicalPayrollRecords = JSON.parse(e.historicalPayrollRecords);
-              } else if (Array.isArray(e.historicalPayrollRecords)) {
-                historicalPayrollRecords = e.historicalPayrollRecords;
-              }
-            } catch (err) {
-              console.error('Error parsing historicalPayrollRecords for employee', e.id, err);
-            }
-            try {
-              if (e.effectiveDatedProfiles && typeof e.effectiveDatedProfiles === 'string') {
-                effectiveDatedProfiles = JSON.parse(e.effectiveDatedProfiles);
-              } else if (Array.isArray(e.effectiveDatedProfiles)) {
-                effectiveDatedProfiles = e.effectiveDatedProfiles;
-              }
-            } catch (err) {
-              console.error('Error parsing effectiveDatedProfiles for employee', e.id, err);
-            }
-            try {
-              if (e.historicalPcbResults && typeof e.historicalPcbResults === 'string') {
-                historicalPcbResults = JSON.parse(e.historicalPcbResults);
-              } else if (Array.isArray(e.historicalPcbResults)) {
-                historicalPcbResults = e.historicalPcbResults;
-              }
-            } catch (err) {
-              console.error('Error parsing historicalPcbResults for employee', e.id, err);
-            }
-            try {
-              if (e.historicalVariances && typeof e.historicalVariances === 'string') {
-                historicalVariances = JSON.parse(e.historicalVariances);
-              } else if (Array.isArray(e.historicalVariances)) {
-                historicalVariances = e.historicalVariances;
-              }
-            } catch (err) {
-              console.error('Error parsing historicalVariances for employee', e.id, err);
-            }
-            try {
-              if (e.tp1Declarations && typeof e.tp1Declarations === 'string') {
-                tp1Declarations = JSON.parse(e.tp1Declarations);
-              } else if (Array.isArray(e.tp1Declarations)) {
-                tp1Declarations = e.tp1Declarations;
-              }
-            } catch (err) {
-              console.error('Error parsing tp1Declarations for employee', e.id, err);
-            }
-            try {
-              if (e.tp3Data && typeof e.tp3Data === 'string') {
-                tp3Data = JSON.parse(e.tp3Data);
-              } else if (typeof e.tp3Data === 'object' && e.tp3Data !== null) {
-                tp3Data = e.tp3Data;
-              }
-            } catch (err) {
-              console.error('Error parsing tp3Data for employee', e.id, err);
-            }
-            let salaryAdjustments = [];
-            try {
-              if (e.salaryAdjustments && typeof e.salaryAdjustments === 'string') {
-                salaryAdjustments = JSON.parse(e.salaryAdjustments);
-              } else if (Array.isArray(e.salaryAdjustments)) {
-                salaryAdjustments = e.salaryAdjustments;
-              }
-            } catch (err) {
-              console.error('Error parsing salaryAdjustments for employee', e.id, err);
-            }
-            let resolvedEntityId = e.entityName || e.entityId || '';
-            if (resolvedEntityId === 'ENT-01' || resolvedEntityId === 'ENT-92') {
-              resolvedEntityId = 'Red Point Sdn Bhd';
-            } else if (resolvedEntityId === 'ENT-02' || resolvedEntityId === 'ENT-86') {
-              resolvedEntityId = 'YSYD Sdn Bhd';
-            }
+        // 1.5. Group and load other payloads from individual scripts
+        const payloadsByUrl: Record<string, SheetsDataPayload> = {};
+        payloadsByUrl['default'] = mainPayload;
 
-            return {
-              id: e.email || '',
-              entityId: resolvedEntityId,
-              name: e.name,
-              email: e.email,
-              designation: e.designation,
-              department: e.department,
-              status: e.status as any,
-              bankName: e.bankName,
-              accountNo: e.accountNo,
-              basicSalary: Number(e.basicSalary || 0),
-              housingAllowance: Number(e.housingAllowance || 0),
-              transportAllowance: Number(e.transportAllowance || 0),
-              overtime: Number(e.overtime || 0),
-              performanceBonus: Number(e.performanceBonus || 0),
-              epfRateEmployee: Number(e.epfRateEmployee || 11),
-              epfRateEmployer: Number(e.epfRateEmployer || 13),
-              socsoEmployee: Number(e.socsoEmployee || 0),
-              socsoEmployer: Number(e.socsoEmployer || 0),
-              eisEmployee: Number(e.eisEmployee || 0),
-              eisEmployer: Number(e.eisEmployer || 0),
-              taxPcb: Number(e.taxPcb || 0),
-              unpaidLeave: Number(e.unpaidLeave || 0),
-              hrdCorp: Number(e.hrdCorp || 0),
-              avatarUrl: e.avatarUrl || undefined,
-              nricPassport: e.nricPassport || '',
-              nationality: e.nationality || '',
-              contactNumber: e.contactNumber || '',
-              taxNumber: e.taxNumber || '',
-              epfNumber: e.epfNumber || '',
-              employmentType: e.employmentType || 'Confirmation',
-              maritalStatus: e.maritalStatus || 'Single',
-              eligibleForStatutory: e.eligibleForStatutory || 'Yes',
-              emergencyContactName: e.emergencyContactName || '',
-              emergencyContactRelation: e.emergencyContactRelation || '',
-              emergencyContactPhone: e.emergencyContactPhone || '',
-              dateOfJoined: e.dateOfJoined || '',
-              dateOfConfirmation: e.dateOfConfirmation || '',
-              allowanceGeneral: Number(e.allowanceGeneral || 0),
-              allowanceTransport: Number(e.allowanceTransport !== undefined ? e.allowanceTransport : e.transportAllowance || 0),
-              allowanceParking: Number(e.allowanceParking || 0),
-              allowanceMeal: Number(e.allowanceMeal || 0),
-              allowanceAccommodation: Number(e.allowanceAccommodation !== undefined ? e.allowanceAccommodation : e.housingAllowance || 0),
-              allowancePhone: Number(e.allowancePhone || 0),
-              reimbursementAmount: Number(e.reimbursementAmount || 0),
-              reimbursementDesc: e.reimbursementDesc || '',
-              bonusAmount: Number(e.bonusAmount !== undefined ? e.bonusAmount : e.performanceBonus || 0),
-              bonusDesc: e.bonusDesc || '',
-              commissionAmount: Number(e.commissionAmount || 0),
-              commissionDesc: e.commissionDesc || '',
-              backPayAmount: Number(e.backPayAmount || 0),
-              backPayDesc: e.backPayDesc || '',
-              awsAmount: Number(e.awsAmount || 0),
-              awsDesc: e.awsDesc || '',
-              compensationAmount: Number(e.compensationAmount || 0),
-              compensationDesc: e.compensationDesc || '',
-              deductionInLieu: Number(e.deductionInLieu || 0),
-              deductionCp38: Number(e.deductionCp38 || 0),
-              deductionOthers: Number(e.deductionOthers || 0),
-              deductionOthersDesc: e.deductionOthersDesc || '',
-              spouseName: e.spouseName || '',
-              spouseNric: e.spouseNric || '',
-              spouseIsWorking: e.spouseIsWorking || 'No',
-              spouseCompany: e.spouseCompany || '',
-              spousePosition: e.spousePosition || '',
-              hasDependants: e.hasDependants || 'No',
-              icFrontUrl: e.icFrontUrl || '',
-              icBackUrl: e.icBackUrl || '',
-              educationCertUrl: e.educationCertUrl || '',
-              skbbkEmployee: Number(e.skbbkEmployee || 0),
-              skbbkEmployer: Number(e.skbbkEmployer || 0),
-              careerHistory,
-              dependants,
-              historicalPayrollRecords,
-              effectiveDatedProfiles,
-              historicalPcbResults,
-              historicalVariances,
-              tp1Declarations,
-              tp3Data,
-              salaryAdjustments
-            };
-          }));
+        const customUrlFetchPromises = loadedEntities
+          .filter(e => e.googleScriptUrl && e.googleScriptUrl.trim() !== '')
+          .map(async (ent) => {
+            const url = ent.googleScriptUrl!.trim();
+            if (payloadsByUrl[url]) return;
+            try {
+              console.log(`[Multi-Script] Fetching data for entity ${ent.name} from:`, url);
+              const customPayload = await googleSheetsClient.loadData(url);
+              payloadsByUrl[url] = customPayload;
+            } catch (fetchErr) {
+              console.error(`[Multi-Script] Failed to load data for entity ${ent.name} from:`, url, fetchErr);
+            }
+          });
+
+        await Promise.all(customUrlFetchPromises);
+
+        const allRawEmployees: any[] = [];
+        const allRawPerformances: any[] = [];
+        const allRawPayrollRecords: any[] = [];
+        const allRawCandidates: any[] = [];
+
+        for (const [url, payload] of Object.entries(payloadsByUrl)) {
+          const isDefault = url === 'default';
+
+          if (payload.employees) {
+            payload.employees.forEach((e: any) => {
+              let resolvedEntity = e.entityName || e.entityId || '';
+              if (resolvedEntity === 'ENT-01' || resolvedEntity === 'ENT-92') {
+                resolvedEntity = 'Red Point Sdn Bhd';
+              } else if (resolvedEntity === 'ENT-02' || resolvedEntity === 'ENT-86') {
+                resolvedEntity = 'YSYD Sdn Bhd';
+              }
+
+              const expectedEnt = loadedEntities.find(ent => ent.name === resolvedEntity);
+              const expectedUrl = expectedEnt?.googleScriptUrl || '';
+
+              const matchesUrl = isDefault 
+                ? (expectedUrl.trim() === '') 
+                : (expectedUrl.trim() === url);
+
+              if (matchesUrl) {
+                allRawEmployees.push(e);
+              }
+            });
+          }
+
+          if (payload.performances) {
+            payload.performances.forEach((p: any) => {
+              allRawPerformances.push(p);
+            });
+          }
+
+          if (payload.payroll_records_2026) {
+            payload.payroll_records_2026.forEach((r: any) => {
+              allRawPayrollRecords.push(r);
+            });
+          }
+
+          if (payload.candidates) {
+            payload.candidates.forEach((c: any) => {
+              allRawCandidates.push(c);
+            });
+          }
         }
 
-        // 3. Fetch appraisal / performances
-        if (payload.performances) {
-          setPerformances(payload.performances.map((p: any) => {
-            let goals = [];
+        // Deduplicate using Map to ensure zero overlap/duplicate keys
+        const uniqueEmployees = Array.from(new Map(allRawEmployees.map(e => [String(e.email || '').toLowerCase(), e])).values());
+        const uniquePerformances = Array.from(new Map(allRawPerformances.map(p => [`${String(p.employeeEmail || p.employeeId || '').toLowerCase()}_${p.reviewCycleId}`, p])).values());
+        const uniquePayrollRecords = Array.from(new Map(allRawPayrollRecords.map(r => [r.id || `${r.employeeEmail}_${r.payrollMonth}_${r.payrollYear}`, r])).values());
+        const uniqueCandidates = Array.from(new Map(allRawCandidates.map(c => [c.id || c.email || c.name, c])).values());
+
+        // Parse employees
+        setEmployees(uniqueEmployees.map((e: any) => {
+          let careerHistory = [];
+          let dependants = [];
+          let historicalPayrollRecords = [];
+          let effectiveDatedProfiles = [];
+          let historicalPcbResults = [];
+          let historicalVariances = [];
+          let tp1Declarations = [];
+          let tp3Data = undefined;
+          
+          try {
+            if (e.careerHistory && typeof e.careerHistory === 'string') {
+              careerHistory = JSON.parse(e.careerHistory);
+            } else if (Array.isArray(e.careerHistory)) {
+              careerHistory = e.careerHistory;
+            }
+          } catch (err) {
+            console.error('Error parsing career history for employee', e.id, err);
+          }
+          try {
+            if (e.dependants && typeof e.dependants === 'string') {
+              dependants = JSON.parse(e.dependants);
+            } else if (Array.isArray(e.dependants)) {
+              dependants = e.dependants;
+            }
+          } catch (err) {
+            console.error('Error parsing dependants for employee', e.id, err);
+          }
+          try {
+            if (e.historicalPayrollRecords && typeof e.historicalPayrollRecords === 'string') {
+              historicalPayrollRecords = JSON.parse(e.historicalPayrollRecords);
+            } else if (Array.isArray(e.historicalPayrollRecords)) {
+              historicalPayrollRecords = e.historicalPayrollRecords;
+            }
+          } catch (err) {
+            console.error('Error parsing historicalPayrollRecords for employee', e.id, err);
+          }
+          try {
+            if (e.effectiveDatedProfiles && typeof e.effectiveDatedProfiles === 'string') {
+              effectiveDatedProfiles = JSON.parse(e.effectiveDatedProfiles);
+            } else if (Array.isArray(e.effectiveDatedProfiles)) {
+              effectiveDatedProfiles = e.effectiveDatedProfiles;
+            }
+          } catch (err) {
+            console.error('Error parsing effectiveDatedProfiles for employee', e.id, err);
+          }
+          try {
+            if (e.historicalPcbResults && typeof e.historicalPcbResults === 'string') {
+              historicalPcbResults = JSON.parse(e.historicalPcbResults);
+            } else if (Array.isArray(e.historicalPcbResults)) {
+              historicalPcbResults = e.historicalPcbResults;
+            }
+          } catch (err) {
+            console.error('Error parsing historicalPcbResults for employee', e.id, err);
+          }
+          try {
+            if (e.historicalVariances && typeof e.historicalVariances === 'string') {
+              historicalVariances = JSON.parse(e.historicalVariances);
+            } else if (Array.isArray(e.historicalVariances)) {
+              historicalVariances = e.historicalVariances;
+            }
+          } catch (err) {
+            console.error('Error parsing historicalVariances for employee', e.id, err);
+          }
+          try {
+            if (e.tp1Declarations && typeof e.tp1Declarations === 'string') {
+              tp1Declarations = JSON.parse(e.tp1Declarations);
+            } else if (Array.isArray(e.tp1Declarations)) {
+              tp1Declarations = e.tp1Declarations;
+            }
+          } catch (err) {
+            console.error('Error parsing tp1Declarations for employee', e.id, err);
+          }
+          try {
+            if (e.tp3Data && typeof e.tp3Data === 'string') {
+              tp3Data = JSON.parse(e.tp3Data);
+            } else if (typeof e.tp3Data === 'object' && e.tp3Data !== null) {
+              tp3Data = e.tp3Data;
+            }
+          } catch (err) {
+            console.error('Error parsing tp3Data for employee', e.id, err);
+          }
+          let salaryAdjustments = [];
+          try {
+            if (e.salaryAdjustments && typeof e.salaryAdjustments === 'string') {
+              salaryAdjustments = JSON.parse(e.salaryAdjustments);
+            } else if (Array.isArray(e.salaryAdjustments)) {
+              salaryAdjustments = e.salaryAdjustments;
+            }
+          } catch (err) {
+            console.error('Error parsing salaryAdjustments for employee', e.id, err);
+          }
+          let resolvedEntityId = e.entityName || e.entityId || '';
+          if (resolvedEntityId === 'ENT-01' || resolvedEntityId === 'ENT-92') {
+            resolvedEntityId = 'Red Point Sdn Bhd';
+          } else if (resolvedEntityId === 'ENT-02' || resolvedEntityId === 'ENT-86') {
+            resolvedEntityId = 'YSYD Sdn Bhd';
+          }
+
+          return {
+            id: e.email || '',
+            entityId: resolvedEntityId,
+            name: e.name || '',
+            email: e.email || '',
+            designation: e.designation || '',
+            department: e.department || '',
+            status: (e.status || 'Active') as any,
+            bankName: e.bankName || '',
+            accountNo: e.accountNo || '',
+            basicSalary: Number(e.basicSalary || 0),
+            housingAllowance: Number(e.housingAllowance || 0),
+            transportAllowance: Number(e.transportAllowance || 0),
+            overtime: Number(e.overtime || 0),
+            performanceBonus: Number(e.performanceBonus || 0),
+            epfRateEmployee: Number(e.epfRateEmployee !== undefined ? e.epfRateEmployee : 11),
+            epfRateEmployer: Number(e.epfRateEmployer !== undefined ? e.epfRateEmployer : 13),
+            socsoEmployee: Number(e.socsoEmployee || 0),
+            socsoEmployer: Number(e.socsoEmployer || 0),
+            eisEmployee: Number(e.eisEmployee || 0),
+            eisEmployer: Number(e.eisEmployer || 0),
+            taxPcb: Number(e.taxPcb || 0),
+            unpaidLeave: Number(e.unpaidLeave || 0),
+            hrdCorp: Number(e.hrdCorp || 0),
+            avatarUrl: e.avatarUrl || '',
+            nricPassport: e.nricPassport || '',
+            nationality: e.nationality || 'Malaysian',
+            contactNumber: e.contactNumber || '',
+            taxNumber: e.taxNumber || '',
+            epfNumber: e.epfNumber || '',
+            employmentType: e.employmentType || 'Confirmation',
+            maritalStatus: e.maritalStatus || 'Single',
+            eligibleForStatutory: e.eligibleForStatutory || 'Yes',
+            emergencyContactName: e.emergencyContactName || '',
+            emergencyContactRelation: e.emergencyContactRelation || '',
+            emergencyContactPhone: e.emergencyContactPhone || '',
+            dateOfJoined: e.dateOfJoined || '',
+            dateOfConfirmation: e.dateOfConfirmation || '',
+            careerHistory,
+            dependants,
+            allowanceGeneral: Number(e.allowanceGeneral || 0),
+            allowanceTransport: Number(e.allowanceTransport || 0),
+            allowanceParking: Number(e.allowanceParking || 0),
+            allowanceMeal: Number(e.allowanceMeal || 0),
+            allowanceAccommodation: Number(e.allowanceAccommodation || 0),
+            allowancePhone: Number(e.allowancePhone || 0),
+            reimbursementAmount: Number(e.reimbursementAmount || 0),
+            reimbursementDesc: e.reimbursementDesc || '',
+            bonusAmount: Number(e.bonusAmount || 0),
+            bonusDesc: e.bonusDesc || '',
+            commissionAmount: Number(e.commissionAmount || 0),
+            commissionDesc: e.commissionDesc || '',
+            backPayAmount: Number(e.backPayAmount || 0),
+            backPayDesc: e.backPayDesc || '',
+            awsAmount: Number(e.awsAmount || 0),
+            awsDesc: e.awsDesc || '',
+            compensationAmount: Number(e.compensationAmount || 0),
+            compensationDesc: e.compensationDesc || '',
+            deductionInLieu: Number(e.deductionInLieu || 0),
+            deductionCp38: Number(e.deductionCp38 || 0),
+            deductionOthers: Number(e.deductionOthers || 0),
+            deductionOthersDesc: e.deductionOthersDesc || '',
+            spouseName: e.spouseName || '',
+            spouseNric: e.spouseNric || '',
+            spouseIsWorking: e.spouseIsWorking || 'No',
+            spouseCompany: e.spouseCompany || '',
+            spousePosition: e.spousePosition || '',
+            hasDependants: e.hasDependants || 'No',
+            icFrontUrl: e.icFrontUrl || '',
+            icBackUrl: e.icBackUrl || '',
+            educationCertUrl: e.educationCertUrl || '',
+            skbbkEmployee: Number(e.skbbkEmployee || 0),
+            skbbkEmployer: Number(e.skbbkEmployer || 0),
+            historicalPayrollRecords,
+            effectiveDatedProfiles,
+            historicalPcbResults,
+            historicalVariances,
+            tp1Declarations,
+            tp3Data,
+            salaryAdjustments
+          };
+        }));
+
+        // Parse performances
+        setPerformances(uniquePerformances.map((p: any) => ({
+          employeeId: p.employeeEmail || p.employeeId || '',
+          reviewCycleId: p.reviewCycleId || '',
+          managerName: p.managerName || '',
+          reviewStatus: p.reviewStatus || 'Not Started',
+          rating: Number(p.rating || 0),
+          teamworkScore: Number(p.teamworkScore || 0),
+          communicationScore: Number(p.communicationScore || 0),
+          problemSolvingScore: Number(p.problemSolvingScore || 0),
+          selfEvaluation: p.selfEvaluation || '',
+          managerComments: p.managerComments || '',
+          goals: (() => {
             try {
               if (p.goals && typeof p.goals === 'string') {
-                goals = JSON.parse(p.goals);
-              } else if (Array.isArray(p.goals)) {
-                goals = p.goals;
+                return JSON.parse(p.goals);
               }
+              return Array.isArray(p.goals) ? p.goals : [];
             } catch (err) {
-              console.error('Error parsing goals for performance', p.employeeId, err);
+              return [];
             }
-            return {
-              employeeId: p.employeeEmail || p.employeeId || '',
-              reviewCycleId: p.reviewCycleId,
-              managerName: p.managerName || '',
-              reviewStatus: p.reviewStatus || 'Not Started',
-              rating: Number(p.rating || 0),
-              teamworkScore: Number(p.teamworkScore || 0),
-              communicationScore: Number(p.communicationScore || 0),
-              problemSolvingScore: Number(p.problemSolvingScore || 0),
-              selfEvaluation: p.selfEvaluation || '',
-              managerComments: p.managerComments || '',
-              goals
-            };
-          }));
-        }
+          })()
+        })));
 
-        // 4. Fetch candidates
-        if (payload.candidates) {
-          setCandidates(payload.candidates.map((c: any) => ({
-            id: c.id,
-            name: c.name,
-            email: c.email,
-            phone: c.phone,
-            designation: c.designation,
-            department: c.department || 'Engineering',
-            entityId: c.entityName || c.entityId || '',
-            stage: c.stage as any,
-            progress: Number(c.progress || 0),
-            dateJoined: c.dateJoined || ''
-          })));
-        }
+        // Parse candidates
+        setCandidates(uniqueCandidates.map((c: any) => ({
+          id: c.id || '',
+          name: c.name || '',
+          email: c.email || '',
+          phone: c.phone || '',
+          designation: c.designation || '',
+          department: c.department || 'Engineering',
+          entityId: c.entityName || c.entityId || '',
+          stage: c.stage as any,
+          progress: Number(c.progress || 0),
+          dateJoined: c.dateJoined || ''
+        })));
 
-        // 5. Fetch payroll records for 2026
-        if (payload.payroll_records_2026) {
-          setPayrollRecords2026(payload.payroll_records_2026.map((r: any) => ({
-            id: r.id || '',
-            employeeEmail: r.employeeEmail || '',
-            payrollMonth: Number(r.payrollMonth || 1),
-            payrollYear: Number(r.payrollYear || 2026),
-            basicSalary: Number(r.basicSalary || 0),
-            allowanceGeneral: Number(r.allowanceGeneral || 0),
-            allowanceTransport: Number(r.allowanceTransport || 0),
-            allowanceParking: Number(r.allowanceParking || 0),
-            allowanceMeal: Number(r.allowanceMeal || 0),
-            allowanceAccommodation: Number(r.allowanceAccommodation || 0),
-            allowancePhone: Number(r.allowancePhone || 0),
-            overtime: Number(r.overtime || 0),
-            bonusAmount: Number(r.bonusAmount || 0),
-            commissionAmount: Number(r.commissionAmount || 0),
-            backPayAmount: Number(r.backPayAmount || 0),
-            awsAmount: Number(r.awsAmount || 0),
-            compensationAmount: Number(r.compensationAmount || 0),
-            reimbursementAmount: Number(r.reimbursementAmount || 0),
-            unpaidLeave: Number(r.unpaidLeave || 0),
-            deductionInLieu: Number(r.deductionInLieu || 0),
-            deductionCp38: Number(r.deductionCp38 || 0),
-            deductionOthers: Number(r.deductionOthers || 0),
-            actualPCBDeducted: Number(r.actualPCBDeducted || 0),
-            epfEmployee: Number(r.epfEmployee || 0),
-            epfEmployer: Number(r.epfEmployer || 0),
-            socsoEmployee: Number(r.socsoEmployee || 0),
-            socsoEmployer: Number(r.socsoEmployer || 0),
-            eisEmployee: Number(r.eisEmployee || 0),
-            eisEmployer: Number(r.eisEmployer || 0),
-            netPay: Number(r.netPay || 0),
-            createdAt: r.createdAt || ''
-          })));
-        }
+        // Parse payroll records
+        setPayrollRecords2026(uniquePayrollRecords.map((r: any) => ({
+          id: r.id || '',
+          employeeEmail: r.employeeEmail || '',
+          payrollMonth: Number(r.payrollMonth || 1),
+          payrollYear: Number(r.payrollYear || 2026),
+          basicSalary: Number(r.basicSalary || 0),
+          allowanceGeneral: Number(r.allowanceGeneral || 0),
+          allowanceTransport: Number(r.allowanceTransport || 0),
+          allowanceParking: Number(r.allowanceParking || 0),
+          allowanceMeal: Number(r.allowanceMeal || 0),
+          allowanceAccommodation: Number(r.allowanceAccommodation || 0),
+          allowancePhone: Number(r.allowancePhone || 0),
+          overtime: Number(r.overtime || 0),
+          bonusAmount: Number(r.bonusAmount || 0),
+          commissionAmount: Number(r.commissionAmount || 0),
+          backPayAmount: Number(r.backPayAmount || 0),
+          awsAmount: Number(r.awsAmount || 0),
+          compensationAmount: Number(r.compensationAmount || 0),
+          reimbursementAmount: Number(r.reimbursementAmount || 0),
+          unpaidLeave: Number(r.unpaidLeave || 0),
+          deductionInLieu: Number(r.deductionInLieu || 0),
+          deductionCp38: Number(r.deductionCp38 || 0),
+          deductionOthers: Number(r.deductionOthers || 0),
+          actualPCBDeducted: Number(r.actualPCBDeducted || 0),
+          epfEmployee: Number(r.epfEmployee || 0),
+          epfEmployer: Number(r.epfEmployer || 0),
+          socsoEmployee: Number(r.socsoEmployee || 0),
+          socsoEmployer: Number(r.socsoEmployer || 0),
+          eisEmployee: Number(r.eisEmployee || 0),
+          eisEmployer: Number(r.eisEmployer || 0),
+          netPay: Number(r.netPay || 0),
+          createdAt: r.createdAt || ''
+        })));
       } catch (err) {
         console.error('[Google Sheets Load] Error loading database tables:', err);
       } finally {
@@ -734,12 +800,29 @@ export default function App() {
     }
   }, [toast.show]);
 
+  const getScriptUrlForEntity = (entityNameOrId?: string): string | undefined => {
+    if (!entityNameOrId) return undefined;
+    
+    let name = entityNameOrId;
+    if (name === 'ENT-01' || name === 'ENT-92') {
+      name = 'Red Point Sdn Bhd';
+    } else if (name === 'ENT-02' || name === 'ENT-86') {
+      name = 'YSYD Sdn Bhd';
+    }
+
+    const ent = entities.find(e => e.name === name || e.id === name);
+    return ent?.googleScriptUrl && ent.googleScriptUrl.trim() !== '' 
+      ? ent.googleScriptUrl.trim() 
+      : undefined;
+  };
+
   // Database Action Mutators
   const handleAddCandidate = async (newCandidate: Candidate) => {
     setCandidates(prev => [...prev, newCandidate]);
 
     if (isGoogleConfigured) {
       try {
+        const scriptUrl = getScriptUrlForEntity(newCandidate.entityId);
         await googleSheetsClient.insert('candidates', {
           id: newCandidate.id,
           name: newCandidate.name,
@@ -751,7 +834,7 @@ export default function App() {
           stage: newCandidate.stage,
           progress: newCandidate.progress,
           dateJoined: newCandidate.dateJoined
-        });
+        }, scriptUrl);
       } catch (err) {
         console.error('[Google Sheets Candidate Insert] Failed:', err);
         triggerNotification('Sync Failed', 'Could not save new candidate to Google Sheets.', 'info');
@@ -764,12 +847,14 @@ export default function App() {
 
     if (isGoogleConfigured) {
       try {
+        const candidateObj = candidates.find(c => c.id === id);
+        const scriptUrl = getScriptUrlForEntity(updates.entityId || candidateObj?.entityId);
         const payloadUpdates: any = { ...updates };
         if (updates.entityId !== undefined) {
           payloadUpdates.entityName = updates.entityId;
           delete payloadUpdates.entityId;
         }
-        await googleSheetsClient.update('candidates', id, payloadUpdates, 'id');
+        await googleSheetsClient.update('candidates', id, payloadUpdates, 'id', scriptUrl);
       } catch (err) {
         console.error('[Google Sheets Candidate Update] Failed:', err);
         triggerNotification('Sync Failed', 'Could not update candidate in Google Sheets.', 'info');
@@ -782,6 +867,7 @@ export default function App() {
 
     if (isGoogleConfigured) {
       try {
+        const scriptUrl = getScriptUrlForEntity(newEmployee.entityId);
         await googleSheetsClient.insert('employees', {
           entityName: newEmployee.entityId,
           name: newEmployee.name,
@@ -855,7 +941,7 @@ export default function App() {
           careerHistory: JSON.stringify(newEmployee.careerHistory || []),
           dependants: JSON.stringify(newEmployee.dependants || []),
           salaryAdjustments: JSON.stringify(newEmployee.salaryAdjustments || [])
-        });
+        }, scriptUrl);
 
         await googleSheetsClient.insert('audit_logs', {
           id: `log_${Date.now()}`,
@@ -865,7 +951,7 @@ export default function App() {
           oldValue: '',
           newValue: JSON.stringify(newEmployee),
           createdAt: getGmt8Timestamp()
-        });
+        }, scriptUrl);
       } catch (err: any) {
         console.error('[Google Sheets Insert] Failed to insert employee:', err);
         triggerNotification('Sync Failed', `Could not save new employee: ${err.message || err}`, 'info');
@@ -881,7 +967,8 @@ export default function App() {
 
     if (isGoogleConfigured) {
       try {
-        await googleSheetsClient.delete('employees', lookupKey, 'name');
+        const scriptUrl = getScriptUrlForEntity(targetEmp?.entityId);
+        await googleSheetsClient.delete('employees', lookupKey, 'name', scriptUrl);
 
         await googleSheetsClient.insert('audit_logs', {
           id: `log_${Date.now()}`,
@@ -891,7 +978,7 @@ export default function App() {
           oldValue: `Employee Email: ${lookupKey}`,
           newValue: '',
           createdAt: getGmt8Timestamp()
-        });
+        }, scriptUrl);
       } catch (err) {
         console.error('[Google Sheets Delete] Failed to delete employee:', err);
       }
@@ -984,7 +1071,8 @@ export default function App() {
         if (updates.salaryAdjustments !== undefined) payloadUpdates.salaryAdjustments = JSON.stringify(updates.salaryAdjustments);
 
         const lookupKey = oldEmp?.name || id;
-        await googleSheetsClient.update('employees', lookupKey, payloadUpdates, 'name');
+        const scriptUrl = getScriptUrlForEntity(updates.entityId || oldEmp?.entityId);
+        await googleSheetsClient.update('employees', lookupKey, payloadUpdates, 'name', scriptUrl);
 
         await googleSheetsClient.insert('audit_logs', {
           id: `log_${Date.now()}`,
@@ -994,7 +1082,7 @@ export default function App() {
           oldValue: JSON.stringify(oldEmp),
           newValue: JSON.stringify(updates),
           createdAt: getGmt8Timestamp()
-        });
+        }, scriptUrl);
       } catch (err: any) {
         console.error('[Google Sheets Update] Failed to update employee:', err);
         triggerNotification('Sync Failed', `Could not update employee: ${err.message || err}`, 'info');
@@ -1015,12 +1103,14 @@ export default function App() {
 
     if (isGoogleConfigured) {
       try {
+        const emp = employees.find(e => e.email?.toLowerCase() === record.employeeEmail?.toLowerCase());
+        const scriptUrl = getScriptUrlForEntity(emp?.entityId);
         try {
-          await googleSheetsClient.update('payroll_records_2026', record.id, record, 'id');
+          await googleSheetsClient.update('payroll_records_2026', record.id, record, 'id', scriptUrl);
           console.log('[Google Sheets] Updated payroll record successfully:', record.id);
         } catch (updateErr: any) {
           console.warn('[Google Sheets] Update failed or record not found, inserting:', updateErr);
-          await googleSheetsClient.insert('payroll_records_2026', record);
+          await googleSheetsClient.insert('payroll_records_2026', record, scriptUrl);
           console.log('[Google Sheets] Inserted payroll record successfully:', record.id);
         }
       } catch (err: any) {
@@ -1042,6 +1132,8 @@ export default function App() {
 
     if (isGoogleConfigured) {
       try {
+        const emp = employees.find(e => e.email?.toLowerCase() === updatedPerf.employeeId?.toLowerCase());
+        const scriptUrl = getScriptUrlForEntity(emp?.entityId);
         const payloadPerf = {
           employeeEmail: updatedPerf.employeeId,
           reviewCycleId: updatedPerf.reviewCycleId,
@@ -1059,7 +1151,7 @@ export default function App() {
         await googleSheetsClient.upsert('performances', {
           employeeEmail: updatedPerf.employeeId,
           reviewCycleId: updatedPerf.reviewCycleId
-        }, payloadPerf);
+        }, payloadPerf, scriptUrl);
       } catch (err) {
         console.error('[Google Sheets Save Performance] Failed:', err);
       }
@@ -1081,7 +1173,8 @@ export default function App() {
           currency: newEntity.currency,
           isActive: newEntity.isActive,
           theme: newEntity.theme,
-          logoUrl: newEntity.logoUrl || ''
+          logoUrl: newEntity.logoUrl || '',
+          googleScriptUrl: newEntity.googleScriptUrl || ''
         });
       } catch (err: any) {
         console.error('[Google Sheets Entity Insert] Failed:', err);
@@ -1123,6 +1216,7 @@ export default function App() {
         if (updates.isActive !== undefined) payloadUpdates.isActive = updates.isActive;
         if (updates.theme !== undefined) payloadUpdates.theme = updates.theme;
         if (updates.logoUrl !== undefined) payloadUpdates.logoUrl = updates.logoUrl;
+        if (updates.googleScriptUrl !== undefined) payloadUpdates.googleScriptUrl = updates.googleScriptUrl;
 
         await googleSheetsClient.update('corporate_entities', id, payloadUpdates, 'name');
       } catch (err: any) {
@@ -1517,7 +1611,8 @@ export default function App() {
 
                           try {
                             triggerNotification('Uploading Logo', 'Uploading company logo to Google Drive...', 'info');
-                            const publicUrl = await googleSheetsClient.uploadFile(file);
+                            const scriptUrl = getScriptUrlForEntity(activeEntity?.id);
+                            const publicUrl = await googleSheetsClient.uploadFile(file, scriptUrl);
                             setCompanyLogoUrl(publicUrl);
                             triggerNotification('Logo Uploaded', 'New company logo uploaded successfully. Click Apply System Changes to save.', 'success');
                           } catch (err: any) {

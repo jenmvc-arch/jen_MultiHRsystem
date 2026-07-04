@@ -51,6 +51,7 @@ export default function EntitiesView({
   const [formIsActive, setFormIsActive] = useState<boolean>(true);
   const [formLogoUrl, setFormLogoUrl] = useState('');
   const [formTheme, setFormTheme] = useState<'theme1' | 'theme2' | 'theme3'>('theme1');
+  const [formGoogleScriptUrl, setFormGoogleScriptUrl] = useState('');
 
   // Active viewing state to list registered employees under a clicked subsidiary card
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
@@ -77,7 +78,7 @@ export default function EntitiesView({
 
     try {
       onShowNotification('Uploading Logo', 'Uploading company logo to Google Drive...');
-      const publicUrl = await googleSheetsClient.uploadFile(file);
+      const publicUrl = await googleSheetsClient.uploadFile(file, editingEntity?.googleScriptUrl || undefined);
       setFormLogoUrl(publicUrl);
       onShowNotification('Logo Uploaded', 'Company logo uploaded successfully.');
     } catch (err: any) {
@@ -97,6 +98,7 @@ export default function EntitiesView({
     setFormIsActive(true);
     setFormLogoUrl('');
     setFormTheme('theme1');
+    setFormGoogleScriptUrl('');
     setIsAddModalOpen(true);
   };
 
@@ -112,6 +114,7 @@ export default function EntitiesView({
     setFormIsActive(entity.isActive);
     setFormLogoUrl(entity.logoUrl || '');
     setFormTheme(entity.theme || 'theme1');
+    setFormGoogleScriptUrl(entity.googleScriptUrl || '');
     setIsEditModalOpen(true);
   };
 
@@ -136,6 +139,7 @@ export default function EntitiesView({
       isActive: formIsActive,
       logoUrl: formLogoUrl || undefined,
       theme: formTheme,
+      googleScriptUrl: formGoogleScriptUrl || undefined
     };
 
     onAddEntity(newEntity);
@@ -166,6 +170,7 @@ export default function EntitiesView({
       isActive: formIsActive,
       logoUrl: formLogoUrl || undefined,
       theme: formTheme,
+      googleScriptUrl: formGoogleScriptUrl
     };
 
     onUpdateEntity(editingEntity.id, updates);
@@ -530,21 +535,21 @@ export default function EntitiesView({
                     <option value="theme2">Theme 2: Red & Beige Bold Modern Professional</option>
                     <option value="theme3">Theme 3: Black & Gold Premium High-Contrast</option>
                   </select>
-                  <div className="mt-2 text-[10px] text-on-surface-variant space-y-1 bg-neutral-100 p-2 rounded border border-neutral-border/30">
-                    {formTheme === 'theme1' && (
-                      <p>Classic corporative layout using deep blue tones and cool gray accents.</p>
-                    )}
-                    {formTheme === 'theme2' && (
-                      <p className="leading-tight">
-                        <strong>Bold & Warm Red/Beige:</strong> Uses deep crimson reds (#B30000), burgundies, and comfortable parchment creams for a modern editorial vibe.
-                      </p>
-                    )}
-                    {formTheme === 'theme3' && (
-                      <p className="leading-tight">
-                        <strong>Black & Gold:</strong> Dark mode aesthetic with premium yellow gold highlights (#D4AF37) and dark charcoal backing.
-                      </p>
-                    )}
-                  </div>
+                </div>
+
+                {/* Google Apps Script Web App URL */}
+                <div className="mt-4">
+                  <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Google Apps Script Web App URL</label>
+                  <input
+                    type="text"
+                    value={formGoogleScriptUrl}
+                    onChange={(e) => setFormGoogleScriptUrl(e.target.value)}
+                    placeholder="https://script.google.com/macros/s/.../exec"
+                    className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none font-mono"
+                  />
+                  <p className="mt-1 text-[10px] text-on-surface-variant">
+                    Leave blank to use the default app script URL. If set, all employee database sync queries for this entity will route to this script.
+                  </p>
                 </div>
               </div>
 
@@ -757,6 +762,21 @@ export default function EntitiesView({
                       </p>
                     )}
                   </div>
+                </div>
+
+                {/* Google Apps Script Web App URL */}
+                <div className="mt-4">
+                  <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Google Apps Script Web App URL</label>
+                  <input
+                    type="text"
+                    value={formGoogleScriptUrl}
+                    onChange={(e) => setFormGoogleScriptUrl(e.target.value)}
+                    placeholder="https://script.google.com/macros/s/.../exec"
+                    className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none font-mono"
+                  />
+                  <p className="mt-1 text-[10px] text-on-surface-variant">
+                    Leave blank to use the default app script URL. If set, all employee database sync queries for this entity will route to this script.
+                  </p>
                 </div>
               </div>
 

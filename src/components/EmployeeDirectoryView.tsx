@@ -258,6 +258,20 @@ export default function EmployeeDirectoryView({
     onShowNotification('Profile Saved', 'Employee personal and corporate profile updated successfully.');
   };
 
+  const getScriptUrlForEntity = (entityNameOrId?: string): string | undefined => {
+    if (!entityNameOrId) return undefined;
+    let name = entityNameOrId;
+    if (name === 'ENT-01' || name === 'ENT-92') {
+      name = 'Red Point Sdn Bhd';
+    } else if (name === 'ENT-02' || name === 'ENT-86') {
+      name = 'YSYD Sdn Bhd';
+    }
+    const ent = entities.find(e => e.name === name || e.id === name);
+    return ent?.googleScriptUrl && ent.googleScriptUrl.trim() !== '' 
+      ? ent.googleScriptUrl.trim() 
+      : undefined;
+  };
+
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -272,8 +286,8 @@ export default function EmployeeDirectoryView({
 
     try {
       onShowNotification('Uploading Image', 'Uploading photo to Google Drive...');
-      
-      const publicUrl = await googleSheetsClient.uploadFile(file);
+      const scriptUrl = getScriptUrlForEntity(formEntityId);
+      const publicUrl = await googleSheetsClient.uploadFile(file, scriptUrl);
 
       setFormAvatarUrl(publicUrl);
       onShowNotification('Upload Succeeded', 'Employee photo uploaded successfully.');
@@ -297,8 +311,9 @@ export default function EmployeeDirectoryView({
 
     try {
       onShowNotification('Uploading Image', 'Uploading photo to Google Drive...');
-      
-      const publicUrl = await googleSheetsClient.uploadFile(file);
+      const emp = employees.find(empObj => empObj.id === employeeId || empObj.email?.toLowerCase() === employeeId.toLowerCase());
+      const scriptUrl = getScriptUrlForEntity(emp?.entityId);
+      const publicUrl = await googleSheetsClient.uploadFile(file, scriptUrl);
 
       onUpdateEmployee(employeeId, { avatarUrl: publicUrl });
 
@@ -311,7 +326,7 @@ export default function EmployeeDirectoryView({
         oldValue: '',
         newValue: publicUrl,
         createdAt: getGmt8Timestamp()
-      });
+      }, scriptUrl);
 
       onShowNotification('Photo Updated', 'Employee photo has been updated successfully.');
     } catch (err: any) {
