@@ -39,35 +39,51 @@ export default function SocsoCalculatorCard({
   // Extract pay run items from employee current settings or props
   let payrollItems = propPayrollItems;
   if (!payrollItems) {
-    const basicSalary = employee.basicSalary || 0;
-    const allowanceGen = employee.allowanceGeneral || 0;
-    const allowanceTrans = employee.allowanceTransport !== undefined ? employee.allowanceTransport : (employee.transportAllowance || 0);
-    const allowancePark = employee.allowanceParking || 0;
-    const allowanceMl = employee.allowanceMeal || 0;
-    const allowanceAccom = employee.allowanceAccommodation !== undefined ? employee.allowanceAccommodation : (employee.housingAllowance || 0);
-    const allowancePh = employee.allowancePhone || 0;
-    const overtimeVal = employee.overtime || 0;
-    const commissionVal = employee.commissionAmount || 0;
-    const backPayVal = employee.backPayAmount || 0;
-    const unpaidLeave = employee.unpaidLeave || 0;
+    const basicSalaryVal = employee.basicSalary || 0;
+    const allowanceGenVal = employee.allowanceGeneral || 0;
+    const allowanceTransVal = employee.allowanceTransport !== undefined ? employee.allowanceTransport : (employee.transportAllowance || 0);
+    const allowanceParkVal = employee.allowanceParking || 0;
+    const allowanceMlVal = employee.allowanceMeal || 0;
+    const allowanceAccomVal = employee.allowanceAccommodation !== undefined ? employee.allowanceAccommodation : (employee.housingAllowance || 0);
+    const allowancePhVal = employee.allowancePhone || 0;
+    const overtimeValLoc = employee.overtime || 0;
+    const commissionValLoc = employee.commissionAmount || 0;
+    const backPayValLoc = employee.backPayAmount || 0;
+    const unpaidLeaveVal = employee.unpaidLeave || 0;
 
     payrollItems = [
-      { code: 'basic_salary', amount: basicSalary },
-      { code: 'overtime', amount: overtimeVal },
-      { code: 'commission', amount: commissionVal },
-      { code: 'allowance_general', amount: allowanceGen },
-      { code: 'allowance_transport', amount: allowanceTrans },
-      { code: 'allowance_parking', amount: allowancePark },
-      { code: 'allowance_meal', amount: allowanceMl },
-      { code: 'allowance_accommodation', amount: allowanceAccom },
-      { code: 'allowance_phone', amount: allowancePh },
-      { code: 'backpay', amount: backPayVal }
+      { code: 'basic_salary', amount: basicSalaryVal },
+      { code: 'overtime', amount: overtimeValLoc },
+      { code: 'commission', amount: commissionValLoc },
+      { code: 'allowance_general', amount: allowanceGenVal },
+      { code: 'allowance_transport', amount: allowanceTransVal },
+      { code: 'allowance_parking', amount: allowanceParkVal },
+      { code: 'allowance_meal', amount: allowanceMlVal },
+      { code: 'allowance_accommodation', amount: allowanceAccomVal },
+      { code: 'allowance_phone', amount: allowancePhVal },
+      { code: 'backpay', amount: backPayValLoc }
     ];
 
-    if (unpaidLeave > 0) {
-      payrollItems.push({ code: 'unpaid_leave', amount: unpaidLeave });
+    if (unpaidLeaveVal > 0) {
+      payrollItems.push({ code: 'unpaid_leave', amount: unpaidLeaveVal });
     }
   }
+
+  // Extract component values from payrollItems (which is now guaranteed to exist) for UI display
+  const findAmount = (code: string) => payrollItems?.find(item => item.code === code)?.amount || 0;
+
+  const basicSalary = findAmount('basic_salary');
+  const overtimeVal = findAmount('overtime');
+  const commissionVal = findAmount('commission');
+  const allowanceGen = findAmount('allowance_general');
+  const allowanceTrans = findAmount('allowance_transport');
+  const allowancePark = findAmount('allowance_parking');
+  const allowanceMl = findAmount('allowance_meal');
+  const allowanceAccom = findAmount('allowance_accommodation');
+  const allowancePh = findAmount('allowance_phone');
+  const backPayVal = findAmount('backpay');
+  const unpaidLeave = findAmount('unpaid_leave');
+
 
   // Calculate contribution details using the engine
   const result: SocsoContributionResult = calculateSocsoContribution({

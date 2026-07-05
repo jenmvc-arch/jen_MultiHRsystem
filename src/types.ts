@@ -261,6 +261,7 @@ export interface EmployeeTaxProfile {
   taxNumber?: string;
   nricPassport?: string;
   dateOfJoined?: string;
+  dateOfTermination?: string;
   taxResidenceStatus?: 'RESIDENT' | 'NON_RESIDENT' | 'KNOWN_TO_BE_RESIDENT' | 'RESIDENCE_PENDING' | 'REVIEW_REQUIRED';
   taxCalculationType?: 'NON_RESIDENT' | 'RESIDENT_PROGRESSIVE' | 'RETURNING_EXPERT_PROGRAMME' | 'KNOWLEDGE_WORKER_SPECIFIED_REGION' | 'NON_CITIZEN_C_SUITE_APPROVED_COMPANY' | 'REVIEW_REQUIRED';
   employeeDisabled?: boolean;

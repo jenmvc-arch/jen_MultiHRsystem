@@ -393,6 +393,36 @@ export default function PCBReconstructionHub({
   const annualActual = activeResults.reduce((acc, curr) => acc + (curr.actualPCBDeducted || 0), 0);
   const annualVariance = annualActual - annualCalculated;
 
+  const currentMonthForLedger = activeEmployee.historicalPayrollRecords && activeEmployee.historicalPayrollRecords.length > 0
+    ? Math.min(12, Math.max(...activeEmployee.historicalPayrollRecords.map(r => r.payrollMonth)) + 1)
+    : 10;
+
+  const verifiedTP3 = (activeEmployee.employee_tp3_declarations || [])
+    .filter(t => t.verificationStatus === 'VERIFIED' && t.taxYear === 2026);
+
+  const finalizedPayrollHistory = (activeEmployee.employee_pcb_history_ledger || [])
+    .filter(l => l.assessment_year === 2026);
+
+  const historyX = calculateAccumulatedPCBHistory({
+    employeeId: activeEmployee.id,
+    assessmentYear: 2026,
+    currentPayrollMonth: currentMonthForLedger,
+    verifiedTP3Records: verifiedTP3,
+    finalizedPayrollHistory: finalizedPayrollHistory
+  });
+
+  const actualAccumulated = historyX.accumulatedPCB_X;
+
+  const expectedAccumulated = (activeEmployee.historicalPcbResults || [])
+    .filter(r => r.payrollMonth < currentMonthForLedger)
+    .reduce((sum, r) => sum + r.calculatedPCB, 0);
+
+  const shortfall = expectedAccumulated - actualAccumulated;
+
+  const remainingMonthsCount = 13 - currentMonthForLedger;
+
+  const monthlyAdjVal = remainingMonthsCount > 0 ? shortfall / remainingMonthsCount : 0;
+
   return (
     <div className="space-y-6 text-left">
       <div className="bg-surface-container-low p-5 rounded-lg border border-neutral-border">

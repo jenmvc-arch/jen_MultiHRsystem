@@ -55,10 +55,16 @@ import LoginView from './components/LoginView';
 import JobApplicationForm from './components/JobApplicationForm';
 import OnboardingForm from './components/OnboardingForm';
 
-import { googleSheetsClient, isGoogleConfigured } from './lib/googleSheetsClient';
+import { googleSheetsClient, isGoogleConfigured, SheetsDataPayload } from './lib/googleSheetsClient';
 
 export default function App() {
   // Navigation & View States
+  const [activeEntityId, setActiveEntityId] = useState<string>(() => {
+    return localStorage.getItem('active_corporate_entity_id') || '';
+  });
+  const [isSwitchingEntity, setIsSwitchingEntity] = useState<boolean>(false);
+  const [switchingToEntityName, setSwitchingToEntityName] = useState<string>('');
+
   const [currentTab, setCurrentTab] = useState<AppTab>('dashboard');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('EMP-84729'); // Sarah Jenkins by default
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -335,7 +341,9 @@ export default function App() {
           }));
           setEntities(loadedEntities);
           if (loadedEntities.length > 0) {
-            setActiveEntityId(loadedEntities[0].id);
+            const savedEntityId = localStorage.getItem('active_corporate_entity_id');
+            const exists = loadedEntities.some(e => e.id === savedEntityId);
+            setActiveEntityId(exists && savedEntityId ? savedEntityId : loadedEntities[0].id);
           }
         }
 
@@ -680,8 +688,14 @@ export default function App() {
   }, []);
 
   // Active corporate views
-  const [activeEntityId, setActiveEntityId] = useState<string>('');
   const activeEntity = entities.find(e => e.id === activeEntityId) || entities[0];
+
+  const handleTabChange = (tab: AppTab) => {
+    setCurrentTab(tab);
+    if (activeEntityId) {
+      localStorage.setItem(`active_tab_${activeEntityId}`, tab);
+    }
+  };
 
   // Dynamic Theme style provider
   const getThemeStyles = (themeName?: 'theme1' | 'theme2' | 'theme3') => {
@@ -745,6 +759,18 @@ export default function App() {
       setCompanyLogoUrl(activeEntity.logoUrl || '');
     }
   }, [activeEntityId, activeEntity]);
+
+  // Restore persisted tab per-entity on entity switch
+  useEffect(() => {
+    if (activeEntityId) {
+      const persistedTab = localStorage.getItem(`active_tab_${activeEntityId}`);
+      if (persistedTab) {
+        setCurrentTab(persistedTab as AppTab);
+      } else {
+        setCurrentTab('dashboard');
+      }
+    }
+  }, [activeEntityId]);
 
   // GMT+8 Real-Time Clock
   const [gmt8TimeStr, setGmt8TimeStr] = useState('');
@@ -1315,6 +1341,44 @@ export default function App() {
   return (
     <div style={getThemeStyles(activeEntity?.theme)} className="flex h-screen bg-background overflow-hidden relative font-sans text-on-background select-none">
       
+      {/* Premium Glassmorphic Loading Overlay */}
+      {isSwitchingEntity && (
+        <div className="fixed inset-0 bg-[#121212]/75 backdrop-blur-md z-[9999] flex flex-col items-center justify-center p-6 text-center select-none animate-fade-in font-sans">
+          <div className="relative flex flex-col items-center max-w-md w-full animate-fade-in">
+            {/* Double Rotating Glowing Rings */}
+            <div className="relative w-28 h-28 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full border-4 border-t-transparent border-b-transparent border-[#f7f0e0]/20 animate-spin-slow"></div>
+              <div className="absolute inset-2 rounded-full border-4 border-r-transparent border-l-transparent border-[#f7f0e0] animate-spin-reverse-slow"></div>
+              
+              {/* Central Glowing Core Symbol */}
+              <div className="w-12 h-12 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/20 animate-pulse-glow shadow-lg">
+                <span className="text-white font-bold text-sm tracking-widest uppercase">HR</span>
+              </div>
+            </div>
+
+            {/* Entity Switch Metadata Info */}
+            <h2 className="text-xl font-bold mt-8 tracking-wider text-white uppercase font-display">
+              Corporate Context Switch
+            </h2>
+            <div className="w-12 h-0.5 bg-[#f7f0e0] mt-3 mb-4 rounded-full opacity-60"></div>
+            
+            <p className="text-sm text-neutral-300 tracking-wide">
+              Transitioning secure ledger references and statutory profiles to:
+            </p>
+            <p className="text-lg font-bold text-white mt-1 shadow-sm font-display tracking-tight">
+              {switchingToEntityName}
+            </p>
+
+            <div className="mt-8 flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-full border border-white/10">
+              <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-ping"></div>
+              <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-400 font-bold animate-pulse">
+                Synchronizing Google sheets...
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast Notification HUD */}
       {toast.show && (
         <div className="fixed top-4 right-4 z-50 max-w-sm bg-white border border-neutral-border shadow-2xl rounded-lg p-4 flex items-start gap-3 animate-in slide-in-from-top-4 duration-300">
@@ -1341,21 +1405,28 @@ export default function App() {
       {/* Main Responsive Left Sidebar Navigation */}
       <Sidebar 
         currentTab={currentTab} 
-        onTabChange={setCurrentTab} 
+        onTabChange={handleTabChange} 
         onNewRequest={() => setIsRequestModalOpen(true)}
         isMobileOpen={isMobileSidebarOpen}
         onMobileClose={() => setIsMobileSidebarOpen(false)}
         entities={entities}
         activeEntityId={activeEntityId}
         onChangeActiveEntity={(id) => {
-          setActiveEntityId(id);
           const matched = entities.find(e => e.id === id);
           if (matched) {
-            triggerNotification(
-              'Corporate View Switched',
-              `Now viewing as ${matched.name}. App branding, colors, and logo have synced.`,
-              'success'
-            );
+            setSwitchingToEntityName(matched.name);
+            setIsSwitchingEntity(true);
+            localStorage.setItem('active_corporate_entity_id', id);
+
+            setTimeout(() => {
+              setActiveEntityId(id);
+              setIsSwitchingEntity(false);
+              triggerNotification(
+                'Corporate View Switched',
+                `Now viewing as ${matched.name}. App branding, colors, and logo have synced.`,
+                'success'
+              );
+            }, 1000);
           }
         }}
       />

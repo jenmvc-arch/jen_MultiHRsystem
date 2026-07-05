@@ -23,7 +23,8 @@ import {
   PCBHistoricalVariance,
   HistoricalPCBMonthContext,
   EmployeePCBHistoryLedgerEntry,
-  EmployeeTP3Declaration
+  EmployeeTP3Declaration,
+  Dependant
 } from './types';
 import { getGmt8DateString } from './lib/dateUtils';
 import { Decimal, dec } from './lib/decimal';
@@ -518,13 +519,24 @@ export function seedSocsoConfigurationsAndBrackets() {
 export function determineSocsoCategory(employee: Employee, payrollPeriod: string): SOCSOCategory {
   const profile = employee.socsoProfile || {
     employeeId: employee.id,
-    socsoCoverageStatus: 'Covered',
-    contributionCategory: 'FIRST_CATEGORY',
+    nationality: 'Local',
+    identityNumber: '',
     dateOfBirth: '1990-01-01',
-    hasPreviousSocsoContribution: true,
+    employmentStartDate: '2026-01-01',
+    contractType: 'Permanent',
+    isUnderContractOfService: true,
+    socsoRegistrationNumber: '',
+    socsoRegistered: true,
+    socsoCoverageStatus: 'Covered',
     firstSocsoContributionDate: '2015-01-01',
+    hasPreviousSocsoContribution: true,
+    contributionCategory: 'FIRST_CATEGORY',
     multipleEmployerStatus: 'Single Employer',
-    selectedEmployerForLindung24: true
+    selectedEmployerForLindung24: true,
+    foreignWorkerStatus: 'Local',
+    domesticWorkerStatus: false,
+    effectiveFrom: '2026-01-01',
+    effectiveTo: '9999-12-31'
   };
 
   if (profile.socsoCoverageStatus === 'Exempt') {
@@ -703,13 +715,24 @@ export function calculateSocsoContribution(params: {
   if (!profile && params.employee) {
     profile = {
       employeeId: params.employee.id,
-      socsoCoverageStatus: 'Covered',
-      contributionCategory: 'FIRST_CATEGORY',
+      nationality: 'Local',
+      identityNumber: '',
       dateOfBirth: '1990-01-01',
-      hasPreviousSocsoContribution: true,
+      employmentStartDate: '2026-01-01',
+      contractType: 'Permanent',
+      isUnderContractOfService: true,
+      socsoRegistrationNumber: '',
+      socsoRegistered: true,
+      socsoCoverageStatus: 'Covered',
       firstSocsoContributionDate: '2015-01-01',
+      hasPreviousSocsoContribution: true,
+      contributionCategory: 'FIRST_CATEGORY',
       multipleEmployerStatus: 'Single Employer',
-      selectedEmployerForLindung24: true
+      selectedEmployerForLindung24: true,
+      foreignWorkerStatus: 'Local',
+      domesticWorkerStatus: false,
+      effectiveFrom: '2026-01-01',
+      effectiveTo: '9999-12-31'
     };
   }
 
@@ -726,11 +749,53 @@ export function calculateSocsoContribution(params: {
 
   const category = params.employee ? determineSocsoCategory(params.employee, period) : profile.contributionCategory;
 
+  if (category === 'EXEMPT' || profile.socsoCoverageStatus === 'Exempt') {
+    return {
+      employeeId: profile.employeeId,
+      payrollPeriod: period,
+      effectiveDate: getGmt8DateString(),
+      socsoCoverageStatus: 'Exempt',
+      contributionCategory: 'EXEMPT',
+      grossRemuneration: items.reduce((sum, item) => sum + item.amount, 0),
+      includedSocsoWages: 0,
+      excludedSocsoWages: 0,
+      socsoWages: 0,
+      contributionWage: 0,
+      wageCeilingApplied: false,
+      wageBracketNumber: 0,
+      wageBracketDescription: 'Statutory Exempt / Out of Scope',
+      employerEmploymentInjury: 0,
+      employerInvalidity: 0,
+      employerSocsoTotal: 0,
+      employeeInvalidity: 0,
+      employeeLindung24: 0,
+      employeeSocsoTotal: 0,
+      totalSocsoContribution: 0,
+      configurationVersion: 'SYSTEM_EXEMPT',
+      calculationTimestamp: new Date().toISOString(),
+      warningMessages: [],
+      validationErrors: [],
+      calculationStatus: 'exempt',
+      display: {
+        actualSocsoWagesFormatted: 'RM0.00',
+        employerTotalFormatted: 'RM0.00',
+        employeeInvalidityFormatted: 'RM0.00',
+        employeeLindung24Formatted: 'RM0.00',
+        employeeTotalFormatted: 'RM0.00',
+        grandTotalFormatted: 'RM0.00'
+      }
+    } as any;
+  }
+
   const actualWagesInSen = calculateSocsoWagesInSen(items);
 
   if (period < '2026-06') {
     // Legacy fallback path:
-    const bracket = findSocsoBracket(actualWagesInSen / 100, category, period);
+    let legacyCat: 'FIRST_CATEGORY' | 'SECOND_CATEGORY' = 'FIRST_CATEGORY';
+    if (category === 'SECOND_CATEGORY') {
+      legacyCat = 'SECOND_CATEGORY';
+    }
+    const bracket = findSocsoBracket(actualWagesInSen / 100, legacyCat, period);
     const erEmploymentInjury = bracket.employerEmploymentInjury;
     const erInvalidity = bracket.employerInvalidity;
     const erTotal = bracket.employerTotal;
@@ -863,9 +928,9 @@ export function calculateSocsoContribution(params: {
   let eeTotal = 0;
   let grandTotal = 0;
 
-  let calcCategory = category;
+  let calcCategory = category as 'FIRST_CATEGORY' | 'SECOND_CATEGORY' | 'REVIEW_REQUIRED';
   if (calcCategory === 'REVIEW_REQUIRED') {
-    calcCategory = profile.contributionCategory || 'FIRST_CATEGORY';
+    calcCategory = (profile.contributionCategory || 'FIRST_CATEGORY') as 'FIRST_CATEGORY' | 'SECOND_CATEGORY' | 'REVIEW_REQUIRED';
   }
 
   if (calcCategory === 'FIRST_CATEGORY') {
@@ -1171,6 +1236,8 @@ export function calculatePCB2026(params: PCB2026Params) {
   let currentEmployerPreviousPCB = 0;
   let reversedPCB = 0;
   let validAdjustmentPCB = 0;
+  let prevEmployerRemuneration = 0;
+  let currentEmployerRemuneration = 0;
 
   if (employee_pcb_history_ledger) {
     const verifiedTP3 = employee_tp3_declarations 
@@ -1242,6 +1309,8 @@ export function calculatePCB2026(params: PCB2026Params) {
       tp3Zakat += t.previousEmployerZakat || 0;
     }
 
+    prevEmployerRemuneration = tp3Normal;
+
     // Accumulate current employer prior payrolls
     if (payrollHistory && payrollHistory.length > 0) {
       let calcNormal = 0;
@@ -1259,9 +1328,11 @@ export function calculatePCB2026(params: PCB2026Params) {
           calcEPF += p.epfEmployee || 0;
         }
       }
+      currentEmployerRemuneration = calcNormal;
       accumulatedNormal = dec(tp3Normal + calcNormal);
       accumulatedEPF = dec(tp3EPF + calcEPF);
     } else {
+      currentEmployerRemuneration = paramAccumulatedNormal || 0;
       accumulatedNormal = dec(tp3Normal + (paramAccumulatedNormal || 0));
       accumulatedEPF = dec(tp3EPF + (paramAccumulatedEPF || 0));
     }
@@ -1269,6 +1340,7 @@ export function calculatePCB2026(params: PCB2026Params) {
     accumulatedPaidZakat = dec(tp3Zakat + (accumulatedZakat || 0));
   } else {
     // Fallback to legacy behaviour
+    let calcNormal = 0;
     if (payrollHistory && payrollHistory.length > 0) {
       for (const record of payrollHistory) {
         if (record.payrollMonth < payrollMonth) {
@@ -1280,6 +1352,7 @@ export function calculatePCB2026(params: PCB2026Params) {
             (record.allowanceAccommodation || 0) +
             (record.allowancePhone || 0);
           
+          calcNormal += recordNormal;
           accumulatedNormal = accumulatedNormal.add(recordNormal);
 
           const recordAdditional = 
@@ -1299,14 +1372,18 @@ export function calculatePCB2026(params: PCB2026Params) {
         }
       }
     }
+    currentEmployerRemuneration = calcNormal || paramAccumulatedNormal || 0;
 
+    let tp3Normal = 0;
     if (tp3Declaration) {
-      accumulatedNormal = accumulatedNormal.add(tp3Declaration.previousEmployerRemuneration || tp3Declaration.accumulatedPriorRemuneration || 0);
+      tp3Normal = tp3Declaration.previousEmployerRemuneration || tp3Declaration.accumulatedPriorRemuneration || 0;
+      accumulatedNormal = accumulatedNormal.add(tp3Normal);
       accumulatedAdditional = accumulatedAdditional.add(tp3Declaration.previousEmployerAdditionalRemuneration || 0);
       accumulatedEPF = accumulatedEPF.add(tp3Declaration.previousEmployerEpf || tp3Declaration.accumulatedPriorEPF || 0);
       accumulatedPaidPCB = accumulatedPaidPCB.add(tp3Declaration.previousEmployerPcb || tp3Declaration.accumulatedPriorPCB || 0);
       accumulatedPaidZakat = accumulatedPaidZakat.add(tp3Declaration.previousEmployerZakat || 0);
     }
+    prevEmployerRemuneration = tp3Normal;
   }
 
   const Y2 = Y1;
@@ -1599,7 +1676,10 @@ export function calculatePCB2026(params: PCB2026Params) {
     
     // Section 17 compliant fields
     taxCategory: category,
-    accumulatedPreviousEmployerRemuneration: previousEmployerPCB,
+    accumulatedPreviousEmployerRemuneration: prevEmployerRemuneration,
+    accumulatedCurrentEmployerRemuneration: currentEmployerRemuneration,
+    accumulatedQualifyingEPF: accumulatedEPF.toNumber(),
+    accumulatedAllowableDeductions: accumulatedLP.toNumber(),
     accumulatedPreviousEmployerPCB: previousEmployerPCB,
     accumulatedCurrentEmployerPCB: currentEmployerPreviousPCB,
     accumulatedAdjustedPCB: validAdjustmentPCB,
@@ -2706,7 +2786,7 @@ export function recalculatePCBForward(params: {
         currentZakat: payroll.zakat || 0,
         currentCP38: payroll.cp38 || 0,
         pcbVariance: 0,
-        processingMode: 'RECONSTRUCT_CHRONOLOGICAL',
+        processingMode: 'historical_reconstruction',
         calculationBasis: 'actual_deduction_history',
         effectiveEmployeeProfileVersion: profile.effectiveDate || 'default',
         taxConfigurationVersion: '2026-v1',

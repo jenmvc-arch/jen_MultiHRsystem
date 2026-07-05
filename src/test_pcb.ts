@@ -397,7 +397,7 @@ console.log("Test 7 Accumulated X for May:", histT7.accumulatedPCB_X);
 assert(histT7.accumulatedPCB_X === 240.00, "Test 7: X accumulation equal to 240.00");
 
 // Test 8: May calculation must not include May PCB in X
-const ledgerT8 = [
+const ledgerT8: EmployeePCBHistoryLedgerEntry[] = [
   ...ledgerT6,
   {
     id: 'pay_5',
@@ -441,7 +441,7 @@ console.log("Test 9 Accumulated X for June:", histT9.accumulatedPCB_X);
 assert(histT9.accumulatedPCB_X === 410.00, "Test 9: Cutoff boundary includes prior month");
 
 // Test 10: A reversed April PCB must be removed from X
-const ledgerT10 = [
+const ledgerT10: EmployeePCBHistoryLedgerEntry[] = [
   ledgerT6[0], // March 80.00
   { ...ledgerT6[1], status: 'REVERSED' as const }, // April 80.00 reversed
   {
@@ -526,7 +526,7 @@ assert(resT13.finalPCB === 110.00, "Test 13: CP38 does not affect final PCB");
 assert(resT13.totalTaxDeduction === 260.00, "Test 13: totalTaxDeduction includes final PCB + CP38");
 
 // Test 14: A salary increment must not reset historical PCB
-const employeeT14: Employee = {
+const employeeT14 = {
   id: 'E_T14',
   name: 'Increment Test',
   email: 'test@increment.com',
@@ -595,7 +595,7 @@ const employeeT14: Employee = {
     { payrollMonth: 1, basicSalary: 5000, epfEmployee: 550, actualPCBDeducted: 70.00, zakat: 0, cp38: 0 },
     { payrollMonth: 2, basicSalary: 5500, epfEmployee: 605, actualPCBDeducted: 0, zakat: 0, cp38: 0 }
   ]
-};
+} as unknown as Employee;
 
 // Sequential recalculation up to Feb should preserve Jan PCB (70)
 const recalcT14 = recalculatePCBForward({
