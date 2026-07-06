@@ -1697,171 +1697,178 @@ export default function App() {
             />
           )}
 
-          {currentTab === 'socso-config' && (
-            <SocsoConfigAdminView />
-          )}
-
           {/* Tab: Settings Panel */}
           {currentTab === 'settings' && (
-            <div className="max-w-2xl mx-auto bg-white border border-neutral-border rounded-lg p-6 shadow-sm text-left animate-in fade-in duration-200 space-y-6">
-              <div>
-                <h2 className="text-xl font-bold text-primary tracking-tight">System Settings</h2>
-                <p className="text-xs text-on-surface-variant mt-0.5">Customize global calculations constants, brand properties, and metadata.</p>
-              </div>
-
-              <div className="space-y-4 text-sm">
+            <div className="space-y-6 text-left animate-in fade-in duration-200">
+              <div className="max-w-2xl mx-auto bg-white border border-neutral-border rounded-lg p-6 shadow-sm space-y-6">
                 <div>
-                  <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Company Legal Entity Name</label>
-                  <input 
-                    type="text" 
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
-                    className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
-                  />
+                  <h2 className="text-xl font-bold text-primary tracking-tight">System Settings</h2>
+                  <p className="text-xs text-on-surface-variant mt-0.5">Customize global calculations constants, brand properties, and metadata.</p>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Company Logo</label>
-                  <div className="flex items-center gap-4 bg-surface-container-low p-3 rounded border border-neutral-border/60">
-                    <div className="w-12 h-12 rounded border border-neutral-border bg-white flex items-center justify-center overflow-hidden shrink-0 relative">
-                      {companyLogoUrl && !companyLogoUrl.includes('placeholder') && !companyLogoUrl.includes('example.com') ? (
-                        <>
-                          <img 
-                            src={companyLogoUrl} 
-                            alt="Logo preview" 
-                            className="w-full h-full object-cover" 
-                            referrerPolicy="no-referrer" 
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                              const fallback = e.currentTarget.nextElementSibling as HTMLElement;
-                              if (fallback) fallback.style.display = 'flex';
-                            }}
-                          />
-                          <div style={{ display: 'none' }} className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-xs uppercase">
+                <div className="space-y-4 text-sm">
+                  <div>
+                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Company Legal Entity Name</label>
+                    <input 
+                      type="text" 
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Company Logo</label>
+                    <div className="flex items-center gap-4 bg-surface-container-low p-3 rounded border border-neutral-border/60">
+                      <div className="w-12 h-12 rounded border border-neutral-border bg-white flex items-center justify-center overflow-hidden shrink-0 relative">
+                        {companyLogoUrl && !companyLogoUrl.includes('placeholder') && !companyLogoUrl.includes('example.com') ? (
+                          <>
+                            <img 
+                              src={companyLogoUrl} 
+                              alt="Logo preview" 
+                              className="w-full h-full object-cover" 
+                              referrerPolicy="no-referrer" 
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                                if (fallback) fallback.style.display = 'flex';
+                              }}
+                            />
+                            <div style={{ display: 'none' }} className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-xs uppercase">
+                              {activeEntity?.name ? activeEntity.name.substring(0, 2) : 'HR'}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-xs uppercase">
                             {activeEntity?.name ? activeEntity.name.substring(0, 2) : 'HR'}
                           </div>
-                        </>
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-xs uppercase">
-                          {activeEntity?.name ? activeEntity.name.substring(0, 2) : 'HR'}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 space-y-1.5 text-left">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
+                        )}
+                      </div>
+                      <div className="flex-1 space-y-1.5 text-left">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
 
-                          if (!isGoogleConfigured) {
-                            // Offline fallback
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              setCompanyLogoUrl(reader.result as string);
-                              triggerNotification('Logo Uploaded', 'New company logo loaded in preview. Click Apply System Changes to save.', 'success');
-                            };
-                            reader.readAsDataURL(file);
-                            return;
-                          }
+                            if (!isGoogleConfigured) {
+                              // Offline fallback
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                setCompanyLogoUrl(reader.result as string);
+                                triggerNotification('Logo Uploaded', 'New company logo loaded in preview. Click Apply System Changes to save.', 'success');
+                              };
+                              reader.readAsDataURL(file);
+                              return;
+                            }
 
-                          try {
-                            triggerNotification('Uploading Logo', 'Uploading company logo to Google Drive...', 'info');
-                            const scriptUrl = getScriptUrlForEntity(activeEntity?.id);
-                            const publicUrl = await googleSheetsClient.uploadFile(file, scriptUrl);
-                            setCompanyLogoUrl(publicUrl);
-                            triggerNotification('Logo Uploaded', 'New company logo uploaded successfully. Click Apply System Changes to save.', 'success');
-                          } catch (err: any) {
-                            console.error('[Google Drive Logo Upload] Error:', err);
-                            triggerNotification('Upload Error', `Could not upload logo: ${err.message}`, 'info');
-                          }
-                        }}
-                        className="w-full text-xs text-on-surface-variant file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Or enter logo image URL..."
-                        value={companyLogoUrl}
-                        onChange={(e) => setCompanyLogoUrl(e.target.value)}
-                        className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
-                      />
+                            try {
+                              triggerNotification('Uploading Logo', 'Uploading company logo to Google Drive...', 'info');
+                              const scriptUrl = getScriptUrlForEntity(activeEntity?.id);
+                              const publicUrl = await googleSheetsClient.uploadFile(file, scriptUrl);
+                              setCompanyLogoUrl(publicUrl);
+                              triggerNotification('Logo Uploaded', 'New company logo uploaded successfully. Click Apply System Changes to save.', 'success');
+                            } catch (err: any) {
+                              console.error('[Google Drive Logo Upload] Error:', err);
+                              triggerNotification('Upload Error', `Could not upload logo: ${err.message}`, 'info');
+                            }
+                          }}
+                          className="w-full text-xs text-on-surface-variant file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Or enter logo image URL..."
+                          value={companyLogoUrl}
+                          onChange={(e) => setCompanyLogoUrl(e.target.value)}
+                          className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Currency Symbol</label>
-                    <select
-                      value={currencySymbol}
-                      onChange={(e) => setCurrencySymbol(e.target.value)}
-                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
-                    >
-                      <option value="RM">Malaysian Ringgit (RM)</option>
-                      <option value="$">US Dollar ($)</option>
-                      <option value="£">British Pound (£)</option>
-                      <option value="€">Euro (€)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Standard EPF Employee Rate</label>
-                    <div className="relative">
-                      <input 
-                        type="number" 
-                        value={taxRate}
-                        onChange={(e) => setTaxRate(Number(e.target.value))}
-                        className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none pr-8"
-                      />
-                      <span className="absolute right-2 top-2 text-xs font-bold text-outline">%</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-3.5 bg-parchment/40 rounded border border-neutral-border text-xs leading-relaxed">
-                  <h4 className="font-bold text-primary mb-1">Enterprise Configuration Standard</h4>
-                  <p className="text-on-surface-variant text-[11px]">These global overrides apply automatically across the dynamic payslip calculators, report generators, and directory sheets in real-time.</p>
-                </div>
-
-                {isGoogleConfigured && (
-                  <div className="pt-6 border-t border-neutral-border space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <h3 className="text-xs font-bold text-primary uppercase tracking-wider mb-1">Google Sheets Database Administration</h3>
-                      <p className="text-[11px] text-on-surface-variant leading-relaxed">Initialize or seed your Google Spreadsheet with default corporate entities, mock employee records, appraisal data, and login credentials.</p>
-                    </div>
-                    <div>
-                      <button
-                        onClick={handleSeedDatabase}
-                        disabled={isSeeding}
-                        className="bg-primary text-white text-xs font-semibold py-2 px-4 rounded hover:bg-primary-container disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Currency Symbol</label>
+                      <select
+                        value={currencySymbol}
+                        onChange={(e) => setCurrencySymbol(e.target.value)}
+                        className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
                       >
-                        {isSeeding ? 'Seeding Database...' : 'Seed Database with Default Presets'}
-                      </button>
+                        <option value="RM">Malaysian Ringgit (RM)</option>
+                        <option value="$">US Dollar ($)</option>
+                        <option value="£">British Pound (£)</option>
+                        <option value="€">Euro (€)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Standard EPF Employee Rate</label>
+                      <div className="relative">
+                        <input 
+                          type="number" 
+                          value={taxRate}
+                          onChange={(e) => setTaxRate(Number(e.target.value))}
+                          className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none pr-8"
+                        />
+                        <span className="absolute right-2 top-2 text-xs font-bold text-outline">%</span>
+                      </div>
                     </div>
                   </div>
-                )}
+
+                  <div className="p-3.5 bg-parchment/40 rounded border border-neutral-border text-xs leading-relaxed">
+                    <h4 className="font-bold text-primary mb-1">Enterprise Configuration Standard</h4>
+                    <p className="text-on-surface-variant text-[11px]">These global overrides apply automatically across the dynamic payslip calculators, report generators, and directory sheets in real-time.</p>
+                  </div>
+
+                  {isGoogleConfigured && (
+                    <div className="pt-6 border-t border-neutral-border space-y-4">
+                      <div>
+                        <h3 className="text-xs font-bold text-primary uppercase tracking-wider mb-1">Google Sheets Database Administration</h3>
+                        <p className="text-[11px] text-on-surface-variant leading-relaxed">Initialize or seed your Google Spreadsheet with default corporate entities, mock employee records, appraisal data, and login credentials.</p>
+                      </div>
+                      <div>
+                        <button
+                          onClick={handleSeedDatabase}
+                          disabled={isSeeding}
+                          className="bg-primary text-white text-xs font-semibold py-2 px-4 rounded hover:bg-primary-container disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          {isSeeding ? 'Seeding Database...' : 'Seed Database with Default Presets'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-6 border-t border-neutral-border flex justify-end">
+                  <button 
+                    onClick={async () => {
+                      localStorage.setItem('company_tax_rate', String(taxRate));
+                      if (activeEntity) {
+                        await handleUpdateEntity(activeEntity.id, {
+                          name: companyName,
+                          currency: currencySymbol,
+                          logoUrl: companyLogoUrl
+                        });
+                        triggerNotification('Settings Saved', 'Company settings and global variables synchronized successfully.');
+                      } else {
+                        triggerNotification('Settings Saved', 'Global override variables recalculated successfully.');
+                      }
+                      setCurrentTab('dashboard');
+                    }}
+                    className="bg-primary text-white text-xs font-semibold py-2 px-6 rounded hover:bg-primary-container"
+                  >
+                    Apply System Changes
+                  </button>
+                </div>
               </div>
 
-              <div className="pt-6 border-t border-neutral-border flex justify-end">
-                <button 
-                  onClick={async () => {
-                    localStorage.setItem('company_tax_rate', String(taxRate));
-                    if (activeEntity) {
-                      await handleUpdateEntity(activeEntity.id, {
-                        name: companyName,
-                        currency: currencySymbol,
-                        logoUrl: companyLogoUrl
-                      });
-                      triggerNotification('Settings Saved', 'Company settings and global variables synchronized successfully.');
-                    } else {
-                      triggerNotification('Settings Saved', 'Global override variables recalculated successfully.');
-                    }
-                    setCurrentTab('dashboard');
-                  }}
-                  className="bg-primary text-white text-xs font-semibold py-2 px-6 rounded hover:bg-primary-container"
-                >
-                  Apply System Changes
-                </button>
+              {/* Card 2: PERKESO Statutory Configuration */}
+              <div className="max-w-6xl mx-auto bg-white border border-neutral-border rounded-lg p-6 shadow-sm space-y-4">
+                <div className="border-b border-neutral-border pb-3">
+                  <h2 className="text-base font-bold text-primary uppercase tracking-wider">PERKESO Statutory Contribution Configuration</h2>
+                  <p className="text-xs text-on-surface-variant mt-0.5 font-medium">Manage rules, brackets, and phase compliance matrices for PERKESO.</p>
+                </div>
+                <SocsoConfigAdminView />
               </div>
             </div>
           )}
