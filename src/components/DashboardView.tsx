@@ -33,6 +33,7 @@ interface DashboardViewProps {
   onNavigate: (tab: any) => void;
   onOpenNewEmployeeModal: () => void;
   onOpenRequestModal: () => void;
+  activeEntityId?: string;
 }
 
 export default function DashboardView({
@@ -42,10 +43,17 @@ export default function DashboardView({
   performances,
   onNavigate,
   onOpenNewEmployeeModal,
-  onOpenRequestModal
+  onOpenRequestModal,
+  activeEntityId
 }: DashboardViewProps) {
-  const [selectedEntityId, setSelectedEntityId] = useState<string>('all');
+  const [selectedEntityId, setSelectedEntityId] = useState<string>(activeEntityId || 'all');
   const [addressCopied, setAddressCopied] = useState(false);
+
+  React.useEffect(() => {
+    if (activeEntityId) {
+      setSelectedEntityId(activeEntityId);
+    }
+  }, [activeEntityId]);
 
   // 1. Filter employees by selected corporate subsidiary
   const filteredEmployees = selectedEntityId === 'all' 

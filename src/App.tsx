@@ -1590,6 +1590,7 @@ export default function App() {
                 triggerNotification('Directory Navigated', 'Click Add New Employee to register custom personnel.', 'info');
               }}
               onOpenRequestModal={() => setIsRequestModalOpen(true)}
+              activeEntityId={activeEntityId}
             />
           )}
 
@@ -1634,6 +1635,7 @@ export default function App() {
               onDeleteEmployee={handleDeleteEmployee}
               onUpdateEmployee={handleUpdateEmployeeSalary}
               onShowNotification={triggerNotification}
+              activeEntityId={activeEntityId}
             />
           )}
 

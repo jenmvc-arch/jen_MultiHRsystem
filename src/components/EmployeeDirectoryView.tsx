@@ -59,6 +59,7 @@ interface EmployeeDirectoryViewProps {
   onDeleteEmployee: (id: string) => void;
   onUpdateEmployee: (id: string, updates: Partial<Employee>) => void;
   onShowNotification: (title: string, message: string) => void;
+  activeEntityId?: string;
 }
 
 export default function EmployeeDirectoryView({
@@ -67,14 +68,21 @@ export default function EmployeeDirectoryView({
   onAddEmployee,
   onDeleteEmployee,
   onUpdateEmployee,
-  onShowNotification
+  onShowNotification,
+  activeEntityId
 }: EmployeeDirectoryViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
   const [deptFilter, setDeptFilter] = useState('All Departments');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
-  const [entityFilter, setEntityFilter] = useState('All Subsidiaries');
+  const [entityFilter, setEntityFilter] = useState(activeEntityId || 'All Subsidiaries');
+
+  useEffect(() => {
+    if (activeEntityId) {
+      setEntityFilter(activeEntityId);
+    }
+  }, [activeEntityId]);
 
   // Load departments and roles dynamically
   const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
@@ -479,7 +487,7 @@ export default function EmployeeDirectoryView({
   });
 
   const handleOpenAddModal = () => {
-    setFormEntityId(entities[0]?.id || '');
+    setFormEntityId(activeEntityId || entities[0]?.id || '');
     setFormName('');
     setFormEmail('');
     setFormDesignation('');
