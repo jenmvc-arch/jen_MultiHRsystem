@@ -855,30 +855,17 @@ export default function App() {
       setTimeout(() => {
         setActiveEntityId(id);
 
-        // Step 2: Smoothly fade out overlay using view transition after layout has settled
+        // Step 2: Smoothly dismiss loader after layout updates have settled
         setTimeout(() => {
-          const dismissLoader = () => {
-            setIsSwitchingEntity(false);
-          };
-
-          try {
-            if ((document as any).startViewTransition) {
-              (document as any).startViewTransition(dismissLoader);
-            } else {
-              dismissLoader();
-            }
-          } catch (e) {
-            console.warn('View Transition failed, dismissing directly:', e);
-            dismissLoader();
-          }
+          setIsSwitchingEntity(false);
 
           triggerNotification(
             'Corporate View Switched',
             `Now viewing as ${matched.name}. App branding, colors, and logo have synced.`,
             'success'
           );
-        }, 500);
-      }, 250);
+        }, 300);
+      }, 200);
     }
   };
 

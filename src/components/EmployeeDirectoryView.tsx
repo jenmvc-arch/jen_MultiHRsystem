@@ -89,20 +89,23 @@ export default function EmployeeDirectoryView({
   const [availableRoles, setAvailableRoles] = useState<string[]>([]);
 
   useEffect(() => {
-    const savedDepts = localStorage.getItem('company_departments');
+    const cacheKeyDepts = activeEntityId ? `departments_${activeEntityId}` : 'company_departments';
+    const cacheKeyRoles = activeEntityId ? `roles_${activeEntityId}` : 'company_roles';
+
+    const savedDepts = localStorage.getItem(cacheKeyDepts);
     let depts = ['Product & Engineering', 'Finance', 'Human Resources', 'Sales & Marketing', 'Strategy', 'Operations'];
     if (savedDepts) {
       depts = JSON.parse(savedDepts);
     }
     setAvailableDepartments(depts);
 
-    const savedRoles = localStorage.getItem('company_roles');
+    const savedRoles = localStorage.getItem(cacheKeyRoles);
     let rls = ['Software Engineer', 'Senior Software Engineer', 'Product Manager', 'UX Designer', 'HR Specialist', 'Finance Manager', 'Consultant'];
     if (savedRoles) {
       rls = JSON.parse(savedRoles);
     }
     setAvailableRoles(rls);
-  }, []);
+  }, [activeEntityId]);
 
   // Self-Service Mode & Preview States
   const [viewMode, setViewMode] = useState<'admin' | 'self-service'>('admin');
@@ -123,7 +126,14 @@ export default function EmployeeDirectoryView({
 
   // Add Employee Modal form states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [formEntityId, setFormEntityId] = useState(entities[0]?.id || '');
+  const [formEntityId, setFormEntityId] = useState(activeEntityId || entities[0]?.id || '');
+  
+  useEffect(() => {
+    if (activeEntityId) {
+      setFormEntityId(activeEntityId);
+    }
+  }, [activeEntityId]);
+
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formDesignation, setFormDesignation] = useState('');
