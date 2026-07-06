@@ -18,8 +18,7 @@ import {
   Calendar,
   ClipboardList,
   UserPlus,
-  Tags,
-  Shield
+  Tags
 } from 'lucide-react';
 import { AppTab, CorporateEntity } from '../types';
 import { getDirectLogoUrl } from '../data';
@@ -45,23 +44,26 @@ export default function Sidebar({
   activeEntityId = '',
   onChangeActiveEntity
 }: SidebarProps) {
-  const menuItems = [
+  const coreItems = [
     { id: 'dashboard' as AppTab, label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'entities' as AppTab, label: 'Company Settings', icon: Building2 },
-    { id: 'payroll' as AppTab, label: 'Payroll Management', icon: CreditCard },
-    { id: 'performance' as AppTab, label: 'Appraisal Management', icon: Award },
-    { id: 'directory' as AppTab, label: 'Employee Management', icon: Users },
-    { id: 'department-role' as AppTab, label: 'Department & Role', icon: Tags },
-    { id: 'tax-settings' as AppTab, label: 'Tax Settings & Forms', icon: Percent },
+    { id: 'directory' as AppTab, label: 'Employee Directory', icon: Users },
+    { id: 'payroll' as AppTab, label: 'Payroll Center', icon: CreditCard },
     { id: 'leave-management' as AppTab, label: 'Leave Management', icon: Calendar },
-    { id: 'forms-directory' as AppTab, label: 'Forms Directory', icon: ClipboardList },
+    { id: 'performance' as AppTab, label: 'Performance Appraisal', icon: Award },
     { id: 'hire-onboarding' as AppTab, label: 'Hire & Onboarding', icon: UserPlus },
-    { id: 'reports' as AppTab, label: 'Report', icon: FileText },
+  ];
+
+  const complianceItems = [
+    { id: 'entities' as AppTab, label: 'Corporate Entities', icon: Building2 },
+    { id: 'department-role' as AppTab, label: 'Department & Roles', icon: Tags },
+    { id: 'tax-settings' as AppTab, label: 'Tax Compliance (LHDN)', icon: Percent },
+    { id: 'forms-directory' as AppTab, label: 'Forms Directory', icon: ClipboardList },
+    { id: 'reports' as AppTab, label: 'Reports & Borang', icon: FileText },
   ];
 
   const bottomItems = [
-    { id: 'settings' as AppTab, label: 'Settings', icon: Settings },
-    { id: 'help' as AppTab, label: 'Help & Support', icon: HelpCircle },
+    { id: 'settings' as AppTab, label: 'System Settings', icon: Settings },
+    { id: 'help' as AppTab, label: 'Help & Documentation', icon: HelpCircle },
   ];
 
   const activeEntity = entities.find(e => e.id === activeEntityId) || entities[0];
@@ -138,29 +140,68 @@ export default function Sidebar({
       </div>
 
       {/* Nav Menu */}
-      <nav className="flex-1 px-2 space-y-1 overflow-y-auto">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = currentTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => {
-                onTabChange(item.id);
-                onMobileClose();
-              }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded text-sm font-medium transition-all duration-150 ${
-                isActive 
-                  ? 'bg-white/10 text-[#f7f0e0] border-l-4 border-[#f7f0e0]' 
-                  : 'text-[#f7f0e0]/75 hover:bg-white/5 hover:text-[#f7f0e0]'
-              }`}
-              id={`nav-item-${item.id}`}
-            >
-              <Icon className={`w-4 h-4 ${isActive ? 'text-[#f7f0e0]' : 'text-[#f7f0e0]/75'}`} />
-              {item.label}
-            </button>
-          );
-        })}
+      <nav className="flex-1 px-2 space-y-4 overflow-y-auto">
+        {/* Core Operations Section */}
+        <div>
+          <div className="px-4 py-1 text-[9px] font-bold text-[#f7f0e0]/40 uppercase tracking-widest mb-1">
+            Core Operations
+          </div>
+          <div className="space-y-0.5">
+            {coreItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    onTabChange(item.id);
+                    onMobileClose();
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-2 rounded text-[11px] font-semibold transition-all duration-150 ${
+                    isActive 
+                      ? 'bg-white/10 text-[#f7f0e0] border-l-4 border-[#f7f0e0]' 
+                      : 'text-[#f7f0e0]/75 hover:bg-white/5 hover:text-[#f7f0e0]'
+                  }`}
+                  id={`nav-item-${item.id}`}
+                >
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-[#f7f0e0]' : 'text-[#f7f0e0]/75'}`} />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Setup & Compliance Section */}
+        <div>
+          <div className="px-4 py-1 text-[9px] font-bold text-[#f7f0e0]/40 uppercase tracking-widest mb-1">
+            Setup & Compliance
+          </div>
+          <div className="space-y-0.5">
+            {complianceItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    onTabChange(item.id);
+                    onMobileClose();
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-2 rounded text-[11px] font-semibold transition-all duration-150 ${
+                    isActive 
+                      ? 'bg-white/10 text-[#f7f0e0] border-l-4 border-[#f7f0e0]' 
+                      : 'text-[#f7f0e0]/75 hover:bg-white/5 hover:text-[#f7f0e0]'
+                  }`}
+                  id={`nav-item-${item.id}`}
+                >
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-[#f7f0e0]' : 'text-[#f7f0e0]/75'}`} />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </nav>
 
       {/* Footer System Nav */}
