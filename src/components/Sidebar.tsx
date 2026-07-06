@@ -118,8 +118,8 @@ export default function Sidebar({
               className="w-full bg-white/10 hover:bg-white/15 text-[#f7f0e0] border border-white/20 rounded px-2 py-1 text-xs outline-none focus:border-white/40 font-medium transition-all cursor-pointer"
             >
               {entities.map(ent => (
-                <option key={ent.id} value={ent.id} className="text-zinc-850 bg-[#1c4e89] py-1 text-xs">
-                  {ent.name} ({ent.id})
+                <option key={ent.id} value={ent.id} className="text-zinc-900 bg-white">
+                  {ent.name}
                 </option>
               ))}
             </select>

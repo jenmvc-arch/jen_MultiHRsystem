@@ -19,7 +19,7 @@ const mockEmployees: Employee[] = [
   { id: 'emp1@redpoint.com', entityId: 'Red Point', name: 'Alan Smith', email: 'emp1@redpoint.com', designation: 'Engineer', department: 'Engineering', status: 'Active', bankName: '', accountNo: '', basicSalary: 5000, housingAllowance: 0, transportAllowance: 0, overtime: 0, performanceBonus: 0 },
   { id: 'emp2@redpoint.com', entityId: 'Red Point', name: 'Sarah Jenkins', email: 'emp2@redpoint.com', designation: 'HR Specialist', department: 'Human Resources', status: 'Active', bankName: '', accountNo: '', basicSalary: 4500, housingAllowance: 0, transportAllowance: 0, overtime: 0, performanceBonus: 0 },
   { id: 'emp3@ysyd.com', entityId: 'YSYD', name: 'David Lee', email: 'emp3@ysyd.com', designation: 'Sales Rep', department: 'Sales', status: 'Active', bankName: '', accountNo: '', basicSalary: 6000, housingAllowance: 0, transportAllowance: 0, overtime: 0, performanceBonus: 0 }
-];
+] as any[] as Employee[];
 
 // Test 1: Scope Filtering (Employees)
 const activeEntityId1 = 'Red Point';

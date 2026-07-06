@@ -844,6 +844,44 @@ export default function App() {
   // Active corporate views
   const activeEntity = entities.find(e => e.id === activeEntityId) || entities[0];
 
+  const handleCorporateSwitch = (id: string) => {
+    const matched = entities.find(e => e.id === id);
+    if (matched) {
+      setSwitchingToEntityName(matched.name);
+      setIsSwitchingEntity(true);
+      localStorage.setItem('active_corporate_entity_id', id);
+
+      // Step 1: Update active entity ID in the background (hidden under solid cover) after mount
+      setTimeout(() => {
+        setActiveEntityId(id);
+
+        // Step 2: Smoothly fade out overlay using view transition after layout has settled
+        setTimeout(() => {
+          const dismissLoader = () => {
+            setIsSwitchingEntity(false);
+          };
+
+          try {
+            if ((document as any).startViewTransition) {
+              (document as any).startViewTransition(dismissLoader);
+            } else {
+              dismissLoader();
+            }
+          } catch (e) {
+            console.warn('View Transition failed, dismissing directly:', e);
+            dismissLoader();
+          }
+
+          triggerNotification(
+            'Corporate View Switched',
+            `Now viewing as ${matched.name}. App branding, colors, and logo have synced.`,
+            'success'
+          );
+        }, 500);
+      }, 250);
+    }
+  };
+
   const handleTabChange = (tab: AppTab) => {
     setCurrentTab(tab);
     if (activeEntityId) {
@@ -1499,38 +1537,7 @@ export default function App() {
       entities={entities}
       activeEntityId={activeEntityId}
       isSwitchingEntity={isSwitchingEntity}
-      onSwitchEntity={async (id) => {
-        const matched = entities.find(e => e.id === id);
-        if (matched) {
-          setSwitchingToEntityName(matched.name);
-          setIsSwitchingEntity(true);
-          localStorage.setItem('active_corporate_entity_id', id);
-
-          // Step 1: Update active entity ID in the background (hidden under solid cover) after mount
-          setTimeout(() => {
-            setActiveEntityId(id);
-
-            // Step 2: Smoothly fade out overlay using view transition after layout has settled
-            setTimeout(() => {
-              const dismissLoader = () => {
-                setIsSwitchingEntity(false);
-              };
-
-              if ((document as any).startViewTransition) {
-                (document as any).startViewTransition(dismissLoader);
-              } else {
-                dismissLoader();
-              }
-
-              triggerNotification(
-                'Corporate View Switched',
-                `Now viewing as ${matched.name}. App branding, colors, and logo have synced.`,
-                'success'
-              );
-            }, 500);
-          }, 250);
-        }
-      }}
+      onSwitchEntity={async (id) => handleCorporateSwitch(id)}
     >
       <div style={getThemeStyles(activeEntity?.theme)} className="flex h-screen bg-background overflow-hidden relative font-sans text-on-background select-none">
       
@@ -1604,38 +1611,7 @@ export default function App() {
         onMobileClose={() => setIsMobileSidebarOpen(false)}
         entities={entities}
         activeEntityId={activeEntityId}
-        onChangeActiveEntity={(id) => {
-          const matched = entities.find(e => e.id === id);
-          if (matched) {
-            setSwitchingToEntityName(matched.name);
-            setIsSwitchingEntity(true);
-            localStorage.setItem('active_corporate_entity_id', id);
-
-            // Step 1: Update active entity ID in the background (hidden under solid cover) after mount
-            setTimeout(() => {
-              setActiveEntityId(id);
-
-              // Step 2: Smoothly fade out overlay using view transition after layout has settled
-              setTimeout(() => {
-                const dismissLoader = () => {
-                  setIsSwitchingEntity(false);
-                };
-
-                if ((document as any).startViewTransition) {
-                  (document as any).startViewTransition(dismissLoader);
-                } else {
-                  dismissLoader();
-                }
-
-                triggerNotification(
-                  'Corporate View Switched',
-                  `Now viewing as ${matched.name}. App branding, colors, and logo have synced.`,
-                  'success'
-                );
-              }, 500);
-            }, 250);
-          }
-        }}
+        onChangeActiveEntity={handleCorporateSwitch}
       />
 
       {/* Right Column Layout */}
