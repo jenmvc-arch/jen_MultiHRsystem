@@ -18,6 +18,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { Employee, EmployeePerformance, ReviewCycle } from '../types';
+import EmployeeAvatar from './EmployeeAvatar';
 import PerformanceAnalytics from './PerformanceAnalytics';
 
 interface PerformanceViewProps {
@@ -258,11 +259,7 @@ export default function PerformanceView({
                   return (
                     <tr key={emp.id} className="hover:bg-surface-container-low/50 transition-colors">
                       <td className="p-4 flex items-center gap-3">
-                        {emp.avatarUrl ? (
-                          <img src={emp.avatarUrl} alt={emp.name} className="w-8 h-8 rounded-full object-cover border border-neutral-border" />
-                        ) : (
-                          <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">{emp.name.split(' ').map(n => n[0]).join('')}</div>
-                        )}
+                        <EmployeeAvatar employee={emp} className="w-8 h-8 rounded-full" />
                         <div>
                           <div className="font-bold text-sm text-on-surface">{emp.name}</div>
                           <div className="text-xs text-on-surface-variant mt-0.5">{emp.designation} · <span className="font-mono font-medium text-[10px]">{emp.id}</span></div>

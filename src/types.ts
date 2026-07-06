@@ -114,6 +114,7 @@ export interface Employee {
   unpaidLeave: number;
   hrdCorp: number;
   avatarUrl?: string;
+  gender?: 'Male' | 'Female';
   
   // New employee specific compliance fields
   nricPassport: string;

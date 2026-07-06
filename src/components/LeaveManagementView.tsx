@@ -18,6 +18,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { Employee } from '../types';
+import EmployeeAvatar from './EmployeeAvatar';
 import LeaveCalendar from './LeaveCalendar';
 import { getGmt8DateString } from '../lib/dateUtils';
 
@@ -390,13 +391,7 @@ export default function LeaveManagementView({
                     >
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                          {emp?.avatarUrl ? (
-                            <img src={emp.avatarUrl} alt={req.employeeName} className="w-7 h-7 rounded-full object-cover border" />
-                          ) : (
-                            <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px]">
-                              {req.employeeName.split(' ').map(n => n[0]).join('')}
-                            </div>
-                          )}
+                          <EmployeeAvatar employee={emp} className="w-7 h-7 rounded-full" />
                           <div>
                             <span className="font-bold text-xs text-on-surface block">{req.employeeName}</span>
                             <span className="text-[10px] text-on-surface-variant font-medium font-mono block">Applied: {req.appliedDate} · ID: {req.id}</span>

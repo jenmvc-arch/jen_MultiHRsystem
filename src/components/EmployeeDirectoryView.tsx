@@ -43,6 +43,7 @@ import {
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { Employee, CareerHistoryEntry, Dependant, CorporateEntity } from '../types';
+import EmployeeAvatar from './EmployeeAvatar';
 import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getAdjustedBasicSalary } from '../data';
 
 interface EmployeeDirectoryViewProps {
@@ -939,13 +940,7 @@ export default function EmployeeDirectoryView({
               <div className="px-6 pb-6 relative">
                 {/* Avatar overlapping border */}
                 <div className="relative -mt-12 mb-4 w-20 h-20 rounded-full border-4 border-white overflow-hidden shadow-md bg-white">
-                  {previewEmployee.avatarUrl ? (
-                    <img src={previewEmployee.avatarUrl} alt={previewEmployee.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  ) : (
-                    <div className="w-full h-full bg-primary text-white flex items-center justify-center font-bold text-2xl">
-                      {previewEmployee.name.split(' ').map(n => n[0]).join('')}
-                    </div>
-                  )}
+                  <EmployeeAvatar employee={previewEmployee} className="w-full h-full" />
                 </div>
 
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -2134,13 +2129,7 @@ export default function EmployeeDirectoryView({
                         
                         {/* Column 1: Personnel Info */}
                         <td className="p-4 flex items-center gap-3">
-                          {emp.avatarUrl ? (
-                            <img src={emp.avatarUrl} alt={emp.name} className="w-9 h-9 rounded-full object-cover border border-neutral-border shadow-xs" referrerPolicy="no-referrer" />
-                          ) : (
-                            <div className="w-9 h-9 rounded-full bg-primary-container text-white flex items-center justify-center font-bold text-sm">
-                              {emp.name.split(' ').map(n => n[0]).join('')}
-                            </div>
-                          )}
+                          <EmployeeAvatar employee={emp} className="w-9 h-9 rounded-full shrink-0" />
                           <div>
                             <div className="font-bold text-sm text-on-surface">{emp.name}</div>
                             <div className="text-xs text-on-surface-variant flex items-center gap-1 mt-0.5">
@@ -2248,13 +2237,7 @@ export default function EmployeeDirectoryView({
             <div className="p-4 border-b border-neutral-border flex justify-between items-center bg-primary text-[#f7f0e0]">
               <div className="flex items-center gap-3">
                 <div className="relative group shrink-0 w-12 h-12">
-                  {selectedEmployee.avatarUrl ? (
-                    <img src={selectedEmployee.avatarUrl} alt={selectedEmployee.name} className="w-12 h-12 rounded-full object-cover border-2 border-white/20" referrerPolicy="no-referrer" />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-white/20 text-white flex items-center justify-center font-bold text-lg">
-                      {selectedEmployee.name.split(' ').map(n => n[0]).join('')}
-                    </div>
-                  )}
+                  <EmployeeAvatar employee={selectedEmployee} className="w-12 h-12 rounded-full" />
                   {/* Photo Edit overlay */}
                   <label className="absolute inset-0 w-full h-full rounded-full bg-black/55 flex flex-col items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity">
                     <span className="text-[7px] text-white font-extrabold uppercase tracking-wider">Change</span>

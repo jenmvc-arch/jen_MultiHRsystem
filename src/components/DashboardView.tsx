@@ -23,6 +23,7 @@ import {
   Check
 } from 'lucide-react';
 import { Employee, ReviewCycle, CorporateEntity, EmployeePerformance } from '../types';
+import EmployeeAvatar from './EmployeeAvatar';
 
 interface DashboardViewProps {
   employees: Employee[];
@@ -553,13 +554,7 @@ export default function DashboardView({
                     className="p-3 rounded-md border border-outline-variant/30 hover:border-primary bg-surface-container-lowest hover:bg-surface-container-low transition-all cursor-pointer flex justify-between items-center group"
                   >
                     <div className="flex items-center gap-3">
-                      {emp.avatarUrl ? (
-                        <img src={emp.avatarUrl} alt={emp.name} className="w-8 h-8 rounded-full object-cover border border-neutral-border" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px] shrink-0">
-                          {emp.name.split(' ').map(n => n[0]).join('')}
-                        </div>
-                      )}
+                      <EmployeeAvatar employee={emp} className="w-8 h-8 rounded-full shrink-0" />
                       <div className="min-w-0">
                         <div className="text-xs font-semibold text-on-surface group-hover:text-primary transition-colors truncate">{emp.name}</div>
                         <div className="text-[10px] text-on-surface-variant truncate">{emp.designation}</div>

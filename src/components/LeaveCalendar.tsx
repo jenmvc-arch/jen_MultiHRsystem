@@ -17,6 +17,7 @@ import {
   Clock
 } from 'lucide-react';
 import { Employee } from '../types';
+import EmployeeAvatar from './EmployeeAvatar';
 import { LeaveRequest } from './LeaveManagementView';
 
 interface LeaveCalendarProps {
@@ -491,13 +492,7 @@ export default function LeaveCalendar({ requests, employees }: LeaveCalendarProp
                         {/* Avatar and name */}
                         <div className="flex items-center justify-between border-b border-neutral-100 pb-1.5">
                           <div className="flex items-center gap-2">
-                            {emp?.avatarUrl ? (
-                              <img src={emp.avatarUrl} alt={leave.employeeName} className="w-6 h-6 rounded-full object-cover border" />
-                            ) : (
-                              <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-[9px]">
-                                {getInitials(leave.employeeName)}
-                              </div>
-                            )}
+                            <EmployeeAvatar employee={emp} className="w-6 h-6 rounded-full" />
                             <div>
                               <span className="font-bold text-on-surface block leading-tight">{leave.employeeName}</span>
                               <span className="text-[9px] text-on-surface-variant block font-medium font-mono">{emp?.designation || 'Staff'}</span>

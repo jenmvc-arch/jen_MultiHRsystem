@@ -558,6 +558,7 @@ export default function App() {
             unpaidLeave: Number(e.unpaidLeave || 0),
             hrdCorp: Number(e.hrdCorp || 0),
             avatarUrl: e.avatarUrl || '',
+            gender: e.gender || 'Male',
             nricPassport: e.nricPassport || '',
             nationality: e.nationality || 'Malaysian',
             contactNumber: e.contactNumber || '',
@@ -929,6 +930,7 @@ export default function App() {
           unpaidLeave: newEmployee.unpaidLeave,
           hrdCorp: newEmployee.hrdCorp,
           avatarUrl: newEmployee.avatarUrl || '',
+          gender: newEmployee.gender || 'Male',
           nricPassport: newEmployee.nricPassport,
           nationality: newEmployee.nationality,
           contactNumber: newEmployee.contactNumber,
@@ -1047,6 +1049,7 @@ export default function App() {
         if (updates.status !== undefined) payloadUpdates.status = updates.status;
         if (updates.entityId !== undefined) payloadUpdates.entityName = updates.entityId;
         if (updates.avatarUrl !== undefined) payloadUpdates.avatarUrl = updates.avatarUrl;
+        if (updates.gender !== undefined) payloadUpdates.gender = updates.gender;
         if (updates.nricPassport !== undefined) payloadUpdates.nricPassport = updates.nricPassport;
         if (updates.nationality !== undefined) payloadUpdates.nationality = updates.nationality;
         if (updates.contactNumber !== undefined) payloadUpdates.contactNumber = updates.contactNumber;
