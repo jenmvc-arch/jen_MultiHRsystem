@@ -525,7 +525,6 @@ export default function EmployeeDirectoryView({
     setIsAddModalOpen(true);
   };
 
-  // Helper functions for Form Dependants
   const handleAddFormDependant = () => {
     if (!tempDepName.trim()) {
       onShowNotification('Dependant Error', 'Please specify dependant name.');
@@ -540,6 +539,7 @@ export default function EmployeeDirectoryView({
       gender: tempDepGender,
       dob: tempDepDob
     }]);
+    setFormHasDependants('Yes');
     setTempDepName('');
   };
 
@@ -563,6 +563,7 @@ export default function EmployeeDirectoryView({
       gender: detailTempDepGender,
       dob: detailTempDepDob
     }]);
+    setEditHasDependants('Yes');
     setDetailTempDepName('');
   };
 
@@ -579,7 +580,18 @@ export default function EmployeeDirectoryView({
     setEditSpouseCompany(selectedEmployee.spouseCompany || '');
     setEditSpousePosition(selectedEmployee.spousePosition || '');
     setEditHasDependants(selectedEmployee.hasDependants || 'No');
-    setEditDependants(selectedEmployee.dependants || []);
+    let initialDependants = selectedEmployee.dependants || [];
+    if (typeof initialDependants === 'string' && initialDependants) {
+      try {
+        initialDependants = JSON.parse(initialDependants);
+      } catch (err) {
+        initialDependants = [];
+      }
+    }
+    if (!Array.isArray(initialDependants)) {
+      initialDependants = [];
+    }
+    setEditDependants(initialDependants);
     setEditEligibleForStatutory(selectedEmployee.eligibleForStatutory || 'No');
     setEditTaxNumber(selectedEmployee.taxNumber || '');
     setEditEpfNumber(selectedEmployee.epfNumber || '');
@@ -588,14 +600,28 @@ export default function EmployeeDirectoryView({
 
   const handleSaveFamilyUpdates = () => {
     if (!selectedEmployee) return;
+
+    let finalDependants = [...editDependants];
+    let finalHasDependants = editHasDependants;
+
+    if (detailTempDepName.trim()) {
+      finalDependants.push({
+        id: `dep-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+        name: detailTempDepName,
+        gender: detailTempDepGender,
+        dob: detailTempDepDob
+      });
+      finalHasDependants = 'Yes';
+      setDetailTempDepName('');
+    }
     
     const updates: Partial<Employee> = {
       maritalStatus: editMaritalStatus,
       taxNumber: editTaxNumber,
       epfNumber: editEpfNumber,
       eligibleForStatutory: editEligibleForStatutory,
-      hasDependants: editHasDependants,
-      dependants: editHasDependants === 'Yes' ? editDependants : []
+      hasDependants: finalHasDependants,
+      dependants: finalHasDependants === 'Yes' ? finalDependants : []
     };
 
     if (editMaritalStatus === 'Married') {
@@ -630,10 +656,23 @@ export default function EmployeeDirectoryView({
       return;
     }
 
+    let finalFormDependants = [...formDependants];
+    let finalFormHasDependants = formHasDependants;
+
+    if (tempDepName.trim()) {
+      finalFormDependants.push({
+        name: tempDepName,
+        gender: tempDepGender,
+        dob: tempDepDob
+      });
+      finalFormHasDependants = 'Yes';
+      setTempDepName('');
+    }
+
     const spouseAndDependantFields: Partial<Employee> = {
-      hasDependants: formHasDependants,
-      dependants: formHasDependants === 'Yes' 
-        ? formDependants.map((dep, idx) => ({
+      hasDependants: finalFormHasDependants,
+      dependants: finalFormHasDependants === 'Yes' 
+        ? finalFormDependants.map((dep, idx) => ({
             ...dep,
             id: `dep-${Date.now()}-${idx}`
           }))
@@ -2849,8 +2888,7 @@ export default function EmployeeDirectoryView({
                         </div>
                       ) : null}
 
-                      {/* Married, Divorced, Widowed -> Dependants */}
-                      {(selectedEmployee.maritalStatus === 'Married' || selectedEmployee.maritalStatus === 'Divorced' || selectedEmployee.maritalStatus === 'Widowed') ? (
+                      {true ? (
                         <div className="space-y-2">
                           <div className="flex justify-between items-center">
                             <span className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider">Has Dependants?</span>
@@ -2872,21 +2910,33 @@ export default function EmployeeDirectoryView({
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-neutral-border/30">
-                                  {selectedEmployee.dependants && selectedEmployee.dependants.length > 0 ? (
-                                    selectedEmployee.dependants.map((dep) => (
-                                      <tr key={dep.id} className="hover:bg-neutral-light/20">
-                                        <td className="p-2 font-semibold text-on-surface">{dep.name}</td>
-                                        <td className="p-2">{dep.gender}</td>
-                                        <td className="p-2 font-mono">{formatToDDMMMYYYY(dep.dob)}</td>
+                                  {(() => {
+                                    let depsArray: any[] = [];
+                                    if (Array.isArray(selectedEmployee.dependants)) {
+                                      depsArray = selectedEmployee.dependants;
+                                    } else if (typeof selectedEmployee.dependants === 'string' && selectedEmployee.dependants) {
+                                      try {
+                                        depsArray = JSON.parse(selectedEmployee.dependants);
+                                      } catch (err) {
+                                        depsArray = [];
+                                      }
+                                    }
+                                    return depsArray.length > 0 ? (
+                                      depsArray.map((dep: any) => (
+                                        <tr key={dep.id} className="hover:bg-neutral-light/20">
+                                          <td className="p-2 font-semibold text-on-surface">{dep.name}</td>
+                                          <td className="p-2">{dep.gender}</td>
+                                          <td className="p-2 font-mono">{formatToDDMMMYYYY(dep.dob)}</td>
+                                        </tr>
+                                      ))
+                                    ) : (
+                                      <tr>
+                                        <td colSpan={3} className="p-3 text-center italic text-on-surface-variant">
+                                          No dependants listed
+                                        </td>
                                       </tr>
-                                    ))
-                                  ) : (
-                                    <tr>
-                                      <td colSpan={3} className="p-3 text-center italic text-on-surface-variant">
-                                        No dependants listed
-                                      </td>
-                                    </tr>
-                                  )}
+                                    );
+                                  })()}
                                 </tbody>
                               </table>
                             </div>
