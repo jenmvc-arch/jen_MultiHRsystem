@@ -29,8 +29,7 @@ export const googleSheetsClient = {
       throw new Error('Google Sheets client is not configured.');
     }
     const response = await fetch(targetUrl, {
-      method: 'GET',
-      headers: { 'Accept': 'application/json' }
+      method: 'GET'
     });
     const result = await response.json();
     if (!result.success) {
