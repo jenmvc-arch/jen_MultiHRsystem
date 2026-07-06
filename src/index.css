@@ -260,3 +260,30 @@
 .filepond--item-panel {
   background-color: var(--color-primary);
 }
+
+/* Custom premium scrollbar for smooth sidebar scrolling */
+.style-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(247, 240, 224, 0.2) transparent;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+.style-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.style-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.style-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(247, 240, 224, 0.2);
+  border-radius: 20px;
+  border: 1px solid transparent;
+  transition: background-color 0.2s ease;
+}
+
+.style-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(247, 240, 224, 0.4);
+}

@@ -139,8 +139,7 @@ export default function Sidebar({
         </button>
       </div>
 
-      {/* Nav Menu */}
-      <nav className="flex-1 px-2 space-y-4 overflow-y-auto">
+      <nav className="flex-1 px-2 space-y-4 overflow-y-auto style-scrollbar">
         {/* Core Operations Section */}
         <div>
           <div className="px-4 py-1 text-[9px] font-bold text-[#f7f0e0]/40 uppercase tracking-widest mb-1">
