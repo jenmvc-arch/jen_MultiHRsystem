@@ -33,6 +33,7 @@ import {
   SEED_ENTITIES,
   SEED_PERFORMANCES,
   SEED_CANDIDATES,
+  SEED_REVIEW_CYCLES,
   seedSocsoConfigurationsAndBrackets
 } from './data';
 import { getGmt8Timestamp, getGmt8DateString } from './lib/dateUtils';
@@ -60,7 +61,7 @@ import { googleSheetsClient, isGoogleConfigured, SheetsDataPayload } from './lib
 export default function App() {
   // Navigation & View States
   const [activeEntityId, setActiveEntityId] = useState<string>(() => {
-    return localStorage.getItem('active_corporate_entity_id') || '';
+    return localStorage.getItem('active_corporate_entity_id') || (isGoogleConfigured ? '' : 'Red Point Sdn Bhd');
   });
   const [isSwitchingEntity, setIsSwitchingEntity] = useState<boolean>(false);
   const [switchingToEntityName, setSwitchingToEntityName] = useState<string>('');
@@ -100,11 +101,21 @@ export default function App() {
   };
 
   // Core Database States
-  const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES);
-  const [performances, setPerformances] = useState<EmployeePerformance[]>(INITIAL_PERFORMANCES);
-  const [reviewCycles, setReviewCycles] = useState<ReviewCycle[]>(INITIAL_REVIEW_CYCLES);
-  const [entities, setEntities] = useState<CorporateEntity[]>(INITIAL_ENTITIES);
-  const [candidates, setCandidates] = useState<Candidate[]>(INITIAL_CANDIDATES);
+  const [employees, setEmployees] = useState<Employee[]>(() => {
+    return isGoogleConfigured ? INITIAL_EMPLOYEES : SEED_EMPLOYEES;
+  });
+  const [performances, setPerformances] = useState<EmployeePerformance[]>(() => {
+    return isGoogleConfigured ? INITIAL_PERFORMANCES : SEED_PERFORMANCES;
+  });
+  const [reviewCycles, setReviewCycles] = useState<ReviewCycle[]>(() => {
+    return isGoogleConfigured ? INITIAL_REVIEW_CYCLES : SEED_REVIEW_CYCLES;
+  });
+  const [entities, setEntities] = useState<CorporateEntity[]>(() => {
+    return isGoogleConfigured ? INITIAL_ENTITIES : SEED_ENTITIES;
+  });
+  const [candidates, setCandidates] = useState<Candidate[]>(() => {
+    return isGoogleConfigured ? INITIAL_CANDIDATES : SEED_CANDIDATES;
+  });
   const [payrollRecords2026, setPayrollRecords2026] = useState<PayrollRecord2026[]>([]);
   const [isSeeding, setIsSeeding] = useState(false);
   const [isLoadingDb, setIsLoadingDb] = useState(isGoogleConfigured);
