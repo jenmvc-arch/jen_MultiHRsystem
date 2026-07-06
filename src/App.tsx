@@ -1343,7 +1343,7 @@ export default function App() {
       
       {/* Premium Glassmorphic Loading Overlay */}
       {isSwitchingEntity && (
-        <div className="fixed inset-0 bg-[#121212]/75 backdrop-blur-md z-[9999] flex flex-col items-center justify-center p-6 text-center select-none animate-fade-in font-sans">
+        <div className="fixed inset-0 bg-[#121212] z-[9999] flex flex-col items-center justify-center p-6 text-center select-none animate-fade-in font-sans">
           <div className="relative flex flex-col items-center max-w-md w-full animate-fade-in">
             {/* Double Rotating Glowing Rings */}
             <div className="relative w-28 h-28 flex items-center justify-center">
@@ -1418,24 +1418,29 @@ export default function App() {
             setIsSwitchingEntity(true);
             localStorage.setItem('active_corporate_entity_id', id);
 
+            // Step 1: Update active entity ID in the background (hidden under solid cover) after mount
             setTimeout(() => {
-              const updateStates = () => {
-                setActiveEntityId(id);
-                setIsSwitchingEntity(false);
-              };
+              setActiveEntityId(id);
 
-              if ((document as any).startViewTransition) {
-                (document as any).startViewTransition(updateStates);
-              } else {
-                updateStates();
-              }
+              // Step 2: Smoothly fade out overlay using view transition after layout has settled
+              setTimeout(() => {
+                const dismissLoader = () => {
+                  setIsSwitchingEntity(false);
+                };
 
-              triggerNotification(
-                'Corporate View Switched',
-                `Now viewing as ${matched.name}. App branding, colors, and logo have synced.`,
-                'success'
-              );
-            }, 1000);
+                if ((document as any).startViewTransition) {
+                  (document as any).startViewTransition(dismissLoader);
+                } else {
+                  dismissLoader();
+                }
+
+                triggerNotification(
+                  'Corporate View Switched',
+                  `Now viewing as ${matched.name}. App branding, colors, and logo have synced.`,
+                  'success'
+                );
+              }, 500);
+            }, 250);
           }
         }}
       />
