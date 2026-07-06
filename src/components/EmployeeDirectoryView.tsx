@@ -593,7 +593,9 @@ export default function EmployeeDirectoryView({
       maritalStatus: editMaritalStatus,
       taxNumber: editTaxNumber,
       epfNumber: editEpfNumber,
-      eligibleForStatutory: editEligibleForStatutory
+      eligibleForStatutory: editEligibleForStatutory,
+      hasDependants: editHasDependants,
+      dependants: editHasDependants === 'Yes' ? editDependants : []
     };
 
     if (editMaritalStatus === 'Married') {
@@ -607,35 +609,13 @@ export default function EmployeeDirectoryView({
         updates.spouseCompany = '';
         updates.spousePosition = '';
       }
-      
-      updates.hasDependants = editHasDependants;
-      if (editHasDependants === 'Yes') {
-        updates.dependants = editDependants;
-      } else {
-        updates.dependants = [];
-      }
-    } else if (editMaritalStatus === 'Divorced' || editMaritalStatus === 'Widowed') {
-      updates.spouseName = '';
-      updates.spouseNric = '';
-      updates.spouseIsWorking = 'No';
-      updates.spouseCompany = '';
-      updates.spousePosition = '';
-      
-      updates.hasDependants = editHasDependants;
-      if (editHasDependants === 'Yes') {
-        updates.dependants = editDependants;
-      } else {
-        updates.dependants = [];
-      }
     } else {
-      // Single
+      // Single, Divorced, Widowed
       updates.spouseName = '';
       updates.spouseNric = '';
       updates.spouseIsWorking = 'No';
       updates.spouseCompany = '';
       updates.spousePosition = '';
-      updates.hasDependants = 'No';
-      updates.dependants = [];
     }
 
     onUpdateEmployee(selectedEmployee.id, updates);
@@ -650,7 +630,15 @@ export default function EmployeeDirectoryView({
       return;
     }
 
-    const spouseAndDependantFields: Partial<Employee> = {};
+    const spouseAndDependantFields: Partial<Employee> = {
+      hasDependants: formHasDependants,
+      dependants: formHasDependants === 'Yes' 
+        ? formDependants.map((dep, idx) => ({
+            ...dep,
+            id: `dep-${Date.now()}-${idx}`
+          }))
+        : []
+    };
     if (formMaritalStatus === 'Married') {
       spouseAndDependantFields.spouseName = formSpouseName;
       spouseAndDependantFields.spouseNric = formSpouseNric;
@@ -662,41 +650,13 @@ export default function EmployeeDirectoryView({
         spouseAndDependantFields.spouseCompany = '';
         spouseAndDependantFields.spousePosition = '';
       }
-      
-      spouseAndDependantFields.hasDependants = formHasDependants;
-      if (formHasDependants === 'Yes') {
-        spouseAndDependantFields.dependants = formDependants.map((dep, idx) => ({
-          ...dep,
-          id: `dep-${Date.now()}-${idx}`
-        }));
-      } else {
-        spouseAndDependantFields.dependants = [];
-      }
-    } else if (formMaritalStatus === 'Divorced' || formMaritalStatus === 'Widowed') {
-      spouseAndDependantFields.spouseName = '';
-      spouseAndDependantFields.spouseNric = '';
-      spouseAndDependantFields.spouseIsWorking = 'No';
-      spouseAndDependantFields.spouseCompany = '';
-      spouseAndDependantFields.spousePosition = '';
-      
-      spouseAndDependantFields.hasDependants = formHasDependants;
-      if (formHasDependants === 'Yes') {
-        spouseAndDependantFields.dependants = formDependants.map((dep, idx) => ({
-          ...dep,
-          id: `dep-${Date.now()}-${idx}`
-        }));
-      } else {
-        spouseAndDependantFields.dependants = [];
-      }
     } else {
-      // Single
+      // Single, Divorced, Widowed
       spouseAndDependantFields.spouseName = '';
       spouseAndDependantFields.spouseNric = '';
       spouseAndDependantFields.spouseIsWorking = 'No';
       spouseAndDependantFields.spouseCompany = '';
       spouseAndDependantFields.spousePosition = '';
-      spouseAndDependantFields.hasDependants = 'No';
-      spouseAndDependantFields.dependants = [];
     }
 
     const newEmp: Employee = {
@@ -3055,8 +3015,8 @@ export default function EmployeeDirectoryView({
                         </div>
                       )}
 
-                      {/* Married, Divorced, Widowed -> Dependants */}
-                      {(editMaritalStatus === 'Married' || editMaritalStatus === 'Divorced' || editMaritalStatus === 'Widowed') && (
+                      {/* Dependants details */}
+                      {true && (
                         <div className="p-3 bg-zinc-50 border border-neutral-border rounded-md space-y-3 animate-in fade-in duration-150">
                           <div className="flex justify-between items-center">
                             <span className="text-xs font-bold text-on-surface uppercase tracking-wider block">Do you have dependants?</span>
@@ -3158,7 +3118,7 @@ export default function EmployeeDirectoryView({
                       {/* Single status view inside edit */}
                       {editMaritalStatus === 'Single' && (
                         <div className="p-3 bg-zinc-100 border border-neutral-border/50 rounded text-center text-on-surface-variant italic">
-                          Single status active. Spouse & Dependant details are bypassed.
+                          Single status active. Spouse details are bypassed.
                         </div>
                       )}
 
@@ -3697,8 +3657,8 @@ export default function EmployeeDirectoryView({
                   </div>
                 )}
 
-                {/* Do you have dependants? (Only if Marital Status = Married, Divorced, or Widowed) */}
-                {(formMaritalStatus === 'Married' || formMaritalStatus === 'Divorced' || formMaritalStatus === 'Widowed') && (
+                {/* Do you have dependants? */}
+                {true && (
                   <div className="p-4 bg-zinc-50 border border-neutral-border rounded-lg space-y-4 animate-in fade-in duration-200">
                     <div className="flex justify-between items-center">
                       <span className="text-xs font-bold text-on-surface uppercase tracking-wider block">Do you have dependants?</span>
