@@ -102,23 +102,79 @@ export default function App() {
 
   // Core Database States
   const [employees, setEmployees] = useState<Employee[]>(() => {
-    return isGoogleConfigured ? INITIAL_EMPLOYEES : SEED_EMPLOYEES;
+    if (!isGoogleConfigured) {
+      const saved = localStorage.getItem('offline_employees');
+      if (saved) return JSON.parse(saved);
+      return SEED_EMPLOYEES;
+    }
+    return INITIAL_EMPLOYEES;
   });
   const [performances, setPerformances] = useState<EmployeePerformance[]>(() => {
-    return isGoogleConfigured ? INITIAL_PERFORMANCES : SEED_PERFORMANCES;
+    if (!isGoogleConfigured) {
+      const saved = localStorage.getItem('offline_performances');
+      if (saved) return JSON.parse(saved);
+      return SEED_PERFORMANCES;
+    }
+    return INITIAL_PERFORMANCES;
   });
   const [reviewCycles, setReviewCycles] = useState<ReviewCycle[]>(() => {
-    return isGoogleConfigured ? INITIAL_REVIEW_CYCLES : SEED_REVIEW_CYCLES;
+    if (!isGoogleConfigured) {
+      const saved = localStorage.getItem('offline_review_cycles');
+      if (saved) return JSON.parse(saved);
+      return SEED_REVIEW_CYCLES;
+    }
+    return INITIAL_REVIEW_CYCLES;
   });
   const [entities, setEntities] = useState<CorporateEntity[]>(() => {
-    return isGoogleConfigured ? INITIAL_ENTITIES : SEED_ENTITIES;
+    if (!isGoogleConfigured) {
+      const saved = localStorage.getItem('offline_entities');
+      if (saved) return JSON.parse(saved);
+      return SEED_ENTITIES;
+    }
+    return INITIAL_ENTITIES;
   });
   const [candidates, setCandidates] = useState<Candidate[]>(() => {
-    return isGoogleConfigured ? INITIAL_CANDIDATES : SEED_CANDIDATES;
+    if (!isGoogleConfigured) {
+      const saved = localStorage.getItem('offline_candidates');
+      if (saved) return JSON.parse(saved);
+      return SEED_CANDIDATES;
+    }
+    return INITIAL_CANDIDATES;
   });
   const [payrollRecords2026, setPayrollRecords2026] = useState<PayrollRecord2026[]>([]);
   const [isSeeding, setIsSeeding] = useState(false);
   const [isLoadingDb, setIsLoadingDb] = useState(isGoogleConfigured);
+
+  // Offline persistence sync
+  React.useEffect(() => {
+    if (!isGoogleConfigured) {
+      localStorage.setItem('offline_entities', JSON.stringify(entities));
+    }
+  }, [entities]);
+
+  React.useEffect(() => {
+    if (!isGoogleConfigured) {
+      localStorage.setItem('offline_employees', JSON.stringify(employees));
+    }
+  }, [employees]);
+
+  React.useEffect(() => {
+    if (!isGoogleConfigured) {
+      localStorage.setItem('offline_performances', JSON.stringify(performances));
+    }
+  }, [performances]);
+
+  React.useEffect(() => {
+    if (!isGoogleConfigured) {
+      localStorage.setItem('offline_review_cycles', JSON.stringify(reviewCycles));
+    }
+  }, [reviewCycles]);
+
+  React.useEffect(() => {
+    if (!isGoogleConfigured) {
+      localStorage.setItem('offline_candidates', JSON.stringify(candidates));
+    }
+  }, [candidates]);
 
   const employeesWithHistory = React.useMemo(() => {
     return employees.map(emp => {

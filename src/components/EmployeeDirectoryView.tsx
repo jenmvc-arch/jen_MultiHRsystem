@@ -162,6 +162,7 @@ export default function EmployeeDirectoryView({
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [formAvatarUrl, setFormAvatarUrl] = useState('');
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   // General Info Edit States
   const [isEditingGeneralInfo, setIsEditingGeneralInfo] = useState(false);
@@ -280,11 +281,13 @@ export default function EmployeeDirectoryView({
   };
 
   const uploadAvatarFile = async (file: File) => {
+    setIsUploadingAvatar(true);
     if (!isGoogleConfigured) {
       // Offline fallback: Use local blob URL
       const localUrl = URL.createObjectURL(file);
       setFormAvatarUrl(localUrl);
       onShowNotification('Avatar Selected', 'Simulated image upload locally.');
+      setIsUploadingAvatar(false);
       return;
     }
 
@@ -298,15 +301,19 @@ export default function EmployeeDirectoryView({
     } catch (err: any) {
       console.error('[Google Drive Storage] Upload error:', err);
       onShowNotification('Upload Error', `Could not upload image: ${err.message}`);
+    } finally {
+      setIsUploadingAvatar(false);
     }
   };
 
   const uploadDetailAvatarFile = async (employeeId: string, file: File) => {
+    setIsUploadingAvatar(true);
     if (!isGoogleConfigured) {
       // Offline fallback: Use local blob URL
       const localUrl = URL.createObjectURL(file);
       onUpdateEmployee(employeeId, { avatarUrl: localUrl });
       onShowNotification('Avatar Selected', 'Simulated avatar change locally.');
+      setIsUploadingAvatar(false);
       return;
     }
 
@@ -333,6 +340,8 @@ export default function EmployeeDirectoryView({
     } catch (err: any) {
       console.error('[Google Drive Storage] Upload error:', err);
       onShowNotification('Upload Error', `Could not upload image: ${err.message}`);
+    } finally {
+      setIsUploadingAvatar(false);
     }
   };
 
@@ -2306,10 +2315,15 @@ export default function EmployeeDirectoryView({
                       </button>
                       <button 
                         type="button"
+                        disabled={isUploadingAvatar}
                         onClick={handleSaveGeneralInfoUpdates}
-                        className="bg-primary text-[#f7f0e0] hover:opacity-95 px-3 py-1.5 rounded transition-colors text-xs font-semibold cursor-pointer"
+                        className={`px-3 py-1.5 rounded transition-colors text-xs font-semibold cursor-pointer ${
+                          isUploadingAvatar 
+                            ? 'bg-zinc-300 text-zinc-500 cursor-not-allowed' 
+                            : 'bg-primary text-[#f7f0e0] hover:opacity-95'
+                        }`}
                       >
-                        Save Changes
+                        {isUploadingAvatar ? 'Uploading...' : 'Save Changes'}
                       </button>
                     </div>
                   )}
@@ -4020,9 +4034,14 @@ export default function EmployeeDirectoryView({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-primary text-white rounded text-xs font-semibold hover:bg-primary-container"
+                  disabled={isUploadingAvatar}
+                  className={`px-4 py-2 rounded text-xs font-semibold ${
+                    isUploadingAvatar 
+                      ? 'bg-zinc-300 text-zinc-500 cursor-not-allowed' 
+                      : 'bg-primary text-white hover:bg-primary-container'
+                  }`}
                 >
-                  Enlist & Enroll Employee
+                  {isUploadingAvatar ? 'Uploading photo...' : 'Enlist & Enroll Employee'}
                 </button>
               </div>
             </form>

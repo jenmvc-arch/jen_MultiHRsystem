@@ -58,6 +58,7 @@ export default function EntitiesView({
   const [formLogoUrl, setFormLogoUrl] = useState('');
   const [formTheme, setFormTheme] = useState<'theme1' | 'theme2' | 'theme3'>('theme1');
   const [formGoogleScriptUrl, setFormGoogleScriptUrl] = useState('');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   // Active viewing state to list registered employees under a clicked subsidiary card
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
@@ -69,11 +70,13 @@ export default function EntitiesView({
   }, [entities, selectedEntityId]);
 
   const uploadLogoFile = async (file: File) => {
+    setIsUploadingLogo(true);
     if (!isGoogleConfigured) {
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormLogoUrl(reader.result as string);
         onShowNotification('Logo Processed', 'The company logo has been successfully uploaded and stored locally.');
+        setIsUploadingLogo(false);
       };
       reader.readAsDataURL(file);
       return;
@@ -87,6 +90,8 @@ export default function EntitiesView({
     } catch (err: any) {
       console.error('[Google Drive Logo Upload] Error:', err);
       onShowNotification('Upload Error', `Could not upload logo: ${err.message}`);
+    } finally {
+      setIsUploadingLogo(false);
     }
   };
 
@@ -623,9 +628,14 @@ export default function EntitiesView({
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-primary text-[#f7f0e0] font-bold rounded text-xs hover:bg-primary-dark transition-all cursor-pointer"
+                    disabled={isUploadingLogo}
+                    className={`px-4 py-2 font-bold rounded text-xs transition-all cursor-pointer ${
+                      isUploadingLogo 
+                        ? 'bg-zinc-300 text-zinc-500 cursor-not-allowed' 
+                        : 'bg-primary text-[#f7f0e0] hover:bg-primary-dark'
+                    }`}
                   >
-                    Save & Add Registry
+                    {isUploadingLogo ? 'Uploading logo...' : 'Save & Add Registry'}
                   </button>
                 </div>
               </div>
@@ -856,9 +866,14 @@ export default function EntitiesView({
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-primary text-[#f7f0e0] font-bold rounded text-xs hover:bg-primary-dark transition-all cursor-pointer"
+                    disabled={isUploadingLogo}
+                    className={`px-4 py-2 font-bold rounded text-xs transition-all cursor-pointer ${
+                      isUploadingLogo 
+                        ? 'bg-zinc-300 text-zinc-500 cursor-not-allowed' 
+                        : 'bg-primary text-[#f7f0e0] hover:bg-primary-dark'
+                    }`}
                   >
-                    Save Changes
+                    {isUploadingLogo ? 'Uploading logo...' : 'Save Changes'}
                   </button>
                 </div>
               </div>
