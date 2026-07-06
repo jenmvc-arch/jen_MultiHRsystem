@@ -55,6 +55,7 @@ import SocsoConfigAdminView from './components/SocsoConfigAdminView';
 import LoginView from './components/LoginView';
 import JobApplicationForm from './components/JobApplicationForm';
 import OnboardingForm from './components/OnboardingForm';
+import { EntityContextProvider } from './context/EntityContext';
 
 import { googleSheetsClient, isGoogleConfigured, SheetsDataPayload } from './lib/googleSheetsClient';
 
@@ -87,6 +88,25 @@ export default function App() {
     setCurrentUserEmail(user.email);
     setCurrentUserName(user.name);
     setCurrentUserRole(user.role);
+
+    // Read and restore preferences
+    const prefJson = localStorage.getItem(`user_entity_preferences_${user.email}`);
+    if (prefJson) {
+      try {
+        const pref = JSON.parse(prefJson);
+        if (pref && pref.last_selected_entity_id) {
+          const matched = entities.find(e => e.id === pref.last_selected_entity_id && e.isActive);
+          if (matched) {
+            setActiveEntityId(pref.last_selected_entity_id);
+            return;
+          }
+        }
+      } catch (e) {}
+    }
+    const activeEntities = entities.filter(e => e.isActive);
+    if (activeEntities.length > 0) {
+      setActiveEntityId(activeEntities[0].id);
+    }
   };
 
   const handleSignOut = () => {
@@ -202,6 +222,56 @@ export default function App() {
       };
     });
   }, [employees, payrollRecords2026]);
+
+  // Corporate scopes data isolation filters
+  const filteredEmployees = React.useMemo(() => {
+    return employees.filter(e => e.entityId === activeEntityId);
+  }, [employees, activeEntityId]);
+
+  const filteredEmployeesWithHistory = React.useMemo(() => {
+    return employeesWithHistory.filter(e => e.entityId === activeEntityId);
+  }, [employeesWithHistory, activeEntityId]);
+
+  const filteredPerformances = React.useMemo(() => {
+    return performances.filter(p => filteredEmployees.some(e => e.id === p.employeeId));
+  }, [performances, filteredEmployees]);
+
+  const filteredCandidates = React.useMemo(() => {
+    return candidates.filter(c => c.entityId === activeEntityId);
+  }, [candidates, activeEntityId]);
+
+  const filteredPayrollRecords2026 = React.useMemo(() => {
+    return payrollRecords2026.filter(r => filteredEmployees.some(e => e.email.toLowerCase() === r.employeeEmail.toLowerCase()));
+  }, [payrollRecords2026, filteredEmployees]);
+
+  // Reset selectedEmployeeId if the employee doesn't belong to the active entity
+  React.useEffect(() => {
+    if (selectedEmployeeId) {
+      const match = employees.find(e => e.id === selectedEmployeeId);
+      if (match && match.entityId !== activeEntityId) {
+        const entityEmployees = employees.filter(e => e.entityId === activeEntityId);
+        if (entityEmployees.length > 0) {
+          setSelectedEmployeeId(entityEmployees[0].id);
+        } else {
+          setSelectedEmployeeId('');
+        }
+      }
+    }
+  }, [activeEntityId, employees, selectedEmployeeId]);
+
+  // Persist user entity switching preferences
+  React.useEffect(() => {
+    if (currentUserEmail && activeEntityId) {
+      localStorage.setItem(
+        `user_entity_preferences_${currentUserEmail}`,
+        JSON.stringify({
+          user_id: currentUserEmail,
+          last_selected_entity_id: activeEntityId,
+          updated_at: new Date().toISOString()
+        })
+      );
+    }
+  }, [activeEntityId, currentUserEmail]);
 
   const handleSeedDatabase = async () => {
     setIsSeeding(true);
@@ -364,13 +434,29 @@ export default function App() {
     const auth = localStorage.getItem('hr-nexus-auth');
     if (auth === 'true') {
       setIsAuthenticated(true);
-      setCurrentUserEmail(localStorage.getItem('hr-nexus-user-email'));
+      const email = localStorage.getItem('hr-nexus-user-email');
+      setCurrentUserEmail(email);
       setCurrentUserName(localStorage.getItem('hr-nexus-user-name'));
       setCurrentUserRole(localStorage.getItem('hr-nexus-user-role'));
+
+      if (email) {
+        const prefJson = localStorage.getItem(`user_entity_preferences_${email}`);
+        if (prefJson) {
+          try {
+            const pref = JSON.parse(prefJson);
+            if (pref && pref.last_selected_entity_id) {
+              const matched = entities.find(e => e.id === pref.last_selected_entity_id && e.isActive);
+              if (matched) {
+                setActiveEntityId(pref.last_selected_entity_id);
+              }
+            }
+          } catch (e) {}
+        }
+      }
     }
     // Seed statutory configurations and brackets on mount
     seedSocsoConfigurationsAndBrackets();
-  }, []);
+  }, [entities]);
 
   // Load data from Google Sheets dynamically if configured
   useEffect(() => {
@@ -1409,7 +1495,44 @@ export default function App() {
   }
 
   return (
-    <div style={getThemeStyles(activeEntity?.theme)} className="flex h-screen bg-background overflow-hidden relative font-sans text-on-background select-none">
+    <EntityContextProvider
+      entities={entities}
+      activeEntityId={activeEntityId}
+      isSwitchingEntity={isSwitchingEntity}
+      onSwitchEntity={async (id) => {
+        const matched = entities.find(e => e.id === id);
+        if (matched) {
+          setSwitchingToEntityName(matched.name);
+          setIsSwitchingEntity(true);
+          localStorage.setItem('active_corporate_entity_id', id);
+
+          // Step 1: Update active entity ID in the background (hidden under solid cover) after mount
+          setTimeout(() => {
+            setActiveEntityId(id);
+
+            // Step 2: Smoothly fade out overlay using view transition after layout has settled
+            setTimeout(() => {
+              const dismissLoader = () => {
+                setIsSwitchingEntity(false);
+              };
+
+              if ((document as any).startViewTransition) {
+                (document as any).startViewTransition(dismissLoader);
+              } else {
+                dismissLoader();
+              }
+
+              triggerNotification(
+                'Corporate View Switched',
+                `Now viewing as ${matched.name}. App branding, colors, and logo have synced.`,
+                'success'
+              );
+            }, 500);
+          }, 250);
+        }
+      }}
+    >
+      <div style={getThemeStyles(activeEntity?.theme)} className="flex h-screen bg-background overflow-hidden relative font-sans text-on-background select-none">
       
       {/* Premium Glassmorphic Loading Overlay */}
       {isSwitchingEntity && (
@@ -1580,10 +1703,10 @@ export default function App() {
         <main className="flex-1 overflow-y-auto bg-surface-container-low p-6 md:p-8 select-text">
           {currentTab === 'dashboard' && (
             <DashboardView 
-              employees={employeesWithHistory}
+              employees={filteredEmployeesWithHistory}
               entities={entities}
               reviewCycles={reviewCycles}
-              performances={performances}
+              performances={filteredPerformances}
               onNavigate={setCurrentTab}
               onOpenNewEmployeeModal={() => {
                 setCurrentTab('directory');
@@ -1596,9 +1719,9 @@ export default function App() {
 
           {currentTab === 'payroll' && (
             <PayrollView 
-              employees={employeesWithHistory}
+              employees={filteredEmployeesWithHistory}
               entities={entities}
-              payrollRecords2026={payrollRecords2026}
+              payrollRecords2026={filteredPayrollRecords2026}
               onSavePayrollRecord2026={handleSavePayrollRecord2026}
               onUpdateEmployeeSalary={handleUpdateEmployeeSalary}
               onNavigateToDocument={handleNavigateToDocument}
@@ -1609,7 +1732,7 @@ export default function App() {
 
           {currentTab === 'payslip-viewer' && (
             <PayslipDocumentView 
-              employees={employeesWithHistory}
+              employees={filteredEmployeesWithHistory}
               selectedEmployeeId={selectedEmployeeId}
               onBack={() => setCurrentTab('payroll')}
               onShowNotification={triggerNotification}
@@ -1619,8 +1742,8 @@ export default function App() {
 
           {currentTab === 'performance' && (
             <PerformanceView 
-              employees={employees}
-              performances={performances}
+              employees={filteredEmployees}
+              performances={filteredPerformances}
               reviewCycles={reviewCycles}
               onSavePerformance={handleSavePerformance}
               onShowNotification={triggerNotification}
@@ -1629,7 +1752,7 @@ export default function App() {
 
           {currentTab === 'directory' && (
             <EmployeeDirectoryView 
-              employees={employees}
+              employees={filteredEmployees}
               entities={entities}
               onAddEmployee={handleAddEmployee}
               onDeleteEmployee={handleDeleteEmployee}
@@ -1642,7 +1765,7 @@ export default function App() {
           {currentTab === 'entities' && (
             <EntitiesView 
               entities={entities}
-              employees={employees}
+              employees={filteredEmployees}
               onAddEntity={handleAddEntity}
               onUpdateEntity={handleUpdateEntity}
               onShowNotification={triggerNotification}
@@ -1651,7 +1774,7 @@ export default function App() {
 
           {currentTab === 'tax-settings' && (
             <TaxSettingsView 
-              employees={employees}
+              employees={filteredEmployees}
               onUpdateEmployee={handleUpdateEmployeeSalary}
               onShowNotification={triggerNotification}
             />
@@ -1659,22 +1782,23 @@ export default function App() {
 
           {currentTab === 'reports' && (
             <ReportsView 
-              employees={employeesWithHistory}
-              performances={performances}
+              employees={filteredEmployeesWithHistory}
+              performances={filteredPerformances}
               onShowNotification={triggerNotification}
             />
           )}
 
           {currentTab === 'leave-management' && (
             <LeaveManagementView 
-              employees={employees}
+              employees={filteredEmployees}
               onShowNotification={triggerNotification}
+              activeEntityId={activeEntityId}
             />
           )}
 
           {currentTab === 'forms-directory' && (
             <FormsDirectoryView 
-              employees={employees}
+              employees={filteredEmployees}
               onShowNotification={triggerNotification}
               activeEntity={activeEntity}
             />
@@ -1685,7 +1809,7 @@ export default function App() {
               entities={entities}
               onShowNotification={triggerNotification}
               onAddEmployee={handleAddEmployee}
-              candidates={candidates}
+              candidates={filteredCandidates}
               onAddCandidate={handleAddCandidate}
               onUpdateCandidate={handleUpdateCandidate}
             />
@@ -1694,6 +1818,7 @@ export default function App() {
           {currentTab === 'department-role' && (
             <DepartmentRoleView 
               onShowNotification={triggerNotification}
+              activeEntityId={activeEntityId}
             />
           )}
 
@@ -1983,5 +2108,6 @@ export default function App() {
       )}
 
     </div>
+    </EntityContextProvider>
   );
 }

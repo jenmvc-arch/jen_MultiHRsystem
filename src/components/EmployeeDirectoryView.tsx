@@ -2082,17 +2082,24 @@ export default function EmployeeDirectoryView({
                   ))}
                 </select>
 
-                {/* Subsidiary select */}
-                <select
-                  value={entityFilter}
-                  onChange={(e) => setEntityFilter(e.target.value)}
-                  className="rounded border border-primary/30 bg-white p-1.5 text-xs outline-none font-semibold text-primary"
-                >
-                  <option value="All Subsidiaries">All Subsidiaries</option>
-                  {entities.map(ent => (
-                    <option key={ent.id} value={ent.id}>{ent.name}</option>
-                  ))}
-                </select>
+                {/* Subsidiary display (sandboxed) */}
+                {activeEntityId ? (
+                  <div className="rounded border border-primary/20 bg-primary/5 px-2.5 py-1.5 text-xs font-bold text-primary flex items-center gap-1.5 select-none">
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>{entities.find(e => e.id === activeEntityId)?.name || activeEntityId}</span>
+                  </div>
+                ) : (
+                  <select
+                    value={entityFilter}
+                    onChange={(e) => setEntityFilter(e.target.value)}
+                    className="rounded border border-primary/30 bg-white p-1.5 text-xs outline-none font-semibold text-primary"
+                  >
+                    <option value="All Subsidiaries">All Subsidiaries</option>
+                    {entities.map(ent => (
+                      <option key={ent.id} value={ent.id}>{ent.name}</option>
+                    ))}
+                  </select>
+                )}
 
                 {/* Status select */}
                 <select

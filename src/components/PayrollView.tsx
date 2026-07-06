@@ -34,10 +34,16 @@ export default function PayrollView({
   const defaultPeriod = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const [selectedPayPeriod, setSelectedPayPeriod] = useState(defaultPeriod);
   const [selectedDepartment, setSelectedDepartment] = useState('All Departments');
-  const [selectedEntityId, setSelectedEntityId] = useState<string>('all');
+  const [selectedEntityId, setSelectedEntityId] = useState<string>(activeEntity?.id || 'all');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(employees[0]?.id || '');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSubTab, setActiveSubTab] = useState<'processing' | 'document' | 'history'>('processing');
+
+  React.useEffect(() => {
+    if (activeEntity?.id) {
+      setSelectedEntityId(activeEntity.id);
+    }
+  }, [activeEntity]);
   
   // Local state to track which employees have been fully "Generated" (vs Draft status)
   const [generatedMap, setGeneratedMap] = useState<Record<string, boolean>>({});
@@ -466,34 +472,18 @@ export default function PayrollView({
         </button>
       </div>
 
-      {/* Corporate Subsidiary Switcher Pills */}
-      <div className="bg-white border border-neutral-border p-1.5 rounded-lg flex flex-wrap gap-1.5 shadow-xs text-left select-none">
-        <button
-          onClick={() => setSelectedEntityId('all')}
-          className={`px-4 py-2 rounded font-bold text-xs transition-all flex items-center gap-2 cursor-pointer ${
-            selectedEntityId === 'all'
-              ? 'bg-primary text-white shadow-xs'
-              : 'text-on-surface-variant hover:text-on-surface hover:bg-neutral-100'
-          }`}
-        >
-          <Globe className="w-4 h-4" /> All Corporate Subsidiaries
-        </button>
-        {entities.map((ent) => {
-          const isSelected = selectedEntityId === ent.id;
-          return (
-            <button
-              key={ent.id}
-              onClick={() => setSelectedEntityId(ent.id)}
-              className={`px-4 py-2 rounded font-bold text-xs transition-all flex items-center gap-2 cursor-pointer ${
-                isSelected
-                  ? 'bg-primary text-white shadow-xs'
-                  : 'text-on-surface-variant hover:text-on-surface hover:bg-neutral-100'
-              }`}
-            >
-              <Building2 className="w-4 h-4" /> {ent.name}
-            </button>
-          );
-        })}
+      {/* Active Corporate Sandbox Indicator */}
+      <div className="bg-white border border-neutral-border p-4 rounded-lg flex justify-between items-center shadow-xs text-left select-none">
+        <div className="flex items-center gap-3">
+          <Building2 className="w-5 h-5 text-primary" />
+          <div>
+            <h4 className="font-bold text-xs text-primary uppercase tracking-wider">Active Corporate Entity</h4>
+            <p className="text-sm font-semibold text-on-background mt-0.5">{activeEntity?.name || 'All Subsidiaries'}</p>
+          </div>
+        </div>
+        <span className="text-[10px] bg-primary/10 border border-primary/20 text-primary font-mono font-bold px-2 py-0.5 rounded-sm uppercase">
+          SANDBOX ISOLATED
+        </span>
       </div>
 
       {activeSubTab === 'history' ? (

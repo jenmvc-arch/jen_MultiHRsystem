@@ -10,7 +10,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "server": "./node_modules/.bin/tsx server.ts",
-    "test": "./node_modules/.bin/tsx src/test_pcb.ts"
+    "test": "./node_modules/.bin/tsx src/test_pcb.ts && ./node_modules/.bin/tsx src/test_entity_switching.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

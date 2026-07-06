@@ -19,6 +19,7 @@ import {
 
 interface DepartmentRoleViewProps {
   onShowNotification: (title: string, message: string, type?: 'success' | 'info' | 'error') => void;
+  activeEntityId: string;
 }
 
 export const DEFAULT_DEPARTMENTS = [
@@ -40,7 +41,10 @@ export const DEFAULT_ROLES = [
   'Consultant'
 ];
 
-export default function DepartmentRoleView({ onShowNotification }: DepartmentRoleViewProps) {
+export default function DepartmentRoleView({ 
+  onShowNotification,
+  activeEntityId 
+}: DepartmentRoleViewProps) {
   const [departments, setDepartments] = useState<string[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
 
@@ -55,34 +59,39 @@ export default function DepartmentRoleView({ onShowNotification }: DepartmentRol
   const [editingRoleIndex, setEditingRoleIndex] = useState<number | null>(null);
   const [editingRoleValue, setEditingRoleValue] = useState('');
 
-  // Load from localStorage
+  // Load and sync from localStorage scoped by activeEntityId
   useEffect(() => {
-    const savedDepts = localStorage.getItem('company_departments');
-    const savedRoles = localStorage.getItem('company_roles');
+    if (activeEntityId) {
+      const savedDepts = localStorage.getItem(`company_departments_${activeEntityId}`);
+      if (savedDepts) {
+        setDepartments(JSON.parse(savedDepts));
+      } else {
+        setDepartments(DEFAULT_DEPARTMENTS);
+        localStorage.setItem(`company_departments_${activeEntityId}`, JSON.stringify(DEFAULT_DEPARTMENTS));
+      }
 
-    if (savedDepts) {
-      setDepartments(JSON.parse(savedDepts));
-    } else {
-      setDepartments(DEFAULT_DEPARTMENTS);
-      localStorage.setItem('company_departments', JSON.stringify(DEFAULT_DEPARTMENTS));
+      const savedRoles = localStorage.getItem(`company_roles_${activeEntityId}`);
+      if (savedRoles) {
+        setRoles(JSON.parse(savedRoles));
+      } else {
+        setRoles(DEFAULT_ROLES);
+        localStorage.setItem(`company_roles_${activeEntityId}`, JSON.stringify(DEFAULT_ROLES));
+      }
     }
-
-    if (savedRoles) {
-      setRoles(JSON.parse(savedRoles));
-    } else {
-      setRoles(DEFAULT_ROLES);
-      localStorage.setItem('company_roles', JSON.stringify(DEFAULT_ROLES));
-    }
-  }, []);
+  }, [activeEntityId]);
 
   const saveDepartments = (updated: string[]) => {
     setDepartments(updated);
-    localStorage.setItem('company_departments', JSON.stringify(updated));
+    if (activeEntityId) {
+      localStorage.setItem(`company_departments_${activeEntityId}`, JSON.stringify(updated));
+    }
   };
 
   const saveRoles = (updated: string[]) => {
     setRoles(updated);
-    localStorage.setItem('company_roles', JSON.stringify(updated));
+    if (activeEntityId) {
+      localStorage.setItem(`company_roles_${activeEntityId}`, JSON.stringify(updated));
+    }
   };
 
   // Add Department

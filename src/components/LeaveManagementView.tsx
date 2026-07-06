@@ -60,31 +60,63 @@ const DEFAULT_LEAVE_CONFIGS: LeaveConfig[] = [
 
 const INITIAL_LEAVE_REQUESTS: LeaveRequest[] = [];
 
+interface LeaveManagementViewProps {
+  employees: Employee[];
+  onShowNotification: (title: string, message: string) => void;
+  activeEntityId: string;
+}
+
 export default function LeaveManagementView({
   employees,
-  onShowNotification
+  onShowNotification,
+  activeEntityId
 }: LeaveManagementViewProps) {
-  const [requests, setRequests] = useState<LeaveRequest[]>(() => {
-    const saved = localStorage.getItem('leave_requests');
-    return saved ? JSON.parse(saved) : INITIAL_LEAVE_REQUESTS;
-  });
-  const [leaveConfigs, setLeaveConfigs] = useState<LeaveConfig[]>(() => {
-    const saved = localStorage.getItem('leave_configs');
-    return saved ? JSON.parse(saved) : DEFAULT_LEAVE_CONFIGS;
-  });
+  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [leaveConfigs, setLeaveConfigs] = useState<LeaveConfig[]>([]);
+
+  // Load and sync from localStorage scoped by activeEntityId
+  React.useEffect(() => {
+    if (activeEntityId) {
+      const savedRequests = localStorage.getItem(`leave_requests_${activeEntityId}`);
+      setRequests(savedRequests ? JSON.parse(savedRequests) : INITIAL_LEAVE_REQUESTS);
+
+      const savedConfigs = localStorage.getItem(`leave_configs_${activeEntityId}`);
+      setLeaveConfigs(savedConfigs ? JSON.parse(savedConfigs) : DEFAULT_LEAVE_CONFIGS);
+    }
+  }, [activeEntityId]);
 
   const saveConfigs = (newConfigs: LeaveConfig[]) => {
     setLeaveConfigs(newConfigs);
-    localStorage.setItem('leave_configs', JSON.stringify(newConfigs));
+    if (activeEntityId) {
+      localStorage.setItem(`leave_configs_${activeEntityId}`, JSON.stringify(newConfigs));
+    }
   };
 
   const saveRequests = (newRequests: LeaveRequest[]) => {
     setRequests(newRequests);
-    localStorage.setItem('leave_requests', JSON.stringify(newRequests));
+    if (activeEntityId) {
+      localStorage.setItem(`leave_requests_${activeEntityId}`, JSON.stringify(newRequests));
+    }
   };
 
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState(employees[0]?.id || '');
-  const [leaveType, setLeaveType] = useState(() => leaveConfigs[0]?.leaveType || 'Annual Leave');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+
+  React.useEffect(() => {
+    if (employees && employees.length > 0) {
+      setSelectedEmployeeId(employees[0].id);
+    } else {
+      setSelectedEmployeeId('');
+    }
+  }, [employees]);
+
+  const [leaveType, setLeaveType] = useState('Annual Leave');
+
+  React.useEffect(() => {
+    if (leaveConfigs.length > 0) {
+      setLeaveType(leaveConfigs[0].leaveType);
+    }
+  }, [leaveConfigs]);
+
   const [startDate, setStartDate] = useState(getGmt8DateString());
   const [endDate, setEndDate] = useState(getGmt8DateString());
   const [reason, setReason] = useState('');
