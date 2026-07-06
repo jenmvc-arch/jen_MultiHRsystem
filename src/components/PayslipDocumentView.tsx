@@ -18,6 +18,7 @@ import { pdf } from '@react-pdf/renderer';
 import { PayslipPDFDocument } from './PayslipPDFDocument';
 import { Employee, CorporateEntity } from '../types';
 import { calculatePayslip, getPayslipLabel, getAdjustedBasicSalary, getDirectLogoUrl, calculateSocsoContribution, getEmployeeForMonth } from '../data';
+import { formatToDDMMMYYYY } from '../lib/dateUtils';
 
 interface PayslipDocumentViewProps {
   employees: Employee[];
@@ -121,7 +122,7 @@ export default function PayslipDocumentView({
       const joinDay = joinDate.getDate();
       const calendarDays = new Date(payYear, payMonth, 0).getDate();
       const unpaidDays = joinDay - 1;
-      prorationDetails = `Joined mid-month on ${joinDate.toLocaleDateString('en-MY', {day: 'numeric', month: 'short', year: 'numeric'})}. Deducted ${unpaidDays}/${calendarDays} unpaid days.`;
+      prorationDetails = `Joined mid-month on ${formatToDDMMMYYYY(activeEmployee.dateOfJoined)}. Deducted ${unpaidDays}/${calendarDays} unpaid days.`;
     } else {
       prorationDetails = `Deduction for incomplete month of service.`;
     }
@@ -369,7 +370,7 @@ export default function PayslipDocumentView({
             </div>
             <div>
               <p className="text-on-surface-variant mb-1 font-medium">Date Joined</p>
-              <p className="text-on-surface font-semibold text-sm font-mono">{activeEmployee.dateOfJoined || 'N/A'}</p>
+              <p className="text-on-surface font-semibold text-sm font-mono">{formatToDDMMMYYYY(activeEmployee.dateOfJoined)}</p>
             </div>
             <div>
               <p className="text-on-surface-variant mb-1 font-medium">Employment Status</p>

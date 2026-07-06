@@ -19,6 +19,7 @@ import {
 import { Employee } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
 import { LeaveRequest } from './LeaveManagementView';
+import { formatToDDMMMYYYY } from '../lib/dateUtils';
 
 interface LeaveCalendarProps {
   requests: LeaveRequest[];
@@ -32,10 +33,15 @@ const MONTHS = [
 ];
 
 export default function LeaveCalendar({ requests, employees }: LeaveCalendarProps) {
-  // Initialize to June 2026 to align with the mock requests
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [currentMonth, setCurrentMonth] = useState(5); // 5 = June (0-indexed)
-  const [selectedDate, setSelectedDate] = useState<string>('2026-06-30');
+  const today = new Date();
+  const [currentYear, setCurrentYear] = useState(today.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  });
 
   // Handle previous month navigation
   const handlePrevMonth = () => {
@@ -57,11 +63,15 @@ export default function LeaveCalendar({ requests, employees }: LeaveCalendarProp
     }
   };
 
-  // Handle going to current mock date (June 30, 2026)
+  // Handle going to current live today
   const handleGoToMockToday = () => {
-    setCurrentYear(2026);
-    setCurrentMonth(5);
-    setSelectedDate('2026-06-30');
+    const now = new Date();
+    setCurrentYear(now.getFullYear());
+    setCurrentMonth(now.getMonth());
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    setSelectedDate(`${y}-${m}-${d}`);
   };
 
   // Generate grid days
@@ -263,7 +273,7 @@ export default function LeaveCalendar({ requests, employees }: LeaveCalendarProp
             onClick={handleGoToMockToday}
             className="px-2.5 py-1.5 bg-white border border-neutral-border hover:bg-neutral-100 rounded text-[11px] font-bold text-on-surface transition-colors cursor-pointer"
           >
-            Go to June 30, 2026
+            Go to Today
           </button>
 
           {/* Month Dropdown Selector */}
@@ -426,7 +436,7 @@ export default function LeaveCalendar({ requests, employees }: LeaveCalendarProp
               <span className="text-[10px] font-bold text-primary tracking-wider uppercase font-mono block">Selected Date Shift Status</span>
               <span className="text-sm font-extrabold text-on-surface flex items-center gap-1.5">
                 <CalendarIcon className="w-4 h-4 text-primary" />
-                {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                {formatToDDMMMYYYY(selectedDate)}
               </span>
             </div>
 

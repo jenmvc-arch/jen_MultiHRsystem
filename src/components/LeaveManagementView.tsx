@@ -20,7 +20,7 @@ import {
 import { Employee } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
 import LeaveCalendar from './LeaveCalendar';
-import { getGmt8DateString } from '../lib/dateUtils';
+import { getGmt8DateString, formatToDDMMMYYYY } from '../lib/dateUtils';
 
 export interface LeaveRequest {
   id: string;
@@ -85,8 +85,8 @@ export default function LeaveManagementView({
 
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(employees[0]?.id || '');
   const [leaveType, setLeaveType] = useState(() => leaveConfigs[0]?.leaveType || 'Annual Leave');
-  const [startDate, setStartDate] = useState('2026-07-05');
-  const [endDate, setEndDate] = useState('2026-07-07');
+  const [startDate, setStartDate] = useState(getGmt8DateString());
+  const [endDate, setEndDate] = useState(getGmt8DateString());
   const [reason, setReason] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Approved' | 'Rejected'>('All');
 
@@ -394,7 +394,7 @@ export default function LeaveManagementView({
                           <EmployeeAvatar employee={emp} className="w-7 h-7 rounded-full" />
                           <div>
                             <span className="font-bold text-xs text-on-surface block">{req.employeeName}</span>
-                            <span className="text-[10px] text-on-surface-variant font-medium font-mono block">Applied: {req.appliedDate} · ID: {req.id}</span>
+                            <span className="text-[10px] text-on-surface-variant font-medium font-mono block">Applied: {formatToDDMMMYYYY(req.appliedDate)} · ID: {req.id}</span>
                           </div>
                         </div>
 
@@ -405,7 +405,7 @@ export default function LeaveManagementView({
                           </div>
                           <div>
                             <span className="text-[10px] text-on-surface-variant block uppercase tracking-wider font-semibold">Duration</span>
-                            <span className="font-semibold text-on-surface font-mono">{req.startDate} to {req.endDate} ({req.totalDays} day{req.totalDays > 1 ? 's' : ''})</span>
+                            <span className="font-semibold text-on-surface font-mono">{formatToDDMMMYYYY(req.startDate)} to {formatToDDMMMYYYY(req.endDate)} ({req.totalDays} day{req.totalDays > 1 ? 's' : ''})</span>
                           </div>
                         </div>
 

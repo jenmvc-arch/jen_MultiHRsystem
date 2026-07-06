@@ -34,3 +34,24 @@ export function getGmt8LongDateString(): string {
     day: 'numeric'
   });
 }
+
+export function formatToDDMMMYYYY(dateInput: string | Date | null | undefined): string {
+  if (!dateInput) return 'N/A';
+  try {
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) {
+      // If it's already in DD-MMM-YYYY format, return it
+      if (typeof dateInput === 'string' && /^\d{2}-[A-Za-z]{3}-\d{4}$/.test(dateInput)) {
+        return dateInput;
+      }
+      return String(dateInput);
+    }
+    const day = String(d.getDate()).padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
+  } catch (e) {
+    return String(dateInput);
+  }
+}

@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { Employee } from '../types';
 import { calculatePayslip, calculateYtd } from '../data';
-import { getGmt8DateString } from '../lib/dateUtils';
+import { getGmt8DateString, formatToDDMMMYYYY } from '../lib/dateUtils';
 
 import PCBReconstructionHub from './PCBReconstructionHub';
 
@@ -462,7 +462,7 @@ export default function TaxSettingsView({
                     </div>
 
                     <div className="p-3 bg-blue-50 border border-blue-200 rounded text-[11px] text-blue-700 leading-relaxed">
-                      <strong>Submission Notice:</strong> Submit this notification to LHDN within 30 days of employing <strong>{activeEmployee.name}</strong> (Joined: {activeEmployee.dateOfJoined || 'N/A'}).
+                      <strong>Submission Notice:</strong> Submit this notification to LHDN within 30 days of employing <strong>{activeEmployee.name}</strong> (Joined: {formatToDDMMMYYYY(activeEmployee.dateOfJoined)}).
                     </div>
 
                     <div className="space-y-4">
@@ -501,7 +501,7 @@ export default function TaxSettingsView({
                           </tr>
                           <tr>
                             <td className="py-1 font-medium">Date of Employment:</td>
-                            <td className="py-1 font-semibold">{activeEmployee.dateOfJoined || '2026-01-01'}</td>
+                            <td className="py-1 font-semibold">{formatToDDMMMYYYY(activeEmployee.dateOfJoined || '2026-01-01')}</td>
                           </tr>
                           <tr>
                             <td className="py-1 font-medium">Initial Monthly Basic Salary:</td>
@@ -594,7 +594,7 @@ export default function TaxSettingsView({
                           </tr>
                           <tr>
                             <td className="py-1 font-semibold">Date of Joining:</td>
-                            <td className="py-1">{activeEmployee.dateOfJoined || 'N/A'}</td>
+                            <td className="py-1">{formatToDDMMMYYYY(activeEmployee.dateOfJoined)}</td>
                           </tr>
                           <tr>
                             <td className="py-1 font-semibold">Expected Cessation Date:</td>

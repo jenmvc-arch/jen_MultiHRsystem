@@ -2,6 +2,7 @@ import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import { Employee, CorporateEntity } from '../types';
 import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getAdjustedBasicSalary, calculateSocsoContribution } from '../data';
+import { formatToDDMMMYYYY } from '../lib/dateUtils';
 
 // Create styles for React PDF
 const styles = StyleSheet.create({
@@ -352,7 +353,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
       const joinDay = joinDate.getDate();
       const calendarDays = new Date(year, month, 0).getDate();
       const unpaidDays = joinDay - 1;
-      prorationDetails = `Joined mid-month on ${joinDate.toLocaleDateString('en-MY', {day: 'numeric', month: 'short', year: 'numeric'})}. Deducted ${unpaidDays}/${calendarDays} unpaid days.`;
+      prorationDetails = `Joined mid-month on ${formatToDDMMMYYYY(employee.dateOfJoined)}. Deducted ${unpaidDays}/${calendarDays} unpaid days.`;
     } else {
       prorationDetails = `Deduction for incomplete month of service.`;
     }
@@ -437,7 +438,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
           </View>
           <View style={styles.detailCol}>
             <Text style={styles.detailLabel}>Date Joined</Text>
-            <Text style={styles.detailValue}>{employee.dateOfJoined || '-'}</Text>
+            <Text style={styles.detailValue}>{formatToDDMMMYYYY(employee.dateOfJoined)}</Text>
           </View>
           <View style={styles.detailCol}>
             <Text style={styles.detailLabel}>Employment Status</Text>

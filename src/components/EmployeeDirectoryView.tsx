@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { googleSheetsClient, isGoogleConfigured } from '../lib/googleSheetsClient';
-import { getGmt8Timestamp } from '../lib/dateUtils';
+import { getGmt8Timestamp, getGmt8DateString, formatToDDMMMYYYY } from '../lib/dateUtils';
 import { 
   Users, 
   Search, 
@@ -147,7 +147,7 @@ export default function EmployeeDirectoryView({
   const [formEmergencyContactName, setFormEmergencyContactName] = useState('');
   const [formEmergencyContactRelation, setFormEmergencyContactRelation] = useState('');
   const [formEmergencyContactPhone, setFormEmergencyContactPhone] = useState('');
-  const [formDateOfJoined, setFormDateOfJoined] = useState('2026-06-29');
+  const [formDateOfJoined, setFormDateOfJoined] = useState(getGmt8DateString());
   const [formDateOfConfirmation, setFormDateOfConfirmation] = useState('');
 
   // Spouse details form states
@@ -377,11 +377,11 @@ export default function EmployeeDirectoryView({
   const [progressionType, setProgressionType] = useState<'Status Change' | 'Promotion' | 'Department Transfer' | 'Salary Revision' | 'Employment Type Change' | 'Subsidiary Transfer'>('Status Change');
   const [progressionValue, setProgressionValue] = useState('');
   const [progressionNotes, setProgressionNotes] = useState('');
-  const [progressionDate, setProgressionDate] = useState('2026-06-29');
+  const [progressionDate, setProgressionDate] = useState(getGmt8DateString());
 
   // Salary Adjustment form states
-  const [adjStartDate, setAdjStartDate] = useState('2026-07-01');
-  const [adjEffectiveDate, setAdjEffectiveDate] = useState('2026-07-01');
+  const [adjStartDate, setAdjStartDate] = useState(getGmt8DateString());
+  const [adjEffectiveDate, setAdjEffectiveDate] = useState(getGmt8DateString());
   const [adjSalary, setAdjSalary] = useState(0);
   const [adjReason, setAdjReason] = useState('');
 
@@ -508,7 +508,7 @@ export default function EmployeeDirectoryView({
     setFormEmergencyContactName('');
     setFormEmergencyContactRelation('');
     setFormEmergencyContactPhone('');
-    setFormDateOfJoined('2026-06-29');
+    setFormDateOfJoined(getGmt8DateString());
 
     // Reset spouse/dependant form states
     setFormSpouseName('');
@@ -1076,7 +1076,7 @@ export default function EmployeeDirectoryView({
                           </div>
                           <div className="p-3 bg-surface-container-low border border-neutral-border/50 rounded">
                             <span className="text-outline text-[10px] uppercase font-bold block mb-1">Date Joined</span>
-                            <span className="font-mono font-semibold text-on-surface">{previewEmployee.dateOfJoined || 'N/A'}</span>
+                            <span className="font-mono font-semibold text-on-surface">{formatToDDMMMYYYY(previewEmployee.dateOfJoined)}</span>
                           </div>
                           <div className="p-3 bg-surface-container-low border border-neutral-border/50 rounded">
                             <span className="text-outline text-[10px] uppercase font-bold block mb-1">Employment Category</span>
@@ -1254,7 +1254,7 @@ export default function EmployeeDirectoryView({
                                     <tr key={dep.id} className="hover:bg-zinc-50">
                                       <td className="p-2 font-bold text-on-surface">{dep.name}</td>
                                       <td className="p-2">{dep.gender}</td>
-                                      <td className="p-2 font-mono">{dep.dob}</td>
+                                      <td className="p-2 font-mono">{formatToDDMMMYYYY(dep.dob)}</td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -1340,7 +1340,7 @@ export default function EmployeeDirectoryView({
                               
                               <div className="flex justify-between items-start">
                                 <span className="font-bold text-on-surface text-[11px]">{item.type}</span>
-                                <span className="text-[10px] text-outline font-mono">{item.date}</span>
+                                <span className="text-[10px] text-outline font-mono">{formatToDDMMMYYYY(item.date)}</span>
                               </div>
                               
                               <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded my-1.5 ${badgeColor}`}>
@@ -1566,7 +1566,7 @@ export default function EmployeeDirectoryView({
               const joinDay = joinDate.getDate();
               const calendarDays = new Date(yearVal, monthIndexVal, 0).getDate();
               const unpaidDays = joinDay - 1;
-              modalProrationDetails = `Joined mid-month on ${joinDate.toLocaleDateString('en-MY', {day: 'numeric', month: 'short', year: 'numeric'})}. Deducted ${unpaidDays}/${calendarDays} unpaid days.`;
+              modalProrationDetails = `Joined mid-month on ${formatToDDMMMYYYY(previewEmployee.dateOfJoined)}. Deducted ${unpaidDays}/${calendarDays} unpaid days.`;
             } else {
               modalProrationDetails = `Deduction for incomplete month of service.`;
             }
@@ -2186,7 +2186,7 @@ export default function EmployeeDirectoryView({
 
                         {/* Column 6: Date Joined */}
                         <td className="p-4 text-on-surface-variant font-mono">
-                          {emp.dateOfJoined || 'N/A'}
+                          {formatToDDMMMYYYY(emp.dateOfJoined)}
                         </td>
 
                         {/* Column 7: Status */}
@@ -2390,7 +2390,7 @@ export default function EmployeeDirectoryView({
                       <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
                         <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Date of Joined</div>
                         <div className="font-mono text-sm font-semibold text-on-surface flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-primary" /> {selectedEmployee.dateOfJoined || 'N/A'}
+                          <Calendar className="w-3.5 h-3.5 text-primary" /> {formatToDDMMMYYYY(selectedEmployee.dateOfJoined)}
                         </div>
                       </div>
 
@@ -2398,7 +2398,7 @@ export default function EmployeeDirectoryView({
                         <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
                           <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Date of Confirmation</div>
                           <div className="font-mono text-sm font-semibold text-on-surface flex items-center gap-1.5">
-                            <Calendar className="w-3.5 h-3.5 text-primary" /> {selectedEmployee.dateOfConfirmation || 'Pending'}
+                            <Calendar className="w-3.5 h-3.5 text-primary" /> {formatToDDMMMYYYY(selectedEmployee.dateOfConfirmation)}
                           </div>
                         </div>
                       )}
@@ -2917,7 +2917,7 @@ export default function EmployeeDirectoryView({
                                       <tr key={dep.id} className="hover:bg-neutral-light/20">
                                         <td className="p-2 font-semibold text-on-surface">{dep.name}</td>
                                         <td className="p-2">{dep.gender}</td>
-                                        <td className="p-2 font-mono">{dep.dob}</td>
+                                        <td className="p-2 font-mono">{formatToDDMMMYYYY(dep.dob)}</td>
                                       </tr>
                                     ))
                                   ) : (
@@ -3089,7 +3089,7 @@ export default function EmployeeDirectoryView({
                                         <tr key={dep.id} className="hover:bg-neutral-light/10">
                                           <td className="p-1.5 font-semibold text-on-surface">{dep.name}</td>
                                           <td className="p-1.5">{dep.gender}</td>
-                                          <td className="p-1.5 font-mono">{dep.dob}</td>
+                                          <td className="p-1.5 font-mono">{formatToDDMMMYYYY(dep.dob)}</td>
                                           <td className="p-1.5 text-right">
                                             <button 
                                               type="button"
@@ -3475,7 +3475,7 @@ export default function EmployeeDirectoryView({
                             
                             <div className="flex justify-between items-start">
                               <span className="font-bold text-on-surface text-[11px]">{item.type}</span>
-                              <span className="text-[10px] text-outline font-mono">{item.date}</span>
+                              <span className="text-[10px] text-outline font-mono">{formatToDDMMMYYYY(item.date)}</span>
                             </div>
                             
                             <span className={`inline-block text-[9px] font-bold px-1.5 py-0.25 rounded my-1 ${badgeColor}`}>
@@ -3733,7 +3733,7 @@ export default function EmployeeDirectoryView({
                                   <tr key={idx} className="bg-white hover:bg-neutral-light/30">
                                     <td className="p-2 font-semibold text-on-surface">{dep.name}</td>
                                     <td className="p-2">{dep.gender}</td>
-                                    <td className="p-2 font-mono">{dep.dob}</td>
+                                    <td className="p-2 font-mono">{formatToDDMMMYYYY(dep.dob)}</td>
                                     <td className="p-2 text-right">
                                       <button 
                                         type="button"
