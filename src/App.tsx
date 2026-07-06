@@ -1419,8 +1419,17 @@ export default function App() {
             localStorage.setItem('active_corporate_entity_id', id);
 
             setTimeout(() => {
-              setActiveEntityId(id);
-              setIsSwitchingEntity(false);
+              const updateStates = () => {
+                setActiveEntityId(id);
+                setIsSwitchingEntity(false);
+              };
+
+              if ((document as any).startViewTransition) {
+                (document as any).startViewTransition(updateStates);
+              } else {
+                updateStates();
+              }
+
               triggerNotification(
                 'Corporate View Switched',
                 `Now viewing as ${matched.name}. App branding, colors, and logo have synced.`,

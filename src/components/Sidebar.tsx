@@ -68,15 +68,15 @@ export default function Sidebar({
   const activeEntity = entities.find(e => e.id === activeEntityId) || entities[0];
 
   const SidebarContent = () => (
-    <div className="flex flex-col h-full bg-primary text-[#f7f0e0] py-6">
+    <div className="flex flex-col h-full bg-primary text-[#f7f0e0] py-6" style={{ viewTransitionName: 'sidebar-container' } as any}>
       {/* Brand Header with Corporate Selector */}
-      <div className="px-5 mb-6 flex flex-col gap-2 bg-white/5 p-3 rounded-lg mx-3 border border-white/10">
+      <div className="px-5 mb-6 flex flex-col gap-2 bg-white/5 p-3 rounded-lg mx-3 border border-white/10" style={{ viewTransitionName: 'sidebar-brand' } as any}>
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-sm border border-white/10 relative">
+          <div className="w-9 h-9 rounded bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-sm border border-white/10 relative" style={{ viewTransitionName: 'corporate-logo' } as any}>
             {activeEntity?.logoUrl && !activeEntity.logoUrl.includes('placeholder') && !activeEntity.logoUrl.includes('example.com') ? (
               <>
                 <img 
-                  src={getDirectLogoUrl(activeEntity.logoUrl)} 
+                   src={getDirectLogoUrl(activeEntity.logoUrl)} 
                   alt={activeEntity.name} 
                   className="w-full h-full object-cover" 
                   referrerPolicy="no-referrer" 
@@ -97,7 +97,7 @@ export default function Sidebar({
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="font-bold text-sm tracking-tight leading-tight text-[#f7f0e0] truncate">
+            <h1 className="font-bold text-sm tracking-tight leading-tight text-[#f7f0e0] truncate" style={{ viewTransitionName: 'corporate-name' } as any}>
               {activeEntity?.name || 'Mega HR'}
             </h1>
             <p className="text-[10px] text-[#f7f0e0]/60 mt-0.5 font-mono uppercase tracking-wider font-semibold">

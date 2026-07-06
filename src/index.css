@@ -220,4 +220,18 @@
   animation: spin-reverse 10s linear infinite;
 }
 
+/* Custom View Transition Page cross-fade timings and reduction behavior */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.5s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
 
