@@ -20,6 +20,12 @@ import {
 import { CorporateEntity, Employee } from '../types';
 import { googleSheetsClient, isGoogleConfigured } from '../lib/googleSheetsClient';
 import { getDirectLogoUrl } from '../data';
+import { FilePond, registerPlugin } from 'react-filepond';
+import 'filepond/dist/filepond.min.css';
+import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
+import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css';
+
+registerPlugin(FilePondPluginImagePreview);
 
 interface EntitiesViewProps {
   entities: CorporateEntity[];
@@ -62,10 +68,7 @@ export default function EntitiesView({
     }
   }, [entities, selectedEntityId]);
 
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const uploadLogoFile = async (file: File) => {
     if (!isGoogleConfigured) {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -488,11 +491,17 @@ export default function EntitiesView({
                 <div>
                   <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Company Logo</label>
                   <div className="space-y-2">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleLogoUpload}
-                      className="w-full text-xs text-on-surface-variant file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                    <FilePond
+                      allowImagePreview={true}
+                      maxFiles={1}
+                      acceptedFileTypes={['image/*']}
+                      labelIdle='Drag & Drop logo or <span class="filepond--label-action">Browse</span>'
+                      onupdatefiles={(fileItems) => {
+                        const file = fileItems[0]?.file;
+                        if (file) {
+                          uploadLogoFile(file as File);
+                        }
+                      }}
                     />
                     <div className="flex gap-2 items-center">
                       <span className="text-[10px] text-on-surface-variant font-semibold">Or paste logo URL:</span>
@@ -700,11 +709,17 @@ export default function EntitiesView({
                 <div>
                   <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Company Logo</label>
                   <div className="space-y-2">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleLogoUpload}
-                      className="w-full text-xs text-on-surface-variant file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                    <FilePond
+                      allowImagePreview={true}
+                      maxFiles={1}
+                      acceptedFileTypes={['image/*']}
+                      labelIdle='Drag & Drop logo or <span class="filepond--label-action">Browse</span>'
+                      onupdatefiles={(fileItems) => {
+                        const file = fileItems[0]?.file;
+                        if (file) {
+                          uploadLogoFile(file as File);
+                        }
+                      }}
                     />
                     <div className="flex gap-2 items-center">
                       <span className="text-[10px] text-on-surface-variant font-semibold">Or paste logo URL:</span>

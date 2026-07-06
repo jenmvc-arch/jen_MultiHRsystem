@@ -234,4 +234,29 @@
   }
 }
 
-
+/* Premium FilePond Style Customizations */
+.filepond--root {
+  font-family: var(--font-sans);
+  margin-bottom: 0;
+}
+.filepond--panel-root {
+  background-color: var(--color-surface-container-low);
+  border: 1px dashed var(--color-outline);
+  border-radius: 8px;
+}
+.filepond--drop-label {
+  color: var(--color-on-surface-variant);
+  font-size: 11px;
+  font-weight: 600;
+}
+.filepond--label-action {
+  text-decoration-color: var(--color-primary);
+  color: var(--color-primary);
+}
+.filepond--file-action-button {
+  background-color: var(--color-primary);
+  color: #fff;
+}
+.filepond--item-panel {
+  background-color: var(--color-primary);
+}

@@ -44,6 +44,12 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { Employee, CareerHistoryEntry, Dependant, CorporateEntity } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
+import { FilePond, registerPlugin } from 'react-filepond';
+import 'filepond/dist/filepond.min.css';
+import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
+import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css';
+
+registerPlugin(FilePondPluginImagePreview);
 import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getAdjustedBasicSalary } from '../data';
 
 interface EmployeeDirectoryViewProps {
@@ -273,10 +279,7 @@ export default function EmployeeDirectoryView({
       : undefined;
   };
 
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const uploadAvatarFile = async (file: File) => {
     if (!isGoogleConfigured) {
       // Offline fallback: Use local blob URL
       const localUrl = URL.createObjectURL(file);
@@ -298,10 +301,7 @@ export default function EmployeeDirectoryView({
     }
   };
 
-  const handleDetailAvatarChange = async (employeeId: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const uploadDetailAvatarFile = async (employeeId: string, file: File) => {
     if (!isGoogleConfigured) {
       // Offline fallback: Use local blob URL
       const localUrl = URL.createObjectURL(file);
@@ -329,12 +329,13 @@ export default function EmployeeDirectoryView({
         createdAt: getGmt8Timestamp()
       }, scriptUrl);
 
-      onShowNotification('Photo Updated', 'Employee photo has been updated successfully.');
+      onShowNotification('Upload Succeeded', 'Avatar updated successfully.');
     } catch (err: any) {
       console.error('[Google Drive Storage] Upload error:', err);
       onShowNotification('Upload Error', `Could not upload image: ${err.message}`);
     }
   };
+
 
   // Detail View Family editor states
   const [isEditingFamily, setIsEditingFamily] = useState(false);
@@ -2244,7 +2245,12 @@ export default function EmployeeDirectoryView({
                     <input 
                       type="file" 
                       accept="image/*" 
-                      onChange={(e) => handleDetailAvatarChange(selectedEmployee.id, e)} 
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          uploadDetailAvatarFile(selectedEmployee.id, file);
+                        }
+                      }} 
                       className="hidden" 
                     />
                   </label>
@@ -2454,6 +2460,21 @@ export default function EmployeeDirectoryView({
                     <div className="bg-neutral-50 p-4 border border-neutral-border rounded-lg space-y-3">
                       <span className="text-[10px] font-bold text-primary uppercase tracking-wider block">Corporate & Personal Particulars</span>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="sm:col-span-2">
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Update Profile Photo</label>
+                          <FilePond
+                            allowImagePreview={true}
+                            maxFiles={1}
+                            acceptedFileTypes={['image/*']}
+                            labelIdle='Drag & Drop profile image or <span class="filepond--label-action">Browse</span>'
+                            onupdatefiles={(fileItems) => {
+                              const file = fileItems[0]?.file;
+                              if (file) {
+                                uploadDetailAvatarFile(selectedEmployee.id, file as File);
+                              }
+                            }}
+                          />
+                        </div>
                         <div>
                           <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Employee Name</label>
                           <input
@@ -3521,11 +3542,17 @@ export default function EmployeeDirectoryView({
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">
                       Upload Profile Graphic (Photo)
                     </label>
-                    <input 
-                      type="file" 
-                      accept="image/*"
-                      onChange={handleAvatarUpload}
-                      className="text-xs text-zinc-600 file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-[11px] file:font-bold file:bg-primary file:text-white hover:file:bg-primary/90 cursor-pointer"
+                    <FilePond
+                      allowImagePreview={true}
+                      maxFiles={1}
+                      acceptedFileTypes={['image/*']}
+                      labelIdle='Drag & Drop photo or <span class="filepond--label-action">Browse</span>'
+                      onupdatefiles={(fileItems) => {
+                        const file = fileItems[0]?.file;
+                        if (file) {
+                          uploadAvatarFile(file as File);
+                        }
+                      }}
                     />
                     <span className="block text-[9px] text-zinc-400 mt-1">
                       Supports JPEG, PNG, or GIF. Max 5MB.
