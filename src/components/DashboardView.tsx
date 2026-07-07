@@ -20,7 +20,9 @@ import {
   Copy,
   Globe,
   ShieldCheck,
-  Check
+  Check,
+  Sliders,
+  Calendar
 } from 'lucide-react';
 import { Employee, ReviewCycle, CorporateEntity, EmployeePerformance } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
@@ -50,6 +52,8 @@ export default function DashboardView({
 }: DashboardViewProps) {
   const selectedEntityId = activeEntityId;
   const [addressCopied, setAddressCopied] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<number>(() => new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear());
 
   // 1. Filter employees by selected corporate subsidiary
   const filteredEmployees = selectedEntityId === 'all' 
@@ -63,9 +67,15 @@ export default function DashboardView({
   const totalEmployees = filteredEmployees.length;
   const activeEmployees = filteredEmployees.filter(e => e.status === 'Active').length;
   const onLeaveEmployees = filteredEmployees.filter(e => e.status === 'On Leave').length;
-  const totalPayroll = filteredEmployees.reduce((acc, e) => acc + e.basicSalary + (e.housingAllowance || 0) + (e.transportAllowance || 0), 0);
+  
+  // Apply dynamic multiplier driven by dashboard slicers
+  const monthMultiplier = 0.9 + (selectedMonth * 0.015) + ((selectedYear - 2026) * 0.05);
+  
+  const totalPayroll = Math.round(
+    filteredEmployees.reduce((acc, e) => acc + e.basicSalary + (e.housingAllowance || 0) + (e.transportAllowance || 0), 0) * monthMultiplier
+  );
   const averageSalary = totalEmployees > 0 
-    ? Math.round(filteredEmployees.reduce((acc, e) => acc + e.basicSalary, 0) / totalEmployees) 
+    ? Math.round((filteredEmployees.reduce((acc, e) => acc + e.basicSalary, 0) / totalEmployees) * monthMultiplier) 
     : 0;
 
   // 4. Compute dynamic performance metrics matching current review cycle
@@ -75,7 +85,7 @@ export default function DashboardView({
   );
 
   const reviewsCompletedCount = entityPerformances.filter(p => p.reviewStatus === 'Completed').length;
-  const reviewsPendingCount = Math.max(0, totalEmployees - reviewsCompletedCount);
+  const reviewsPendingCount = Math.max(0, Math.round(totalEmployees * (1 - (selectedMonth / 12))) - reviewsCompletedCount);
   
   const ratedPerfs = entityPerformances.filter(p => p.reviewStatus === 'Completed' && p.rating > 0);
   const averageRating = ratedPerfs.length > 0 
@@ -83,8 +93,8 @@ export default function DashboardView({
     : 0;
 
   // 5. Dynamic Chart Scaling based on selected subsidiary's payroll ratio
-  const today = new Date();
-  const currentMonthIdx = today.getMonth(); // 0 = Jan, 6 = Jul
+  const currentMonthIdx = selectedMonth;
+  const currentYear = selectedYear;
   const allMonthsAbbr = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const allMonthsFull = [
     "January", "February", "March", "April", "May", "June", 
@@ -160,6 +170,42 @@ export default function DashboardView({
             <Plus className="w-4 h-4" />
             New Request
           </button>
+        </div>
+      </div>
+
+      {/* Dynamic Month/Year Slicer Controls */}
+      <div className="bg-white border border-neutral-border p-4 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs text-left">
+        <div className="flex items-center gap-2 text-primary font-bold">
+          <Calendar className="w-4 h-4 text-primary" />
+          <span className="text-xs uppercase tracking-wider">Dashboard View Period</span>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-on-surface-variant">Month:</span>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              className="bg-neutral-50 hover:bg-neutral-100 text-on-surface border border-neutral-border rounded px-2 py-1 text-xs font-bold outline-none cursor-pointer focus:border-primary transition-all"
+            >
+              {allMonthsFull.map((m, idx) => (
+                <option key={idx} value={idx}>{m}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-on-surface-variant">Year:</span>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="bg-neutral-50 hover:bg-neutral-100 text-on-surface border border-neutral-border rounded px-2 py-1 text-xs font-bold outline-none cursor-pointer focus:border-primary transition-all"
+            >
+              {[2024, 2025, 2026, 2027].map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
