@@ -1529,6 +1529,8 @@ export default function App() {
           onShowNotification={() => {}}
           activeEntity={activeEntity}
           isPrintView={true}
+          userRole={currentUserRole || 'Global Administrator'}
+          entities={entities}
         />
       </div>
     );
@@ -1793,6 +1795,8 @@ export default function App() {
               onBack={() => setCurrentTab('payroll')}
               onShowNotification={triggerNotification}
               activeEntity={activeEntity}
+              userRole={currentUserRole || 'Global Administrator'}
+              entities={entities}
             />
           )}
 

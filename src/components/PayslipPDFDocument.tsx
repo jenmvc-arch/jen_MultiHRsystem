@@ -8,232 +8,371 @@ import { formatToDDMMMYYYY } from '../lib/dateUtils';
 const styles = StyleSheet.create({
   page: {
     fontFamily: 'Helvetica',
-    fontSize: 9,
-    padding: 30,
-    lineHeight: 1.4,
+    fontSize: 8,
+    paddingHorizontal: 30,
+    paddingVertical: 25,
+    lineHeight: 1.35,
     flexDirection: 'column',
     backgroundColor: '#ffffff',
   },
   watermark: {
     position: 'absolute',
-    top: 15,
+    top: 10,
     right: 30,
-    fontSize: 7,
+    fontSize: 6,
     color: '#d1d5db',
     fontFamily: 'Helvetica-Bold',
   },
   headerContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    borderBottomWidth: 2,
-    borderBottomColor: '#1c4e89',
-    paddingBottom: 15,
-    marginBottom: 15,
+    alignItems: 'stretch',
+    borderBottomWidth: 3,
+    borderBottomColor: '#A32626',
+    paddingBottom: 8,
+    marginBottom: 10,
   },
   logoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   logoPlaceholder: {
-    width: 45,
-    height: 45,
+    width: 44,
+    height: 44,
     borderRadius: 4,
-    backgroundColor: '#1c4e89',
+    backgroundColor: '#F2E8D8',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5DED5',
   },
   logoImage: {
-    width: 45,
-    height: 45,
+    width: 44,
+    height: 44,
     borderRadius: 4,
   },
   logoText: {
-    fontSize: 16,
-    color: '#ffffff',
+    fontSize: 12,
+    color: '#A32626',
     fontFamily: 'Helvetica-Bold',
   },
   companyName: {
-    fontSize: 13,
+    fontSize: 11,
     fontFamily: 'Helvetica-Bold',
-    color: '#1c4e89',
+    color: '#A32626',
   },
   companyReg: {
-    fontSize: 8,
-    color: '#4b5563',
+    fontSize: 7,
+    color: '#333333',
     fontFamily: 'Helvetica-Bold',
-    marginTop: 2,
+    marginTop: 1,
   },
   companyAddress: {
-    fontSize: 8,
-    color: '#4b5563',
+    fontSize: 7,
+    color: '#333333',
     marginTop: 2,
-    maxWidth: 260,
+    maxWidth: 240,
   },
-  titleContainer: {
-    alignItems: 'flex-end',
+  rightHeaderBlock: {
+    backgroundColor: '#A32626',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 3,
+    minWidth: 90,
   },
-  title: {
-    fontSize: 16,
+  rightHeaderLabel: {
+    color: '#F2E8D8',
+    fontSize: 8,
     fontFamily: 'Helvetica-Bold',
-    color: '#111827',
-    textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  period: {
-    fontSize: 11,
-    color: '#374151',
-    marginTop: 4,
-  },
-  detailsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    backgroundColor: '#f9fafb',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 4,
-    padding: 10,
-    marginBottom: 15,
-  },
-  detailCol: {
-    width: '25%',
-    marginBottom: 8,
-  },
-  detailLabel: {
-    fontSize: 8,
-    color: '#6b7280',
-    fontFamily: 'Helvetica-Bold',
-    marginBottom: 2,
-  },
-  detailValue: {
+  rightHeaderMonth: {
+    color: '#ffffff',
     fontSize: 9,
     fontFamily: 'Helvetica-Bold',
-    color: '#111827',
+    marginTop: 1,
+  },
+  detailsCard: {
+    backgroundColor: '#F2E8D8',
+    borderWidth: 1,
+    borderColor: '#E5DED5',
+    borderRadius: 5,
+    padding: 8,
+    marginBottom: 10,
+  },
+  detailsTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5DED5',
+    paddingBottom: 2,
+    marginBottom: 4,
+  },
+  detailsTitle: {
+    fontSize: 7.5,
+    fontFamily: 'Helvetica-Bold',
+    color: '#A32626',
+    textTransform: 'uppercase',
+  },
+  employeeName: {
+    fontSize: 10,
+    fontFamily: 'Helvetica-Bold',
+    color: '#333333',
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  detailsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  detailsCol: {
+    width: '32%',
+  },
+  detailItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 3,
+  },
+  detailLabel: {
+    fontSize: 7,
+    color: '#6b7280',
+    fontFamily: 'Helvetica-Bold',
+  },
+  detailValue: {
+    fontSize: 7,
+    color: '#333333',
+    fontFamily: 'Helvetica-Bold',
+    textAlign: 'right',
+  },
+  bankTitle: {
+    fontSize: 7.5,
+    fontFamily: 'Helvetica-Bold',
+    color: '#A32626',
+    marginBottom: 3,
+  },
+  bankBox: {
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    borderWidth: 1,
+    borderColor: '#E5DED5',
+    borderRadius: 3,
+    padding: 3,
+  },
+  bankText: {
+    fontSize: 7,
+    fontFamily: 'Helvetica-Bold',
+    color: '#333333',
   },
   tableContainer: {
     flexDirection: 'row',
-    gap: 15,
-    marginBottom: 15,
+    gap: 10,
+    marginBottom: 10,
   },
   tableCol: {
     flex: 1,
+    borderWidth: 1,
+    borderColor: '#E5DED5',
+    borderRadius: 5,
+    padding: 6,
+    backgroundColor: '#ffffff',
   },
-  tableHeader: {
-    fontSize: 10,
+  tableHeaderBlock: {
+    backgroundColor: '#A32626',
+    borderRadius: 3,
+    paddingVertical: 3,
+    paddingHorizontal: 6,
+    marginBottom: 4,
+  },
+  tableHeaderTitle: {
+    color: '#ffffff',
+    fontSize: 8,
     fontFamily: 'Helvetica-Bold',
-    color: '#1c4e89',
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+  tableThRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-    paddingBottom: 4,
-    marginBottom: 6,
+    borderBottomColor: '#E5DED5',
+    paddingBottom: 2,
+    marginBottom: 3,
+  },
+  tableThText: {
+    fontSize: 7,
+    fontFamily: 'Helvetica-Bold',
+    color: '#6b7280',
   },
   tableRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 3,
-    borderBottomWidth: 1,
+    paddingVertical: 2,
+    borderBottomWidth: 0.5,
     borderBottomColor: '#f3f4f6',
   },
-  tableRowBold: {
+  tableTotalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 5,
+    borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-    fontFamily: 'Helvetica-Bold',
+    borderColor: '#A32626',
+    paddingVertical: 3,
     marginTop: 4,
   },
-  itemName: {
-    fontSize: 8.5,
-    color: '#374151',
-  },
-  itemNameBold: {
-    fontSize: 8.5,
+  tableTotalText: {
+    fontSize: 7.5,
     fontFamily: 'Helvetica-Bold',
-    color: '#111827',
+    color: '#A32626',
+  },
+  tableRowSocsoTotal: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 2.5,
+    backgroundColor: '#F2E8D8',
+    paddingHorizontal: 3,
+    borderRadius: 2,
+    marginVertical: 1,
+  },
+  itemName: {
+    fontSize: 7,
+    color: '#333333',
   },
   itemVal: {
-    fontSize: 8.5,
-    color: '#111827',
-    textAlign: 'right',
-  },
-  itemValBold: {
-    fontSize: 8.5,
+    fontSize: 7,
     fontFamily: 'Helvetica-Bold',
-    color: '#1c4e89',
+    color: '#333333',
     textAlign: 'right',
   },
-  itemValRed: {
-    fontSize: 8.5,
-    color: '#dc2626',
-    textAlign: 'right',
-  },
-  itemValRedBold: {
-    fontSize: 8.5,
-    fontFamily: 'Helvetica-Bold',
-    color: '#dc2626',
-    textAlign: 'right',
-  },
-  employerContainer: {
-    backgroundColor: '#fafafa',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 4,
-    padding: 10,
-    marginBottom: 20,
-  },
-  employerTitle: {
-    fontSize: 8,
-    fontFamily: 'Helvetica-Bold',
-    color: '#6b7280',
-    textTransform: 'uppercase',
-    marginBottom: 6,
-  },
-  employerGrid: {
+  summaryStrip: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 10,
   },
-  employerCol: {
+  summaryCard: {
     flex: 1,
-  },
-  summaryBlock: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 2,
-    borderTopColor: '#e5e7eb',
-    paddingTop: 15,
-  },
-  footnote: {
-    fontSize: 8,
-    color: '#6b7280',
-    maxWidth: '60%',
-  },
-  netPayContainer: {
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#F2E8D8',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 4,
-    padding: 8,
-    alignItems: 'center',
-    width: 150,
+    borderColor: '#E5DED5',
+    borderRadius: 5,
+    padding: 6,
+    flexDirection: 'column',
+    justifyContent: 'center',
+    height: 38,
   },
-  netPayLabel: {
-    fontSize: 8,
-    fontFamily: 'Helvetica-Bold',
-    color: '#6b7280',
-    textTransform: 'uppercase',
-    marginBottom: 2,
+  summaryCardNetPay: {
+    flex: 1,
+    backgroundColor: '#A32626',
+    borderRadius: 5,
+    padding: 6,
+    flexDirection: 'column',
+    justifyContent: 'center',
+    height: 38,
   },
-  netPayValue: {
-    fontSize: 14,
-    fontFamily: 'Helvetica-Bold',
-    color: '#1c4e89',
-  },
-  itemDesc: {
+  summaryLabel: {
     fontSize: 7,
     color: '#6b7280',
+    fontFamily: 'Helvetica-Bold',
+    textTransform: 'uppercase',
+  },
+  summaryLabelNetPay: {
+    fontSize: 7,
+    color: '#F2E8D8',
+    fontFamily: 'Helvetica-Bold',
+    textTransform: 'uppercase',
+  },
+  summaryValue: {
+    fontSize: 9,
+    fontFamily: 'Helvetica-Bold',
+    color: '#333333',
     marginTop: 1,
+  },
+  summaryValueNetPay: {
+    fontSize: 10,
+    fontFamily: 'Helvetica-Bold',
+    color: '#ffffff',
+    marginTop: 1,
+  },
+  contributionsCard: {
+    backgroundColor: '#F2E8D8',
+    borderWidth: 1,
+    borderColor: '#E5DED5',
+    borderRadius: 5,
+    padding: 6,
+    marginBottom: 10,
+  },
+  contributionsTitle: {
+    fontSize: 7,
+    fontFamily: 'Helvetica-Bold',
+    color: '#A32626',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  contributionsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  contributionCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  contributionDivider: {
+    width: 1,
+    height: 12,
+    backgroundColor: '#E5DED5',
+  },
+  footerSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#E5DED5',
+    paddingTop: 6,
+    marginBottom: 6,
+  },
+  footerCol: {
+    width: '48%',
+  },
+  footerTitle: {
+    fontSize: 7,
+    fontFamily: 'Helvetica-Bold',
+    color: '#A32626',
+    textTransform: 'uppercase',
+    marginBottom: 1,
+  },
+  footerText: {
+    fontSize: 7,
+    color: '#6b7280',
+    lineHeight: 1.25,
+  },
+  footerTextBold: {
+    fontSize: 7,
+    fontFamily: 'Helvetica-Bold',
+    color: '#333333',
+  },
+  confidentialBar: {
+    backgroundColor: '#A32626',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 3,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  confidentialBarText: {
+    color: '#ffffff',
+    fontSize: 6.5,
+    fontFamily: 'Helvetica-Bold',
+    textTransform: 'uppercase',
+  },
+  confidentialBarLabel: {
+    color: '#F2E8D8',
+    fontSize: 6.5,
+    fontFamily: 'Helvetica-Bold',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   }
 });
 
@@ -247,42 +386,14 @@ interface PayslipPDFDocumentProps {
 export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }: PayslipPDFDocumentProps) => {
   const breakdown = calculatePayslip(employee, month, year);
 
-  // Determine dynamic brand colors based on active subsidiary's configuration
-  const isRedPointTheme = entity?.theme === 'theme2';
-  
-  let primaryColor = '#1c4e89'; // theme1 (blue)
-  if (isRedPointTheme) {
-    primaryColor = '#A32626'; // theme2 (Deep Red)
-  } else if (entity?.theme === 'theme3') {
-    primaryColor = '#D4AF37'; // theme3 (gold/yellow)
-  }
-
-  const secondaryColor = isRedPointTheme ? '#F2E8D8' : '#f9fafb';
-  const textColor = isRedPointTheme ? '#333333' : '#111827';
-  const labelColor = isRedPointTheme ? '#333333' : '#6b7280';
-  const tableContentColor = isRedPointTheme ? '#333333' : '#374151';
-  const thinBorderColor = isRedPointTheme ? '#E6D8C1' : '#e5e7eb';
-  const rowBorderColor = isRedPointTheme ? '#E6D8C1' : '#f3f4f6';
-
-  // Helper formatting function
   const formatCurrency = (val: number) => {
     return `RM ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
-
-  const pdfItemNameStyle = [styles.itemName, { color: tableContentColor }];
-  const pdfItemValStyle = [styles.itemVal, { color: tableContentColor }];
-  const pdfTableRowStyle = [styles.tableRow, { borderBottomColor: rowBorderColor }];
-  const pdfTableRowBoldStyle = [styles.tableRowBold, { borderBottomColor: thinBorderColor }];
-  const pdfItemNameBoldStyle = [styles.itemNameBold, { color: textColor }];
-  const pdfItemValBoldStyle = [styles.itemValBold, { color: primaryColor }];
-  const pdfItemValRedStyle = isRedPointTheme ? [styles.itemVal, { color: tableContentColor }] : styles.itemValRed;
-  const pdfItemValRedBoldStyle = isRedPointTheme ? [styles.itemValBold, { color: primaryColor }] : styles.itemValRedBold;
 
   const isEligible = 
     employee.employmentType === 'Probationary' || 
     employee.employmentType === 'Confirmation' || 
     (employee.employmentType === 'Independent Contractor / Freelance' && employee.eligibleForStatutory === 'Yes');
-
 
   // Complete allowances list matching the HTML Payslip preview
   const allowanceGen = employee.allowanceGeneral || 0;
@@ -309,7 +420,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
     { code: 'allowance_general', amount: allowanceGen },
     { code: 'allowance_transport', amount: allowanceTrans },
     { code: 'allowance_parking', amount: allowancePark },
-    { code: 'allowance_meal', amount: allowancePark }, // Fallback to meal allowance
+    { code: 'allowance_meal', amount: allowanceMeal },
     { code: 'allowance_accommodation', amount: allowanceAccom },
     { code: 'allowance_phone', amount: allowancePhone },
     { code: 'backpay', amount: backPayVal }
@@ -325,7 +436,6 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
   });
 
   const skbbkEmployeeVal = isEligible ? socsoRes.employeeLindung24 : 0;
-  const skbbkEmployerVal = 0; // LINDUNG 24 is employee-borne
 
   // Deductions breakdown
   const epfRateEmp = employee.epfRateEmployee || 11;
@@ -340,8 +450,6 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
   // Employer breakdown
   const epfRateEmployer = employee.epfRateEmployer || (employee.basicSalary <= 5000 ? 13 : 12);
   const epfEmployerValue = breakdown.epfEmployerValue;
-  const socsoEmployerVal = isEligible ? socsoRes.employerSocsoTotal : 0;
-  const eisEmployerVal = breakdown.eisEmployerVal;
 
   // Proration Deduction details
   let baseSalaryBeforeProration = employee.basicSalary;
@@ -362,26 +470,20 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
   const actualBasic = getAdjustedBasicSalary(employee, month, year);
   const prorationDeduction = parseFloat((baseSalaryBeforeProration - actualBasic).toFixed(2));
 
-  let prorationDetails = '';
-  if (prorationDeduction > 0 && employee.dateOfJoined) {
-    const joinDate = new Date(employee.dateOfJoined);
-    const joinYear = joinDate.getFullYear();
-    const joinMonth = joinDate.getMonth() + 1;
-    if (joinYear === year && joinMonth === month) {
-      const joinDay = joinDate.getDate();
-      const calendarDays = new Date(year, month, 0).getDate();
-      const unpaidDays = joinDay - 1;
-      prorationDetails = `Joined mid-month on ${formatToDDMMMYYYY(employee.dateOfJoined)}. Deducted ${unpaidDays}/${calendarDays} unpaid days.`;
-    } else {
-      prorationDetails = `Deduction for incomplete month of service.`;
-    }
-  }
-
+  // Calendar dates
   const monthsList = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
-  const periodText = `${monthsList[month - 1]} ${year}`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const payPeriodText = `01 ${monthsList[month - 1]} ${year} - ${lastDay} ${monthsList[month - 1]} ${year}`;
+
+  const getMaskedAccount = () => {
+    const acc = employee.accountNo || '';
+    if (!acc) return 'Bank account not available.';
+    const last4 = acc.slice(-4);
+    return `${employee.bankName || 'N/A'} - **** **** ${last4}`;
+  };
 
   return (
     <Document>
@@ -389,16 +491,8 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
         {/* Watermark */}
         <Text style={styles.watermark}>ACME-CONFIDENTIAL-STRICTLY-PRIVATE</Text>
 
-        {/* Company and Document Title Header */}
-        <View style={[
-          styles.headerContainer, 
-          { 
-            borderBottomColor: primaryColor,
-            backgroundColor: isRedPointTheme ? secondaryColor : 'transparent',
-            padding: isRedPointTheme ? 10 : 0,
-            borderRadius: isRedPointTheme ? 4 : 0
-          }
-        ]}>
+        {/* Option A Branding Header */}
+        <View style={styles.headerContainer}>
           <View style={styles.logoContainer}>
             {entity?.logoUrl && !entity.logoUrl.includes('placeholder') && !entity.logoUrl.includes('example.com') ? (
               <Image 
@@ -406,370 +500,377 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
                 style={styles.logoImage} 
               />
             ) : (
-              <View style={[styles.logoPlaceholder, { backgroundColor: primaryColor }]}>
-                <Text style={styles.logoText}>{entity?.name ? entity.name.substring(0, 2).toUpperCase() : 'HR'}</Text>
+              <View style={styles.logoPlaceholder}>
+                <Text style={styles.logoText}>{entity?.name ? entity.name.substring(0, 2).toUpperCase() : 'RP'}</Text>
               </View>
             )}
             <View>
-              <Text style={[styles.companyName, { color: primaryColor }]}>{entity?.name || 'Corporate Subsidiary'}</Text>
+              <Text style={styles.companyName}>{entity?.name || 'Red Point Sdn Bhd'}</Text>
               {entity?.registrationNumber && (
-                <Text style={[styles.companyReg, { color: isRedPointTheme ? textColor : '#4b5563' }]}>Co. Reg: {entity.registrationNumber}</Text>
+                <Text style={styles.companyReg}>Co. Reg: {entity.registrationNumber}</Text>
               )}
-              <Text style={[styles.companyAddress, { color: isRedPointTheme ? textColor : '#4b5563' }]}>
-                {entity?.address || 'No registered corporate address'}
+              <Text style={styles.companyAddress}>
+                📍 {entity?.address || 'No registered corporate address'}
               </Text>
             </View>
           </View>
-          <View style={styles.titleContainer}>
-            <Text style={[styles.title, { color: primaryColor }]}>Payslip</Text>
-            <Text style={[styles.period, { color: isRedPointTheme ? textColor : '#374151' }]}>{periodText}</Text>
+          <View style={styles.rightHeaderBlock}>
+            <Text style={styles.rightHeaderLabel}>PAYSLIP</Text>
+            <Text style={styles.rightHeaderMonth}>{monthsList[month - 1].substring(0, 3)} {year}</Text>
           </View>
         </View>
 
-        {/* Employee Details Grid */}
-        <View style={[
-          styles.detailsContainer, 
-          { 
-            backgroundColor: secondaryColor, 
-            borderColor: thinBorderColor 
-          }
-        ]}>
-          <View style={styles.detailCol}>
-            <Text style={[styles.detailLabel, { color: labelColor }]}>Employee Name</Text>
-            <Text style={[styles.detailValue, { color: textColor }]}>{employee.name}</Text>
+        {/* Employee Details Card */}
+        <View style={styles.detailsCard}>
+          <View style={styles.detailsTitleContainer}>
+            <Text style={styles.detailsTitle}>👨‍💼 Employee Details</Text>
           </View>
-          <View style={styles.detailCol}>
-            <Text style={[styles.detailLabel, { color: labelColor }]}>Email Address</Text>
-            <Text style={[styles.detailValue, { color: textColor }]}>{employee.email}</Text>
-          </View>
-          <View style={styles.detailCol}>
-            <Text style={[styles.detailLabel, { color: labelColor }]}>Department</Text>
-            <Text style={[styles.detailValue, { color: textColor }]}>{employee.department}</Text>
-          </View>
-          <View style={styles.detailCol}>
-            <Text style={[styles.detailLabel, { color: labelColor }]}>Designation</Text>
-            <Text style={[styles.detailValue, { color: textColor }]}>{employee.designation}</Text>
-          </View>
-          <View style={styles.detailCol}>
-            <Text style={[styles.detailLabel, { color: labelColor }]}>TIN / Tax Number</Text>
-            <Text style={[styles.detailValue, { color: textColor }]}>{employee.taxNumber || '-'}</Text>
-          </View>
-          <View style={styles.detailCol}>
-            <Text style={[styles.detailLabel, { color: labelColor }]}>EPF Member Number</Text>
-            <Text style={[styles.detailValue, { color: textColor }]}>{employee.epfNumber || '-'}</Text>
-          </View>
-          <View style={styles.detailCol}>
-            <Text style={[styles.detailLabel, { color: labelColor }]}>NRIC / Passport</Text>
-            <Text style={[styles.detailValue, { color: textColor }]}>{employee.nricPassport || '-'}</Text>
-          </View>
-          <View style={styles.detailCol}>
-            <Text style={[styles.detailLabel, { color: labelColor }]}>Bank Account</Text>
-            <Text style={[styles.detailValue, { color: textColor }]}>
-              {employee.bankName} - {employee.accountNo}
-            </Text>
-          </View>
-          <View style={styles.detailCol}>
-            <Text style={[styles.detailLabel, { color: labelColor }]}>Date Joined</Text>
-            <Text style={[styles.detailValue, { color: textColor }]}>{formatToDDMMMYYYY(employee.dateOfJoined)}</Text>
-          </View>
-          <View style={styles.detailCol}>
-            <Text style={[styles.detailLabel, { color: labelColor }]}>Employment Status</Text>
-            <Text style={[styles.detailValue, { color: textColor }]}>{employee.employmentType || '-'}</Text>
+          <Text style={styles.employeeName}>{employee.name}</Text>
+          
+          <View style={styles.detailsGrid}>
+            {/* Left Group */}
+            <View style={styles.detailsCol}>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>TIN / Tax Number</Text>
+                <Text style={styles.detailValue}>{employee.taxNumber || 'IG 29068110030'}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>EPF Member Number</Text>
+                <Text style={styles.detailValue}>{employee.epfNumber || '-'}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>NRIC / Passport</Text>
+                <Text style={styles.detailValue}>{employee.nricPassport || '-'}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Date Joined</Text>
+                <Text style={styles.detailValue}>{formatToDDMMMYYYY(employee.dateOfJoined)}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Employment Status</Text>
+                <Text style={styles.detailValue}>{employee.employmentType || 'Confirmation'}</Text>
+              </View>
+            </View>
+
+            {/* Middle Group */}
+            <View style={styles.detailsCol}>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Email Address</Text>
+                <Text style={styles.detailValue}>{employee.email}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Department</Text>
+                <Text style={styles.detailValue}>{employee.department}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Designation</Text>
+                <Text style={styles.detailValue}>{employee.designation}</Text>
+              </View>
+            </View>
+
+            {/* Right Group (Bank details) */}
+            <View style={styles.detailsCol}>
+              <Text style={styles.bankTitle}>🏦 Bank Details</Text>
+              <Text style={[styles.detailLabel, { marginBottom: 2 }]}>Bank Account</Text>
+              <View style={styles.bankBox}>
+                <Text style={styles.bankText}>{getMaskedAccount()}</Text>
+              </View>
+            </View>
           </View>
         </View>
 
-        {/* Earnings & Deductions Tables */}
+        {/* Side-by-side Tables */}
         <View style={styles.tableContainer}>
           {/* Earnings Column */}
           <View style={styles.tableCol}>
-            <View style={{ backgroundColor: isRedPointTheme ? secondaryColor : 'transparent', paddingHorizontal: isRedPointTheme ? 6 : 0, paddingVertical: isRedPointTheme ? 4 : 0, borderRadius: isRedPointTheme ? 2 : 0, marginBottom: 6 }}>
-              <Text style={[styles.tableHeader, { color: primaryColor, borderBottomColor: isRedPointTheme ? 'transparent' : primaryColor, borderBottomWidth: isRedPointTheme ? 0 : 1, marginBottom: 0, paddingBottom: 0 }]}>Earnings & Additions</Text>
+            <View style={styles.tableHeaderBlock}>
+              <Text style={styles.tableHeaderTitle}>Earnings & Additions</Text>
             </View>
-            
-            <View style={pdfTableRowStyle}>
-              <Text style={pdfItemNameStyle}>{getPayslipLabel(employee.employmentType)}</Text>
-              <Text style={pdfItemValStyle}>{formatCurrency(baseSalaryBeforeProration)}</Text>
+            <View style={styles.tableThRow}>
+              <Text style={styles.tableThText}>Description</Text>
+              <Text style={styles.tableThText}>Amount (RM)</Text>
+            </View>
+
+            <View style={styles.tableRow}>
+              <Text style={styles.itemName}>{getPayslipLabel(employee.employmentType)}</Text>
+              <Text style={styles.itemVal}>{formatCurrency(baseSalaryBeforeProration)}</Text>
             </View>
 
             {allowanceGen > 0 && (
-              <View style={pdfTableRowStyle}>
-                <Text style={pdfItemNameStyle}>General Allowance</Text>
-                <Text style={pdfItemValStyle}>{formatCurrency(allowanceGen)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>General Allowance</Text>
+                <Text style={styles.itemVal}>{formatCurrency(allowanceGen)}</Text>
               </View>
             )}
-
             {allowanceTrans > 0 && (
-              <View style={pdfTableRowStyle}>
-                <Text style={pdfItemNameStyle}>Transport Allowance</Text>
-                <Text style={pdfItemValStyle}>{formatCurrency(allowanceTrans)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Transport Allowance</Text>
+                <Text style={styles.itemVal}>{formatCurrency(allowanceTrans)}</Text>
               </View>
             )}
-
             {allowancePark > 0 && (
-              <View style={pdfTableRowStyle}>
-                <Text style={pdfItemNameStyle}>Parking Allowance</Text>
-                <Text style={pdfItemValStyle}>{formatCurrency(allowancePark)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Parking Allowance</Text>
+                <Text style={styles.itemVal}>{formatCurrency(allowancePark)}</Text>
               </View>
             )}
-
             {allowanceMeal > 0 && (
-              <View style={pdfTableRowStyle}>
-                <Text style={pdfItemNameStyle}>Meal Allowance</Text>
-                <Text style={pdfItemValStyle}>{formatCurrency(allowanceMeal)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Meal Allowance</Text>
+                <Text style={styles.itemVal}>{formatCurrency(allowanceMeal)}</Text>
               </View>
             )}
-
             {allowanceAccom > 0 && (
-              <View style={pdfTableRowStyle}>
-                <Text style={pdfItemNameStyle}>Accommodation Allowance</Text>
-                <Text style={pdfItemValStyle}>{formatCurrency(allowanceAccom)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Accommodation Allowance</Text>
+                <Text style={styles.itemVal}>{formatCurrency(allowanceAccom)}</Text>
               </View>
             )}
-
             {allowancePhone > 0 && (
-              <View style={pdfTableRowStyle}>
-                <Text style={pdfItemNameStyle}>Phone Allowance</Text>
-                <Text style={pdfItemValStyle}>{formatCurrency(allowancePhone)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Phone Allowance</Text>
+                <Text style={styles.itemVal}>{formatCurrency(allowancePhone)}</Text>
               </View>
             )}
 
             {overtimeVal > 0 && (
-              <View style={pdfTableRowStyle}>
-                <Text style={pdfItemNameStyle}>Overtime</Text>
-                <Text style={pdfItemValStyle}>{formatCurrency(overtimeVal)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Overtime</Text>
+                <Text style={styles.itemVal}>{formatCurrency(overtimeVal)}</Text>
               </View>
             )}
 
             {bonusVal > 0 && (
-              <View style={pdfTableRowStyle}>
-                <View style={{ flexDirection: 'column' }}>
-                  <Text style={pdfItemNameStyle}>Performance Bonus</Text>
-                  {employee.bonusDesc && <Text style={[styles.itemDesc, { color: labelColor }]}>{employee.bonusDesc}</Text>}
-                </View>
-                <Text style={pdfItemValStyle}>{formatCurrency(bonusVal)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Performance Bonus</Text>
+                <Text style={styles.itemVal}>{formatCurrency(bonusVal)}</Text>
               </View>
             )}
-
             {commissionVal > 0 && (
-              <View style={pdfTableRowStyle}>
-                <View style={{ flexDirection: 'column' }}>
-                  <Text style={pdfItemNameStyle}>Commissions</Text>
-                  {employee.commissionDesc && <Text style={[styles.itemDesc, { color: labelColor }]}>{employee.commissionDesc}</Text>}
-                </View>
-                <Text style={pdfItemValStyle}>{formatCurrency(commissionVal)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Commissions</Text>
+                <Text style={styles.itemVal}>{formatCurrency(commissionVal)}</Text>
               </View>
             )}
-
             {backPayVal > 0 && (
-              <View style={pdfTableRowStyle}>
-                <View style={{ flexDirection: 'column' }}>
-                  <Text style={pdfItemNameStyle}>BackPay / Arrears</Text>
-                  {employee.backPayDesc && <Text style={[styles.itemDesc, { color: labelColor }]}>{employee.backPayDesc}</Text>}
-                </View>
-                <Text style={pdfItemValStyle}>{formatCurrency(backPayVal)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>BackPay / Arrears</Text>
+                <Text style={styles.itemVal}>{formatCurrency(backPayVal)}</Text>
               </View>
             )}
-
             {awsVal > 0 && (
-              <View style={pdfTableRowStyle}>
-                <View style={{ flexDirection: 'column' }}>
-                  <Text style={pdfItemNameStyle}>AWS (13th Month)</Text>
-                  {employee.awsDesc && <Text style={[styles.itemDesc, { color: labelColor }]}>{employee.awsDesc}</Text>}
-                </View>
-                <Text style={pdfItemValStyle}>{formatCurrency(awsVal)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>AWS (13th Month)</Text>
+                <Text style={styles.itemVal}>{formatCurrency(awsVal)}</Text>
               </View>
             )}
-
             {compensationVal > 0 && (
-              <View style={pdfTableRowStyle}>
-                <View style={{ flexDirection: 'column' }}>
-                  <Text style={pdfItemNameStyle}>Compensation / Severance</Text>
-                  {employee.compensationDesc && <Text style={[styles.itemDesc, { color: labelColor }]}>{employee.compensationDesc}</Text>}
-                </View>
-                <Text style={pdfItemValStyle}>{formatCurrency(compensationVal)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Compensation / Severance</Text>
+                <Text style={styles.itemVal}>{formatCurrency(compensationVal)}</Text>
               </View>
             )}
-
             {reimbursementVal > 0 && (
-              <View style={[pdfTableRowStyle, { backgroundColor: isRedPointTheme ? secondaryColor : '#f9fafb', paddingHorizontal: 3 }]}>
-                <View style={{ flexDirection: 'column' }}>
-                  <Text style={pdfItemNameBoldStyle}>Reimbursements (Tax-Free)</Text>
-                  {employee.reimbursementDesc && <Text style={[styles.itemDesc, { color: labelColor }]}>{employee.reimbursementDesc}</Text>}
-                </View>
-                <Text style={pdfItemNameBoldStyle}>{formatCurrency(reimbursementVal)}</Text>
+              <View style={[styles.tableRow, { backgroundColor: '#f9fafb' }]}>
+                <Text style={[styles.itemName, { fontFamily: 'Helvetica-Bold' }]}>Reimbursements (Tax-Free)</Text>
+                <Text style={styles.itemVal}>{formatCurrency(reimbursementVal)}</Text>
               </View>
             )}
 
-            {/* Total Earnings */}
-            <View style={pdfTableRowBoldStyle}>
-              <Text style={pdfItemNameBoldStyle}>Total Earnings & Additions</Text>
-              <Text style={pdfItemValBoldStyle}>{formatCurrency(breakdown.grossEarnings + prorationDeduction + breakdown.reimbursementsSum)}</Text>
+            <View style={styles.tableTotalRow}>
+              <Text style={styles.tableTotalText}>Total Earnings & Additions</Text>
+              <Text style={styles.tableTotalText}>{formatCurrency(breakdown.grossEarnings + prorationDeduction + breakdown.reimbursementsSum)}</Text>
             </View>
           </View>
 
           {/* Deductions Column */}
           <View style={styles.tableCol}>
-            <View style={{ backgroundColor: isRedPointTheme ? secondaryColor : 'transparent', paddingHorizontal: isRedPointTheme ? 6 : 0, paddingVertical: isRedPointTheme ? 4 : 0, borderRadius: isRedPointTheme ? 2 : 0, marginBottom: 6 }}>
-              <Text style={[styles.tableHeader, { color: primaryColor, borderBottomColor: isRedPointTheme ? 'transparent' : primaryColor, borderBottomWidth: isRedPointTheme ? 0 : 1, marginBottom: 0, paddingBottom: 0 }]}>Deductions</Text>
+            <View style={styles.tableHeaderBlock}>
+              <Text style={styles.tableHeaderTitle}>Deductions</Text>
+            </View>
+            <View style={styles.tableThRow}>
+              <Text style={styles.tableThText}>Description</Text>
+              <Text style={styles.tableThText}>Amount (RM)</Text>
             </View>
 
             {prorationDeduction > 0 && (
-              <View style={[pdfTableRowStyle, { backgroundColor: isRedPointTheme ? secondaryColor : '#fef2f2', paddingHorizontal: 3 }]}>
-                <View style={{ flexDirection: 'column', maxWidth: '75%' }}>
-                  <Text style={[pdfItemNameBoldStyle, { color: isRedPointTheme ? primaryColor : '#dc2626' }]}>Prorated Basic Salary Deduction</Text>
-                  {prorationDetails ? <Text style={[styles.itemDesc, { color: labelColor }]}>{prorationDetails}</Text> : null}
-                </View>
-                <Text style={pdfItemValRedStyle}>{formatCurrency(prorationDeduction)}</Text>
+              <View style={[styles.tableRow, { backgroundColor: '#fef2f2' }]}>
+                <Text style={[styles.itemName, { color: '#A32626', fontFamily: 'Helvetica-Bold' }]}>Prorated Salary Deduction</Text>
+                <Text style={[styles.itemVal, { color: '#A32626' }]}>{formatCurrency(prorationDeduction)}</Text>
               </View>
             )}
 
             {epfEmployeeValue > 0 && (
-              <View style={pdfTableRowStyle}>
-                <Text style={pdfItemNameStyle}>EPF (Employee {epfRateEmp}%)</Text>
-                <Text style={pdfItemValRedStyle}>{formatCurrency(epfEmployeeValue)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>EPF (Employee {epfRateEmp}%)</Text>
+                <Text style={styles.itemVal}>{formatCurrency(epfEmployeeValue)}</Text>
               </View>
             )}
 
             {skbbkEmployeeVal > 0 ? (
               <>
-                <View style={pdfTableRowStyle}>
-                  <Text style={pdfItemNameStyle}>SOCSO - Invalidity</Text>
-                  <Text style={pdfItemValRedStyle}>{formatCurrency(socsoEmployeeVal)}</Text>
+                <View style={styles.tableRow}>
+                  <Text style={styles.itemName}>SOCSO - Invalidity</Text>
+                  <Text style={styles.itemVal}>{formatCurrency(socsoEmployeeVal)}</Text>
                 </View>
-                <View style={pdfTableRowStyle}>
-                  <Text style={pdfItemNameStyle}>SOCSO - LINDUNG 24 Jam</Text>
-                  <Text style={pdfItemValRedStyle}>{formatCurrency(skbbkEmployeeVal)}</Text>
+                <View style={styles.tableRow}>
+                  <Text style={styles.itemName}>SOCSO - LINDUNG 24 Jam</Text>
+                  <Text style={styles.itemVal}>{formatCurrency(skbbkEmployeeVal)}</Text>
                 </View>
-                <View style={[pdfTableRowStyle, { backgroundColor: isRedPointTheme ? secondaryColor : '#f9fafb', paddingHorizontal: 2 }]}>
-                  <Text style={[pdfItemNameStyle, { fontFamily: 'Helvetica-Bold' }]}>SOCSO Employee Total</Text>
-                  <Text style={[pdfItemValRedStyle, { fontFamily: 'Helvetica-Bold' }]}>{formatCurrency(socsoEmployeeVal + skbbkEmployeeVal)}</Text>
+                <View style={styles.tableRowSocsoTotal}>
+                  <Text style={[styles.itemName, { fontFamily: 'Helvetica-Bold' }]}>SOCSO Employee Total</Text>
+                  <Text style={[styles.itemVal, { fontFamily: 'Helvetica-Bold' }]}>{formatCurrency(socsoEmployeeVal + skbbkEmployeeVal)}</Text>
                 </View>
               </>
             ) : (
               socsoEmployeeVal > 0 && (
-                <View style={pdfTableRowStyle}>
-                  <Text style={pdfItemNameStyle}>SOCSO</Text>
-                  <Text style={pdfItemValRedStyle}>{formatCurrency(socsoEmployeeVal)}</Text>
+                <View style={styles.tableRow}>
+                  <Text style={styles.itemName}>SOCSO</Text>
+                  <Text style={styles.itemVal}>{formatCurrency(socsoEmployeeVal)}</Text>
                 </View>
               )
             )}
 
             {eisEmployeeVal > 0 && (
-              <View style={pdfTableRowStyle}>
-                <Text style={pdfItemNameStyle}>EIS</Text>
-                <Text style={pdfItemValRedStyle}>{formatCurrency(eisEmployeeVal)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>EIS</Text>
+                <Text style={styles.itemVal}>{formatCurrency(eisEmployeeVal)}</Text>
               </View>
             )}
 
             {taxPcbVal > 0 && (
-              <View style={pdfTableRowStyle}>
-                <Text style={pdfItemNameStyle}>Income Tax (PCB)</Text>
-                <Text style={pdfItemValRedStyle}>{formatCurrency(taxPcbVal)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Income Tax (PCB)</Text>
+                <Text style={styles.itemVal}>{formatCurrency(taxPcbVal)}</Text>
               </View>
             )}
 
             {unpaidLeaveVal > 0 && (
-              <View style={pdfTableRowStyle}>
-                <Text style={pdfItemNameStyle}>Unpaid Leave Deduction</Text>
-                <Text style={pdfItemValRedStyle}>{formatCurrency(unpaidLeaveVal)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Unpaid Leave</Text>
+                <Text style={styles.itemVal}>{formatCurrency(unpaidLeaveVal)}</Text>
               </View>
             )}
-
             {deductionInLieuVal > 0 && (
-              <View style={pdfTableRowStyle}>
-                <Text style={pdfItemNameStyle}>In Lieu Deduction</Text>
-                <Text style={pdfItemValRedStyle}>{formatCurrency(deductionInLieuVal)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>Payment in Lieu</Text>
+                <Text style={styles.itemVal}>{formatCurrency(deductionInLieuVal)}</Text>
               </View>
             )}
-
             {deductionCp38Val > 0 && (
-              <View style={pdfTableRowStyle}>
-                <Text style={pdfItemNameStyle}>Deduction (CP38)</Text>
-                <Text style={pdfItemValRedStyle}>{formatCurrency(deductionCp38Val)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>CP38 Direct Tax</Text>
+                <Text style={styles.itemVal}>{formatCurrency(deductionCp38Val)}</Text>
               </View>
             )}
-
             {deductionOthersVal > 0 && (
-              <View style={pdfTableRowStyle}>
-                <View style={{ flexDirection: 'column' }}>
-                  <Text style={pdfItemNameStyle}>{employee.deductionOthersDesc || 'Other Deductions'}</Text>
-                </View>
-                <Text style={pdfItemValRedStyle}>{formatCurrency(deductionOthersVal)}</Text>
+              <View style={styles.tableRow}>
+                <Text style={styles.itemName}>{employee.deductionOthersDesc || 'Other Deduction'}</Text>
+                <Text style={styles.itemVal}>{formatCurrency(deductionOthersVal)}</Text>
               </View>
             )}
 
-            {/* Total Deductions */}
-            <View style={pdfTableRowBoldStyle}>
-              <Text style={pdfItemNameBoldStyle}>Total Deductions</Text>
-              <Text style={pdfItemValRedBoldStyle}>{formatCurrency(breakdown.totalDeductions + prorationDeduction)}</Text>
+            <View style={styles.tableTotalRow}>
+              <Text style={styles.tableTotalText}>Total Deductions</Text>
+              <Text style={styles.tableTotalText}>{formatCurrency(breakdown.totalDeductions + prorationDeduction)}</Text>
             </View>
           </View>
         </View>
 
-        {/* Employer Contributions Box */}
-        <View style={[
-          styles.employerContainer, 
-          { 
-            backgroundColor: secondaryColor, 
-            borderColor: thinBorderColor 
-          }
-        ]}>
-          <Text style={[styles.employerTitle, { color: isRedPointTheme ? textColor : '#6b7280' }]}>Employer Contributions (Not Paid to Employee)</Text>
-          <View style={styles.employerGrid}>
-            {epfEmployerValue > 0 && (
-              <View style={styles.employerCol}>
-                <Text style={[styles.detailLabel, { color: labelColor }]}>EPF ({epfRateEmployer}%)</Text>
-                <Text style={[styles.detailValue, { color: textColor }]}>{formatCurrency(epfEmployerValue)}</Text>
-              </View>
-            )}
-            {skbbkEmployeeVal > 0 ? (
-              <>
-                <View style={styles.employerCol}>
-                  <Text style={[styles.detailLabel, { color: labelColor }]}>SOCSO - Employment Injury</Text>
-                  <Text style={[styles.detailValue, { color: textColor }]}>{formatCurrency(socsoRes.employerEmploymentInjury)}</Text>
-                </View>
-                <View style={styles.employerCol}>
-                  <Text style={[styles.detailLabel, { color: labelColor }]}>SOCSO - Invalidity</Text>
-                  <Text style={[styles.detailValue, { color: textColor }]}>{formatCurrency(socsoRes.employerInvalidity)}</Text>
-                </View>
-                <View style={styles.employerCol}>
-                  <Text style={[styles.detailLabel, { color: labelColor }]}>SOCSO Employer Total</Text>
-                  <Text style={[styles.detailValue, { color: textColor }]}>{formatCurrency(socsoRes.employerSocsoTotal)}</Text>
-                </View>
-              </>
-            ) : (
-              socsoEmployerVal > 0 && (
-                <View style={styles.employerCol}>
-                  <Text style={[styles.detailLabel, { color: labelColor }]}>SOCSO</Text>
-                  <Text style={[styles.detailValue, { color: textColor }]}>{formatCurrency(socsoEmployerVal)}</Text>
-                </View>
-              )
-            )}
-            {eisEmployerVal > 0 && (
-              <View style={styles.employerCol}>
-                <Text style={[styles.detailLabel, { color: labelColor }]}>EIS</Text>
-                <Text style={[styles.detailValue, { color: textColor }]}>{formatCurrency(eisEmployerVal)}</Text>
-              </View>
-            )}
+        {/* Summary Strip (Option A Layout) */}
+        <View style={styles.summaryStrip}>
+          {/* Gross Pay */}
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Gross Pay</Text>
+            <Text style={styles.summaryValue}>
+              {formatCurrency(breakdown.grossEarnings + prorationDeduction + breakdown.reimbursementsSum)}
+            </Text>
+          </View>
+
+          {/* Total Deductions */}
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Total Deductions</Text>
+            <Text style={styles.summaryValue}>
+              {formatCurrency(breakdown.totalDeductions + prorationDeduction)}
+            </Text>
+          </View>
+
+          {/* Net Pay (Deep Red Block) */}
+          <View style={styles.summaryCardNetPay}>
+            <Text style={styles.summaryLabelNetPay}>Net Pay</Text>
+            <Text style={styles.summaryValueNetPay}>{formatCurrency(breakdown.netPay)}</Text>
           </View>
         </View>
 
-        {/* Footer Summary / Net Pay */}
-        <View style={[styles.summaryBlock, { borderTopColor: primaryColor }]}>
-          <Text style={[styles.footnote, { color: isRedPointTheme ? textColor : '#6b7280' }]}>
-            This is a computer generated document. No signature is required.
-          </Text>
-          <View style={[
-            styles.netPayContainer, 
-            { 
-              backgroundColor: isRedPointTheme ? secondaryColor : '#f3f4f6', 
-              borderColor: thinBorderColor 
-            }
-          ]}>
-            <Text style={[styles.netPayLabel, { color: isRedPointTheme ? primaryColor : '#6b7280' }]}>Net Pay</Text>
-            <Text style={[styles.netPayValue, { color: isRedPointTheme ? primaryColor : primaryColor }]}>{formatCurrency(breakdown.netPay)}</Text>
+        {/* Employer Contributions (Option A Card Layout) */}
+        <View style={styles.contributionsCard}>
+          <Text style={styles.contributionsTitle}>🏛️ Employer Contributions (Not Paid to Employee)</Text>
+          <View style={styles.contributionsGrid}>
+            {/* EPF */}
+            <View style={styles.contributionCol}>
+              <Text style={[styles.detailLabel, { color: '#6b7280' }]}>EPF ({epfRateEmployer}%)</Text>
+              <Text style={[styles.detailValue, { color: '#333333' }]}>{formatCurrency(epfEmployerValue)}</Text>
+            </View>
+
+            <View style={styles.contributionDivider} />
+
+            {/* SOCSO Injury */}
+            <View style={styles.contributionCol}>
+              <Text style={[styles.detailLabel, { color: '#6b7280' }]}>SOCSO - Injury</Text>
+              <Text style={[styles.detailValue, { color: '#333333' }]}>{formatCurrency(socsoRes.employerEmploymentInjury)}</Text>
+            </View>
+
+            <View style={styles.contributionDivider} />
+
+            {/* SOCSO Invalidity */}
+            <View style={styles.contributionCol}>
+              <Text style={[styles.detailLabel, { color: '#6b7280' }]}>SOCSO - Invalidity</Text>
+              <Text style={[styles.detailValue, { color: '#333333' }]}>{formatCurrency(socsoRes.employerInvalidity)}</Text>
+            </View>
+
+            <View style={styles.contributionDivider} />
+
+            {/* SOCSO Employer Total */}
+            <View style={styles.contributionCol}>
+              <Text style={[styles.detailLabel, { color: '#A32626' }]}>SOCSO Employer Total</Text>
+              <Text style={[styles.detailValue, { color: '#A32626' }]}>{formatCurrency(socsoRes.employerSocsoTotal)}</Text>
+            </View>
+
+            <View style={styles.contributionDivider} />
+
+            {/* EIS */}
+            <View style={styles.contributionCol}>
+              <Text style={[styles.detailLabel, { color: '#6b7280' }]}>EIS</Text>
+              <Text style={[styles.detailValue, { color: '#333333' }]}>{formatCurrency(breakdown.eisEmployerVal)}</Text>
+            </View>
           </View>
         </View>
+
+        {/* Footer Notes (Option A) */}
+        <View style={styles.footerSection}>
+          <View style={styles.footerCol}>
+            <Text style={styles.footerTitle}>💬 Important Note</Text>
+            <Text style={styles.footerText}>
+              This is a computer generated document.
+            </Text>
+            <Text style={styles.footerText}>
+              No signature is required.
+            </Text>
+          </View>
+          <View style={[styles.footerCol, { alignItems: 'flex-end' }]}>
+            <Text style={styles.footerTitle}>📅 Pay Period</Text>
+            <Text style={styles.footerTextBold}>{payPeriodText}</Text>
+          </View>
+        </View>
+
+        {/* Bottom Confidential Bar */}
+        <View style={styles.confidentialBar}>
+          <Text style={styles.confidentialBarText}>
+            Thank you for your continued contribution to {entity?.name || 'Red Point Sdn Bhd'}.
+          </Text>
+          <Text style={styles.confidentialBarLabel}>CONFIDENTIAL</Text>
+        </View>
+
       </Page>
     </Document>
   );

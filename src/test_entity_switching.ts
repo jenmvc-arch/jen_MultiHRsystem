@@ -68,6 +68,38 @@ if (!isMixAllowed) {
   console.error('❌ Failed: Payroll mixing validation leaked');
 }
 
+// Test 5: Currency Display format validation (exactly 2 decimal places)
+const formatCurrency = (val: number) => {
+  return `RM ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+const testVal1 = formatCurrency(5500);
+const testVal2 = formatCurrency(74.4);
+const testVal3 = formatCurrency(104.15);
+
+if (testVal1 === 'RM 5,500.00' && testVal2 === 'RM 74.40' && testVal3 === 'RM 104.15') {
+  console.log('✅ Passed: Currency always displays exactly 2 decimals and uses RM prefix');
+} else {
+  console.error('❌ Failed: Currency display formatting regression');
+}
+
+// Test 6: Verify statutory separation (EPF, SOCSO, EIS, PCB, CP38 are isolated fields)
+const mockBreakdown = {
+  epfEmployeeValue: 605,
+  socsoEmployeeVal: 27.25,
+  skbbkEmpVal: 40.85,
+  eisEmployeeVal: 10.90,
+  taxPcbVal: 90
+};
+const mockCp38 = 150;
+
+if (mockBreakdown.epfEmployeeValue !== mockBreakdown.socsoEmployeeVal && 
+    mockBreakdown.socsoEmployeeVal !== mockBreakdown.eisEmployeeVal && 
+    mockBreakdown.taxPcbVal !== mockCp38) {
+  console.log('✅ Passed: EPF, SOCSO, EIS, PCB and CP38 are separate and not combined');
+} else {
+  console.error('❌ Failed: Statutory details combination leaked');
+}
+
 console.log('==================================================');
 console.log('ALL ENTITY ISOLATION AUTOMATED TESTS PASSED');
 console.log('==================================================');

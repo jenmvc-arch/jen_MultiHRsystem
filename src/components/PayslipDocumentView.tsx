@@ -12,7 +12,13 @@ import {
   Printer, 
   Download,
   AlertCircle,
-  Building2
+  Building2,
+  User,
+  Mail,
+  Briefcase,
+  Award,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { pdf } from '@react-pdf/renderer';
 import { PayslipPDFDocument } from './PayslipPDFDocument';
@@ -29,6 +35,8 @@ interface PayslipDocumentViewProps {
   isPrintView?: boolean;
   payMonth?: number;
   payYear?: number;
+  userRole?: string;
+  entities?: CorporateEntity[];
 }
 
 export default function PayslipDocumentView({
@@ -39,10 +47,13 @@ export default function PayslipDocumentView({
   activeEntity,
   isPrintView = false,
   payMonth: propPayMonth,
-  payYear: propPayYear
+  payYear: propPayYear,
+  userRole = 'Global Administrator',
+  entities
 }: PayslipDocumentViewProps) {
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
+  const [isMasked, setIsMasked] = useState(true);
 
   const rawActiveEmployee = employees.find(e => e.id === selectedEmployeeId) || employees[0];
 
@@ -60,6 +71,7 @@ export default function PayslipDocumentView({
 
   const activeEmployee = getEmployeeForMonth(rawActiveEmployee, payMonth);
   const breakdown = calculatePayslip(activeEmployee, payMonth, payYear);
+  const employeeEntity = entities?.find(ent => ent.id === activeEmployee.entityId) || activeEntity;
 
   const basicSalaryForSocso = getAdjustedBasicSalary(activeEmployee, payMonth, payYear);
   const overtimeForSocso = activeEmployee.overtime || 0;
@@ -128,6 +140,10 @@ export default function PayslipDocumentView({
     }
   }
 
+  const monthNameForPeriod = new Date(payYear, payMonth - 1).toLocaleDateString('en-US', { month: 'long' });
+  const lastDayForPeriod = new Date(payYear, payMonth, 0).getDate();
+  const payPeriodString = `01 ${monthNameForPeriod} ${payYear} – ${lastDayForPeriod} ${monthNameForPeriod} ${payYear}`;
+
   const isEligible = 
     activeEmployee.employmentType === 'Probationary' || 
     activeEmployee.employmentType === 'Confirmation' || 
@@ -155,12 +171,12 @@ export default function PayslipDocumentView({
   };
 
   const handleDownload = async () => {
-    const formattedPeriod = new Date(payYear, payMonth - 1).toLocaleDateString('en-US', {month: 'long', year: 'numeric'}).replace(/\s+/g, '_');
-    const fileName = `${formattedPeriod}_Payslip_${activeEmployee.name.replace(/\s+/g, '_')}.pdf`;
+    const formattedMonth = String(payMonth).padStart(2, '0');
+    const fileName = `Payslip_${activeEmployee.id}_${activeEmployee.name.replace(/\s+/g, '_').toUpperCase()}_${payYear}-${formattedMonth}.pdf`;
     onShowNotification('Download Started', `Generating and downloading ${fileName} in your browser...`);
     
     try {
-      const doc = <PayslipPDFDocument employee={activeEmployee} entity={activeEntity} month={payMonth} year={payYear} />;
+      const doc = <PayslipPDFDocument employee={activeEmployee} entity={employeeEntity || activeEntity || (entities && entities[0])!} month={payMonth} year={payYear} />;
       const blob = await pdf(doc).toBlob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -176,7 +192,7 @@ export default function PayslipDocumentView({
     }
   };
 
-  const isTheme2 = activeEntity?.theme === 'theme2';
+  const isTheme2 = employeeEntity?.theme === 'theme2';
   const themeStyles = isTheme2 ? {
     '--color-primary': '#A32626',
     '--color-primary-container': '#A32626',
@@ -211,10 +227,10 @@ export default function PayslipDocumentView({
             </button>
             <div className="flex flex-col text-left">
               <span className="text-white text-xs font-semibold truncate max-w-[200px] md:max-w-[400px]">
-                {new Date(payYear, payMonth - 1).toLocaleDateString('en-US', {month: 'long', year: 'numeric'}).replace(/\s+/g, '_')}_Payslip_{activeEmployee.name.replace(/\s+/g, '_')}.pdf
+                Payslip_{activeEmployee.id}_{activeEmployee.name.replace(/\s+/g, '_').toUpperCase()}_{payYear}-{String(payMonth).padStart(2, '0')}.pdf
               </span>
               <span className="text-gray-400 text-[10px] uppercase tracking-wider font-semibold">
-                Acme Global Enterprise
+                {employeeEntity?.name || 'Corporate Subsidiary'}
               </span>
             </div>
           </div>
@@ -285,16 +301,16 @@ export default function PayslipDocumentView({
             ACME-CONFIDENTIAL-STRICTLY-PRIVATE
           </div>
 
-          {/* Payslip Branding Header */}
-          <div className={isTheme2 ? "flex justify-between items-start bg-[#F2E8D8] p-5 rounded-lg border-b-2 border-primary mb-6" : "flex justify-between items-start border-b-2 border-primary pb-6 mb-6"}>
-            <div className="flex items-start gap-4">
+          {/* Option A Branding Header */}
+          <div className="flex justify-between items-stretch border-b-4 border-[#A32626] pb-4 mb-6 select-none bg-white relative">
+            <div className="flex items-start gap-4 py-2">
               {/* Logo container */}
-              <div className="w-14 h-14 rounded-lg bg-white border border-neutral-border/40 flex items-center justify-center overflow-hidden shrink-0 shadow-xs relative">
-                {activeEntity?.logoUrl && !activeEntity.logoUrl.includes('placeholder') && !activeEntity.logoUrl.includes('example.com') ? (
+              <div className="w-16 h-16 rounded-lg bg-white border border-[#E5DED5] flex items-center justify-center overflow-hidden shrink-0 shadow-xs relative">
+                {employeeEntity?.logoUrl && !employeeEntity.logoUrl.includes('placeholder') && !employeeEntity.logoUrl.includes('example.com') ? (
                   <>
                     <img 
-                      src={getDirectLogoUrl(activeEntity.logoUrl)} 
-                      alt={activeEntity.name} 
+                      src={getDirectLogoUrl(employeeEntity.logoUrl)} 
+                      alt={employeeEntity.name} 
                       className="w-full h-full object-cover" 
                       referrerPolicy="no-referrer" 
                       onError={(e) => {
@@ -303,370 +319,506 @@ export default function PayslipDocumentView({
                         if (fallback) fallback.style.display = 'flex';
                       }}
                     />
-                    <div style={{ display: 'none' }} className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-sm uppercase">
-                      {activeEntity.name.substring(0, 2)}
+                    <div style={{ display: 'none' }} className="w-full h-full flex items-center justify-center bg-[#F2E8D8] text-[#A32626] font-bold text-lg uppercase">
+                      {employeeEntity.name.substring(0, 2)}
                     </div>
                   </>
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-sm uppercase">
-                    {activeEntity?.name ? activeEntity.name.substring(0, 2) : 'HR'}
+                  <div className="w-full h-full flex items-center justify-center bg-[#F2E8D8] text-[#A32626] font-bold text-lg uppercase">
+                    {employeeEntity?.name ? employeeEntity.name.substring(0, 2) : 'RP'}
                   </div>
                 )}
               </div>
 
-              <div>
-                <h1 className="text-xl font-bold text-primary tracking-tight font-sans">
-                  {activeEntity?.name || 'Corporate Subsidiary'}
+              {/* Company Details */}
+              <div className="text-left text-[#333333]">
+                <h1 className="text-xl font-black text-[#A32626] tracking-tight font-sans">
+                  {employeeEntity?.name || 'Red Point Sdn Bhd'}
                 </h1>
-                {activeEntity?.registrationNumber && (
-                  <p className="text-[10px] text-on-surface-variant font-mono font-semibold">
-                    Co. Reg: {activeEntity.registrationNumber}
+                {employeeEntity?.registrationNumber && (
+                  <p className="text-[10px] text-[#333333] font-mono font-bold mt-0.5">
+                    Co. Reg: {employeeEntity.registrationNumber}
                   </p>
                 )}
-                <p className="text-xs text-on-surface-variant mt-1 leading-relaxed max-w-[400px]">
-                  {activeEntity?.address || 'No registered corporate address'}
-                </p>
+                <div className="flex items-start gap-1 mt-1 text-[11px] text-[#333333] leading-normal max-w-[400px]">
+                  <span className="text-[#A32626] mt-0.5 shrink-0 font-bold">📍</span>
+                  <p className="font-medium">{employeeEntity?.address || 'No registered corporate address'}</p>
+                </div>
               </div>
             </div>
-            
-            <div className="text-right">
-              <h2 className="text-lg font-bold text-primary-container uppercase tracking-widest font-sans">Payslip</h2>
-              <p className="text-sm text-on-surface mt-1 font-medium font-sans">
-                {new Date(payYear, payMonth - 1).toLocaleDateString('en-US', {month: 'long', year: 'numeric'})}
-              </p>
+
+            {/* Right side banner block */}
+            <div className="bg-[#A32626] text-white px-6 py-4 flex flex-col justify-center items-center rounded-l-lg min-w-[140px] text-center self-stretch">
+              <span className="text-xs uppercase tracking-widest font-black opacity-80 text-[#F2E8D8]">PAYSLIP</span>
+              <span className="text-sm font-bold mt-1 font-mono">
+                {new Date(payYear, payMonth - 1).toLocaleDateString('en-US', {month: 'short', year: 'numeric'})}
+              </span>
             </div>
           </div>
 
-          {/* Employee Details Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 bg-surface-container-low p-4 border border-neutral-border rounded text-xs leading-relaxed">
-            <div>
-              <p className="text-on-surface-variant mb-1 font-medium">Employee Name</p>
-              <p className="text-on-surface font-semibold text-sm">{activeEmployee.name}</p>
+          {/* Employee Details Card (Option A styled) */}
+          <div className="bg-[#F2E8D8] border border-[#E5DED5] rounded-lg p-5 mb-6 text-left select-none">
+            {/* Title with Deep Red icon */}
+            <div className="flex items-center gap-2 mb-3 border-b border-[#E5DED5] pb-2 text-[#A32626]">
+              <User className="w-4 h-4 text-[#A32626]" />
+              <span className="text-xs font-black uppercase tracking-wider">Employee Details</span>
             </div>
-            <div>
-              <p className="text-on-surface-variant mb-1 font-medium">Email Address</p>
-              <p className="text-on-surface font-semibold text-sm truncate" title={activeEmployee.email}>{activeEmployee.email}</p>
-            </div>
-            <div>
-              <p className="text-on-surface-variant mb-1 font-medium">Department</p>
-              <p className="text-on-surface font-semibold text-sm">{activeEmployee.department}</p>
-            </div>
-            <div>
-              <p className="text-on-surface-variant mb-1 font-medium">Designation</p>
-              <p className="text-on-surface font-semibold text-sm">{activeEmployee.designation}</p>
-            </div>
-            <div>
-              <p className="text-on-surface-variant mb-1 font-medium">TIN / Tax Number</p>
-              <p className="text-on-surface font-semibold text-sm font-mono">{activeEmployee.taxNumber || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-on-surface-variant mb-1 font-medium">EPF Member Number</p>
-              <p className="text-on-surface font-semibold text-sm font-mono">{activeEmployee.epfNumber || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-on-surface-variant mb-1 font-medium">NRIC / Passport</p>
-              <p className="text-on-surface font-semibold text-sm font-mono">{activeEmployee.nricPassport || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-on-surface-variant mb-1 font-medium">Bank Account</p>
-              <p className="text-on-surface font-semibold text-sm font-mono">{activeEmployee.bankName} - {activeEmployee.accountNo}</p>
-            </div>
-            <div>
-              <p className="text-on-surface-variant mb-1 font-medium">Date Joined</p>
-              <p className="text-on-surface font-semibold text-sm font-mono">{formatToDDMMMYYYY(activeEmployee.dateOfJoined)}</p>
-            </div>
-            <div>
-              <p className="text-on-surface-variant mb-1 font-medium">Employment Status</p>
-              <p className="text-on-surface font-semibold text-sm">{activeEmployee.employmentType || 'N/A'}</p>
+
+            {/* Employee Name */}
+            <h2 className="text-lg font-black text-[#333333] uppercase mb-4 tracking-tight">
+              {activeEmployee.name}
+            </h2>
+
+            {/* 3-Column Layout */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-[#333333]">
+              {/* Left Group */}
+              <div className="space-y-2">
+                <div className="flex justify-between md:grid md:grid-cols-2 gap-1 py-0.5">
+                  <span className="font-semibold text-[#6B6B6B]">TIN / Tax Number</span>
+                  <span className="font-mono font-bold text-right md:text-left">{activeEmployee.taxNumber || 'IG 29068110030'}</span>
+                </div>
+                <div className="flex justify-between md:grid md:grid-cols-2 gap-1 py-0.5">
+                  <span className="font-semibold text-[#6B6B6B]">EPF Member Number</span>
+                  <span className="font-mono font-bold text-right md:text-left">{activeEmployee.epfNumber || '-'}</span>
+                </div>
+                <div className="flex justify-between md:grid md:grid-cols-2 gap-1 py-0.5">
+                  <span className="font-semibold text-[#6B6B6B]">NRIC / Passport</span>
+                  <span className="font-mono font-bold text-right md:text-left">{activeEmployee.nricPassport || '-'}</span>
+                </div>
+                <div className="flex justify-between md:grid md:grid-cols-2 gap-1 py-0.5">
+                  <span className="font-semibold text-[#6B6B6B]">Date Joined</span>
+                  <span className="font-mono font-bold text-right md:text-left">{formatToDDMMMYYYY(activeEmployee.dateOfJoined)}</span>
+                </div>
+                <div className="flex justify-between md:grid md:grid-cols-2 gap-1 py-0.5">
+                  <span className="font-semibold text-[#6B6B6B]">Employment Status</span>
+                  <span className="font-bold text-right md:text-left">{activeEmployee.employmentType || 'Confirmation'}</span>
+                </div>
+              </div>
+
+              {/* Middle Group */}
+              <div className="space-y-2">
+                <div className="flex justify-between md:grid md:grid-cols-2 gap-1 py-0.5">
+                  <span className="font-semibold text-[#6B6B6B]">Email Address</span>
+                  <span className="font-bold truncate text-right md:text-left max-w-[150px] md:max-w-none" title={activeEmployee.email}>
+                    {activeEmployee.email}
+                  </span>
+                </div>
+                <div className="flex justify-between md:grid md:grid-cols-2 gap-1 py-0.5">
+                  <span className="font-semibold text-[#6B6B6B]">Department</span>
+                  <span className="font-bold text-right md:text-left">{activeEmployee.department}</span>
+                </div>
+                <div className="flex justify-between md:grid md:grid-cols-2 gap-1 py-0.5">
+                  <span className="font-semibold text-[#6B6B6B]">Designation</span>
+                  <span className="font-bold text-right md:text-left">{activeEmployee.designation}</span>
+                </div>
+              </div>
+
+              {/* Right Group with vertical divider */}
+              <div className="border-t md:border-t-0 md:border-l border-[#E5DED5] pt-4 md:pt-0 md:pl-6 text-left">
+                <div className="flex items-center gap-2 mb-2 text-[#A32626]">
+                  <Building2 className="w-4 h-4 text-[#A32626]" />
+                  <span className="text-xs font-black uppercase tracking-wider">Bank Details</span>
+                </div>
+                <p className="text-[10px] text-[#6B6B6B] font-semibold uppercase tracking-wider mb-1">Bank Account</p>
+                
+                <div className="flex items-center gap-2 bg-white/40 p-2 rounded border border-[#E5DED5]/60">
+                  <p className="font-mono font-bold text-xs flex-1 break-all text-[#333333]">
+                    {(() => {
+                      const acc = activeEmployee.accountNo || '';
+                      if (!acc) return 'Bank account not available.';
+                      if (isMasked) {
+                        const last4 = acc.slice(-4);
+                        return `${activeEmployee.bankName || 'N/A'} - **** **** ${last4}`;
+                      }
+                      return `${activeEmployee.bankName || 'N/A'} - ${acc}`;
+                    })()}
+                  </p>
+                  {userRole === 'Global Administrator' && (
+                    <button
+                      onClick={() => setIsMasked(prev => !prev)}
+                      className="p-1 hover:bg-[#E5DED5] rounded transition-colors text-[#333333] cursor-pointer"
+                      title={isMasked ? "Reveal Account Number" : "Hide Account Number"}
+                    >
+                      {isMasked ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+            </button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Financial Data Table split */}
-          <div className="grid md:grid-cols-2 gap-8 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-6">
             {/* Earnings Table */}
-            <div>
-              <h3 className={isTheme2 ? "text-base text-primary bg-[#F2E8D8] px-3 py-2 rounded-lg font-bold mb-4 flex items-center gap-1.5" : "text-base text-primary font-bold mb-4 border-b border-neutral-border pb-2 flex items-center gap-1.5"}>
+            <div className="bg-white border border-[#E5DED5] rounded-lg p-4">
+              <div className="bg-[#A32626] text-white px-3 py-2 rounded font-black text-xs uppercase tracking-wider mb-4">
                 Earnings & Additions
-              </h3>
-              <table className="w-full text-sm">
-                <tbody>
-                  <tr className="border-b border-outline-variant/30">
-                    <td className="py-2 text-on-surface text-left">{getPayslipLabel(activeEmployee.employmentType)}</td>
-                    <td className="py-2 text-right text-on-surface font-mono">RM {baseSalaryBeforeProration.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+              </div>
+              <table className="w-full text-xs text-[#333333]">
+                <thead>
+                  <tr className="border-b border-[#E5DED5] text-[10px] uppercase font-black text-[#6B6B6B]">
+                    <th className="py-2 text-left">Description</th>
+                    <th className="py-2 text-right">Amount (RM)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E5DED5]/40">
+                  <tr className="hover:bg-[#F2E8D8]/20">
+                    <td className="py-2 text-left font-medium">{getPayslipLabel(activeEmployee.employmentType)}</td>
+                    <td className="py-2 text-right font-mono font-bold">{baseSalaryBeforeProration.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
 
                   {/* Allowances */}
                   {(activeEmployee.allowanceGeneral || 0) > 0 && (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">General Allowance</td>
-                      <td className="py-2 text-right text-on-surface font-mono">RM {(activeEmployee.allowanceGeneral || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left font-medium">General Allowance</td>
+                      <td className="py-2 text-right font-mono font-bold">{(activeEmployee.allowanceGeneral || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.allowanceTransport !== undefined ? activeEmployee.allowanceTransport : activeEmployee.transportAllowance) > 0 && (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">Transport Allowance</td>
-                      <td className="py-2 text-right text-on-surface font-mono">RM {Number(activeEmployee.allowanceTransport !== undefined ? activeEmployee.allowanceTransport : activeEmployee.transportAllowance).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left font-medium">Transport Allowance</td>
+                      <td className="py-2 text-right font-mono font-bold">{Number(activeEmployee.allowanceTransport !== undefined ? activeEmployee.allowanceTransport : activeEmployee.transportAllowance).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.allowanceParking || 0) > 0 && (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">Parking Allowance</td>
-                      <td className="py-2 text-right text-on-surface font-mono">RM {(activeEmployee.allowanceParking || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left font-medium">Parking Allowance</td>
+                      <td className="py-2 text-right font-mono font-bold">{(activeEmployee.allowanceParking || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.allowanceMeal || 0) > 0 && (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">Meal Allowance</td>
-                      <td className="py-2 text-right text-on-surface font-mono">RM {(activeEmployee.allowanceMeal || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left font-medium">Meal Allowance</td>
+                      <td className="py-2 text-right font-mono font-bold">{(activeEmployee.allowanceMeal || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.allowanceAccommodation !== undefined ? activeEmployee.allowanceAccommodation : activeEmployee.housingAllowance) > 0 && (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">Accommodation Allowance</td>
-                      <td className="py-2 text-right text-on-surface font-mono">RM {Number(activeEmployee.allowanceAccommodation !== undefined ? activeEmployee.allowanceAccommodation : activeEmployee.housingAllowance).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left font-medium">Accommodation Allowance</td>
+                      <td className="py-2 text-right font-mono font-bold">{Number(activeEmployee.allowanceAccommodation !== undefined ? activeEmployee.allowanceAccommodation : activeEmployee.housingAllowance).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.allowancePhone || 0) > 0 && (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">Phone Allowance</td>
-                      <td className="py-2 text-right text-on-surface font-mono">RM {(activeEmployee.allowancePhone || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left font-medium">Phone Allowance</td>
+                      <td className="py-2 text-right font-mono font-bold">{(activeEmployee.allowancePhone || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
 
                   {activeEmployee.overtime > 0 && (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">Overtime</td>
-                      <td className="py-2 text-right text-on-surface font-mono">RM {activeEmployee.overtime.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left font-medium">Overtime</td>
+                      <td className="py-2 text-right font-mono font-bold">{activeEmployee.overtime.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
 
                   {/* Supplemental Payments */}
                   {((activeEmployee.bonusAmount !== undefined ? activeEmployee.bonusAmount : activeEmployee.performanceBonus) || 0) > 0 && (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">
-                        <div>
-                          <span>Performance Bonus</span>
-                          {activeEmployee.bonusDesc && <p className="text-[10px] text-on-surface-variant italic leading-tight">{activeEmployee.bonusDesc}</p>}
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left">
+                        <div className="text-left">
+                          <span className="font-medium">Performance Bonus</span>
+                          {activeEmployee.bonusDesc && <p className="text-[10px] text-[#6B6B6B] italic leading-tight">{activeEmployee.bonusDesc}</p>}
                         </div>
                       </td>
-                      <td className="py-2 text-right text-on-surface font-mono">RM {Number(activeEmployee.bonusAmount !== undefined ? activeEmployee.bonusAmount : activeEmployee.performanceBonus).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td className="py-2 text-right font-mono font-bold">{Number(activeEmployee.bonusAmount !== undefined ? activeEmployee.bonusAmount : activeEmployee.performanceBonus).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.commissionAmount || 0) > 0 && (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">
-                        <div>
-                          <span>Commissions</span>
-                          {activeEmployee.commissionDesc && <p className="text-[10px] text-on-surface-variant italic leading-tight">{activeEmployee.commissionDesc}</p>}
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left">
+                        <div className="text-left">
+                          <span className="font-medium">Commissions</span>
+                          {activeEmployee.commissionDesc && <p className="text-[10px] text-[#6B6B6B] italic leading-tight">{activeEmployee.commissionDesc}</p>}
                         </div>
                       </td>
-                      <td className="py-2 text-right text-on-surface font-mono">RM {(activeEmployee.commissionAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td className="py-2 text-right font-mono font-bold">{(activeEmployee.commissionAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.backPayAmount || 0) > 0 && (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">
-                        <div>
-                          <span>BackPay / Arrears</span>
-                          {activeEmployee.backPayDesc && <p className="text-[10px] text-on-surface-variant italic leading-tight">{activeEmployee.backPayDesc}</p>}
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left">
+                        <div className="text-left">
+                          <span className="font-medium">BackPay / Arrears</span>
+                          {activeEmployee.backPayDesc && <p className="text-[10px] text-[#6B6B6B] italic leading-tight">{activeEmployee.backPayDesc}</p>}
                         </div>
                       </td>
-                      <td className="py-2 text-right text-on-surface font-mono">RM {(activeEmployee.backPayAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td className="py-2 text-right font-mono font-bold">{(activeEmployee.backPayAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.awsAmount || 0) > 0 && (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">
-                        <div>
-                          <span>AWS (13th Month)</span>
-                          {activeEmployee.awsDesc && <p className="text-[10px] text-on-surface-variant italic leading-tight">{activeEmployee.awsDesc}</p>}
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left">
+                        <div className="text-left">
+                          <span className="font-medium">AWS (13th Month)</span>
+                          {activeEmployee.awsDesc && <p className="text-[10px] text-[#6B6B6B] italic leading-tight">{activeEmployee.awsDesc}</p>}
                         </div>
                       </td>
-                      <td className="py-2 text-right text-on-surface font-mono">RM {(activeEmployee.awsAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td className="py-2 text-right font-mono font-bold">{(activeEmployee.awsAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.compensationAmount || 0) > 0 && (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">
-                        <div>
-                          <span>Compensation / Severance</span>
-                          {activeEmployee.compensationDesc && <p className="text-[10px] text-on-surface-variant italic leading-tight">{activeEmployee.compensationDesc}</p>}
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left">
+                        <div className="text-left">
+                          <span className="font-medium">Compensation / Severance</span>
+                          {activeEmployee.compensationDesc && <p className="text-[10px] text-[#6B6B6B] italic leading-tight">{activeEmployee.compensationDesc}</p>}
                         </div>
                       </td>
-                      <td className="py-2 text-right text-on-surface font-mono">RM {(activeEmployee.compensationAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td className="py-2 text-right font-mono font-bold">{(activeEmployee.compensationAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
 
                   {/* Reimbursements */}
                   {(activeEmployee.reimbursementAmount || 0) > 0 && (
-                    <tr className="border-b border-outline-variant/30 bg-neutral-50">
-                      <td className="py-2 text-on-surface text-left pl-1">
-                        <div>
+                    <tr className="bg-neutral-50 hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left pl-1">
+                        <div className="text-left">
                           <span className="font-semibold text-secondary-container">Reimbursements (Tax-Free)</span>
-                          {activeEmployee.reimbursementDesc && <p className="text-[10px] text-on-surface-variant italic leading-tight">{activeEmployee.reimbursementDesc}</p>}
+                          {activeEmployee.reimbursementDesc && <p className="text-[10px] text-[#6B6B6B] italic leading-tight">{activeEmployee.reimbursementDesc}</p>}
                         </div>
                       </td>
-                      <td className="py-2 text-right font-mono font-semibold text-secondary-container pr-1">RM {(activeEmployee.reimbursementAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td className="py-2 text-right font-mono font-bold text-secondary-container pr-1">{(activeEmployee.reimbursementAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
-
-                  <tr className="font-bold text-primary">
-                    <td className="py-3 text-on-surface text-left font-bold">Total Earnings & Additions</td>
-                    <td className="py-3 text-right font-mono">RM {(breakdown.grossEarnings + prorationDeduction + breakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
-                  </tr>
                 </tbody>
               </table>
+
+              {/* Total Row */}
+              <div className="flex justify-between items-center border-t border-b border-[#A32626] py-3 mt-4 text-[#A32626] font-black text-xs uppercase tracking-wider">
+                <span>Total Earnings & Additions</span>
+                <span className="font-mono">RM {(breakdown.grossEarnings + prorationDeduction + breakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+              </div>
             </div>
 
             {/* Deductions Table */}
-            <div>
-              <h3 className={isTheme2 ? "text-base text-primary bg-[#F2E8D8] px-3 py-2 rounded-lg font-bold mb-4 flex items-center gap-1.5" : "text-base text-primary font-bold mb-4 border-b border-neutral-border pb-2 flex items-center gap-1.5"}>
+            <div className="bg-white border border-[#E5DED5] rounded-lg p-4 text-left">
+              <div className="bg-[#A32626] text-white px-3 py-2 rounded font-black text-xs uppercase tracking-wider mb-4 text-center">
                 Deductions
-              </h3>
-              <table className="w-full text-sm">
-                <tbody>
+              </div>
+              <table className="w-full text-xs text-[#333333]">
+                <thead>
+                  <tr className="border-b border-[#E5DED5] text-[10px] uppercase font-black text-[#6B6B6B]">
+                    <th className="py-2 text-left">Description</th>
+                    <th className="py-2 text-right">Amount (RM)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E5DED5]/40">
                   {prorationDeduction > 0 && (
-                    <tr className="border-b border-outline-variant/30 bg-red-50/40">
-                      <td className="py-2 text-on-surface text-left pl-1">
-                        <div>
-                          <span className={isTheme2 ? "font-semibold text-primary" : "font-semibold text-error"}>Prorated Basic Salary Deduction</span>
-                          <p className="text-[10px] text-on-surface-variant font-medium mt-0.5 leading-tight">{prorationDetails}</p>
+                    <tr className="bg-red-50/40 hover:bg-[#F2E8D8]/20 text-[#A32626]">
+                      <td className="py-2 text-left pl-1">
+                        <div className="text-left">
+                          <span className="font-semibold">Prorated Basic Salary Deduction</span>
+                          <p className="text-[10px] opacity-80 font-medium mt-0.5 leading-tight">{prorationDetails}</p>
                         </div>
                       </td>
-                      <td className={`py-2 text-right font-mono pr-1 ${isTheme2 ? "text-primary" : "text-error"}`}>RM {prorationDeduction.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td className="py-2 text-right font-mono font-bold pr-1">{prorationDeduction.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
-                  <tr className="border-b border-outline-variant/30">
-                    <td className="py-2 text-on-surface text-left">EPF (Employee {activeEmployee.epfRateEmployee}%)</td>
-                    <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {breakdown.epfEmployeeValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                  
+                  <tr className="hover:bg-[#F2E8D8]/20">
+                    <td className="py-2 text-left font-medium">EPF (Employee {activeEmployee.epfRateEmployee}%)</td>
+                    <td className="py-2 text-right font-mono font-bold">{breakdown.epfEmployeeValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
+
                   {breakdown.skbbkEmpVal > 0 ? (
                     <>
-                      <tr className="border-b border-outline-variant/30">
-                        <td className="py-2 text-on-surface text-left">SOCSO - Invalidity</td>
-                        <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {breakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <tr className="hover:bg-[#F2E8D8]/20">
+                        <td className="py-2 text-left font-medium">SOCSO - Invalidity</td>
+                        <td className="py-2 text-right font-mono font-bold">{breakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                       </tr>
-                      <tr className="border-b border-outline-variant/30">
-                        <td className="py-2 text-on-surface text-left">SOCSO - LINDUNG 24 Jam</td>
-                        <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {breakdown.skbbkEmpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <tr className="hover:bg-[#F2E8D8]/20">
+                        <td className="py-2 text-left font-medium">SOCSO - LINDUNG 24 Jam</td>
+                        <td className="py-2 text-right font-mono font-bold">{breakdown.skbbkEmpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                       </tr>
-                      <tr className="border-b border-outline-variant/30 font-semibold bg-slate-50/50 text-[11px]">
-                        <td className="py-2 text-on-surface text-left pl-2">SOCSO Employee Total</td>
-                        <td className={`py-2 text-right font-mono ${isTheme2 ? "text-primary font-semibold" : "text-error"}`}>RM {(breakdown.socsoEmployeeVal + breakdown.skbbkEmpVal).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <tr className="bg-[#F2E8D8] text-[#333333] font-bold text-[11px] hover:bg-[#F2E8D8]">
+                        <td className="py-2 text-left pl-2">SOCSO Employee Total</td>
+                        <td className="py-2 text-right font-mono font-black pr-2">{(breakdown.socsoEmployeeVal + breakdown.skbbkEmpVal).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                       </tr>
                     </>
                   ) : (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">SOCSO</td>
-                      <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {breakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left font-medium">SOCSO</td>
+                      <td className="py-2 text-right font-mono font-bold">{breakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
-                  <tr className="border-b border-outline-variant/30">
-                    <td className="py-2 text-on-surface text-left">EIS</td>
-                    <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {breakdown.eisEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+
+                  <tr className="hover:bg-[#F2E8D8]/20">
+                    <td className="py-2 text-left font-medium">EIS</td>
+                    <td className="py-2 text-right font-mono font-bold">{breakdown.eisEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
-                  <tr className="border-b border-outline-variant/30">
-                    <td className="py-2 text-on-surface text-left">Income Tax (PCB)</td>
-                    <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {breakdown.taxPcbVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+
+                  <tr className="hover:bg-[#F2E8D8]/20">
+                    <td className="py-2 text-left font-medium">Income Tax (PCB)</td>
+                    <td className="py-2 text-right font-mono font-bold">{breakdown.taxPcbVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
-                  
+
                   {/* Unpaid Leave */}
                   {(activeEmployee.unpaidLeave || 0) > 0 && (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">Unpaid Leave</td>
-                      <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {(activeEmployee.unpaidLeave || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left font-medium">Unpaid Leave</td>
+                      <td className="py-2 text-right font-mono font-bold">{(activeEmployee.unpaidLeave || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
 
                   {/* Payment in Lieu */}
                   {(activeEmployee.deductionInLieu || 0) > 0 && (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">Payment in Lieu</td>
-                      <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {(activeEmployee.deductionInLieu || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left font-medium">Payment in Lieu</td>
+                      <td className="py-2 text-right font-mono font-bold">{(activeEmployee.deductionInLieu || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
 
                   {/* CP38 */}
                   {(activeEmployee.deductionCp38 || 0) > 0 && (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">CP38 Direct Tax</td>
-                      <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {(activeEmployee.deductionCp38 || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left font-medium">CP38 Direct Tax</td>
+                      <td className="py-2 text-right font-mono font-bold">{(activeEmployee.deductionCp38 || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
 
                   {/* Other Deductions */}
                   {(activeEmployee.deductionOthers || 0) > 0 && (
-                    <tr className="border-b border-outline-variant/30">
-                      <td className="py-2 text-on-surface text-left">
-                        <div>
-                          <span>Other Deductions</span>
-                          {activeEmployee.deductionOthersDesc && <p className="text-[10px] text-on-surface-variant italic leading-tight">{activeEmployee.deductionOthersDesc}</p>}
+                    <tr className="hover:bg-[#F2E8D8]/20">
+                      <td className="py-2 text-left">
+                        <div className="text-left">
+                          <span className="font-medium">Other Deductions</span>
+                          {activeEmployee.deductionOthersDesc && <p className="text-[10px] text-[#6B6B6B] italic leading-tight">{activeEmployee.deductionOthersDesc}</p>}
                         </div>
                       </td>
-                      <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {(activeEmployee.deductionOthers || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td className="py-2 text-right font-mono font-bold">{(activeEmployee.deductionOthers || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
-
-                  <tr className={isTheme2 ? "font-bold text-primary" : "font-bold text-error"}>
-                    <td className="py-3 text-on-surface text-left font-bold">Total Deductions</td>
-                    <td className="py-3 text-right font-mono">RM {(breakdown.totalDeductions + prorationDeduction).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
-                  </tr>
                 </tbody>
               </table>
-            </div>
-          </div>
 
-          {/* Employer Contributions Info Only */}
-          <div className="mb-12 bg-surface-container-low p-4 border border-neutral-border rounded text-xs space-y-3">
-            <h3 className="font-bold text-on-surface-variant uppercase tracking-wider">
-              Employer Contributions (Not paid to employee)
-            </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono font-medium text-on-surface">
-              <div>
-                <span className="text-on-surface-variant text-[10px] uppercase block mb-1">EPF ({activeEmployee.epfRateEmployer}%)</span>
-                <span>RM {breakdown.epfEmployerValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
-              </div>
-              {breakdown.skbbkEmpVal > 0 ? (
-                <>
-                  <div>
-                    <span className="text-on-surface-variant text-[10px] uppercase block mb-1">SOCSO - Employment Injury</span>
-                    <span>RM {socsoRes.employerEmploymentInjury.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
-                  </div>
-                  <div>
-                    <span className="text-on-surface-variant text-[10px] uppercase block mb-1">SOCSO - Invalidity</span>
-                    <span>RM {socsoRes.employerInvalidity.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
-                  </div>
-                  <div>
-                    <span className="text-on-surface-variant text-[10px] uppercase block mb-1">SOCSO Employer Total</span>
-                    <span>RM {socsoRes.employerSocsoTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
-                  </div>
-                </>
-              ) : (
-                <div>
-                  <span className="text-on-surface-variant text-[10px] uppercase block mb-1">SOCSO</span>
-                  <span>RM {breakdown.socsoEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
-                </div>
-              )}
-              <div>
-                <span className="text-on-surface-variant text-[10px] uppercase block mb-1">EIS</span>
-                <span>RM {breakdown.eisEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+              {/* Total Row */}
+              <div className="flex justify-between items-center border-t border-b border-[#A32626] py-3 mt-4 text-[#A32626] font-black text-xs uppercase tracking-wider">
+                <span>Total Deductions</span>
+                <span className="font-mono">RM {(breakdown.totalDeductions + prorationDeduction).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
               </div>
             </div>
           </div>
 
-          {/* Net Pay and computer signature footer */}
-          <div className="border-t-2 border-primary-container pt-8 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
-            <div className="text-xs text-on-surface-variant space-y-1">
-              <p className="font-medium">This is a computer generated document. No signature is required.</p>
-              <p>Generated on: 28 Oct 2026, 09:41 AM</p>
-              <p>Security hash: <span className="font-mono text-[10px]">SHA256:7a90b4cf22...</span></p>
+          {/* Summary Strip (Option A) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 select-none">
+            {/* Gross Pay */}
+            <div className="flex items-center gap-4 bg-[#F2E8D8] border border-[#E5DED5] rounded-lg p-4 text-left">
+              <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-[#A32626] font-bold text-lg shadow-xs">
+                💵
+              </div>
+              <div>
+                <p className="text-[10px] text-[#6B6B6B] font-black uppercase tracking-wider">Gross Pay</p>
+                <p className="text-lg font-black text-[#333333] font-mono mt-0.5">
+                  RM {(breakdown.grossEarnings + prorationDeduction + breakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}
+                </p>
+              </div>
             </div>
-            <div className={isTheme2 ? "text-right bg-[#F2E8D8] px-6 py-4 rounded border border-[#E6D8C1] min-w-[200px]" : "text-right bg-primary-container/5 px-6 py-4 rounded border border-primary-container/20 min-w-[200px]"}>
-              <p className={isTheme2 ? "text-xs text-[#A32626] font-bold uppercase tracking-widest mb-1" : "text-xs text-primary-container font-bold uppercase tracking-widest mb-1"}>Net Pay</p>
-              <p className={isTheme2 ? "text-2xl font-bold text-[#A32626] font-mono" : "text-2xl font-bold text-on-surface font-mono"}>
-                RM {breakdown.netPay.toLocaleString('en-US', {minimumFractionDigits: 2})}
-              </p>
+
+            {/* Total Deductions */}
+            <div className="flex items-center gap-4 bg-[#F2E8D8] border border-[#E5DED5] rounded-lg p-4 text-left">
+              <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-[#A32626] font-bold text-lg shadow-xs">
+                📄
+              </div>
+              <div>
+                <p className="text-[10px] text-[#6B6B6B] font-black uppercase tracking-wider">Total Deductions</p>
+                <p className="text-lg font-black text-[#333333] font-mono mt-0.5">
+                  RM {(breakdown.totalDeductions + prorationDeduction).toLocaleString('en-US', {minimumFractionDigits: 2})}
+                </p>
+              </div>
             </div>
+
+            {/* Net Pay (Deep Red Block) */}
+            <div className="flex items-center gap-4 bg-[#A32626] text-white rounded-lg p-4 text-left shadow-md">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-lg">
+                💰
+              </div>
+              <div>
+                <p className="text-[10px] text-[#F2E8D8] font-black uppercase tracking-wider">Net Pay</p>
+                <p className="text-xl font-black text-white font-mono mt-0.5">
+                  RM {breakdown.netPay.toLocaleString('en-US', {minimumFractionDigits: 2})}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Employer Contributions Card (Option A) */}
+          <div className="bg-[#F2E8D8] border border-[#E5DED5] rounded-lg p-4 mb-6 text-left select-none text-xs">
+            <div className="flex items-center gap-2 mb-3 text-[#A32626] font-black uppercase tracking-wider text-[10px]">
+              🏛️ Employer Contributions <span className="opacity-80 font-medium">(Not Paid to Employee)</span>
+            </div>
+
+            <div className="grid grid-cols-2 md:flex md:flex-row md:items-center md:justify-between gap-4 text-[#333333]">
+              {/* EPF */}
+              <div className="flex-1 min-w-[80px]">
+                <p className="text-[9px] text-[#6B6B6B] uppercase font-bold mb-1">EPF ({activeEmployee.epfRateEmployer || 13}%)</p>
+                <p className="font-mono font-bold">RM {breakdown.epfEmployerValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+              </div>
+
+              <div className="hidden md:block w-px h-8 bg-[#E5DED5]" />
+
+              {/* SOCSO Injury */}
+              <div className="flex-1 min-w-[80px]">
+                <p className="text-[9px] text-[#6B6B6B] uppercase font-bold mb-1">SOCSO - Injury</p>
+                <p className="font-mono font-bold">RM {socsoRes.employerEmploymentInjury.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+              </div>
+
+              <div className="hidden md:block w-px h-8 bg-[#E5DED5]" />
+
+              {/* SOCSO Invalidity */}
+              <div className="flex-1 min-w-[80px]">
+                <p className="text-[9px] text-[#6B6B6B] uppercase font-bold mb-1">SOCSO - Invalidity</p>
+                <p className="font-mono font-bold">RM {socsoRes.employerInvalidity.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+              </div>
+
+              <div className="hidden md:block w-px h-8 bg-[#E5DED5]" />
+
+              {/* SOCSO Total */}
+              <div className="flex-1 min-w-[80px] bg-white/20 p-1 rounded">
+                <p className="text-[9px] text-[#A32626] uppercase font-black mb-1">SOCSO Employer Total</p>
+                <p className="font-mono font-black text-[#A32626]">RM {socsoRes.employerSocsoTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+              </div>
+
+              <div className="hidden md:block w-px h-8 bg-[#E5DED5]" />
+
+              {/* EIS */}
+              <div className="flex-1 min-w-[80px]">
+                <p className="text-[9px] text-[#6B6B6B] uppercase font-bold mb-1">EIS</p>
+                <p className="font-mono font-bold">RM {breakdown.eisEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer Section (Option A) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-[#E5DED5] text-xs text-[#333333] mb-8 select-none">
+            {/* Left Note */}
+            <div className="flex items-start gap-2.5 text-left">
+              <span className="text-base text-[#A32626] font-bold mt-0.5">💬</span>
+              <div>
+                <p className="text-[10px] text-[#A32626] font-black uppercase tracking-wider">Important Note</p>
+                <p className="font-medium text-[#6B6B6B] leading-relaxed mt-0.5">
+                  This is a computer generated document.<br />
+                  No signature is required.
+                </p>
+              </div>
+            </div>
+
+            {/* Right Period */}
+            <div className="flex items-start gap-2.5 text-left md:justify-end">
+              <span className="text-base text-[#A32626] font-bold mt-0.5">📅</span>
+              <div>
+                <p className="text-[10px] text-[#A32626] font-black uppercase tracking-wider">Pay Period</p>
+                <p className="font-mono font-bold text-[#333333] mt-0.5">
+                  {payPeriodString}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Confidential Red Bar */}
+          <div className="bg-[#A32626] text-white px-4 py-2.5 rounded-b-lg flex flex-col md:flex-row justify-between items-center text-[10px] uppercase font-bold tracking-wider select-none gap-2">
+            <span>Thank you for your continued contribution to {employeeEntity?.name || 'Red Point Sdn Bhd'}.</span>
+            <span className="opacity-95 text-[#F2E8D8] tracking-widest font-black">Confidential</span>
           </div>
 
         </div>
