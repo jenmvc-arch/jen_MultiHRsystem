@@ -1761,6 +1761,7 @@ export default function App() {
               entities={entities}
               reviewCycles={reviewCycles}
               performances={filteredPerformances}
+              payrollRecords2026={filteredPayrollRecords2026}
               onNavigate={setCurrentTab}
               onOpenNewEmployeeModal={() => {
                 setCurrentTab('directory');

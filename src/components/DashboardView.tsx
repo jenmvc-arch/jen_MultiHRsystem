@@ -24,7 +24,7 @@ import {
   Sliders,
   Calendar
 } from 'lucide-react';
-import { Employee, ReviewCycle, CorporateEntity, EmployeePerformance } from '../types';
+import { Employee, ReviewCycle, CorporateEntity, EmployeePerformance, PayrollRecord2026 } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
 
 interface DashboardViewProps {
@@ -32,6 +32,7 @@ interface DashboardViewProps {
   entities: CorporateEntity[];
   reviewCycles: ReviewCycle[];
   performances: EmployeePerformance[];
+  payrollRecords2026?: PayrollRecord2026[];
   onNavigate: (tab: any) => void;
   onOpenNewEmployeeModal: () => void;
   onOpenRequestModal: () => void;
@@ -44,6 +45,7 @@ export default function DashboardView({
   entities,
   reviewCycles,
   performances,
+  payrollRecords2026,
   onNavigate,
   onOpenNewEmployeeModal,
   onOpenRequestModal,
@@ -68,15 +70,41 @@ export default function DashboardView({
   const activeEmployees = filteredEmployees.filter(e => e.status === 'Active').length;
   const onLeaveEmployees = filteredEmployees.filter(e => e.status === 'On Leave').length;
   
-  // Apply dynamic multiplier driven by dashboard slicers
-  const monthMultiplier = 0.9 + (selectedMonth * 0.015) + ((selectedYear - 2026) * 0.05);
-  
-  const totalPayroll = Math.round(
-    filteredEmployees.reduce((acc, e) => acc + e.basicSalary + (e.housingAllowance || 0) + (e.transportAllowance || 0), 0) * monthMultiplier
+  // Find actual processed payroll records matching the selected month and year
+  const matchingRecords = (payrollRecords2026 || []).filter(
+    r => r.payrollYear === selectedYear && r.payrollMonth === (selectedMonth + 1)
   );
-  const averageSalary = totalEmployees > 0 
-    ? Math.round((filteredEmployees.reduce((acc, e) => acc + e.basicSalary, 0) / totalEmployees) * monthMultiplier) 
-    : 0;
+
+  const calculateRecordGross = (r: PayrollRecord2026) => {
+    return r.basicSalary +
+      (r.allowanceGeneral || 0) +
+      (r.allowanceTransport || 0) +
+      (r.allowanceParking || 0) +
+      (r.allowanceMeal || 0) +
+      (r.allowanceAccommodation || 0) +
+      (r.allowancePhone || 0) +
+      (r.overtime || 0) +
+      (r.bonusAmount || 0) +
+      (r.commissionAmount || 0) +
+      (r.backPayAmount || 0) +
+      (r.awsAmount || 0) +
+      (r.compensationAmount || 0);
+  };
+
+  const baselineGrossPayroll = filteredEmployees.reduce(
+    (acc, e) => acc + e.basicSalary + (e.housingAllowance || 0) + (e.transportAllowance || 0), 
+    0
+  );
+
+  const totalPayroll = matchingRecords.length > 0
+    ? Math.round(matchingRecords.reduce((acc, r) => acc + calculateRecordGross(r), 0))
+    : Math.round(baselineGrossPayroll);
+
+  const averageSalary = matchingRecords.length > 0
+    ? Math.round(matchingRecords.reduce((acc, r) => acc + r.basicSalary, 0) / matchingRecords.length)
+    : (totalEmployees > 0 
+        ? Math.round(filteredEmployees.reduce((acc, e) => acc + e.basicSalary, 0) / totalEmployees) 
+        : 0);
 
   // 4. Compute dynamic performance metrics matching current review cycle
   const currentCycleId = reviewCycles[0]?.id || 'cycle-2026-annual';
@@ -85,7 +113,7 @@ export default function DashboardView({
   );
 
   const reviewsCompletedCount = entityPerformances.filter(p => p.reviewStatus === 'Completed').length;
-  const reviewsPendingCount = Math.max(0, Math.round(totalEmployees * (1 - (selectedMonth / 12))) - reviewsCompletedCount);
+  const reviewsPendingCount = Math.max(0, totalEmployees - reviewsCompletedCount);
   
   const ratedPerfs = entityPerformances.filter(p => p.reviewStatus === 'Completed' && p.rating > 0);
   const averageRating = ratedPerfs.length > 0 
@@ -104,12 +132,17 @@ export default function DashboardView({
   const currentMonthAbbr = allMonthsAbbr[currentMonthIdx];
   const chartLabels = allMonthsAbbr.slice(0, currentMonthIdx + 1);
 
-  const baseMonthlyValues = [16000, 22000, 24000, 20000, 30000, 33000, 28000, 35000, 39000, 42000, 45000, 48000];
-  const activeMonthlyValues = baseMonthlyValues.slice(0, currentMonthIdx + 1);
-
-  const totalGlobalPayroll = employees.reduce((acc, e) => acc + e.basicSalary + (e.housingAllowance || 0) + (e.transportAllowance || 0), 0);
-  const ratio = totalGlobalPayroll > 0 ? totalPayroll / totalGlobalPayroll : 1;
-  const scaledValues = activeMonthlyValues.map(val => Math.round(val * ratio));
+  // Calculate scaledValues dynamically from historical database records
+  const scaledValues = chartLabels.map((_, idx) => {
+    const monthNum = idx + 1;
+    const monthlyRecords = (payrollRecords2026 || []).filter(
+      r => r.payrollYear === selectedYear && r.payrollMonth === monthNum
+    );
+    if (monthlyRecords.length > 0) {
+      return Math.round(monthlyRecords.reduce((acc, r) => acc + calculateRecordGross(r), 0));
+    }
+    return baselineGrossPayroll;
+  });
 
   const maxScaledValue = Math.max(...scaledValues, 1000);
   const chartMaxVal = Math.ceil(maxScaledValue / 5000) * 5000 || 5000;
