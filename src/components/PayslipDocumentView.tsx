@@ -305,7 +305,7 @@ export default function PayslipDocumentView({
           <div className="flex justify-between items-stretch border-b-4 border-[#A32626] pb-4 mb-6 select-none bg-white relative">
             <div className="flex items-start gap-4 py-2">
               {/* Logo container */}
-              <div className="w-16 h-16 rounded-lg bg-white border border-[#E5DED5] flex items-center justify-center overflow-hidden shrink-0 shadow-xs relative">
+              <div className="w-24 h-24 rounded-lg bg-white border border-[#E5DED5] flex items-center justify-center overflow-hidden shrink-0 shadow-xs relative">
                 {employeeEntity?.logoUrl && !employeeEntity.logoUrl.includes('placeholder') && !employeeEntity.logoUrl.includes('example.com') ? (
                   <>
                     <img 
@@ -319,12 +319,12 @@ export default function PayslipDocumentView({
                         if (fallback) fallback.style.display = 'flex';
                       }}
                     />
-                    <div style={{ display: 'none' }} className="w-full h-full flex items-center justify-center bg-[#F2E8D8] text-[#A32626] font-bold text-lg uppercase">
+                    <div style={{ display: 'none' }} className="w-full h-full flex items-center justify-center bg-[#F2E8D8] text-[#A32626] font-bold text-3xl uppercase">
                       {employeeEntity.name.substring(0, 2)}
                     </div>
                   </>
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-[#F2E8D8] text-[#A32626] font-bold text-lg uppercase">
+                  <div className="w-full h-full flex items-center justify-center bg-[#F2E8D8] text-[#A32626] font-bold text-3xl uppercase">
                     {employeeEntity?.name ? employeeEntity.name.substring(0, 2) : 'RP'}
                   </div>
                 )}

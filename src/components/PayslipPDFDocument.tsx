@@ -38,8 +38,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   logoPlaceholder: {
-    width: 44,
-    height: 44,
+    width: 60,
+    height: 60,
     borderRadius: 4,
     backgroundColor: '#F2E8D8',
     justifyContent: 'center',
@@ -48,8 +48,8 @@ const styles = StyleSheet.create({
     borderColor: '#E5DED5',
   },
   logoImage: {
-    width: 44,
-    height: 44,
+    width: 60,
+    height: 60,
     borderRadius: 4,
   },
   logoText: {
@@ -510,7 +510,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
                 <Text style={styles.companyReg}>Co. Reg: {entity.registrationNumber}</Text>
               )}
               <Text style={styles.companyAddress}>
-                📍 {entity?.address || 'No registered corporate address'}
+                {entity?.address || 'No registered corporate address'}
               </Text>
             </View>
           </View>
@@ -523,7 +523,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
         {/* Employee Details Card */}
         <View style={styles.detailsCard}>
           <View style={styles.detailsTitleContainer}>
-            <Text style={styles.detailsTitle}>👨‍💼 Employee Details</Text>
+            <Text style={styles.detailsTitle}>Employee Details</Text>
           </View>
           <Text style={styles.employeeName}>{employee.name}</Text>
           
@@ -570,7 +570,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
 
             {/* Right Group (Bank details) */}
             <View style={styles.detailsCol}>
-              <Text style={styles.bankTitle}>🏦 Bank Details</Text>
+              <Text style={styles.bankTitle}>Bank Details</Text>
               <Text style={[styles.detailLabel, { marginBottom: 2 }]}>Bank Account</Text>
               <View style={styles.bankBox}>
                 <Text style={styles.bankText}>{getMaskedAccount()}</Text>
@@ -804,7 +804,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
 
         {/* Employer Contributions (Option A Card Layout) */}
         <View style={styles.contributionsCard}>
-          <Text style={styles.contributionsTitle}>🏛️ Employer Contributions (Not Paid to Employee)</Text>
+          <Text style={styles.contributionsTitle}>Employer Contributions (Not Paid to Employee)</Text>
           <View style={styles.contributionsGrid}>
             {/* EPF */}
             <View style={styles.contributionCol}>
@@ -849,7 +849,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
         {/* Footer Notes (Option A) */}
         <View style={styles.footerSection}>
           <View style={styles.footerCol}>
-            <Text style={styles.footerTitle}>💬 Important Note</Text>
+            <Text style={styles.footerTitle}>Important Note</Text>
             <Text style={styles.footerText}>
               This is a computer generated document.
             </Text>
@@ -858,7 +858,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             </Text>
           </View>
           <View style={[styles.footerCol, { alignItems: 'flex-end' }]}>
-            <Text style={styles.footerTitle}>📅 Pay Period</Text>
+            <Text style={styles.footerTitle}>Pay Period</Text>
             <Text style={styles.footerTextBold}>{payPeriodText}</Text>
           </View>
         </View>
