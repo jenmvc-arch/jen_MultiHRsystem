@@ -178,14 +178,17 @@ export default function PayslipDocumentView({
 
   const isTheme2 = activeEntity?.theme === 'theme2';
   const themeStyles = isTheme2 ? {
-    '--color-primary': '#222222',
-    '--color-primary-container': '#222222',
-    '--color-secondary': '#222222',
-    '--color-on-secondary-container': '#222222',
-    '--color-on-surface': '#222222',
-    '--color-on-surface-variant': '#222222',
-    '--color-error': '#222222',
-    color: '#222222'
+    '--color-primary': '#A32626',
+    '--color-primary-container': '#A32626',
+    '--color-secondary': '#F2E8D8',
+    '--color-on-secondary-container': '#333333',
+    '--color-on-surface': '#333333',
+    '--color-on-surface-variant': '#333333',
+    '--color-error': '#A32626',
+    '--color-neutral-border': '#E6D8C1',
+    '--color-surface-container-low': '#F2E8D8',
+    '--color-surface-container': '#F2E8D8',
+    color: '#333333'
   } as React.CSSProperties : {};
 
   return (
@@ -283,7 +286,7 @@ export default function PayslipDocumentView({
           </div>
 
           {/* Payslip Branding Header */}
-          <div className="flex justify-between items-start border-b-2 border-primary pb-6 mb-6">
+          <div className={isTheme2 ? "flex justify-between items-start bg-[#F2E8D8] p-5 rounded-lg border-b-2 border-primary mb-6" : "flex justify-between items-start border-b-2 border-primary pb-6 mb-6"}>
             <div className="flex items-start gap-4">
               {/* Logo container */}
               <div className="w-14 h-14 rounded-lg bg-white border border-neutral-border/40 flex items-center justify-center overflow-hidden shrink-0 shadow-xs relative">
@@ -382,7 +385,7 @@ export default function PayslipDocumentView({
           <div className="grid md:grid-cols-2 gap-8 mb-8">
             {/* Earnings Table */}
             <div>
-              <h3 className="text-base text-primary font-bold mb-4 border-b border-neutral-border pb-2 flex items-center gap-1.5">
+              <h3 className={isTheme2 ? "text-base text-primary bg-[#F2E8D8] px-3 py-2 rounded-lg font-bold mb-4 flex items-center gap-1.5" : "text-base text-primary font-bold mb-4 border-b border-neutral-border pb-2 flex items-center gap-1.5"}>
                 Earnings & Additions
               </h3>
               <table className="w-full text-sm">
@@ -517,7 +520,7 @@ export default function PayslipDocumentView({
 
             {/* Deductions Table */}
             <div>
-              <h3 className="text-base text-primary font-bold mb-4 border-b border-neutral-border pb-2 flex items-center gap-1.5">
+              <h3 className={isTheme2 ? "text-base text-primary bg-[#F2E8D8] px-3 py-2 rounded-lg font-bold mb-4 flex items-center gap-1.5" : "text-base text-primary font-bold mb-4 border-b border-neutral-border pb-2 flex items-center gap-1.5"}>
                 Deductions
               </h3>
               <table className="w-full text-sm">
@@ -526,52 +529,52 @@ export default function PayslipDocumentView({
                     <tr className="border-b border-outline-variant/30 bg-red-50/40">
                       <td className="py-2 text-on-surface text-left pl-1">
                         <div>
-                          <span className="font-semibold text-error">Prorated Basic Salary Deduction</span>
+                          <span className={isTheme2 ? "font-semibold text-primary" : "font-semibold text-error"}>Prorated Basic Salary Deduction</span>
                           <p className="text-[10px] text-on-surface-variant font-medium mt-0.5 leading-tight">{prorationDetails}</p>
                         </div>
                       </td>
-                      <td className="py-2 text-right text-error font-mono pr-1">RM {prorationDeduction.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td className={`py-2 text-right font-mono pr-1 ${isTheme2 ? "text-primary" : "text-error"}`}>RM {prorationDeduction.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   <tr className="border-b border-outline-variant/30">
                     <td className="py-2 text-on-surface text-left">EPF (Employee {activeEmployee.epfRateEmployee}%)</td>
-                    <td className="py-2 text-right text-error font-mono">RM {breakdown.epfEmployeeValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {breakdown.epfEmployeeValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
                   {breakdown.skbbkEmpVal > 0 ? (
                     <>
                       <tr className="border-b border-outline-variant/30">
                         <td className="py-2 text-on-surface text-left">SOCSO - Invalidity</td>
-                        <td className="py-2 text-right text-error font-mono">RM {breakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                        <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {breakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                       </tr>
                       <tr className="border-b border-outline-variant/30">
                         <td className="py-2 text-on-surface text-left">SOCSO - LINDUNG 24 Jam</td>
-                        <td className="py-2 text-right text-error font-mono">RM {breakdown.skbbkEmpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                        <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {breakdown.skbbkEmpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                       </tr>
                       <tr className="border-b border-outline-variant/30 font-semibold bg-slate-50/50 text-[11px]">
                         <td className="py-2 text-on-surface text-left pl-2">SOCSO Employee Total</td>
-                        <td className="py-2 text-right text-error font-mono">RM {(breakdown.socsoEmployeeVal + breakdown.skbbkEmpVal).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                        <td className={`py-2 text-right font-mono ${isTheme2 ? "text-primary font-semibold" : "text-error"}`}>RM {(breakdown.socsoEmployeeVal + breakdown.skbbkEmpVal).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                       </tr>
                     </>
                   ) : (
                     <tr className="border-b border-outline-variant/30">
                       <td className="py-2 text-on-surface text-left">SOCSO</td>
-                      <td className="py-2 text-right text-error font-mono">RM {breakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {breakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   <tr className="border-b border-outline-variant/30">
                     <td className="py-2 text-on-surface text-left">EIS</td>
-                    <td className="py-2 text-right text-error font-mono">RM {breakdown.eisEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {breakdown.eisEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
                   <tr className="border-b border-outline-variant/30">
                     <td className="py-2 text-on-surface text-left">Income Tax (PCB)</td>
-                    <td className="py-2 text-right text-error font-mono">RM {breakdown.taxPcbVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {breakdown.taxPcbVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
                   
                   {/* Unpaid Leave */}
                   {(activeEmployee.unpaidLeave || 0) > 0 && (
                     <tr className="border-b border-outline-variant/30">
                       <td className="py-2 text-on-surface text-left">Unpaid Leave</td>
-                      <td className="py-2 text-right text-error font-mono">RM {(activeEmployee.unpaidLeave || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {(activeEmployee.unpaidLeave || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
 
@@ -579,7 +582,7 @@ export default function PayslipDocumentView({
                   {(activeEmployee.deductionInLieu || 0) > 0 && (
                     <tr className="border-b border-outline-variant/30">
                       <td className="py-2 text-on-surface text-left">Payment in Lieu</td>
-                      <td className="py-2 text-right text-error font-mono">RM {(activeEmployee.deductionInLieu || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {(activeEmployee.deductionInLieu || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
 
@@ -587,7 +590,7 @@ export default function PayslipDocumentView({
                   {(activeEmployee.deductionCp38 || 0) > 0 && (
                     <tr className="border-b border-outline-variant/30">
                       <td className="py-2 text-on-surface text-left">CP38 Direct Tax</td>
-                      <td className="py-2 text-right text-error font-mono">RM {(activeEmployee.deductionCp38 || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {(activeEmployee.deductionCp38 || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
 
@@ -600,11 +603,11 @@ export default function PayslipDocumentView({
                           {activeEmployee.deductionOthersDesc && <p className="text-[10px] text-on-surface-variant italic leading-tight">{activeEmployee.deductionOthersDesc}</p>}
                         </div>
                       </td>
-                      <td className="py-2 text-right text-error font-mono">RM {(activeEmployee.deductionOthers || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td className={`py-2 text-right font-mono ${isTheme2 ? "text-on-surface" : "text-error"}`}>RM {(activeEmployee.deductionOthers || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
 
-                  <tr className="font-bold text-error">
+                  <tr className={isTheme2 ? "font-bold text-primary" : "font-bold text-error"}>
                     <td className="py-3 text-on-surface text-left font-bold">Total Deductions</td>
                     <td className="py-3 text-right font-mono">RM {(breakdown.totalDeductions + prorationDeduction).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
@@ -658,9 +661,9 @@ export default function PayslipDocumentView({
               <p>Generated on: 28 Oct 2026, 09:41 AM</p>
               <p>Security hash: <span className="font-mono text-[10px]">SHA256:7a90b4cf22...</span></p>
             </div>
-            <div className="text-right bg-primary-container/5 px-6 py-4 rounded border border-primary-container/20 min-w-[200px]">
-              <p className="text-xs text-primary-container font-bold uppercase tracking-widest mb-1">Net Pay</p>
-              <p className="text-2xl font-bold text-on-surface font-mono">
+            <div className={isTheme2 ? "text-right bg-[#F2E8D8] px-6 py-4 rounded border border-[#E6D8C1] min-w-[200px]" : "text-right bg-primary-container/5 px-6 py-4 rounded border border-primary-container/20 min-w-[200px]"}>
+              <p className={isTheme2 ? "text-xs text-[#A32626] font-bold uppercase tracking-widest mb-1" : "text-xs text-primary-container font-bold uppercase tracking-widest mb-1"}>Net Pay</p>
+              <p className={isTheme2 ? "text-2xl font-bold text-[#A32626] font-mono" : "text-2xl font-bold text-on-surface font-mono"}>
                 RM {breakdown.netPay.toLocaleString('en-US', {minimumFractionDigits: 2})}
               </p>
             </div>
