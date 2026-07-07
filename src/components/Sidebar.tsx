@@ -108,21 +108,30 @@ export default function Sidebar({
         </div>
 
         {entities && entities.length > 0 && (
-          <div className="mt-1">
-            <label className="block text-[9px] font-bold text-[#f7f0e0]/50 uppercase tracking-wider mb-1">
+          <div className="mt-1 space-y-1">
+            <label className="block text-[9px] font-bold text-[#f7f0e0]/50 uppercase tracking-wider mb-1.5">
               Switch Corporate View
             </label>
-            <select
-              value={activeEntityId}
-              onChange={(e) => onChangeActiveEntity?.(e.target.value)}
-              className="w-full bg-white/10 hover:bg-white/15 text-[#f7f0e0] border border-white/20 rounded px-2 py-1 text-xs outline-none focus:border-white/40 font-medium transition-all cursor-pointer"
-            >
-              {entities.map(ent => (
-                <option key={ent.id} value={ent.id} className="text-zinc-900 bg-white">
-                  {ent.name}
-                </option>
-              ))}
-            </select>
+            {entities.map(ent => {
+              const isSelected = activeEntityId === ent.id;
+              return (
+                <button
+                  key={ent.id}
+                  onClick={() => onChangeActiveEntity?.(ent.id)}
+                  className={`w-full flex items-center justify-between px-3 py-1.5 rounded text-xs font-semibold transition-all cursor-pointer border text-left ${
+                    isSelected
+                      ? 'bg-[#f7f0e0] text-primary border-[#f7f0e0] shadow-sm'
+                      : 'bg-white/5 hover:bg-white/10 text-[#f7f0e0]/85 hover:text-[#f7f0e0] border-white/10'
+                  }`}
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <Building2 className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{ent.name}</span>
+                  </span>
+                  {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 animate-pulse" />}
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
