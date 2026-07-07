@@ -59,6 +59,37 @@ import { EntityContextProvider } from './context/EntityContext';
 
 import { googleSheetsClient, isGoogleConfigured, SheetsDataPayload } from './lib/googleSheetsClient';
 
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  onError: (error: Error, info: React.ErrorInfo) => void;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class ErrorBoundary extends (React.Component as any) {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(_error: any) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    this.props.onError(error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return null;
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   // Navigation & View States
   const [activeEntityId, setActiveEntityId] = useState<string>(() => {
@@ -70,6 +101,31 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<AppTab>('dashboard');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('EMP-84729'); // Sarah Jenkins by default
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  const [globalError, setGlobalError] = useState<{ message: string; stack?: string } | null>(null);
+
+  useEffect(() => {
+    const handleWindowError = (event: ErrorEvent) => {
+      setGlobalError({
+        message: event.message || 'Unknown window error',
+        stack: event.error?.stack || 'No stack trace available'
+      });
+    };
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      setGlobalError({
+        message: event.reason?.message || String(event.reason) || 'Unhandled promise rejection',
+        stack: event.reason?.stack || 'No stack trace available'
+      });
+    };
+
+    window.addEventListener('error', handleWindowError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener('error', handleWindowError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
 
   // Check if we are in print/Puppeteer mode
   const isPrintMode = window.location.search.includes('print=true');
@@ -1510,18 +1566,57 @@ export default function App() {
     );
   }
 
+  if (globalError) {
+    return (
+      <div className="min-h-screen bg-neutral-900 text-[#f7f0e0] p-6 font-mono text-left flex flex-col justify-start gap-4">
+        <div className="bg-red-950 border border-red-500 rounded p-5 space-y-3">
+          <h1 className="text-lg font-bold text-red-400 flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" /> Application Crash Detected
+          </h1>
+          <p className="text-sm font-semibold">{globalError.message}</p>
+          {globalError.stack && (
+            <pre className="text-xs bg-black/40 p-4 rounded overflow-x-auto max-h-96 whitespace-pre-wrap leading-relaxed select-text border border-white/5">
+              {globalError.stack}
+            </pre>
+          )}
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={() => {
+              localStorage.clear();
+              window.location.reload();
+            }}
+            className="px-4 py-2 bg-red-700 hover:bg-red-800 text-white rounded text-sm font-semibold cursor-pointer"
+          >
+            Clear Caches & Reset App
+          </button>
+          <button
+            onClick={() => {
+              setGlobalError(null);
+              window.location.reload();
+            }}
+            className="px-4 py-2 bg-white hover:bg-neutral-100 text-neutral-900 rounded text-sm font-semibold cursor-pointer"
+          >
+            Reload Page
+          </button>
+        </div>
+      </div>
+    );
+  }
+
 
   if (!isAuthenticated) {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
 
   return (
-    <EntityContextProvider
-      entities={entities}
-      activeEntityId={activeEntityId}
-      isSwitchingEntity={isSwitchingEntity}
-      onSwitchEntity={async (id) => handleCorporateSwitch(id)}
-    >
+    <ErrorBoundary onError={(err) => setGlobalError({ message: err.message, stack: err.stack })}>
+      <EntityContextProvider
+        entities={entities}
+        activeEntityId={activeEntityId}
+        isSwitchingEntity={isSwitchingEntity}
+        onSwitchEntity={async (id) => handleCorporateSwitch(id)}
+      >
       <div style={getThemeStyles(activeEntity?.theme)} className="flex h-screen bg-background overflow-hidden relative font-sans text-on-background select-none">
       
       {/* Premium Glassmorphic Loading Overlay */}
@@ -2069,5 +2164,6 @@ export default function App() {
 
     </div>
     </EntityContextProvider>
+    </ErrorBoundary>
   );
 }
