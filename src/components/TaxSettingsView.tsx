@@ -48,11 +48,11 @@ export default function TaxSettingsView({
   const [authorizedSignatory, setAuthorizedSignatory] = useState('Director of Human Resources');
   
   // Form CP22A cessations state
-  const [cessationDate, setCessationDate] = useState('2026-10-31');
+  const [cessationDate, setCessationDate] = useState(() => getGmt8DateString());
   const [cessationReason, setCessationReason] = useState('Resignation');
   
   // Form CP21 departure state
-  const [departureDate, setDepartureDate] = useState('2026-11-15');
+  const [departureDate, setDepartureDate] = useState(() => getGmt8DateString());
   const [countryOfOrigin, setCountryOfOrigin] = useState('United Kingdom');
   
   // TP3 previous employment entries

@@ -1040,7 +1040,7 @@ export default function App() {
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [requestType, setRequestType] = useState('Annual Leave');
   const [requestDesc, setRequestDesc] = useState('');
-  const [requestDate, setRequestDate] = useState('2026-11-01');
+  const [requestDate, setRequestDate] = useState(() => getGmt8DateString());
 
   // Trigger toast helper
   const triggerNotification = (title: string, message: string, type: 'success' | 'info' = 'success') => {
