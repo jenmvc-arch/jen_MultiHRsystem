@@ -479,7 +479,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
   const payPeriodText = `01 ${monthsList[month - 1]} ${year} - ${lastDay} ${monthsList[month - 1]} ${year}`;
 
   const getMaskedAccount = () => {
-    const acc = employee.accountNo || '';
+    const acc = String(employee.accountNo || '');
     if (!acc) return 'Bank account not available.';
     const last4 = acc.slice(-4);
     return `${employee.bankName || 'N/A'} - **** **** ${last4}`;

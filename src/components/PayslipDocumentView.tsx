@@ -424,7 +424,7 @@ export default function PayslipDocumentView({
                 <div className="flex items-center gap-2 bg-white/40 p-2 rounded border border-[#E5DED5]/60">
                   <p className="font-mono font-bold text-xs flex-1 break-all text-[#333333]">
                     {(() => {
-                      const acc = activeEmployee.accountNo || '';
+                      const acc = String(activeEmployee.accountNo || '');
                       if (!acc) return 'Bank account not available.';
                       if (isMasked) {
                         const last4 = acc.slice(-4);
