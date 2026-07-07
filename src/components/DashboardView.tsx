@@ -83,10 +83,23 @@ export default function DashboardView({
     : 0;
 
   // 5. Dynamic Chart Scaling based on selected subsidiary's payroll ratio
-  const baseMonthlyValues = [16000, 22000, 24000, 20000, 30000, 33000, 28000, 35000, 39000, 42000];
+  const today = new Date();
+  const currentMonthIdx = today.getMonth(); // 0 = Jan, 6 = Jul
+  const allMonthsAbbr = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const allMonthsFull = [
+    "January", "February", "March", "April", "May", "June", 
+    "July", "August", "September", "October", "November", "December"
+  ];
+  const currentMonthName = allMonthsFull[currentMonthIdx];
+  const currentMonthAbbr = allMonthsAbbr[currentMonthIdx];
+  const chartLabels = allMonthsAbbr.slice(0, currentMonthIdx + 1);
+
+  const baseMonthlyValues = [16000, 22000, 24000, 20000, 30000, 33000, 28000, 35000, 39000, 42000, 45000, 48000];
+  const activeMonthlyValues = baseMonthlyValues.slice(0, currentMonthIdx + 1);
+
   const totalGlobalPayroll = employees.reduce((acc, e) => acc + e.basicSalary + (e.housingAllowance || 0) + (e.transportAllowance || 0), 0);
   const ratio = totalGlobalPayroll > 0 ? totalPayroll / totalGlobalPayroll : 1;
-  const scaledValues = baseMonthlyValues.map(val => Math.round(val * ratio));
+  const scaledValues = activeMonthlyValues.map(val => Math.round(val * ratio));
 
   const maxScaledValue = Math.max(...scaledValues, 1000);
   const chartMaxVal = Math.ceil(maxScaledValue / 5000) * 5000 || 5000;
@@ -98,11 +111,17 @@ export default function DashboardView({
     return minY - percent * (minY - maxY);
   };
 
-  const chartPoints = scaledValues.map((val, idx) => ({
-    x: 50 + idx * 70,
-    y: getChartY(val),
-    val: `RM ${val.toLocaleString()}`
-  }));
+  const chartPoints = scaledValues.map((val, idx) => {
+    const totalPoints = chartLabels.length;
+    const x = totalPoints > 1 
+      ? 50 + idx * (600 / (totalPoints - 1))
+      : 350;
+    return {
+      x,
+      y: getChartY(val),
+      val: `RM ${val.toLocaleString()}`
+    };
+  });
 
   const yAxisTicks = [
     { label: `RM ${Math.round(chartMaxVal / 1000)}k`, y: 34 },
@@ -113,7 +132,7 @@ export default function DashboardView({
   ];
 
   const linePathD = `M ${chartPoints.map(p => `${p.x} ${p.y}`).join(' L ')}`;
-  const areaPathD = `M 50 220 L ${chartPoints.map(p => `${p.x} ${p.y}`).join(' L ')} L 680 220 Z`;
+  const areaPathD = `M 50 220 L ${chartPoints.map(p => `${p.x} ${p.y}`).join(' L ')} L ${chartPoints[chartPoints.length - 1]?.x || 50} 220 Z`;
 
   // 6. Action: copy address to clipboard
   const handleCopyAddress = (address: string) => {
@@ -130,7 +149,7 @@ export default function DashboardView({
         <div>
           <h1 className="text-3xl font-bold text-on-background tracking-tight">HR Enterprise Dashboard</h1>
           <p className="text-on-surface-variant mt-1">
-            Welcome back! You have <span className="font-semibold text-primary">{reviewsPendingCount} performance reviews</span> pending for the October pay period.
+            Welcome back! You have <span className="font-semibold text-primary">{reviewsPendingCount} performance reviews</span> pending for the {currentMonthName} pay period.
           </p>
         </div>
         <div className="flex gap-3">
@@ -256,14 +275,14 @@ export default function DashboardView({
           </div>
         </div>
 
-        {/* Card 2: Total Oct Payout */}
+        {/* Card 2: Total Payout */}
         <div 
           onClick={() => onNavigate('payroll')}
           className="bg-surface-container-lowest p-5 rounded-lg border border-neutral-border shadow-sm flex flex-col justify-between hover:border-primary transition-all cursor-pointer group"
           id="stat-card-payroll"
         >
           <div className="flex justify-between items-start">
-            <span className="text-on-surface-variant text-sm font-medium">Monthly Oct Payout</span>
+            <span className="text-on-surface-variant text-sm font-medium">Monthly {currentMonthAbbr} Payout</span>
             <CreditCard className="w-5 h-5 text-primary" />
           </div>
           <div className="mt-4">
@@ -405,8 +424,8 @@ export default function DashboardView({
                 ))}
 
                 {/* X-axis Labels */}
-                {["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct"].map((label, idx) => (
-                  <text key={idx} x={50 + idx * 70} y="238" fontSize="10" textAnchor="middle" fill="#71717a" className="font-medium">{label}</text>
+                {chartLabels.map((label, idx) => (
+                  <text key={idx} x={chartPoints[idx]?.x || 50} y="238" fontSize="10" textAnchor="middle" fill="#71717a" className="font-medium">{label}</text>
                 ))}
               </svg>
             </div>
