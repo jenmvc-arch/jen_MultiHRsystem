@@ -16,9 +16,7 @@ import {
   User,
   Mail,
   Briefcase,
-  Award,
-  Eye,
-  EyeOff
+  Award
 } from 'lucide-react';
 import { pdf } from '@react-pdf/renderer';
 import { PayslipPDFDocument } from './PayslipPDFDocument';
@@ -53,7 +51,6 @@ export default function PayslipDocumentView({
 }: PayslipDocumentViewProps) {
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
-  const [isMasked, setIsMasked] = useState(true);
 
   const rawActiveEmployee = employees.find(e => e.id === selectedEmployeeId) || employees[0];
 
@@ -426,22 +423,9 @@ export default function PayslipDocumentView({
                     {(() => {
                       const acc = String(activeEmployee.accountNo || '');
                       if (!acc) return 'Bank account not available.';
-                      if (isMasked) {
-                        const last4 = acc.slice(-4);
-                        return `${activeEmployee.bankName || 'N/A'} - **** **** ${last4}`;
-                      }
                       return `${activeEmployee.bankName || 'N/A'} - ${acc}`;
                     })()}
                   </p>
-                  {userRole === 'Global Administrator' && (
-                    <button
-                      onClick={() => setIsMasked(prev => !prev)}
-                      className="p-1 hover:bg-[#E5DED5] rounded transition-colors text-[#333333] cursor-pointer"
-                      title={isMasked ? "Reveal Account Number" : "Hide Account Number"}
-                    >
-                      {isMasked ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-            </button>
-                  )}
                 </div>
               </div>
             </div>
