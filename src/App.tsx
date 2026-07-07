@@ -439,24 +439,11 @@ export default function App() {
       setCurrentUserName(localStorage.getItem('hr-nexus-user-name'));
       setCurrentUserRole(localStorage.getItem('hr-nexus-user-role'));
 
-      if (email) {
-        const prefJson = localStorage.getItem(`user_entity_preferences_${email}`);
-        if (prefJson) {
-          try {
-            const pref = JSON.parse(prefJson);
-            if (pref && pref.last_selected_entity_id) {
-              const matched = entities.find(e => e.id === pref.last_selected_entity_id && e.isActive);
-              if (matched) {
-                setActiveEntityId(pref.last_selected_entity_id);
-              }
-            }
-          } catch (e) {}
-        }
-      }
+      // Preferences are managed strictly by active_corporate_entity_id state
     }
     // Seed statutory configurations and brackets on mount
     seedSocsoConfigurationsAndBrackets();
-  }, [entities]);
+  }, []);
 
   // Load data from Google Sheets dynamically if configured
   useEffect(() => {
@@ -479,7 +466,7 @@ export default function App() {
         let loadedEntities: CorporateEntity[] = [];
         if (mainPayload.corporate_entities) {
           loadedEntities = mainPayload.corporate_entities.map((e: any) => ({
-            id: e.name || '',
+            id: e.id || e.name || '',
             name: e.name || '',
             registrationNumber: e.registrationNumber || '',
             address: e.address || '',
@@ -669,10 +656,10 @@ export default function App() {
             console.error('Error parsing salaryAdjustments for employee', e.id, err);
           }
           let resolvedEntityId = e.entityName || e.entityId || '';
-          if (resolvedEntityId === 'ENT-01' || resolvedEntityId === 'ENT-92') {
-            resolvedEntityId = 'Red Point Sdn Bhd';
-          } else if (resolvedEntityId === 'ENT-02' || resolvedEntityId === 'ENT-86') {
-            resolvedEntityId = 'YSYD Sdn Bhd';
+          if (resolvedEntityId === 'Red Point Sdn Bhd' || resolvedEntityId === 'ENT-92' || resolvedEntityId === 'ENT-01') {
+            resolvedEntityId = 'ENT-92';
+          } else if (resolvedEntityId === 'YSYD Sdn Bhd' || resolvedEntityId === 'ENT-86' || resolvedEntityId === 'ENT-02') {
+            resolvedEntityId = 'ENT-86';
           }
 
           return {
@@ -784,18 +771,26 @@ export default function App() {
         })));
 
         // Parse candidates
-        setCandidates(uniqueCandidates.map((c: any) => ({
-          id: c.id || '',
-          name: c.name || '',
-          email: c.email || '',
-          phone: c.phone || '',
-          designation: c.designation || '',
-          department: c.department || 'Engineering',
-          entityId: c.entityName || c.entityId || '',
-          stage: c.stage as any,
-          progress: Number(c.progress || 0),
-          dateJoined: c.dateJoined || ''
-        })));
+        setCandidates(uniqueCandidates.map((c: any) => {
+          let resolvedEntityId = c.entityName || c.entityId || '';
+          if (resolvedEntityId === 'Red Point Sdn Bhd' || resolvedEntityId === 'ENT-92' || resolvedEntityId === 'ENT-01') {
+            resolvedEntityId = 'ENT-92';
+          } else if (resolvedEntityId === 'YSYD Sdn Bhd' || resolvedEntityId === 'ENT-86' || resolvedEntityId === 'ENT-02') {
+            resolvedEntityId = 'ENT-86';
+          }
+          return {
+            id: c.id || '',
+            name: c.name || '',
+            email: c.email || '',
+            phone: c.phone || '',
+            designation: c.designation || '',
+            department: c.department || 'Engineering',
+            entityId: resolvedEntityId,
+            stage: c.stage as any,
+            progress: Number(c.progress || 0),
+            dateJoined: c.dateJoined || ''
+          };
+        }));
 
         // Parse payroll records
         setPayrollRecords2026(uniquePayrollRecords.map((r: any) => ({
@@ -854,6 +849,7 @@ export default function App() {
       // Step 1: Update active entity ID in the background (hidden under solid cover) after mount
       setTimeout(() => {
         setActiveEntityId(id);
+        setIsMobileSidebarOpen(false);
 
         // Step 2: Smoothly dismiss loader after layout updates have settled
         setTimeout(() => {
@@ -1035,7 +1031,7 @@ export default function App() {
           phone: newCandidate.phone,
           designation: newCandidate.designation,
           department: newCandidate.department,
-          entityName: newCandidate.entityId,
+          entityName: newCandidate.entityId === 'ENT-92' ? 'Red Point Sdn Bhd' : (newCandidate.entityId === 'ENT-86' ? 'YSYD Sdn Bhd' : newCandidate.entityId),
           stage: newCandidate.stage,
           progress: newCandidate.progress,
           dateJoined: newCandidate.dateJoined
@@ -1074,7 +1070,7 @@ export default function App() {
       try {
         const scriptUrl = getScriptUrlForEntity(newEmployee.entityId);
         await googleSheetsClient.insert('employees', {
-          entityName: newEmployee.entityId,
+          entityName: newEmployee.entityId === 'ENT-92' ? 'Red Point Sdn Bhd' : (newEmployee.entityId === 'ENT-86' ? 'YSYD Sdn Bhd' : newEmployee.entityId),
           name: newEmployee.name,
           email: newEmployee.email,
           designation: newEmployee.designation,
@@ -1677,6 +1673,7 @@ export default function App() {
               }}
               onOpenRequestModal={() => setIsRequestModalOpen(true)}
               activeEntityId={activeEntityId}
+              onChangeActiveEntity={handleCorporateSwitch}
             />
           )}
 

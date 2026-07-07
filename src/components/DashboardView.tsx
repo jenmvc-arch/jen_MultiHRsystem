@@ -34,6 +34,7 @@ interface DashboardViewProps {
   onOpenNewEmployeeModal: () => void;
   onOpenRequestModal: () => void;
   activeEntityId?: string;
+  onChangeActiveEntity?: (id: string) => void;
 }
 
 export default function DashboardView({
@@ -44,7 +45,8 @@ export default function DashboardView({
   onNavigate,
   onOpenNewEmployeeModal,
   onOpenRequestModal,
-  activeEntityId
+  activeEntityId,
+  onChangeActiveEntity
 }: DashboardViewProps) {
   const [selectedEntityId, setSelectedEntityId] = useState<string>(activeEntityId || 'all');
   const [addressCopied, setAddressCopied] = useState(false);
@@ -165,7 +167,10 @@ export default function DashboardView({
           return (
             <button
               key={ent.id}
-              onClick={() => setSelectedEntityId(ent.id)}
+              onClick={() => {
+                setSelectedEntityId(ent.id);
+                onChangeActiveEntity?.(ent.id);
+              }}
               className={`px-4 py-2 rounded font-bold text-xs transition-all flex items-center gap-2 cursor-pointer ${
                 isSelected
                   ? 'bg-primary text-white shadow-xs'
