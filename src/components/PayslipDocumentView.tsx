@@ -162,14 +162,25 @@ export default function PayslipDocumentView({
   };
 
   const handlePrint = () => {
-    const formattedPeriod = new Date(payYear, payMonth - 1).toLocaleDateString('en-US', {month: 'long', year: 'numeric'}).replace(/\s+/g, '_');
-    onShowNotification('Print Job Sent', `Sending ${formattedPeriod}_Payslip_${activeEmployee.name.replace(/\s+/g, '_')}.pdf to your configured system printer.`);
+    const monthsList = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const formattedMonthYear = `${monthsList[payMonth - 1]}${payYear}`;
+    const cleanEmpName = activeEmployee.name.replace(/\s+/g, '_');
+    const fileName = `${cleanEmpName}_${formattedMonthYear}_Payslip.pdf`;
+    onShowNotification('Print Job Sent', `Sending ${fileName} to your configured system printer.`);
     window.print();
   };
 
   const handleDownload = async () => {
-    const formattedMonth = String(payMonth).padStart(2, '0');
-    const fileName = `Payslip_${activeEmployee.id}_${activeEmployee.name.replace(/\s+/g, '_').toUpperCase()}_${payYear}-${formattedMonth}.pdf`;
+    const monthsList = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const formattedMonthYear = `${monthsList[payMonth - 1]}${payYear}`;
+    const cleanEmpName = activeEmployee.name.replace(/\s+/g, '_');
+    const fileName = `${cleanEmpName}_${formattedMonthYear}_Payslip.pdf`;
     onShowNotification('Download Started', `Generating and downloading ${fileName} in your browser...`);
     
     try {
