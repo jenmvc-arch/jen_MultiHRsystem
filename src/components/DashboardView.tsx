@@ -48,14 +48,8 @@ export default function DashboardView({
   activeEntityId,
   onChangeActiveEntity
 }: DashboardViewProps) {
-  const [selectedEntityId, setSelectedEntityId] = useState<string>(activeEntityId || 'all');
+  const selectedEntityId = activeEntityId;
   const [addressCopied, setAddressCopied] = useState(false);
-
-  React.useEffect(() => {
-    if (activeEntityId) {
-      setSelectedEntityId(activeEntityId);
-    }
-  }, [activeEntityId]);
 
   // 1. Filter employees by selected corporate subsidiary
   const filteredEmployees = selectedEntityId === 'all' 
@@ -150,38 +144,7 @@ export default function DashboardView({
         </div>
       </div>
 
-      {/* Subsidiary Switcher Pills */}
-      <div className="bg-white border border-neutral-border p-1.5 rounded-lg flex flex-wrap gap-1.5 shadow-xs text-left">
-        <button
-          onClick={() => setSelectedEntityId('all')}
-          className={`px-4 py-2 rounded font-bold text-xs transition-all flex items-center gap-2 cursor-pointer ${
-            selectedEntityId === 'all'
-              ? 'bg-primary text-white shadow-xs'
-              : 'text-on-surface-variant hover:text-on-surface hover:bg-neutral-100'
-          }`}
-        >
-          <Globe className="w-4 h-4" /> All Corporate Subsidiaries
-        </button>
-        {entities.map((ent) => {
-          const isSelected = selectedEntityId === ent.id;
-          return (
-            <button
-              key={ent.id}
-              onClick={() => {
-                setSelectedEntityId(ent.id);
-                onChangeActiveEntity?.(ent.id);
-              }}
-              className={`px-4 py-2 rounded font-bold text-xs transition-all flex items-center gap-2 cursor-pointer ${
-                isSelected
-                  ? 'bg-primary text-white shadow-xs'
-                  : 'text-on-surface-variant hover:text-on-surface hover:bg-neutral-100'
-              }`}
-            >
-              <Building2 className="w-4 h-4" /> {ent.name}
-            </button>
-          );
-        })}
-      </div>
+
 
       {/* Dedicated Corporate Subsidiary Details Card */}
       {selectedEntityId !== 'all' && activeEntity && (
@@ -459,12 +422,12 @@ export default function DashboardView({
                   <p className="text-xs text-on-surface-variant mt-1">Starting Nov 2023, voluntary employee contributions can exceed 11% directly via self-service.</p>
                 </div>
                 
-                {selectedEntityId === 'Red Point Sdn Bhd' ? (
+                 { (selectedEntityId === 'Red Point Sdn Bhd' || selectedEntityId === 'ENT-92') ? (
                   <div className="p-3 bg-blue-50/50 rounded border-l-4 border-primary text-sm animate-in fade-in duration-300">
                     <div className="font-semibold text-primary">LHDN Auto-Clearance Audit</div>
                     <p className="text-xs text-on-surface-variant mt-1">Red Point Sdn Bhd internal audit and clearance reports are scheduled for submission on Dec 15th.</p>
                   </div>
-                ) : selectedEntityId === 'YSYD Sdn Bhd' ? (
+                ) : (selectedEntityId === 'YSYD Sdn Bhd' || selectedEntityId === 'ENT-86') ? (
                   <div className="p-3 bg-teal-50/50 rounded border-l-4 border-teal-600 text-sm animate-in fade-in duration-300">
                     <div className="font-semibold text-teal-800">Labuan Tax Filings Extended</div>
                     <p className="text-xs text-on-surface-variant mt-1">YSYD Sdn Bhd international contractor incentive list and Labuan offshore tax deadlines updated to Dec 31st.</p>
