@@ -743,14 +743,14 @@ export default function PayslipDocumentView({
               🏛️ Employer Contributions <span className="opacity-80 font-medium">(Not Paid to Employee)</span>
             </div>
 
-            <div className="grid grid-cols-2 md:flex md:flex-row md:items-stretch md:justify-between gap-4 text-[#333333] items-center">
+            <div className="grid grid-cols-2 md:flex md:flex-row md:items-center md:justify-between gap-4 text-[#333333]">
               {/* EPF */}
               <div className="flex-1 min-w-[80px] text-center flex flex-col justify-center items-center">
                 <p className="text-[9px] text-[#6B6B6B] uppercase font-bold mb-1">EPF ({activeEmployee.epfRateEmployer || 13}%)</p>
                 <p className="font-mono font-bold">RM {breakdown.epfEmployerValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
               </div>
 
-              <div className="hidden md:block w-[2px] h-10 bg-[#D8CFC4] align-self-center self-center" />
+              <div className="hidden md:block w-[2px] h-7 bg-[#D8CFC4]" />
 
               {/* SOCSO Injury */}
               <div className="flex-1 min-w-[80px] text-center flex flex-col justify-center items-center">
@@ -758,7 +758,7 @@ export default function PayslipDocumentView({
                 <p className="font-mono font-bold">RM {socsoRes.employerEmploymentInjury.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
               </div>
 
-              <div className="hidden md:block w-[2px] h-10 bg-[#D8CFC4] align-self-center self-center" />
+              <div className="hidden md:block w-[2px] h-7 bg-[#D8CFC4]" />
 
               {/* SOCSO Invalidity */}
               <div className="flex-1 min-w-[80px] text-center flex flex-col justify-center items-center">
@@ -766,7 +766,7 @@ export default function PayslipDocumentView({
                 <p className="font-mono font-bold">RM {socsoRes.employerInvalidity.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
               </div>
 
-              <div className="hidden md:block w-[2px] h-10 bg-[#D8CFC4] align-self-center self-center" />
+              <div className="hidden md:block w-[2px] h-7 bg-[#D8CFC4]" />
 
               {/* SOCSO Total */}
               <div className="flex-1 min-w-[80px] bg-white/20 py-1 px-2 rounded text-center flex flex-col justify-center items-center">
@@ -774,7 +774,7 @@ export default function PayslipDocumentView({
                 <p className="font-mono font-black text-[#A32626]">RM {socsoRes.employerSocsoTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
               </div>
 
-              <div className="hidden md:block w-[2px] h-10 bg-[#D8CFC4] align-self-center self-center" />
+              <div className="hidden md:block w-[2px] h-7 bg-[#D8CFC4]" />
 
               {/* EIS */}
               <div className="flex-1 min-w-[80px] text-center flex flex-col justify-center items-center">
