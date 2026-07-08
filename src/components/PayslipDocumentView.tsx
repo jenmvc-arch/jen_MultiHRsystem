@@ -306,7 +306,7 @@ export default function PayslipDocumentView({
         >
           {/* Subtle PDF watermark/grid header */}
           <div className="absolute top-2 right-4 text-[9px] text-on-surface-variant/30 font-mono select-none">
-            ACME-CONFIDENTIAL-STRICTLY-PRIVATE
+            CONFIDENTIAL - STRICTLY PRIVATE
           </div>
 
           {/* Option A Branding Header */}

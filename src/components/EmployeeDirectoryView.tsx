@@ -1709,7 +1709,7 @@ export default function EmployeeDirectoryView({
                   className="bg-white w-full max-w-[800px] min-h-[960px] shadow-2xl my-4 p-8 md:p-12 border border-neutral-border text-left relative"
                 >
                   <div className="absolute top-2 right-4 text-[9px] text-on-surface-variant/30 font-mono select-none">
-                    ACME-CONFIDENTIAL-STRICTLY-PRIVATE
+                    CONFIDENTIAL - STRICTLY PRIVATE
                   </div>
 
                   {/* Payslip Branding Header */}

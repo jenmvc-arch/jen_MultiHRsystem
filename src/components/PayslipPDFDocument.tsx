@@ -494,7 +494,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
     <Document>
       <Page size="A4" style={styles.page}>
         {/* Watermark */}
-        <Text style={styles.watermark}>ACME-CONFIDENTIAL-STRICTLY-PRIVATE</Text>
+        <Text style={styles.watermark}>CONFIDENTIAL - STRICTLY PRIVATE</Text>
 
         {/* Option A Branding Header */}
         <View style={styles.headerContainer}>
