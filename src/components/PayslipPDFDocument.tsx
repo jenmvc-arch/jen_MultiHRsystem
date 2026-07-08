@@ -132,19 +132,26 @@ const styles = StyleSheet.create({
   },
   detailItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     marginBottom: 3,
   },
-  detailLabel: {
+  detailLabelLeft: {
+    width: 80,
+    fontSize: 7,
+    color: '#6b7280',
+    fontFamily: 'Helvetica-Bold',
+  },
+  detailLabelMiddle: {
+    width: 60,
     fontSize: 7,
     color: '#6b7280',
     fontFamily: 'Helvetica-Bold',
   },
   detailValue: {
+    flex: 1,
     fontSize: 7,
     color: '#333333',
     fontFamily: 'Helvetica-Bold',
-    textAlign: 'right',
+    textAlign: 'left',
   },
   bankTitle: {
     fontSize: 7.5,
@@ -529,23 +536,23 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             {/* Left Group */}
             <View style={styles.detailsCol}>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>TIN / Tax Number</Text>
+                <Text style={styles.detailLabelLeft}>TIN / Tax Number</Text>
                 <Text style={styles.detailValue}>{employee.taxNumber || 'IG 29068110030'}</Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>EPF Member Number</Text>
+                <Text style={styles.detailLabelLeft}>EPF Member Number</Text>
                 <Text style={styles.detailValue}>{employee.epfNumber || '-'}</Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>NRIC / Passport</Text>
+                <Text style={styles.detailLabelLeft}>NRIC / Passport</Text>
                 <Text style={styles.detailValue}>{employee.nricPassport || '-'}</Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Date Joined</Text>
+                <Text style={styles.detailLabelLeft}>Date Joined</Text>
                 <Text style={styles.detailValue}>{formatToDDMMMYYYY(employee.dateOfJoined)}</Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Employment Status</Text>
+                <Text style={styles.detailLabelLeft}>Employment Status</Text>
                 <Text style={styles.detailValue}>{employee.employmentType || 'Confirmation'}</Text>
               </View>
             </View>
@@ -553,15 +560,15 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             {/* Middle Group */}
             <View style={styles.detailsCol}>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Email Address</Text>
+                <Text style={styles.detailLabelMiddle}>Email Address</Text>
                 <Text style={styles.detailValue}>{employee.email}</Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Department</Text>
+                <Text style={styles.detailLabelMiddle}>Department</Text>
                 <Text style={styles.detailValue}>{employee.department}</Text>
               </View>
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Designation</Text>
+                <Text style={styles.detailLabelMiddle}>Designation</Text>
                 <Text style={styles.detailValue}>{employee.designation}</Text>
               </View>
             </View>

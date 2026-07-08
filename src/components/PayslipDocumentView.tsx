@@ -381,43 +381,43 @@ export default function PayslipDocumentView({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs text-[#333333]">
               {/* Left Group */}
               <div className="space-y-2">
-                <div className="flex justify-between md:grid md:grid-cols-2 gap-1 py-0.5">
+                <div className="grid grid-cols-[145px_1fr] gap-2 py-0.5 text-left">
                   <span className="font-semibold text-[#6B6B6B]">TIN / Tax Number</span>
-                  <span className="font-mono font-bold text-right md:text-left">{activeEmployee.taxNumber || 'IG 29068110030'}</span>
+                  <span className="font-mono font-bold text-[#333333]">{activeEmployee.taxNumber || 'IG 29068110030'}</span>
                 </div>
-                <div className="flex justify-between md:grid md:grid-cols-2 gap-1 py-0.5">
+                <div className="grid grid-cols-[145px_1fr] gap-2 py-0.5 text-left">
                   <span className="font-semibold text-[#6B6B6B]">EPF Member Number</span>
-                  <span className="font-mono font-bold text-right md:text-left">{activeEmployee.epfNumber || '-'}</span>
+                  <span className="font-mono font-bold text-[#333333]">{activeEmployee.epfNumber || '-'}</span>
                 </div>
-                <div className="flex justify-between md:grid md:grid-cols-2 gap-1 py-0.5">
+                <div className="grid grid-cols-[145px_1fr] gap-2 py-0.5 text-left">
                   <span className="font-semibold text-[#6B6B6B]">NRIC / Passport</span>
-                  <span className="font-mono font-bold text-right md:text-left">{activeEmployee.nricPassport || '-'}</span>
+                  <span className="font-mono font-bold text-[#333333]">{activeEmployee.nricPassport || '-'}</span>
                 </div>
-                <div className="flex justify-between md:grid md:grid-cols-2 gap-1 py-0.5">
+                <div className="grid grid-cols-[145px_1fr] gap-2 py-0.5 text-left">
                   <span className="font-semibold text-[#6B6B6B]">Date Joined</span>
-                  <span className="font-mono font-bold text-right md:text-left">{formatToDDMMMYYYY(activeEmployee.dateOfJoined)}</span>
+                  <span className="font-mono font-bold text-[#333333]">{formatToDDMMMYYYY(activeEmployee.dateOfJoined)}</span>
                 </div>
-                <div className="flex justify-between md:grid md:grid-cols-2 gap-1 py-0.5">
+                <div className="grid grid-cols-[145px_1fr] gap-2 py-0.5 text-left">
                   <span className="font-semibold text-[#6B6B6B]">Employment Status</span>
-                  <span className="font-bold text-right md:text-left">{activeEmployee.employmentType || 'Confirmation'}</span>
+                  <span className="font-bold text-[#333333]">{activeEmployee.employmentType || 'Confirmation'}</span>
                 </div>
               </div>
 
               {/* Middle Group */}
               <div className="space-y-2">
-                <div className="flex justify-between md:grid md:grid-cols-2 gap-1 py-0.5">
+                <div className="grid grid-cols-[115px_1fr] gap-2 py-0.5 text-left">
                   <span className="font-semibold text-[#6B6B6B]">Email Address</span>
-                  <span className="font-bold truncate text-right md:text-left max-w-[150px] md:max-w-none" title={activeEmployee.email}>
+                  <span className="font-bold text-[#333333] truncate" title={activeEmployee.email}>
                     {activeEmployee.email}
                   </span>
                 </div>
-                <div className="flex justify-between md:grid md:grid-cols-2 gap-1 py-0.5">
+                <div className="grid grid-cols-[115px_1fr] gap-2 py-0.5 text-left">
                   <span className="font-semibold text-[#6B6B6B]">Department</span>
-                  <span className="font-bold text-right md:text-left">{activeEmployee.department}</span>
+                  <span className="font-bold text-[#333333]">{activeEmployee.department}</span>
                 </div>
-                <div className="flex justify-between md:grid md:grid-cols-2 gap-1 py-0.5">
+                <div className="grid grid-cols-[115px_1fr] gap-2 py-0.5 text-left">
                   <span className="font-semibold text-[#6B6B6B]">Designation</span>
-                  <span className="font-bold text-right md:text-left">{activeEmployee.designation}</span>
+                  <span className="font-bold text-[#333333]">{activeEmployee.designation}</span>
                 </div>
               </div>
 
