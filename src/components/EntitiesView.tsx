@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { CorporateEntity, Employee } from '../types';
 import { googleSheetsClient, isGoogleConfigured } from '../lib/googleSheetsClient';
-import { getDirectLogoUrl } from '../data';
+import { getDirectLogoUrl, compressLogoFile } from '../data';
 import { FilePond, registerPlugin } from 'react-filepond';
 import 'filepond/dist/filepond.min.css';
 import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
@@ -72,13 +72,15 @@ export default function EntitiesView({
   const uploadLogoFile = async (file: File) => {
     setIsUploadingLogo(true);
     if (!isGoogleConfigured) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormLogoUrl(reader.result as string);
-        onShowNotification('Logo Processed', 'The company logo has been successfully uploaded and stored locally.');
+      try {
+        const compressedUrl = await compressLogoFile(file);
+        setFormLogoUrl(compressedUrl);
+        onShowNotification('Logo Processed', 'The company logo has been compressed and stored locally.');
+      } catch (err: any) {
+        onShowNotification('Compression Error', 'Could not process logo image.');
+      } finally {
         setIsUploadingLogo(false);
-      };
-      reader.readAsDataURL(file);
+      }
       return;
     }
 

@@ -34,7 +34,8 @@ import {
   SEED_PERFORMANCES,
   SEED_CANDIDATES,
   SEED_REVIEW_CYCLES,
-  seedSocsoConfigurationsAndBrackets
+  seedSocsoConfigurationsAndBrackets,
+  compressLogoFile
 } from './data';
 import { getGmt8Timestamp, getGmt8DateString } from './lib/dateUtils';
 
@@ -1938,13 +1939,14 @@ export default function App() {
                             if (!file) return;
 
                             if (!isGoogleConfigured) {
-                              // Offline fallback
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                setCompanyLogoUrl(reader.result as string);
-                                triggerNotification('Logo Uploaded', 'New company logo loaded in preview. Click Apply System Changes to save.', 'success');
-                              };
-                              reader.readAsDataURL(file);
+                              // Offline fallback with client-side image compression
+                              try {
+                                const compressedUrl = await compressLogoFile(file);
+                                setCompanyLogoUrl(compressedUrl);
+                                triggerNotification('Logo Uploaded', 'New company logo compressed and loaded. Click Apply System Changes to save.', 'success');
+                              } catch (err: any) {
+                                triggerNotification('Compression Error', 'Could not process logo image.', 'info');
+                              }
                               return;
                             }
 

@@ -71,67 +71,50 @@ export default function Sidebar({
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-primary text-[#f7f0e0] py-6" style={{ viewTransitionName: 'sidebar-container' } as any}>
       {/* Brand Header with Corporate Selector */}
-      <div className="px-5 mb-6 flex flex-col gap-2 bg-white/5 p-3 rounded-lg mx-3 border border-white/10" style={{ viewTransitionName: 'sidebar-brand' } as any}>
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-sm border border-white/10 relative" style={{ viewTransitionName: 'corporate-logo' } as any}>
-            {activeEntity?.logoUrl && !activeEntity.logoUrl.includes('placeholder') && !activeEntity.logoUrl.includes('example.com') ? (
-              <>
-                <img 
-                   src={getDirectLogoUrl(activeEntity.logoUrl)} 
-                  alt={activeEntity.name} 
-                  className="w-full h-full object-cover" 
-                  referrerPolicy="no-referrer" 
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                    const fallback = e.currentTarget.nextElementSibling as HTMLElement;
-                    if (fallback) fallback.style.display = 'flex';
-                  }}
-                />
-                <div style={{ display: 'none' }} className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-xs uppercase">
-                  {activeEntity.name.substring(0, 2)}
-                </div>
-              </>
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-xs uppercase">
-                {activeEntity?.name ? activeEntity.name.substring(0, 2) : 'HR'}
+      <div className="px-5 mb-6 flex flex-col items-center gap-3 bg-white/5 p-4 rounded-lg mx-3 border border-white/10" style={{ viewTransitionName: 'sidebar-brand' } as any}>
+        {/* Company Logo */}
+        <div className="w-36 h-12 rounded bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-sm border border-white/10 relative" style={{ viewTransitionName: 'corporate-logo' } as any}>
+          {activeEntity?.logoUrl && !activeEntity.logoUrl.includes('placeholder') && !activeEntity.logoUrl.includes('example.com') ? (
+            <>
+              <img 
+                 src={getDirectLogoUrl(activeEntity.logoUrl)} 
+                alt={activeEntity.name} 
+                className="w-full h-full object-contain p-1.5" 
+                referrerPolicy="no-referrer" 
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                  if (fallback) fallback.style.display = 'flex';
+                }}
+              />
+              <div style={{ display: 'none' }} className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-xs uppercase">
+                {activeEntity.name.substring(0, 2)}
               </div>
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="font-bold text-sm tracking-tight leading-tight text-[#f7f0e0] truncate" style={{ viewTransitionName: 'corporate-name' } as any}>
-              {activeEntity?.name || 'Mega HR'}
-            </h1>
-            <p className="text-[10px] text-[#f7f0e0]/60 mt-0.5 font-mono uppercase tracking-wider font-semibold">
-              {activeEntity?.id || 'GLOBAL ADMIN'}
-            </p>
-          </div>
+            </>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-xs uppercase">
+              {activeEntity?.name ? activeEntity.name.substring(0, 2) : 'HR'}
+            </div>
+          )}
         </div>
 
+        {/* Switch corporate view slicer */}
         {entities && entities.length > 0 && (
-          <div className="mt-1 space-y-1">
-            <label className="block text-[9px] font-bold text-[#f7f0e0]/50 uppercase tracking-wider mb-1.5">
+          <div className="w-full mt-1.5 space-y-1 text-center">
+            <label className="block text-[9px] font-bold text-[#f7f0e0]/60 uppercase tracking-widest mb-1.5">
               Switch Corporate View
             </label>
-            {entities.map(ent => {
-              const isSelected = activeEntityId === ent.id;
-              return (
-                <button
-                  key={ent.id}
-                  onClick={() => onChangeActiveEntity?.(ent.id)}
-                  className={`w-full flex items-center justify-between px-3 py-1.5 rounded text-xs font-semibold transition-all cursor-pointer border text-left ${
-                    isSelected
-                      ? 'bg-[#f7f0e0] text-primary border-[#f7f0e0] shadow-sm'
-                      : 'bg-white/5 hover:bg-white/10 text-[#f7f0e0]/85 hover:text-[#f7f0e0] border-white/10'
-                  }`}
-                >
-                  <span className="flex items-center gap-2 truncate">
-                    <Building2 className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">{ent.name}</span>
-                  </span>
-                  {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 animate-pulse" />}
-                </button>
-              );
-            })}
+            <select
+              value={activeEntityId}
+              onChange={(e) => onChangeActiveEntity?.(e.target.value)}
+              className="w-full bg-[#f7f0e0] text-primary border border-transparent rounded px-2.5 py-1.5 text-xs font-bold focus:ring-1 focus:ring-[#f7f0e0] outline-none cursor-pointer"
+            >
+              {entities.map(ent => (
+                <option key={ent.id} value={ent.id}>
+                  {ent.name}
+                </option>
+              ))}
+            </select>
           </div>
         )}
       </div>
