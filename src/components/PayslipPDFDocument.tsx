@@ -303,8 +303,8 @@ const styles = StyleSheet.create({
   },
   contributionsCard: {
     backgroundColor: '#F2E8D8',
-    borderWidth: 1,
-    borderColor: '#E5DED5',
+    borderWidth: 1.5,
+    borderColor: '#D8CFC4',
     borderRadius: 5,
     padding: 6,
     marginBottom: 10,
@@ -326,9 +326,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   contributionDivider: {
-    width: 1,
-    height: 12,
-    backgroundColor: '#E5DED5',
+    width: 1.5,
+    height: 16,
+    backgroundColor: '#D8CFC4',
   },
   footerSection: {
     flexDirection: 'row',
