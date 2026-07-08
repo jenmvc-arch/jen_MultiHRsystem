@@ -745,7 +745,7 @@ export default function PayslipDocumentView({
 
             <div className="grid grid-cols-2 md:flex md:flex-row md:items-center md:justify-between gap-4 text-[#333333]">
               {/* EPF */}
-              <div className="flex-1 min-w-[80px]">
+              <div className="flex-1 min-w-[80px] text-center">
                 <p className="text-[9px] text-[#6B6B6B] uppercase font-bold mb-1">EPF ({activeEmployee.epfRateEmployer || 13}%)</p>
                 <p className="font-mono font-bold">RM {breakdown.epfEmployerValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
               </div>
@@ -753,7 +753,7 @@ export default function PayslipDocumentView({
               <div className="hidden md:block w-px h-8 bg-[#E5DED5]" />
 
               {/* SOCSO Injury */}
-              <div className="flex-1 min-w-[80px]">
+              <div className="flex-1 min-w-[80px] text-center">
                 <p className="text-[9px] text-[#6B6B6B] uppercase font-bold mb-1">SOCSO - Injury</p>
                 <p className="font-mono font-bold">RM {socsoRes.employerEmploymentInjury.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
               </div>
@@ -761,7 +761,7 @@ export default function PayslipDocumentView({
               <div className="hidden md:block w-px h-8 bg-[#E5DED5]" />
 
               {/* SOCSO Invalidity */}
-              <div className="flex-1 min-w-[80px]">
+              <div className="flex-1 min-w-[80px] text-center">
                 <p className="text-[9px] text-[#6B6B6B] uppercase font-bold mb-1">SOCSO - Invalidity</p>
                 <p className="font-mono font-bold">RM {socsoRes.employerInvalidity.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
               </div>
@@ -769,7 +769,7 @@ export default function PayslipDocumentView({
               <div className="hidden md:block w-px h-8 bg-[#E5DED5]" />
 
               {/* SOCSO Total */}
-              <div className="flex-1 min-w-[80px] bg-white/20 p-1 rounded">
+              <div className="flex-1 min-w-[80px] bg-white/20 p-1 rounded text-center">
                 <p className="text-[9px] text-[#A32626] uppercase font-black mb-1">SOCSO Employer Total</p>
                 <p className="font-mono font-black text-[#A32626]">RM {socsoRes.employerSocsoTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
               </div>
@@ -777,7 +777,7 @@ export default function PayslipDocumentView({
               <div className="hidden md:block w-px h-8 bg-[#E5DED5]" />
 
               {/* EIS */}
-              <div className="flex-1 min-w-[80px]">
+              <div className="flex-1 min-w-[80px] text-center">
                 <p className="text-[9px] text-[#6B6B6B] uppercase font-bold mb-1">EIS</p>
                 <p className="font-mono font-bold">RM {breakdown.eisEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
               </div>
