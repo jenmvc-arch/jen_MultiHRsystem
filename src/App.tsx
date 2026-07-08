@@ -1444,6 +1444,10 @@ export default function App() {
   };
 
   const handleUpdateEntity = async (id: string, updates: Partial<CorporateEntity>) => {
+    // Resolve the original company name to use as lookup key in Google Sheets
+    const existingEntity = entities.find(ent => ent.id === id);
+    const lookupName = existingEntity ? existingEntity.name : id;
+
     setEntities(prev => prev.map(ent => {
       if (ent.id === id) {
         const updated = { ...ent, ...updates };
@@ -1478,7 +1482,7 @@ export default function App() {
         if (updates.logoUrl !== undefined) payloadUpdates.logoUrl = updates.logoUrl;
         if (updates.googleScriptUrl !== undefined) payloadUpdates.googleScriptUrl = updates.googleScriptUrl;
 
-        await googleSheetsClient.update('corporate_entities', id, payloadUpdates, 'name');
+        await googleSheetsClient.update('corporate_entities', lookupName, payloadUpdates, 'name');
       } catch (err: any) {
         console.error('[Google Sheets Entity Update] Failed:', err);
         triggerNotification('Sync Failed', `Could not update entity: ${err.message || err}`, 'info');
