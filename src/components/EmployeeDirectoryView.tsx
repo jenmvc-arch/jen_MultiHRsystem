@@ -734,7 +734,7 @@ export default function EmployeeDirectoryView({
       taxPcb: Math.round(Number(formSalary) * 0.1),
       unpaidLeave: 0,
       hrdCorp: 103,
-      avatarUrl: formAvatarUrl || `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random()*100000)}?q=80&w=256&h=256&fit=crop`,
+      avatarUrl: formAvatarUrl || '',
       
       // New fields mapping
       nricPassport: formNricPassport,
