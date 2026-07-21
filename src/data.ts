@@ -2187,7 +2187,7 @@ export const INITIAL_CANDIDATES: Candidate[] = [];
 
 export const SEED_ENTITIES: CorporateEntity[] = [
   {
-    id: 'Red Point Sdn Bhd',
+    id: 'ENT-92',
     name: 'Red Point Sdn Bhd',
     registrationNumber: '1534270P (202301040351) Updated Version',
     address: 'No.181, 1st Floor, Hui Sing Garden Commercial Centre, Taman Hui Sing, Kuching 93350, Sarawak, Malaysia.',
@@ -2200,7 +2200,7 @@ export const SEED_ENTITIES: CorporateEntity[] = [
     theme: 'theme2',
   },
   {
-    id: 'YSYD Sdn Bhd',
+    id: 'ENT-86',
     name: 'YSYD Sdn Bhd',
     registrationNumber: '123456',
     address: 'No official registered office address registered.',
@@ -2217,7 +2217,7 @@ export const SEED_ENTITIES: CorporateEntity[] = [
 export const SEED_EMPLOYEES: Employee[] = [
   {
     id: 'EMP-84729',
-    entityId: 'Red Point Sdn Bhd',
+    entityId: 'ENT-92',
     name: 'Sarah Jenkins',
     email: 's.jenkins@acme-global.com',
     designation: 'Senior UX Designer',
@@ -2260,7 +2260,7 @@ export const SEED_EMPLOYEES: Employee[] = [
   },
   {
     id: 'EMP-001',
-    entityId: 'Red Point Sdn Bhd',
+    entityId: 'ENT-92',
     name: 'Jane Doe',
     email: 'jane.doe@enterprise.com',
     designation: 'Senior Developer',
@@ -2314,7 +2314,7 @@ export const SEED_EMPLOYEES: Employee[] = [
   },
   {
     id: 'EMP-042',
-    entityId: 'YSYD Sdn Bhd',
+    entityId: 'ENT-86',
     name: 'Alan Smith',
     email: 'alan.smith@enterprise.com',
     designation: 'Product Manager',
@@ -2362,7 +2362,7 @@ export const SEED_EMPLOYEES: Employee[] = [
   },
   {
     id: 'EMP-089',
-    entityId: 'YSYD Sdn Bhd',
+    entityId: 'ENT-86',
     name: 'Michael Johnson',
     email: 'mjohnson@enterprise.com',
     designation: 'HR Specialist',
@@ -2404,7 +2404,7 @@ export const SEED_EMPLOYEES: Employee[] = [
   },
   {
     id: 'EMP-2023-089',
-    entityId: 'YSYD Sdn Bhd',
+    entityId: 'ENT-86',
     name: 'Alex Rivera',
     email: 'alex.rivera@enterprise.com',
     designation: 'Senior Cloud Consultant',
@@ -2490,7 +2490,7 @@ export const SEED_CANDIDATES: Candidate[] = [
     phone: '+60 12-384 1928',
     designation: 'Senior DevOps Engineer',
     department: 'Engineering',
-    entityId: 'Red Point Sdn Bhd',
+    entityId: 'ENT-92',
     stage: 'Onboarding',
     progress: 75,
     dateJoined: '2023-11-01'
@@ -2502,7 +2502,7 @@ export const SEED_CANDIDATES: Candidate[] = [
     phone: '+60 19-283 7461',
     designation: 'Full Stack Engineer',
     department: 'Engineering',
-    entityId: 'Red Point Sdn Bhd',
+    entityId: 'ENT-92',
     stage: 'Onboarding',
     progress: 40,
     dateJoined: '2023-11-15'
@@ -2514,7 +2514,7 @@ export const SEED_CANDIDATES: Candidate[] = [
     phone: '+60 17-384 1229',
     designation: 'HR Specialist',
     department: 'Human Resources',
-    entityId: 'YSYD Sdn Bhd',
+    entityId: 'ENT-86',
     stage: 'Offered',
     progress: 0,
     dateJoined: '2023-12-01'
@@ -2526,7 +2526,7 @@ export const SEED_CANDIDATES: Candidate[] = [
     phone: '+60 11-283 4910',
     designation: 'Strategy Consultant',
     department: 'Strategy',
-    entityId: 'YSYD Sdn Bhd',
+    entityId: 'ENT-86',
     stage: 'Interviewing',
     progress: 0,
     dateJoined: '2023-12-15'

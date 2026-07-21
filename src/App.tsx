@@ -94,7 +94,7 @@ class ErrorBoundary extends (React.Component as any) {
 export default function App() {
   // Navigation & View States
   const [activeEntityId, setActiveEntityId] = useState<string>(() => {
-    return localStorage.getItem('active_corporate_entity_id') || (isGoogleConfigured ? '' : 'Red Point Sdn Bhd');
+    return localStorage.getItem('active_corporate_entity_id') || (isGoogleConfigured ? '' : 'ENT-92');
   });
   const [isSwitchingEntity, setIsSwitchingEntity] = useState<boolean>(false);
   const [switchingToEntityName, setSwitchingToEntityName] = useState<string>('');
@@ -714,9 +714,9 @@ export default function App() {
           }
           let resolvedEntityId = e.entityName || e.entityId || '';
           if (resolvedEntityId === 'Red Point Sdn Bhd' || resolvedEntityId === 'ENT-92' || resolvedEntityId === 'ENT-01') {
-            resolvedEntityId = 'Red Point Sdn Bhd';
+            resolvedEntityId = 'ENT-92';
           } else if (resolvedEntityId === 'YSYD Sdn Bhd' || resolvedEntityId === 'ENT-86' || resolvedEntityId === 'ENT-02') {
-            resolvedEntityId = 'YSYD Sdn Bhd';
+            resolvedEntityId = 'ENT-86';
           }
 
           return {
@@ -831,9 +831,9 @@ export default function App() {
         setCandidates(uniqueCandidates.map((c: any) => {
           let resolvedEntityId = c.entityName || c.entityId || '';
           if (resolvedEntityId === 'Red Point Sdn Bhd' || resolvedEntityId === 'ENT-92' || resolvedEntityId === 'ENT-01') {
-            resolvedEntityId = 'Red Point Sdn Bhd';
+            resolvedEntityId = 'ENT-92';
           } else if (resolvedEntityId === 'YSYD Sdn Bhd' || resolvedEntityId === 'ENT-86' || resolvedEntityId === 'ENT-02') {
-            resolvedEntityId = 'YSYD Sdn Bhd';
+            resolvedEntityId = 'ENT-86';
           }
           return {
             id: c.id || '',
