@@ -356,7 +356,7 @@ export default function App() {
         await googleSheetsClient.insert('employees', {
           id: emp.id,
           entityId: emp.entityId,
-          entityName: emp.entityId === 'ENT-02' ? 'YSYD Sdn Bhd' : 'Red Point Sdn Bhd',
+          entityName: emp.entityId,
           name: emp.name,
           email: emp.email,
           designation: emp.designation,
@@ -449,7 +449,7 @@ export default function App() {
           designation: cand.designation,
           department: cand.department,
           entityId: cand.entityId,
-          entityName: cand.entityId === 'ENT-02' ? 'YSYD Sdn Bhd' : 'Red Point Sdn Bhd',
+          entityName: cand.entityId,
           stage: cand.stage,
           progress: cand.progress,
           dateJoined: cand.dateJoined
@@ -714,9 +714,9 @@ export default function App() {
           }
           let resolvedEntityId = e.entityName || e.entityId || '';
           if (resolvedEntityId === 'Red Point Sdn Bhd' || resolvedEntityId === 'ENT-92' || resolvedEntityId === 'ENT-01') {
-            resolvedEntityId = 'ENT-92';
+            resolvedEntityId = 'Red Point Sdn Bhd';
           } else if (resolvedEntityId === 'YSYD Sdn Bhd' || resolvedEntityId === 'ENT-86' || resolvedEntityId === 'ENT-02') {
-            resolvedEntityId = 'ENT-86';
+            resolvedEntityId = 'YSYD Sdn Bhd';
           }
 
           return {
@@ -831,9 +831,9 @@ export default function App() {
         setCandidates(uniqueCandidates.map((c: any) => {
           let resolvedEntityId = c.entityName || c.entityId || '';
           if (resolvedEntityId === 'Red Point Sdn Bhd' || resolvedEntityId === 'ENT-92' || resolvedEntityId === 'ENT-01') {
-            resolvedEntityId = 'ENT-92';
+            resolvedEntityId = 'Red Point Sdn Bhd';
           } else if (resolvedEntityId === 'YSYD Sdn Bhd' || resolvedEntityId === 'ENT-86' || resolvedEntityId === 'ENT-02') {
-            resolvedEntityId = 'ENT-86';
+            resolvedEntityId = 'YSYD Sdn Bhd';
           }
           return {
             id: c.id || '',
@@ -1830,7 +1830,7 @@ export default function App() {
           {currentTab === 'entities' && (
             <EntitiesView 
               entities={entities}
-              employees={filteredEmployees}
+              employees={employees}
               onAddEntity={handleAddEntity}
               onUpdateEntity={handleUpdateEntity}
               onShowNotification={triggerNotification}
