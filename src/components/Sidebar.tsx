@@ -109,7 +109,7 @@ export default function Sidebar({
               onChange={(e) => onChangeActiveEntity?.(e.target.value)}
               className="w-full bg-[#f7f0e0] text-primary border border-transparent rounded px-2.5 py-1.5 text-xs font-bold focus:ring-1 focus:ring-[#f7f0e0] outline-none cursor-pointer"
             >
-              {entities.map(ent => (
+              {entities.filter(ent => ent.isActive).map(ent => (
                 <option key={ent.id} value={ent.id}>
                   {ent.name}
                 </option>

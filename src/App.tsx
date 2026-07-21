@@ -1451,21 +1451,10 @@ export default function App() {
     setEntities(prev => prev.map(ent => {
       if (ent.id === id) {
         const updated = { ...ent, ...updates };
-        if (updates.name !== undefined) {
-          updated.id = updates.name;
-        }
         return updated;
       }
       return ent;
     }));
-
-    if (updates.name !== undefined) {
-      if (activeEntityId === id) {
-        setActiveEntityId(updates.name);
-      }
-      setEmployees(prev => prev.map(emp => emp.entityId === id ? { ...emp, entityId: updates.name! } : emp));
-      setCandidates(prev => prev.map(cand => cand.entityId === id ? { ...cand, entityId: updates.name! } : cand));
-    }
 
     if (isGoogleConfigured) {
       try {
