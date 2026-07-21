@@ -631,7 +631,7 @@ export default function OnboardingForm({
             </div>
 
             <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
+              <div style={{ display: 'none' }} className="col-span-2">
                 <label className="block font-bold text-on-surface-variant uppercase mb-1">Assign Corporate Subsidiary</label>
                 <select
                   value={entityId}

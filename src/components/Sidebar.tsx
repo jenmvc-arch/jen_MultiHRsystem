@@ -54,7 +54,6 @@ export default function Sidebar({
   ];
 
   const complianceItems = [
-    { id: 'entities' as AppTab, label: 'Corporate Entities', icon: Building2 },
     { id: 'department-role' as AppTab, label: 'Department & Roles', icon: Tags },
     { id: 'tax-settings' as AppTab, label: 'Tax Compliance (LHDN)', icon: Percent },
     { id: 'forms-directory' as AppTab, label: 'Forms Directory', icon: ClipboardList },
@@ -98,25 +97,6 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* Switch corporate view slicer */}
-        {entities && entities.length > 0 && (
-          <div className="w-full mt-1.5 space-y-1 text-center">
-            <label className="block text-[9px] font-bold text-[#f7f0e0]/60 uppercase tracking-widest mb-1.5">
-              Switch Corporate View
-            </label>
-            <select
-              value={activeEntityId}
-              onChange={(e) => onChangeActiveEntity?.(e.target.value)}
-              className="w-full bg-[#f7f0e0] text-primary border border-transparent rounded px-2.5 py-1.5 text-xs font-bold focus:ring-1 focus:ring-[#f7f0e0] outline-none cursor-pointer"
-            >
-              {entities.filter(ent => ent.isActive).map(ent => (
-                <option key={ent.id} value={ent.id}>
-                  {ent.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
       </div>
 
       {/* Action Button */}

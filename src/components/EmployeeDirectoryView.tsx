@@ -2567,7 +2567,7 @@ export default function EmployeeDirectoryView({
                             })()}
                           </select>
                         </div>
-                        <div>
+                        <div style={{ display: 'none' }}>
                           <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Corporate Subsidiary</label>
                           <select
                             value={editEntityId}
@@ -3348,7 +3348,7 @@ export default function EmployeeDirectoryView({
                         <option value="Department Transfer">Department Transfer</option>
                         <option value="Employment Type Change">Employment Type Change</option>
                         <option value="Salary Revision">Salary Revision</option>
-                        <option value="Subsidiary Transfer">Subsidiary Transfer</option>
+
                       </select>
                     </div>
 
@@ -3863,7 +3863,7 @@ export default function EmployeeDirectoryView({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
+                  <div style={{ display: 'none' }}>
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Company Subsidiary *</label>
                     <select
                       value={formEntityId} onChange={(e) => setFormEntityId(e.target.value)}

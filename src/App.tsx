@@ -536,12 +536,9 @@ export default function App() {
             logoUrl: e.logoUrl || '',
             googleScriptUrl: e.googleScriptUrl || ''
           }));
-          setEntities(loadedEntities);
-          if (loadedEntities.length > 0) {
-            const savedEntityId = localStorage.getItem('active_corporate_entity_id');
-            const exists = loadedEntities.some(e => e.id === savedEntityId);
-            setActiveEntityId(exists && savedEntityId ? savedEntityId : loadedEntities[0].id);
-          }
+          const onlyRedPoint = loadedEntities.filter(ent => ent.id === 'ENT-92' || ent.name === 'Red Point Sdn Bhd');
+          setEntities(onlyRedPoint);
+          setActiveEntityId('ENT-92');
         }
 
         // 1.5. Group and load other payloads from individual scripts
@@ -619,8 +616,7 @@ export default function App() {
         const uniquePayrollRecords = Array.from(new Map(allRawPayrollRecords.map(r => [r.id || `${r.employeeEmail}_${r.payrollMonth}_${r.payrollYear}`, r])).values());
         const uniqueCandidates = Array.from(new Map(allRawCandidates.map(c => [c.id || c.email || c.name, c])).values());
 
-        // Parse employees
-        setEmployees(uniqueEmployees.map((e: any) => {
+        const parsedEmployees = uniqueEmployees.map((e: any) => {
           let careerHistory = [];
           let dependants = [];
           let historicalPayrollRecords = [];
@@ -801,7 +797,8 @@ export default function App() {
             tp3Data,
             salaryAdjustments
           };
-        }));
+        });
+        setEmployees(parsedEmployees.filter(emp => emp.entityId === 'ENT-92'));
 
         // Parse performances
         setPerformances(uniquePerformances.map((p: any) => ({
@@ -827,8 +824,7 @@ export default function App() {
           })()
         })));
 
-        // Parse candidates
-        setCandidates(uniqueCandidates.map((c: any) => {
+        const parsedCandidates = uniqueCandidates.map((c: any) => {
           let resolvedEntityId = c.entityName || c.entityId || '';
           if (resolvedEntityId === 'Red Point Sdn Bhd' || resolvedEntityId === 'ENT-92' || resolvedEntityId === 'ENT-01') {
             resolvedEntityId = 'ENT-92';
@@ -847,7 +843,8 @@ export default function App() {
             progress: Number(c.progress || 0),
             dateJoined: c.dateJoined || ''
           };
-        }));
+        });
+        setCandidates(parsedCandidates.filter(cand => cand.entityId === 'ENT-92'));
 
         // Parse payroll records
         setPayrollRecords2026(uniquePayrollRecords.map((r: any) => ({

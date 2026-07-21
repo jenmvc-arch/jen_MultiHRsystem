@@ -502,7 +502,7 @@ export default function HireOnboardingView({
                 </select>
               </div>
 
-              <div>
+              <div style={{ display: 'none' }}>
                 <label className="block font-bold text-on-surface-variant uppercase mb-1">Assigned Subsidiary</label>
                 <select 
                   value={candEntity}
