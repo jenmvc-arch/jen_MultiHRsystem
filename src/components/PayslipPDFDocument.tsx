@@ -146,6 +146,11 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontFamily: 'Helvetica-Bold',
   },
+  detailLabel: {
+    fontSize: 7,
+    color: '#6b7280',
+    fontFamily: 'Helvetica-Bold',
+  },
   detailValue: {
     flex: 1,
     fontSize: 7,

@@ -131,8 +131,14 @@ export default function HireOnboardingView({
   const [candPhone, setCandPhone] = useState('');
   const [candRole, setCandRole] = useState('');
   const [candDept, setCandDept] = useState('Engineering');
-  const [candEntity, setCandEntity] = useState(entities[0]?.id || '');
+  const [candEntity, setCandEntity] = useState(entities[0]?.id || 'ENT-92');
   const [candErrors, setCandErrors] = useState<{ [key: string]: string }>({});
+
+  useEffect(() => {
+    if (entities.length > 0 && (!candEntity || candEntity !== entities[0].id)) {
+      setCandEntity(entities[0].id);
+    }
+  }, [entities]);
 
   const selectedCandidate = candidates.find(c => c.id === selectedCandidateId) || candidates[0];
 
@@ -177,7 +183,7 @@ export default function HireOnboardingView({
       phone: candPhone,
       designation: candRole,
       department: candDept,
-      entityId: candEntity,
+      entityId: candEntity || entities[0]?.id || 'ENT-92',
       stage: 'Applied',
       progress: 0,
       dateJoined: getGmt8DateString()

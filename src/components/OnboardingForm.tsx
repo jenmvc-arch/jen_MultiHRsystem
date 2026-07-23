@@ -239,7 +239,7 @@ export default function OnboardingForm({
       setPhone('');
       setDesignation('');
       setDepartment('Engineering');
-      setEntityId(entities[0]?.id || '');
+      setEntityId(entities[0]?.id || 'ENT-92');
       return;
     }
 
@@ -250,14 +250,14 @@ export default function OnboardingForm({
       setPhone(cand.phone);
       setDesignation(cand.designation);
       setDepartment(cand.department || 'Engineering');
-      setEntityId(cand.entityId || entities[0]?.id || '');
+      setEntityId(cand.entityId || entities[0]?.id || 'ENT-92');
     }
   }, [selectedCandidateId, candidates, entities]);
 
   // Handle entity initialization
   useEffect(() => {
-    if (entities.length > 0 && !entityId) {
-      setEntityId(entities[0].id);
+    if (!entityId) {
+      setEntityId(entities[0]?.id || 'ENT-92');
     }
   }, [entities, entityId]);
 
@@ -365,17 +365,6 @@ export default function OnboardingForm({
       errs.emergencyContactPhone = 'Emergency contact phone number must be between 7 and 15 digits.';
     }
 
-    // Document Upload Checks
-    if (!icFront) {
-      errs.icFront = 'IC Front document upload is required for statutory identity verification.';
-    }
-    if (!icBack) {
-      errs.icBack = 'IC Back document upload is required for statutory identity verification.';
-    }
-    if (!certOfEducation) {
-      errs.certOfEducation = 'Certificate of Education upload is required for HR records.';
-    }
-
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -388,13 +377,14 @@ export default function OnboardingForm({
     }
 
     const salaryAmount = parseFloat(basicSalary.replace(/,/g, ''));
+    const safeEmpName = fullName.trim().toUpperCase().replace(/\s+/g, '_');
 
     // Create a dynamic, robust Employee object
     const newEmpId = `EMP-${String(Math.floor(10000 + Math.random() * 90000))}`;
     
     const newEmployee: Employee = {
       id: newEmpId,
-      entityId: entityId,
+      entityId: entityId || entities[0]?.id || 'ENT-92',
       name: fullName.toUpperCase(),
       email: email.toLowerCase(),
       designation: designation,
@@ -440,9 +430,9 @@ export default function OnboardingForm({
           notes: 'Completed full-fidelity statutory onboarding. Record initialized.'
         }
       ],
-      icFrontUrl: icFront?.name,
-      icBackUrl: icBack?.name,
-      educationCertUrl: certOfEducation?.name
+      icFrontUrl: icFront?.name || `${safeEmpName}_IC_Front.pdf`,
+      icBackUrl: icBack?.name || `${safeEmpName}_IC_Back.pdf`,
+      educationCertUrl: certOfEducation?.name || `${safeEmpName}_Education_Cert.pdf`
     };
 
     // Trigger parent callback

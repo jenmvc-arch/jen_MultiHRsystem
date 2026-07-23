@@ -321,10 +321,13 @@ export default function JobApplicationForm({
       
       if (onApplicationSubmit) {
         onApplicationSubmit({
-          fullName,
-          email,
+          id: `CAN-${Date.now()}`,
+          name: fullName,
+          email: email.toLowerCase(),
           phone: `${countryCode} ${phoneNum}`,
-          designation: positionApplied,
+          designation: positionApplied || 'Applicant',
+          department: 'Engineering',
+          entityId: 'ENT-92',
           stage: overallRecommendation === 'Strong Hire' || overallRecommendation === 'Hire' ? 'Offered' : 'Applied',
           progress: 0,
           dateJoined: reportDate || getGmt8DateString(),

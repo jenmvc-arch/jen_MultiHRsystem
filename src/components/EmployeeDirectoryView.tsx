@@ -126,13 +126,11 @@ export default function EmployeeDirectoryView({
 
   // Add Employee Modal form states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [formEntityId, setFormEntityId] = useState(activeEntityId || entities[0]?.id || '');
+  const [formEntityId, setFormEntityId] = useState(activeEntityId || entities[0]?.id || 'ENT-92');
   
   useEffect(() => {
-    if (activeEntityId) {
-      setFormEntityId(activeEntityId);
-    }
-  }, [activeEntityId]);
+    setFormEntityId(activeEntityId || entities[0]?.id || 'ENT-92');
+  }, [activeEntityId, entities]);
 
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
@@ -497,7 +495,7 @@ export default function EmployeeDirectoryView({
   });
 
   const handleOpenAddModal = () => {
-    setFormEntityId(activeEntityId || entities[0]?.id || '');
+    setFormEntityId(activeEntityId || entities[0]?.id || 'ENT-92');
     setFormName('');
     setFormEmail('');
     setFormDesignation('');
@@ -710,7 +708,7 @@ export default function EmployeeDirectoryView({
 
     const newEmp: Employee = {
       id: formEmail,
-      entityId: formEntityId,
+      entityId: formEntityId || activeEntityId || entities[0]?.id || 'ENT-92',
       name: formName,
       email: formEmail,
       designation: formDesignation,

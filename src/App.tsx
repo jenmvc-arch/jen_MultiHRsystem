@@ -709,7 +709,7 @@ export default function App() {
             console.error('Error parsing salaryAdjustments for employee', e.id, err);
           }
           let resolvedEntityId = e.entityName || e.entityId || '';
-          if (resolvedEntityId === 'Red Point Sdn Bhd' || resolvedEntityId === 'ENT-92' || resolvedEntityId === 'ENT-01') {
+          if (resolvedEntityId === 'Red Point Sdn Bhd' || resolvedEntityId === 'ENT-92' || resolvedEntityId === 'ENT-01' || !resolvedEntityId) {
             resolvedEntityId = 'ENT-92';
           } else if (resolvedEntityId === 'YSYD Sdn Bhd' || resolvedEntityId === 'ENT-86' || resolvedEntityId === 'ENT-02') {
             resolvedEntityId = 'ENT-86';
@@ -826,7 +826,7 @@ export default function App() {
 
         const parsedCandidates = uniqueCandidates.map((c: any) => {
           let resolvedEntityId = c.entityName || c.entityId || '';
-          if (resolvedEntityId === 'Red Point Sdn Bhd' || resolvedEntityId === 'ENT-92' || resolvedEntityId === 'ENT-01') {
+          if (resolvedEntityId === 'Red Point Sdn Bhd' || resolvedEntityId === 'ENT-92' || resolvedEntityId === 'ENT-01' || !resolvedEntityId) {
             resolvedEntityId = 'ENT-92';
           } else if (resolvedEntityId === 'YSYD Sdn Bhd' || resolvedEntityId === 'ENT-86' || resolvedEntityId === 'ENT-02') {
             resolvedEntityId = 'ENT-86';
@@ -1072,7 +1072,11 @@ export default function App() {
   };
 
   // Database Action Mutators
-  const handleAddCandidate = async (newCandidate: Candidate) => {
+  const handleAddCandidate = async (candidateInput: Candidate) => {
+    const newCandidate: Candidate = {
+      ...candidateInput,
+      entityId: candidateInput.entityId || activeEntityId || 'ENT-92'
+    };
     setCandidates(prev => [...prev, newCandidate]);
 
     if (isGoogleConfigured) {
@@ -1117,7 +1121,11 @@ export default function App() {
     }
   };
 
-  const handleAddEmployee = async (newEmployee: Employee) => {
+  const handleAddEmployee = async (employeeInput: Employee) => {
+    const newEmployee: Employee = {
+      ...employeeInput,
+      entityId: employeeInput.entityId || activeEntityId || 'ENT-92'
+    };
     setEmployees(prev => [newEmployee, ...prev]);
 
     if (isGoogleConfigured) {
