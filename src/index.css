@@ -2,59 +2,59 @@
 @import "tailwindcss";
 
 :root {
-  --color-primary: #1c4e89; /* Primary Blue */
-  --color-primary-container: #13365f; /* Darker Blue */
+  --color-primary: #b3261e; /* Primary Red */
+  --color-primary-container: #8c1d18; /* Darker Red */
   --color-on-primary-container: #ffffff;
-  --color-secondary: #625e52; 
-  --color-secondary-container: #f7f0e0; /* Light Orange */
-  --color-on-secondary-container: #1c4e89;
+  --color-secondary: #775652; 
+  --color-secondary-container: #f5ece2; /* Warm Beige */
+  --color-on-secondary-container: #b3261e;
   
-  --color-background: #fbf9f8; /* Soft subtle parchment-adjacent background */
-  --color-on-background: #1b1c1c;
+  --color-background: #faf6f0; /* Soft Beige Background */
+  --color-on-background: #201a19;
   
   --color-surface: #ffffff;
   --color-surface-container-lowest: #ffffff;
-  --color-surface-container-low: #f9f7f4;
-  --color-surface-container: #f7f0e0; /* Light Orange */
-  --color-surface-container-high: #e9e5db;
-  --color-surface-container-highest: #d1cec1; /* Pastel Yellow Grey */
-  --color-on-surface: #1c4e89; /* Primary blue as on-surface */
-  --color-on-surface-variant: #625e52; 
+  --color-surface-container-low: #f7f2eb;
+  --color-surface-container: #f5ece2; /* Warm Beige */
+  --color-surface-container-high: #efe5d9;
+  --color-surface-container-highest: #e4d6c7; /* Darker Beige */
+  --color-on-surface: #b3261e; /* Primary red as on-surface */
+  --color-on-surface-variant: #775652; 
   
-  --color-outline: #d1cec1; /* Pastel Yellow Grey */
-  --color-outline-variant: #d1cec1; 
+  --color-outline: #e4d6c7; /* Darker Beige */
+  --color-outline-variant: #e4d6c7; 
   --color-error: #ba1a1a;
   
-  --color-parchment: #f7f0e0; /* Light Orange */
-  --color-neutral-border: #d1cec1; /* Pastel Yellow Grey */
+  --color-parchment: #f5ece2; /* Warm Beige */
+  --color-neutral-border: #e4d6c7; /* Darker Beige */
 }
 
 .dark {
-  --color-primary: #5c93d4; /* High-contrast blue for dark mode */
-  --color-primary-container: #1c4e89; 
+  --color-primary: #ffb4ab; /* Lighter red for dark mode */
+  --color-primary-container: #8c1d18; 
   --color-on-primary-container: #ffffff;
-  --color-secondary: #d1cec1; 
-  --color-secondary-container: #2a2926; /* Deep dark sand/parchment background */
-  --color-on-secondary-container: #5c93d4;
+  --color-secondary: #e4d6c7; 
+  --color-secondary-container: #332624; /* Deep dark warm grey */
+  --color-on-secondary-container: #ffb4ab;
   
-  --color-background: #141413; /* Deep high-contrast dark grey */
-  --color-on-background: #f5f4f0; /* Crisp off-white */
+  --color-background: #201a19; /* Deep dark reddish grey */
+  --color-on-background: #ede0de; /* Crisp off-white */
   
-  --color-surface: #1c1c1b; /* Slightly lighter dark grey for cards */
-  --color-surface-container-lowest: #141413;
-  --color-surface-container-low: #1a1a19;
-  --color-surface-container: #262522; /* Warm dark gray container */
-  --color-surface-container-high: #33322e;
-  --color-surface-container-highest: #4a4943;
-  --color-on-surface: #5c93d4; /* Lighter primary blue on dark */
-  --color-on-surface-variant: #b5b2a5; 
+  --color-surface: #261f1e; /* Slightly lighter dark grey for cards */
+  --color-surface-container-lowest: #1a1514;
+  --color-surface-container-low: #201a19;
+  --color-surface-container: #2b2220; /* Warm dark gray container */
+  --color-surface-container-high: #382d2b;
+  --color-surface-container-highest: #4e403d;
+  --color-on-surface: #ffb4ab; /* Lighter primary red on dark */
+  --color-on-surface-variant: #d8c2bf; 
   
-  --color-outline: #4a4943; 
-  --color-outline-variant: #4a4943; 
+  --color-outline: #4e403d; 
+  --color-outline-variant: #4e403d; 
   --color-error: #ffb4ab;
   
-  --color-parchment: #262522; 
-  --color-neutral-border: #4a4943; 
+  --color-parchment: #2b2220; 
+  --color-neutral-border: #4e403d; 
 }
 
 @theme {
