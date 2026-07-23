@@ -93,7 +93,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           <div className="w-14 h-14 rounded-xl bg-[#1c4e89] flex items-center justify-center shadow-lg shadow-[#1c4e89]/30 mb-4 animate-bounce duration-[3000ms]">
             <ShieldCheck className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Mega HR</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">RedPoint HRMS</h1>
           <p className="text-zinc-400 text-xs mt-2 max-w-xs leading-relaxed">
             Enterprise Core Console. Securely manage corporate payroll, employee records, and appraisals.
           </p>

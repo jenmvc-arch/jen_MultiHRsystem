@@ -1,6 +1,6 @@
-# 💼 Mega HR — Enterprise Core Console
+# 💼 RedPoint HRMS — Enterprise Core Console
 
-Mega HR is a premium, high-performance corporate console designed for managing personnel directory, employee appraisals, real-time payroll records, and statutory compliance.
+RedPoint HRMS is a premium, high-performance corporate console designed for managing personnel directory, employee appraisals, real-time payroll records, and statutory compliance.
 
 Originally backed by Supabase, the database layer and file storage have been fully migrated to use **Google Sheets** (as a relational data store) and **Google Drive** (for secure, public graphic asset hosting) via a serverless **Google Apps Script Web App** proxy.
 

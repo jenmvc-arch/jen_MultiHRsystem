@@ -1207,7 +1207,7 @@ export default function PayrollView({
                   <p className="text-xs text-on-surface-variant mt-1">{selectedPayPeriod}</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-sm">{activeEntity?.name || 'Mega HR'}</p>
+                  <p className="font-bold text-sm">{activeEntity?.name || 'RedPoint HRMS'}</p>
                   <p className="text-[10px] text-on-surface-variant max-w-[220px] ml-auto whitespace-pre-wrap">
                     {activeEntity?.address || 'No registered corporate address'}
                   </p>
