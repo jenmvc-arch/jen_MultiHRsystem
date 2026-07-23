@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Mail, Lock, AlertCircle, Building2 } from 'lucide-react';
+import { Mail, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { MOCK_USERS, UserAccount } from '../data';
 import { googleSheetsClient, isGoogleConfigured } from '../lib/googleSheetsClient';
 
@@ -10,6 +10,8 @@ interface LoginViewProps {
 export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -79,118 +81,162 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-radial from-slate-900 to-zinc-950 p-4 select-text relative overflow-hidden font-sans">
+    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-[#F2E8D8] to-[#FFF8EF] p-4 select-text relative overflow-hidden font-sans text-[#333333]">
       
-      {/* Background Gradient Blurs */}
-      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-[#1c4e89]/20 rounded-full blur-[120px]" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-900/20 rounded-full blur-[120px]" />
+      {/* Background Accents (Minimal Red Curves) */}
+      <div className="absolute top-0 left-0 w-64 h-full pointer-events-none opacity-20">
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full text-[#A32626] fill-current">
+          <path d="M0,0 C50,30 20,70 0,100 Z" />
+        </svg>
+      </div>
+      <div className="absolute bottom-0 right-0 w-96 h-64 pointer-events-none opacity-20">
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full text-[#A32626] fill-current">
+          <path d="M100,100 C60,80 80,30 100,0 Z" />
+        </svg>
+      </div>
+      
+      {/* Optional subtle dotted pattern in corners */}
+      <div className="absolute top-4 left-4 w-32 h-32 bg-[radial-gradient(#A32626_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none"></div>
+      <div className="absolute bottom-4 right-4 w-32 h-32 bg-[radial-gradient(#A32626_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none"></div>
 
-      {/* Main Glassmorphic Login Card */}
-      <div className="w-full max-w-md bg-zinc-900/60 backdrop-blur-md border border-zinc-800 rounded-xl p-8 shadow-2xl relative z-10 animate-in fade-in zoom-in duration-300">
+      {/* Main Container */}
+      <div className="w-full max-w-md relative z-10 flex flex-col items-center">
         
-        {/* Core Header Logo / Brand */}
-        <div className="flex flex-col items-center text-center mb-8">
-          <div className="w-14 h-14 rounded-xl bg-[#1c4e89] flex items-center justify-center shadow-lg shadow-[#1c4e89]/30 mb-4 animate-bounce duration-[3000ms]">
-            <ShieldCheck className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">RedPoint HRMS</h1>
-          <p className="text-zinc-400 text-xs mt-2 max-w-xs leading-relaxed">
-            Enterprise Core Console. Securely manage corporate payroll, employee records, and appraisals.
-          </p>
-        </div>
+        {/* Logo at the top center */}
+        <img 
+          src="/redpoint-logo.png" 
+          alt="RedPoint Sdn Bhd Logo" 
+          className="h-16 w-auto mb-8 object-contain drop-shadow-sm" 
+          onError={(e) => {
+            // Fallback if logo is missing
+            e.currentTarget.style.display = 'none';
+            e.currentTarget.parentElement?.insertAdjacentHTML('afterbegin', '<div class="text-[#A32626] font-bold text-2xl mb-8 tracking-tight">RedPoint HRMS</div>');
+          }}
+        />
 
-        {/* Error Notification HUD */}
-        {error && (
-          <div className="mb-6 p-4.5 bg-red-950/40 border border-red-900/50 text-red-400 text-xs rounded-lg flex items-start gap-3 animate-in slide-in-from-top-4 duration-200">
-            <AlertCircle className="w-4.5 h-4.5 shrink-0 mt-0.5" />
-            <span className="leading-normal">{error}</span>
-          </div>
-        )}
-
-        {/* Login Form */}
-        <form onSubmit={handleSubmit} className="space-y-5 text-left">
+        {/* Login Card */}
+        <div className="w-full bg-[#FFFFFF] rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-[#E5E5E5] p-8">
           
-          {/* Email Input Group */}
-          <div>
-            <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-2">
-              Corporate Username or Email Address
-            </label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500">
-                <Mail className="w-4 h-4" />
-              </span>
-              <input
-                type="text"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="jennylaw.hr or admin@acme.com"
-                className="w-full pl-10 pr-4 py-2.5 bg-zinc-950/50 border border-zinc-800 rounded-lg text-sm text-white placeholder-zinc-600 focus:outline-hidden focus:border-[#1c4e89] focus:ring-1 focus:ring-[#1c4e89]/30 transition-all font-medium"
-              />
-            </div>
+          <div className="text-center mb-8">
+            <h2 className="text-xl font-bold text-[#333333]">Staff Sign In</h2>
+            <p className="text-sm text-gray-500 mt-1">Internal HRMS Portal</p>
           </div>
 
-          {/* Password Input Group */}
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                Access Password
+          {/* Error Notification HUD */}
+          {error && (
+            <div className="mb-6 p-4 bg-[#FFF8EF] border border-[#A32626]/30 text-[#8F1F1F] text-sm rounded-lg flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-[#A32626]" />
+              <span className="leading-relaxed">{error}</span>
+            </div>
+          )}
+
+          {/* Login Form */}
+          <form onSubmit={handleSubmit} className="space-y-5 text-left">
+            
+            {/* Email Input Group */}
+            <div>
+              <label className="block text-sm font-semibold text-[#333333] mb-1.5">
+                Email Address
               </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+                  <Mail className="w-5 h-5" />
+                </span>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter your corporate email"
+                  className="w-full h-12 pl-11 pr-4 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] placeholder-gray-400 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Password Input Group */}
+            <div>
+              <label className="block text-sm font-semibold text-[#333333] mb-1.5">
+                Password
+              </label>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+                  <Lock className="w-5 h-5" />
+                </span>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  className="w-full h-12 pl-11 pr-11 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] placeholder-gray-400 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-gray-600 focus:outline-none"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Remember Me & Forgot Password */}
+            <div className="flex justify-between items-center mt-2">
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded border-[#E5E5E5] text-[#A32626] focus:ring-[#A32626] focus:ring-offset-0 cursor-pointer accent-[#A32626]"
+                />
+                <span className="text-sm text-gray-600 group-hover:text-[#333333] transition-colors">Remember Me</span>
+              </label>
+              
               <a 
                 href="#forgot" 
                 onClick={(e) => {
                   e.preventDefault();
                   alert('Default credentials are:\nUsername: jennylaw.hr\nPassword: admin123#\n\nFallback Admin Email: admin@acme.com\nPassword: password123');
                 }}
-                className="text-[10px] text-[#1c4e89] hover:underline font-semibold"
+                className="text-sm text-[#A32626] hover:text-[#8F1F1F] font-semibold transition-colors"
               >
-                Help?
+                Forgot Password?
               </a>
             </div>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-500">
-                <Lock className="w-4 h-4" />
-              </span>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full pl-10 pr-4 py-2.5 bg-zinc-950/50 border border-zinc-800 rounded-lg text-sm text-white placeholder-zinc-600 focus:outline-hidden focus:border-[#1c4e89] focus:ring-1 focus:ring-[#1c4e89]/30 transition-all font-medium"
-              />
-            </div>
-          </div>
 
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={isLoading}
-            className={`w-full py-2.5 bg-[#1c4e89] hover:bg-[#153b67] text-white text-sm font-semibold rounded-lg shadow-md shadow-[#1c4e89]/10 hover:shadow-[#1c4e89]/20 transition-all cursor-pointer flex items-center justify-center gap-2 ${
-              isLoading ? 'opacity-70 cursor-not-allowed' : ''
-            }`}
-          >
-            {isLoading ? (
-              <>
-                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Authenticating...
-              </>
-            ) : (
-              'Sign In to Dashboard'
-            )}
-          </button>
-        </form>
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={isLoading}
+              className={`w-full h-12 mt-4 bg-[#A32626] hover:bg-[#8F1F1F] text-white text-base font-semibold rounded-xl shadow-md shadow-[#A32626]/20 transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-[#A32626]/50 focus:ring-offset-1 ${
+                isLoading ? 'opacity-80 cursor-wait' : 'hover:-translate-y-0.5'
+              }`}
+            >
+              {isLoading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Authenticating...
+                </>
+              ) : (
+                'Sign In'
+              )}
+            </button>
+          </form>
 
-        {/* Footer Notice */}
-        <div className="mt-8 pt-6 border-t border-zinc-800/60 flex items-center justify-center gap-2 text-zinc-500 text-[10px] uppercase font-mono font-bold tracking-wider">
-          <Building2 className="w-3.5 h-3.5" />
-          <span>Security Level: Enterprise Confidential</span>
         </div>
-
       </div>
+
+      {/* Footer */}
+      <footer className="absolute bottom-6 w-full text-center z-10">
+        <p className="text-sm font-medium text-gray-500">
+          © 2026 RedPoint HRMS. All rights reserved.
+        </p>
+      </footer>
+
     </div>
   );
 }
