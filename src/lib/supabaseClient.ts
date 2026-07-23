@@ -32,7 +32,22 @@ function toSnakeCase(obj: any): any {
   const result: any = {};
   for (const key of Object.keys(obj)) {
     const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-    result[snakeKey] = obj[key];
+    let val = obj[key];
+    
+    // PostgreSQL strict typing protection: Convert empty strings to null for date/number/fk fields
+    if (val === '') {
+      if (
+        snakeKey.includes('date') || 
+        snakeKey.includes('time') || 
+        snakeKey === 'progress' ||
+        snakeKey === 'basic_salary' ||
+        (snakeKey.includes('_id') && snakeKey !== 'id')
+      ) {
+        val = null;
+      }
+    }
+    
+    result[snakeKey] = val;
   }
   return result;
 }
