@@ -1188,6 +1188,7 @@ export default function App() {
       } catch (err: any) {
         console.error('[Google Sheets Insert] Failed to insert employee:', err);
         triggerNotification('Sync Failed', `Could not save new employee: ${err.message || err}`, 'info');
+        throw err;
       }
     }
   };
@@ -1304,9 +1305,10 @@ export default function App() {
         if (updates.tp3Data !== undefined) payloadUpdates.tp3Data = JSON.stringify(updates.tp3Data);
         if (updates.salaryAdjustments !== undefined) payloadUpdates.salaryAdjustments = JSON.stringify(updates.salaryAdjustments);
 
-        const lookupKey = oldEmp?.name || id;
+        const lookupKey = oldEmp?.email || oldEmp?.name || oldEmp?.id || id;
+        const keyField = oldEmp?.email ? 'email' : (oldEmp?.name ? 'name' : 'id');
         const scriptUrl = getScriptUrlForEntity(updates.entityId || oldEmp?.entityId);
-        await googleSheetsClient.update('employees', lookupKey, payloadUpdates, 'name', scriptUrl);
+        await googleSheetsClient.update('employees', lookupKey, payloadUpdates, keyField, scriptUrl);
 
         await googleSheetsClient.insert('audit_logs', {
           id: `log_${Date.now()}`,
@@ -1320,6 +1322,7 @@ export default function App() {
       } catch (err: any) {
         console.error('[Google Sheets Update] Failed to update employee:', err);
         triggerNotification('Sync Failed', `Could not update employee: ${err.message || err}`, 'info');
+        throw err;
       }
     }
   };

@@ -126,6 +126,7 @@ export default function EmployeeDirectoryView({
 
   // Add Employee Modal form states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isSavingForm, setIsSavingForm] = useState(false);
   const [formEntityId, setFormEntityId] = useState(activeEntityId || entities[0]?.id || 'ENT-92');
   
   useEffect(() => {
@@ -657,7 +658,7 @@ export default function EmployeeDirectoryView({
     onShowNotification('Profile Updated', 'Family and compliance registry updated successfully.');
   };
 
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName || !formEmail || !formDesignation || !formAccount || !formNricPassport || !formContactNumber) {
       onShowNotification('Form Error', 'Please fill in all required corporate and NRIC/Passport fields.');
@@ -764,13 +765,20 @@ export default function EmployeeDirectoryView({
       ]
     };
 
-     onAddEmployee(newEmp);
-     setIsAddModalOpen(false);
-     onShowNotification(
-       'Employee Registered',
-       `${formName} has been onboarded into Workforce records.`
-     );
-  };
+      setIsSavingForm(true);
+      try {
+        await onAddEmployee(newEmp);
+        setIsAddModalOpen(false);
+        onShowNotification(
+          'Employee Registered',
+          `${formName} has been onboarded into Workforce records.`
+        );
+      } catch (err: any) {
+        onShowNotification('Save Error', `Failed to register employee: ${err.message || err}`);
+      } finally {
+        setIsSavingForm(false);
+      }
+   };
 
   const handleDelete = (id: string, name: string) => {
     if (window.confirm(`Are you sure you want to terminate/remove ${name} from active payroll directory?`)) {
@@ -4067,14 +4075,14 @@ export default function EmployeeDirectoryView({
                 </button>
                 <button
                   type="submit"
-                  disabled={isUploadingAvatar}
+                  disabled={isUploadingAvatar || isSavingForm}
                   className={`px-4 py-2 rounded text-xs font-semibold ${
-                    isUploadingAvatar 
+                    isUploadingAvatar || isSavingForm
                       ? 'bg-zinc-300 text-zinc-500 cursor-not-allowed' 
                       : 'bg-primary text-white hover:bg-primary-container'
                   }`}
                 >
-                  {isUploadingAvatar ? 'Uploading photo...' : 'Enlist & Enroll Employee'}
+                  {isUploadingAvatar ? 'Uploading photo...' : (isSavingForm ? 'Saving to Database...' : 'Enlist & Enroll Employee')}
                 </button>
               </div>
             </form>

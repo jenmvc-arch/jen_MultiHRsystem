@@ -132,6 +132,7 @@ export default function HireOnboardingView({
   const [candRole, setCandRole] = useState('');
   const [candDept, setCandDept] = useState('Engineering');
   const [candEntity, setCandEntity] = useState(entities[0]?.id || 'ENT-92');
+  const [isSavingCandidate, setIsSavingCandidate] = useState(false);
   const [candErrors, setCandErrors] = useState<{ [key: string]: string }>({});
 
   useEffect(() => {
@@ -169,39 +170,46 @@ export default function HireOnboardingView({
     return Object.keys(errs).length === 0;
   };
 
-  const handleCreateCandidate = (e: React.FormEvent) => {
+  const handleCreateCandidate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateCandidate()) {
       onShowNotification('Validation Error', 'Please correct the highlighted fields.');
       return;
     }
 
-    const newCandidate: Candidate = {
-      id: `CAN-${Date.now()}`,
-      name: candName,
-      email: candEmail,
-      phone: candPhone,
-      designation: candRole,
-      department: candDept,
-      entityId: candEntity || entities[0]?.id || 'ENT-92',
-      stage: 'Applied',
-      progress: 0,
-      dateJoined: getGmt8DateString()
-    };
+    setIsSavingCandidate(true);
+    try {
+      const newCandidate: Candidate = {
+        id: `CAN-${Date.now()}`,
+        name: candName,
+        email: candEmail,
+        phone: candPhone,
+        designation: candRole,
+        department: candDept,
+        entityId: candEntity || entities[0]?.id || 'ENT-92',
+        stage: 'Applied',
+        progress: 0,
+        dateJoined: getGmt8DateString()
+      };
 
-    onAddCandidate(newCandidate);
-    setSelectedCandidateId(newCandidate.id);
-    
-    setCandName('');
-    setCandEmail('');
-    setCandPhone('');
-    setCandRole('');
-    setCandErrors({});
+      await onAddCandidate(newCandidate);
+      setSelectedCandidateId(newCandidate.id);
+      
+      setCandName('');
+      setCandEmail('');
+      setCandPhone('');
+      setCandRole('');
+      setCandErrors({});
 
-    onShowNotification(
-      'Candidate Added', 
-      `Successfully entered ${newCandidate.name} into the hiring pipeline.`
-    );
+      onShowNotification(
+        'Candidate Added', 
+        `Successfully entered ${newCandidate.name} into the hiring pipeline.`
+      );
+    } catch (err: any) {
+      onShowNotification('Save Error', `Failed to register candidate: ${err.message || err}`);
+    } finally {
+      setIsSavingCandidate(false);
+    }
   };
 
   const handlePromoteStage = (candidateId: string) => {

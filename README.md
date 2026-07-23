@@ -88,120 +88,14 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-}
-
-function doPost(e) {
-  try {
-    initializeDatabase();
-    const payload = JSON.parse(e.postData.contents);
-    const action = payload.action;
-    const data = payload.data;
-    const ss = getSpreadsheet();
-    
-    if (action === "upload_file") {
-      const folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
-      const contentType = payload.contentType || "image/png";
-      const blob = Utilities.newBlob(Utilities.base64Decode(payload.base64), contentType, payload.filename);
-      const file = folder.createFile(blob);
-      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-      const fileUrl = "https://lh3.googleusercontent.com/d/" + file.getId() + "=s800";
-      return ContentService.createTextOutput(JSON.stringify({ success: true, url: fileUrl }))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
-    
-    const sheet = ss.getSheetByName(payload.sheetName);
-    if (!sheet) throw new Error("Sheet not found: " + payload.sheetName);
-    
-    // Dynamic self-healing header mapping: locates columns by checking actual sheet headers rather than hardcoded SCHEMA
-    const allRows = sheet.getDataRange().getValues();
-    const actualHeaders = allRows[0] || [];
-    const normalizedHeaders = actualHeaders.map(h => String(h).trim().toLowerCase());
-    
-    if (action === "insert") {
-      const newRow = actualHeaders.map(h => data[h] !== undefined ? data[h] : "");
-      sheet.appendRow(newRow);
-      return ContentService.createTextOutput(JSON.stringify({ success: true }))
-        .setMimeType(ContentService.MimeType.JSON);
-    } else if (action === "update") {
-      const keyToFind = String(payload.keyName || "id").trim().toLowerCase();
-      const idColIndex = normalizedHeaders.indexOf(keyToFind);
-      if (idColIndex === -1) throw new Error("Key column '" + (payload.keyName || "id") + "' not found in sheet headers");
-      
-      let foundIndex = -1;
-      const searchVal = String(payload.keyValue).trim().toLowerCase();
-      for (let i = 1; i < allRows.length; i++) {
-        const cellValue = String(allRows[i][idColIndex]).trim().toLowerCase();
-        if (cellValue === searchVal) {
-          foundIndex = i + 1;
-          break;
-        }
-      }
-      if (foundIndex === -1) throw new Error("Record not found for value: " + payload.keyValue);
-      const updatedRow = actualHeaders.map((h, j) => data[h] !== undefined ? data[h] : allRows[foundIndex - 1][j]);
-      sheet.getRange(foundIndex, 1, 1, actualHeaders.length).setValues([updatedRow]);
-      return ContentService.createTextOutput(JSON.stringify({ success: true }))
-        .setMimeType(ContentService.MimeType.JSON);
-    } else if (action === "delete") {
-      const keyToFind = String(payload.keyName || "id").trim().toLowerCase();
-      const idColIndex = normalizedHeaders.indexOf(keyToFind);
-      if (idColIndex === -1) throw new Error("Key column '" + (payload.keyName || "id") + "' not found in sheet headers");
-      
-      let foundIndex = -1;
-      const searchVal = String(payload.keyValue).trim().toLowerCase();
-      for (let i = 1; i < allRows.length; i++) {
-        const cellValue = String(allRows[i][idColIndex]).trim().toLowerCase();
-        if (cellValue === searchVal) {
-          foundIndex = i + 1;
-          break;
-        }
-      }
-      if (foundIndex !== -1) sheet.deleteRow(foundIndex);
-      return ContentService.createTextOutput(JSON.stringify({ success: true }))
-        .setMimeType(ContentService.MimeType.JSON);
-    } else if (action === "upsert") {
-      let foundIndex = -1;
-      for (let i = 1; i < allRows.length; i++) {
-        let match = true;
-        for (let key in payload.query) {
-          const colIdx = normalizedHeaders.indexOf(String(key).trim().toLowerCase());
-          if (colIdx === -1) {
-            match = false;
-            break;
-          }
-          const cellValue = String(allRows[i][colIdx]).trim().toLowerCase();
-          const queryVal = String(payload.query[key]).trim().toLowerCase();
-          if (cellValue !== queryVal) {
-            match = false;
-            break;
-          }
-        }
-        if (match) {
-          foundIndex = i + 1;
-          break;
-        }
-      }
-      if (foundIndex !== -1) {
-        const updatedRow = actualHeaders.map((h, j) => data[h] !== undefined ? data[h] : allRows[foundIndex - 1][j]);
-        sheet.getRange(foundIndex, 1, 1, actualHeaders.length).setValues([updatedRow]);
-      } else {
-        const newRow = actualHeaders.map(h => data[h] !== undefined ? data[h] : "");
-        sheet.appendRow(newRow);
-      }
-      return ContentService.createTextOutput(JSON.stringify({ success: true }))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
-  } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({ success: false, error: error.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-}
+      .setMimeType(ContentService.MimeTyp```javascript
+// Please copy the complete, production-ready script directly from google_apps_script.gs in the repository root.
+// It includes LockService concurrency locks, openById(SPREADSHEET_ID), payload validation, diagnostic endpoint, and structured logging.
 ```
 
-3. Replace your Spreadsheet and Folder ID constants at the top of the file, save, and click **Deploy -> New Deployment**.
+3. Replace `CONFIG.SPREADSHEET_ID` with your actual Google Spreadsheet ID at the top of the file, save, and click **Deploy -> New Deployment**.
 4. Configure as a **Web App**, set Execute as to **"Me"**, and Who has access to **"Anyone"**.
-5. Copy the generated Web App URL.
+5. Copy the generated Web App URL into `VITE_GOOGLE_SCRIPT_URL` in `.env.local` / Vercel secrets. Web App URL.
 
 ### 3. Add Account Details (Optional)
 To log in with the default admin accounts on your spreadsheet, add a row to the **`users`** sheet in Google Sheets:

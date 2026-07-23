@@ -228,7 +228,8 @@ export default function OnboardingForm({
   const [icBack, setIcBack] = useState<DocumentFile | null>(null);
   const [certOfEducation, setCertOfEducation] = useState<DocumentFile | null>(null);
 
-  // Error state
+  // Error state & Submitting state
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
   // Populate form if a candidate is selected
@@ -369,104 +370,111 @@ export default function OnboardingForm({
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) {
       onShowNotification('Validation Error', 'Please correct the highlighted onboarding mistakes.');
       return;
     }
 
-    const salaryAmount = parseFloat(basicSalary.replace(/,/g, ''));
-    const safeEmpName = fullName.trim().toUpperCase().replace(/\s+/g, '_');
+    setIsSubmitting(true);
+    try {
+      const salaryAmount = parseFloat(basicSalary.replace(/,/g, ''));
+      const safeEmpName = fullName.trim().toUpperCase().replace(/\s+/g, '_');
 
-    // Create a dynamic, robust Employee object
-    const newEmpId = `EMP-${String(Math.floor(10000 + Math.random() * 90000))}`;
-    
-    const newEmployee: Employee = {
-      id: newEmpId,
-      entityId: entityId || entities[0]?.id || 'ENT-92',
-      name: fullName.toUpperCase(),
-      email: email.toLowerCase(),
-      designation: designation,
-      department: department,
-      status: 'Active',
-      bankName: bankName,
-      accountNo: accountNo.replace(/[^0-9]/g, ''),
-      basicSalary: salaryAmount,
-      housingAllowance: department === 'Strategy' || department === 'Finance' ? 400 : 0,
-      transportAllowance: department === 'Marketing' ? 300 : 150,
-      overtime: 0,
-      performanceBonus: 0,
-      epfRateEmployee: 11,
-      epfRateEmployer: salaryAmount > 5000 ? 12 : 13,
-      socsoEmployee: salaryAmount * 0.005, // approximate
-      socsoEmployer: salaryAmount * 0.0175,
-      skbbkEmployee: parseFloat((salaryAmount * 0.005 * 0.25).toFixed(2)),
-      skbbkEmployer: parseFloat((salaryAmount * 0.0175 * 0.25).toFixed(2)),
-      eisEmployee: salaryAmount * 0.002,
-      eisEmployer: salaryAmount * 0.002,
-      taxPcb: salaryAmount > 4000 ? (salaryAmount - 4000) * 0.15 : 0,
-      unpaidLeave: 0,
-      hrdCorp: salaryAmount * 0.01,
-      nricPassport: nricPassport.toUpperCase(),
-      nationality: nationality,
-      contactNumber: phone,
-      taxNumber: taxNumber.toUpperCase(),
-      epfNumber: epfNumber || undefined,
-      employmentType: employmentType,
-      maritalStatus: maritalStatus,
-      eligibleForStatutory: 'Yes',
-      emergencyContactName: emergencyContactName,
-      emergencyContactRelation: emergencyContactRelation,
-      emergencyContactPhone: emergencyContactPhone,
-      dateOfJoined: dateOfJoined,
-      careerHistory: [
-        {
-          id: `CH-${Date.now()}`,
-          date: dateOfJoined,
-          type: 'Hired',
-          previousValue: 'None (Candidate)',
-          newValue: `Hired as ${designation} (${employmentType})`,
-          notes: 'Completed full-fidelity statutory onboarding. Record initialized.'
-        }
-      ],
-      icFrontUrl: icFront?.name || `${safeEmpName}_IC_Front.pdf`,
-      icBackUrl: icBack?.name || `${safeEmpName}_IC_Back.pdf`,
-      educationCertUrl: certOfEducation?.name || `${safeEmpName}_Education_Cert.pdf`
-    };
+      // Create a dynamic, robust Employee object
+      const newEmpId = `EMP-${String(Math.floor(10000 + Math.random() * 90000))}`;
+      
+      const newEmployee: Employee = {
+        id: newEmpId,
+        entityId: entityId || entities[0]?.id || 'ENT-92',
+        name: fullName.toUpperCase(),
+        email: email.toLowerCase(),
+        designation: designation,
+        department: department,
+        status: 'Active',
+        bankName: bankName,
+        accountNo: accountNo.replace(/[^0-9]/g, ''),
+        basicSalary: salaryAmount,
+        housingAllowance: department === 'Strategy' || department === 'Finance' ? 400 : 0,
+        transportAllowance: department === 'Marketing' ? 300 : 150,
+        overtime: 0,
+        performanceBonus: 0,
+        epfRateEmployee: 11,
+        epfRateEmployer: salaryAmount > 5000 ? 12 : 13,
+        socsoEmployee: salaryAmount * 0.005, // approximate
+        socsoEmployer: salaryAmount * 0.0175,
+        skbbkEmployee: parseFloat((salaryAmount * 0.005 * 0.25).toFixed(2)),
+        skbbkEmployer: parseFloat((salaryAmount * 0.0175 * 0.25).toFixed(2)),
+        eisEmployee: salaryAmount * 0.002,
+        eisEmployer: salaryAmount * 0.002,
+        taxPcb: salaryAmount > 4000 ? (salaryAmount - 4000) * 0.15 : 0,
+        unpaidLeave: 0,
+        hrdCorp: salaryAmount * 0.01,
+        nricPassport: nricPassport.toUpperCase(),
+        nationality: nationality,
+        contactNumber: phone,
+        taxNumber: taxNumber.toUpperCase(),
+        epfNumber: epfNumber || undefined,
+        employmentType: employmentType,
+        maritalStatus: maritalStatus,
+        eligibleForStatutory: 'Yes',
+        emergencyContactName: emergencyContactName,
+        emergencyContactRelation: emergencyContactRelation,
+        emergencyContactPhone: emergencyContactPhone,
+        dateOfJoined: dateOfJoined,
+        careerHistory: [
+          {
+            id: `CH-${Date.now()}`,
+            date: dateOfJoined,
+            type: 'Hired',
+            previousValue: 'None (Candidate)',
+            newValue: `Hired as ${designation} (${employmentType})`,
+            notes: 'Completed full-fidelity statutory onboarding. Record initialized.'
+          }
+        ],
+        icFrontUrl: icFront?.name || `${safeEmpName}_IC_Front.pdf`,
+        icBackUrl: icBack?.name || `${safeEmpName}_IC_Back.pdf`,
+        educationCertUrl: certOfEducation?.name || `${safeEmpName}_Education_Cert.pdf`
+      };
 
-    // Trigger parent callback
-    onOnboardingComplete(newEmployee);
+      // Trigger parent callback
+      await onOnboardingComplete(newEmployee);
 
-    // If a candidate was selected and we have an advance handler, mark them completed
-    if (selectedCandidateId !== 'manual' && onAdvanceCandidateStage) {
-      // Set progress to 100 and clean up stage
-      onAdvanceCandidateStage(selectedCandidateId, 'Onboarding');
+      // If a candidate was selected and we have an advance handler, mark them completed
+      if (selectedCandidateId !== 'manual' && onAdvanceCandidateStage) {
+        // Set progress to 100 and clean up stage
+        onAdvanceCandidateStage(selectedCandidateId, 'Onboarding');
+      }
+
+      // Reset Form
+      setSelectedCandidateId('manual');
+      setFullName('');
+      setEmail('');
+      setPhone('');
+      setDesignation('');
+      setBasicSalary('');
+      setNricPassport('');
+      setTaxNumber('');
+      setEpfNumber('');
+      setSocsoNumber('');
+      setAccountNo('');
+      setEmergencyContactName('');
+      setEmergencyContactPhone('');
+      setIcFront(null);
+      setIcBack(null);
+      setCertOfEducation(null);
+      setErrors({});
+
+      onShowNotification(
+        'Onboarding Finalized',
+        `Employee ${newEmployee.name} has been successfully registered and appended to the active directory.`
+      );
+    } catch (err: any) {
+      onShowNotification('Onboarding Error', `Failed to finalize onboarding: ${err.message || err}`);
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // Reset Form
-    setSelectedCandidateId('manual');
-    setFullName('');
-    setEmail('');
-    setPhone('');
-    setDesignation('');
-    setBasicSalary('');
-    setNricPassport('');
-    setTaxNumber('');
-    setEpfNumber('');
-    setSocsoNumber('');
-    setAccountNo('');
-    setEmergencyContactName('');
-    setEmergencyContactPhone('');
-    setIcFront(null);
-    setIcBack(null);
-    setCertOfEducation(null);
-    setErrors({});
-
-    onShowNotification(
-      'Onboarding Finalized',
-      `Employee ${newEmployee.name} has been successfully registered and appended to the active directory.`
-    );
   };
 
   // Extract candidates currently in 'Onboarding' or 'Offered' stage for fast lookup
@@ -961,9 +969,14 @@ export default function OnboardingForm({
 
           <button
             type="submit"
-            className="bg-primary hover:opacity-95 text-white font-bold py-2.5 px-6 rounded text-xs transition-opacity shadow-sm cursor-pointer flex items-center gap-2"
+            disabled={isSubmitting}
+            className={`font-bold py-2.5 px-6 rounded text-xs transition-opacity shadow-sm cursor-pointer flex items-center gap-2 ${
+              isSubmitting 
+                ? 'bg-zinc-400 text-zinc-100 cursor-not-allowed' 
+                : 'bg-primary hover:opacity-95 text-white'
+            }`}
           >
-            <Save className="w-4 h-4" /> Finalize & Commit Onboarding Record
+            <Save className="w-4 h-4" /> {isSubmitting ? 'Finalizing & Syncing Record...' : 'Finalize & Commit Onboarding Record'}
           </button>
         </div>
 

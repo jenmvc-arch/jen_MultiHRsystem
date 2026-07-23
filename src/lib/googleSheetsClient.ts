@@ -1,6 +1,6 @@
 import { Employee, EmployeePerformance, CorporateEntity } from '../types';
 
-const googleScriptUrl = import.meta.env.VITE_GOOGLE_SCRIPT_URL || '';
+const googleScriptUrl = (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_GOOGLE_SCRIPT_URL : process.env.VITE_GOOGLE_SCRIPT_URL) || '';
 
 export const isGoogleConfigured = !!googleScriptUrl && !googleScriptUrl.includes('placeholder') && googleScriptUrl.trim() !== '';
 
@@ -38,7 +38,7 @@ export const googleSheetsClient = {
     return result.data;
   },
 
-  async insert(sheetName: string, data: any, customScriptUrl?: string): Promise<void> {
+  async insert(sheetName: string, data: any, customScriptUrl?: string): Promise<any> {
     const targetUrl = customScriptUrl || googleScriptUrl;
     if (!targetUrl) return;
     console.log('[Google Sheets Client] Inserting record:', { sheetName, data });
@@ -55,11 +55,13 @@ export const googleSheetsClient = {
     });
     const result = await response.json();
     if (!result.success) {
+      console.error('[Google Sheets Client Error]', result.error, result.stack);
       throw new Error(result.error || `Failed to insert record into ${sheetName}`);
     }
+    return result.record || data;
   },
 
-  async update(sheetName: string, keyValue: string, data: any, keyName: string = 'id', customScriptUrl?: string): Promise<void> {
+  async update(sheetName: string, keyValue: string, data: any, keyName: string = 'id', customScriptUrl?: string): Promise<any> {
     const targetUrl = customScriptUrl || googleScriptUrl;
     if (!targetUrl) return;
     console.log('[Google Sheets Client] Updating record:', { sheetName, keyName, keyValue, data });
@@ -78,11 +80,13 @@ export const googleSheetsClient = {
     });
     const result = await response.json();
     if (!result.success) {
+      console.error('[Google Sheets Client Error]', result.error, result.stack);
       throw new Error(result.error || `Failed to update record in ${sheetName}`);
     }
+    return result.record || data;
   },
 
-  async delete(sheetName: string, keyValue: string, keyName: string = 'id', customScriptUrl?: string): Promise<void> {
+  async delete(sheetName: string, keyValue: string, keyName: string = 'id', customScriptUrl?: string): Promise<any> {
     const targetUrl = customScriptUrl || googleScriptUrl;
     if (!targetUrl) return;
     console.log('[Google Sheets Client] Deleting record:', { sheetName, keyName, keyValue });
@@ -100,11 +104,13 @@ export const googleSheetsClient = {
     });
     const result = await response.json();
     if (!result.success) {
+      console.error('[Google Sheets Client Error]', result.error, result.stack);
       throw new Error(result.error || `Failed to delete record from ${sheetName}`);
     }
+    return result;
   },
 
-  async upsert(sheetName: string, query: Record<string, string>, data: any, customScriptUrl?: string): Promise<void> {
+  async upsert(sheetName: string, query: Record<string, string>, data: any, customScriptUrl?: string): Promise<any> {
     const targetUrl = customScriptUrl || googleScriptUrl;
     if (!targetUrl) return;
     console.log('[Google Sheets Client] Upserting record:', { sheetName, query, data });
@@ -122,8 +128,31 @@ export const googleSheetsClient = {
     });
     const result = await response.json();
     if (!result.success) {
+      console.error('[Google Sheets Client Error]', result.error, result.stack);
       throw new Error(result.error || `Failed to upsert record in ${sheetName}`);
     }
+    return result.record || data;
+  },
+
+  async diagnose(customScriptUrl?: string): Promise<any> {
+    const targetUrl = customScriptUrl || googleScriptUrl;
+    if (!targetUrl) {
+      throw new Error('Google Sheets client is not configured.');
+    }
+    console.log('[Google Sheets Client] Running Backend Diagnostics on:', targetUrl);
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'diagnose'
+      }),
+      redirect: 'follow'
+    });
+    const result = await response.json();
+    if (!result.success) {
+      throw new Error(result.error || 'Diagnostic endpoint check failed.');
+    }
+    return result.diagnostics;
   },
 
   async uploadFile(file: File, customScriptUrl?: string): Promise<string> {
