@@ -179,42 +179,37 @@ export default function App() {
 
   // Core Database States
   const [employees, setEmployees] = useState<Employee[]>(() => {
-    if (!isGoogleConfigured) {
-      const saved = localStorage.getItem('offline_employees');
-      if (saved) return JSON.parse(saved);
-      return SEED_EMPLOYEES;
+    const saved = localStorage.getItem('offline_employees');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
     }
     return INITIAL_EMPLOYEES;
   });
   const [performances, setPerformances] = useState<EmployeePerformance[]>(() => {
-    if (!isGoogleConfigured) {
-      const saved = localStorage.getItem('offline_performances');
-      if (saved) return JSON.parse(saved);
-      return SEED_PERFORMANCES;
+    const saved = localStorage.getItem('offline_performances');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
     }
     return INITIAL_PERFORMANCES;
   });
   const [reviewCycles, setReviewCycles] = useState<ReviewCycle[]>(() => {
-    if (!isGoogleConfigured) {
-      const saved = localStorage.getItem('offline_review_cycles');
-      if (saved) return JSON.parse(saved);
-      return SEED_REVIEW_CYCLES;
+    const saved = localStorage.getItem('offline_review_cycles');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
     }
     return INITIAL_REVIEW_CYCLES;
   });
   const [entities, setEntities] = useState<CorporateEntity[]>(() => {
-    if (!isGoogleConfigured) {
-      const saved = localStorage.getItem('offline_entities');
-      if (saved) return JSON.parse(saved);
-      return SEED_ENTITIES;
+    const saved = localStorage.getItem('offline_entities');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
     }
     return INITIAL_ENTITIES;
   });
   const [candidates, setCandidates] = useState<Candidate[]>(() => {
-    if (!isGoogleConfigured) {
-      const saved = localStorage.getItem('offline_candidates');
-      if (saved) return JSON.parse(saved);
-      return SEED_CANDIDATES;
+    const saved = localStorage.getItem('offline_candidates');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
     }
     return INITIAL_CANDIDATES;
   });
@@ -224,33 +219,23 @@ export default function App() {
 
   // Offline persistence sync
   React.useEffect(() => {
-    if (!isGoogleConfigured) {
-      localStorage.setItem('offline_entities', JSON.stringify(entities));
-    }
+    localStorage.setItem('offline_entities', JSON.stringify(entities));
   }, [entities]);
 
   React.useEffect(() => {
-    if (!isGoogleConfigured) {
-      localStorage.setItem('offline_employees', JSON.stringify(employees));
-    }
+    localStorage.setItem('offline_employees', JSON.stringify(employees));
   }, [employees]);
 
   React.useEffect(() => {
-    if (!isGoogleConfigured) {
-      localStorage.setItem('offline_performances', JSON.stringify(performances));
-    }
+    localStorage.setItem('offline_performances', JSON.stringify(performances));
   }, [performances]);
 
   React.useEffect(() => {
-    if (!isGoogleConfigured) {
-      localStorage.setItem('offline_review_cycles', JSON.stringify(reviewCycles));
-    }
+    localStorage.setItem('offline_review_cycles', JSON.stringify(reviewCycles));
   }, [reviewCycles]);
 
   React.useEffect(() => {
-    if (!isGoogleConfigured) {
-      localStorage.setItem('offline_candidates', JSON.stringify(candidates));
-    }
+    localStorage.setItem('offline_candidates', JSON.stringify(candidates));
   }, [candidates]);
 
   const employeesWithHistory = React.useMemo(() => {
@@ -571,23 +556,7 @@ export default function App() {
 
           if (payload.employees) {
             payload.employees.forEach((e: any) => {
-              let resolvedEntity = e.entityName || e.entityId || '';
-              if (resolvedEntity === 'ENT-01' || resolvedEntity === 'ENT-92') {
-                resolvedEntity = 'Red Point Sdn Bhd';
-              } else if (resolvedEntity === 'ENT-02' || resolvedEntity === 'ENT-86') {
-                resolvedEntity = 'YSYD Sdn Bhd';
-              }
-
-              const expectedEnt = loadedEntities.find(ent => ent.name === resolvedEntity);
-              const expectedUrl = expectedEnt?.googleScriptUrl || '';
-
-              const matchesUrl = isDefault 
-                ? (expectedUrl.trim() === '') 
-                : (expectedUrl.trim() === url);
-
-              if (matchesUrl) {
-                allRawEmployees.push(e);
-              }
+              allRawEmployees.push(e);
             });
           }
 
