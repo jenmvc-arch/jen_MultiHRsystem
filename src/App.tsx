@@ -59,6 +59,7 @@ import OnboardingForm from './components/OnboardingForm';
 import { EntityContextProvider } from './context/EntityContext';
 
 import { googleSheetsClient, isGoogleConfigured, SheetsDataPayload } from './lib/googleSheetsClient';
+import { supabaseClient, isSupabaseConfigured } from './lib/supabaseClient';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -487,18 +488,30 @@ export default function App() {
     seedSocsoConfigurationsAndBrackets();
   }, []);
 
-  // Load data from Google Sheets dynamically if configured
+  // Load data from Supabase or Google Sheets dynamically if configured
   useEffect(() => {
-    if (!isGoogleConfigured) {
+    if (!isSupabaseConfigured && !isGoogleConfigured) {
       setIsLoadingDb(false);
       return;
     }
 
     async function loadData() {
       try {
-        const mainPayload = await googleSheetsClient.loadData();
+        let mainPayload: any = null;
+        if (isSupabaseConfigured) {
+          console.log('[App] Fetching database from Supabase...');
+          mainPayload = await supabaseClient.loadData();
+        } else if (isGoogleConfigured) {
+          console.log('[App] Fetching database from Google Sheets...');
+          mainPayload = await googleSheetsClient.loadData();
+        }
 
-        // Auto-seed if corporate entities is empty (fresh spreadsheet database)
+        if (!mainPayload) {
+          setIsLoadingDb(false);
+          return;
+        }
+
+        // Auto-seed if corporate entities is empty
         if (!mainPayload.corporate_entities || mainPayload.corporate_entities.length === 0) {
           await handleSeedDatabase();
           return;
@@ -1040,7 +1053,6 @@ export default function App() {
       : undefined;
   };
 
-  // Database Action Mutators
   const handleAddCandidate = async (candidateInput: Candidate) => {
     const newCandidate: Candidate = {
       ...candidateInput,
@@ -1048,7 +1060,14 @@ export default function App() {
     };
     setCandidates(prev => [...prev, newCandidate]);
 
-    if (isGoogleConfigured) {
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseClient.insert('candidates', newCandidate);
+      } catch (err) {
+        console.error('[Supabase Candidate Insert] Failed:', err);
+        triggerNotification('Sync Failed', 'Could not save new candidate to Supabase.', 'info');
+      }
+    } else if (isGoogleConfigured) {
       try {
         const scriptUrl = getScriptUrlForEntity(newCandidate.entityId);
         await googleSheetsClient.insert('candidates', {
@@ -1073,7 +1092,14 @@ export default function App() {
   const handleUpdateCandidate = async (id: string, updates: Partial<Candidate>) => {
     setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
 
-    if (isGoogleConfigured) {
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseClient.update('candidates', id, updates, 'id');
+      } catch (err) {
+        console.error('[Supabase Candidate Update] Failed:', err);
+        triggerNotification('Sync Failed', 'Could not update candidate in Supabase.', 'info');
+      }
+    } else if (isGoogleConfigured) {
       try {
         const candidateObj = candidates.find(c => c.id === id);
         const scriptUrl = getScriptUrlForEntity(updates.entityId || candidateObj?.entityId);
@@ -1097,7 +1123,24 @@ export default function App() {
     };
     setEmployees(prev => [newEmployee, ...prev]);
 
-    if (isGoogleConfigured) {
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseClient.insert('employees', newEmployee);
+        await supabaseClient.insert('audit_logs', {
+          id: `log_${Date.now()}`,
+          employeeEmail: newEmployee.email,
+          changedBy: currentUserEmail || 'admin@acme.com',
+          changeType: 'CREATE_EMPLOYEE',
+          oldValue: '',
+          newValue: JSON.stringify(newEmployee),
+          createdAt: getGmt8Timestamp()
+        });
+      } catch (err: any) {
+        console.error('[Supabase Insert Error]', err);
+        triggerNotification('Sync Failed', `Could not save new employee to Supabase: ${err.message || err}`, 'info');
+        throw err;
+      }
+    } else if (isGoogleConfigured) {
       try {
         const scriptUrl = getScriptUrlForEntity(newEmployee.entityId);
         await googleSheetsClient.insert('employees', {
@@ -1199,7 +1242,22 @@ export default function App() {
     setEmployees(prev => prev.filter(e => e.id !== id));
     setPerformances(prev => prev.filter(p => p.employeeId !== id));
 
-    if (isGoogleConfigured) {
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseClient.delete('employees', id, 'id');
+        await supabaseClient.insert('audit_logs', {
+          id: `log_${Date.now()}`,
+          employeeEmail: targetEmp?.email || lookupKey,
+          changedBy: currentUserEmail || 'admin@acme.com',
+          changeType: 'DELETE_EMPLOYEE',
+          oldValue: `Employee Email: ${lookupKey}`,
+          newValue: '',
+          createdAt: getGmt8Timestamp()
+        });
+      } catch (err) {
+        console.error('[Supabase Delete Error]', err);
+      }
+    } else if (isGoogleConfigured) {
       try {
         const scriptUrl = getScriptUrlForEntity(targetEmp?.entityId);
         await googleSheetsClient.delete('employees', lookupKey, 'name', scriptUrl);
@@ -1223,7 +1281,24 @@ export default function App() {
     const oldEmp = employees.find(e => e.id === id);
     setEmployees(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
 
-    if (isGoogleConfigured) {
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseClient.update('employees', id, updates, 'id');
+        await supabaseClient.insert('audit_logs', {
+          id: `log_${Date.now()}`,
+          employeeEmail: oldEmp?.email || id,
+          changedBy: currentUserEmail || 'admin@acme.com',
+          changeType: 'UPDATE_EMPLOYEE',
+          oldValue: JSON.stringify(oldEmp),
+          newValue: JSON.stringify(updates),
+          createdAt: getGmt8Timestamp()
+        });
+      } catch (err: any) {
+        console.error('[Supabase Update Error]', err);
+        triggerNotification('Sync Failed', `Could not update employee in Supabase: ${err.message || err}`, 'info');
+        throw err;
+      }
+    } else if (isGoogleConfigured) {
       try {
         const payloadUpdates: any = {};
         if (updates.name !== undefined) payloadUpdates.name = updates.name;
@@ -1338,7 +1413,15 @@ export default function App() {
       return [...filtered, record];
     });
 
-    if (isGoogleConfigured) {
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseClient.upsert('payroll_records_2026', record);
+        console.log('[Supabase] Saved payroll record successfully:', record.id);
+      } catch (err: any) {
+        console.error('[Supabase] Failed to save payroll record 2026:', err);
+        triggerNotification('Sync Failed', `Could not save payroll record: ${err.message || err}`, 'info');
+      }
+    } else if (isGoogleConfigured) {
       try {
         const emp = employees.find(e => e.email?.toLowerCase() === record.employeeEmail?.toLowerCase());
         const scriptUrl = getScriptUrlForEntity(emp?.entityId);

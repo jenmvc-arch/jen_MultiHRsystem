@@ -10,11 +10,12 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "server": "./node_modules/.bin/tsx server.ts",
-    "test": "./node_modules/.bin/tsx src/test_pcb.ts && ./node_modules/.bin/tsx src/test_entity_switching.ts && ./node_modules/.bin/tsx src/test_enroll_enlist.ts && ./node_modules/.bin/tsx src/test_diagnostics.ts"
+    "test": "./node_modules/.bin/tsx src/test_pcb.ts && ./node_modules/.bin/tsx src/test_entity_switching.ts && ./node_modules/.bin/tsx src/test_enroll_enlist.ts && ./node_modules/.bin/tsx src/test_diagnostics.ts && ./node_modules/.bin/tsx src/test_supabase.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@react-pdf/renderer": "^4.5.1",
+    "@supabase/supabase-js": "^2.110.8",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
