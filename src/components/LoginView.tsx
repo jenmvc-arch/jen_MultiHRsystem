@@ -34,7 +34,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       if (matchedUser) {
         onLoginSuccess(matchedUser);
       } else {
-        setError('Invalid email address or password. Please try again.');
+        setError('Invalid username or password. Please try again.');
       }
     };
 
@@ -65,7 +65,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             role: matched.role
           });
         } else {
-          setError('Invalid email address or password. Please try again.');
+          setError('Invalid username or password. Please try again.');
         }
       } catch (err) {
         console.error('[Google Sheets Auth Error] Falling back to local accounts:', err);
@@ -133,21 +133,21 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-5 text-left">
             
-            {/* Email Input Group */}
+            {/* Username Input Group */}
             <div>
               <label className="block text-sm font-semibold text-[#333333] mb-1.5">
-                Email Address
+                Username
               </label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
                   <Mail className="w-5 h-5" />
                 </span>
                 <input
-                  type="email"
+                  type="text"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your corporate email"
+                  placeholder="Enter your username"
                   className="w-full h-12 pl-11 pr-4 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] placeholder-gray-400 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all"
                 />
               </div>
