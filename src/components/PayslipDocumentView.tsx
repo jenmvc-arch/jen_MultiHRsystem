@@ -314,28 +314,11 @@ export default function PayslipDocumentView({
             <div className="flex items-start gap-4 py-2">
               {/* Logo container */}
               <div className="w-44 h-16 rounded bg-white flex items-center justify-center overflow-hidden shrink-0 relative">
-                {employeeEntity?.logoUrl && !employeeEntity.logoUrl.includes('placeholder') && !employeeEntity.logoUrl.includes('example.com') ? (
-                  <>
-                    <img 
-                      src={getDirectLogoUrl(employeeEntity.logoUrl)} 
-                      alt={employeeEntity.name} 
-                      className="w-full h-full object-contain" 
-                      referrerPolicy="no-referrer" 
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        const fallback = e.currentTarget.nextElementSibling as HTMLElement;
-                        if (fallback) fallback.style.display = 'flex';
-                      }}
-                    />
-                    <div style={{ display: 'none' }} className="w-full h-full flex items-center justify-center bg-[#F2E8D8] text-[#A32626] font-bold text-2xl uppercase">
-                      {employeeEntity.name.substring(0, 2)}
-                    </div>
-                  </>
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-[#F2E8D8] text-[#A32626] font-bold text-2xl uppercase">
-                    {employeeEntity?.name ? employeeEntity.name.substring(0, 2) : 'RP'}
-                  </div>
-                )}
+                <img 
+                  src="/redpoint-logo.png" 
+                  alt="RedPoint Logo" 
+                  className="w-full h-full object-contain" 
+                />
               </div>
 
               {/* Company Details */}

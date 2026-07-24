@@ -504,16 +504,10 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
         {/* Option A Branding Header */}
         <View style={styles.headerContainer}>
           <View style={styles.logoContainer}>
-            {entity?.logoUrl && !entity.logoUrl.includes('placeholder') && !entity.logoUrl.includes('example.com') ? (
               <Image 
-                src={getDirectLogoUrl(entity.logoUrl)} 
+                src="/redpoint-logo.png" 
                 style={styles.logoImage} 
               />
-            ) : (
-              <View style={styles.logoPlaceholder}>
-                <Text style={styles.logoText}>{entity?.name ? entity.name.substring(0, 2).toUpperCase() : 'RP'}</Text>
-              </View>
-            )}
             <View>
               <Text style={styles.companyName}>{entity?.name || 'Red Point Sdn Bhd'}</Text>
               {entity?.registrationNumber && (
