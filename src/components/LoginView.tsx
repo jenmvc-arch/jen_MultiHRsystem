@@ -118,7 +118,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         <div className="w-full bg-[#FFFFFF] rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-[#E5E5E5] p-8">
           
           <div className="text-center mb-8">
-            <h2 className="text-xl font-bold text-[#333333]">Staff Sign In</h2>
+            <h2 className="text-xl font-bold text-[#333333]">Welcome! Please sign in</h2>
             <p className="text-sm text-gray-500 mt-1">Internal HRMS Portal</p>
           </div>
 
