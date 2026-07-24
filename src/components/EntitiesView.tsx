@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { CorporateEntity, Employee } from '../types';
 import { googleSheetsClient, isGoogleConfigured } from '../lib/googleSheetsClient';
+import { supabaseClient, isSupabaseConfigured } from '../lib/supabaseClient';
 import { getDirectLogoUrl, compressLogoFile } from '../data';
 import { FilePond, registerPlugin } from 'react-filepond';
 import 'filepond/dist/filepond.min.css';
@@ -71,13 +72,31 @@ export default function EntitiesView({
 
   const uploadLogoFile = async (file: File) => {
     setIsUploadingLogo(true);
-    if (!isGoogleConfigured) {
+    
+    if (isSupabaseConfigured) {
       try {
-        const compressedUrl = await compressLogoFile(file);
-        setFormLogoUrl(compressedUrl);
-        onShowNotification('Logo Processed', 'The company logo has been compressed and stored locally.');
+        onShowNotification('Uploading Logo', 'Uploading company logo to Supabase...');
+        const publicUrl = await supabaseClient.uploadFile(file);
+        setFormLogoUrl(publicUrl);
+        onShowNotification('Logo Uploaded', 'Company logo uploaded successfully.');
       } catch (err: any) {
-        onShowNotification('Compression Error', 'Could not process logo image.');
+        console.error('[Supabase Logo Upload] Error:', err);
+        onShowNotification('Upload Error', `Could not upload logo: ${err.message}`);
+      } finally {
+        setIsUploadingLogo(false);
+      }
+      return;
+    }
+
+    if (isGoogleConfigured) {
+      try {
+        onShowNotification('Uploading Logo', 'Uploading company logo to Google Drive...');
+        const publicUrl = await googleSheetsClient.uploadFile(file, editingEntity?.googleScriptUrl || undefined);
+        setFormLogoUrl(publicUrl);
+        onShowNotification('Logo Uploaded', 'Company logo uploaded successfully.');
+      } catch (err: any) {
+        console.error('[Google Drive Logo Upload] Error:', err);
+        onShowNotification('Upload Error', `Could not upload logo: ${err.message}`);
       } finally {
         setIsUploadingLogo(false);
       }
@@ -85,13 +104,11 @@ export default function EntitiesView({
     }
 
     try {
-      onShowNotification('Uploading Logo', 'Uploading company logo to Google Drive...');
-      const publicUrl = await googleSheetsClient.uploadFile(file, editingEntity?.googleScriptUrl || undefined);
-      setFormLogoUrl(publicUrl);
-      onShowNotification('Logo Uploaded', 'Company logo uploaded successfully.');
+      const compressedUrl = await compressLogoFile(file);
+      setFormLogoUrl(compressedUrl);
+      onShowNotification('Logo Processed', 'The company logo has been compressed and stored locally.');
     } catch (err: any) {
-      console.error('[Google Drive Logo Upload] Error:', err);
-      onShowNotification('Upload Error', `Could not upload logo: ${err.message}`);
+      onShowNotification('Compression Error', 'Could not process logo image.');
     } finally {
       setIsUploadingLogo(false);
     }
