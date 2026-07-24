@@ -136,16 +136,23 @@ export default function App() {
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [currentUserNickname, setCurrentUserNickname] = useState<string | null>(null);
 
   const handleLoginSuccess = (user: UserAccount) => {
     localStorage.setItem('hr-nexus-auth', 'true');
     localStorage.setItem('hr-nexus-user-email', user.email);
     localStorage.setItem('hr-nexus-user-name', user.name);
     localStorage.setItem('hr-nexus-user-role', user.role);
+    if (user.nickname) {
+      localStorage.setItem('hr-nexus-user-nickname', user.nickname);
+    } else {
+      localStorage.removeItem('hr-nexus-user-nickname');
+    }
     setIsAuthenticated(true);
     setCurrentUserEmail(user.email);
     setCurrentUserName(user.name);
     setCurrentUserRole(user.role);
+    setCurrentUserNickname(user.nickname || null);
 
     // Read and restore preferences
     const prefJson = localStorage.getItem(`user_entity_preferences_${user.email}`);
@@ -481,6 +488,7 @@ export default function App() {
       setCurrentUserEmail(email);
       setCurrentUserName(localStorage.getItem('hr-nexus-user-name'));
       setCurrentUserRole(localStorage.getItem('hr-nexus-user-role'));
+      setCurrentUserNickname(localStorage.getItem('hr-nexus-user-nickname'));
 
       // Preferences are managed strictly by active_corporate_entity_id state
     }
@@ -1663,6 +1671,48 @@ export default function App() {
 
   if (!isAuthenticated) {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  if (isAuthenticated && !currentUserNickname) {
+    return (
+      <div className="min-h-screen bg-neutral-900 flex items-center justify-center p-4 font-sans relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-64 h-full pointer-events-none opacity-20">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full text-[#A32626] fill-current">
+            <path d="M0,0 C50,30 20,70 0,100 Z" />
+          </svg>
+        </div>
+        <div className="absolute bottom-0 right-0 w-96 h-64 pointer-events-none opacity-20">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full text-[#A32626] fill-current">
+            <path d="M100,100 C60,80 80,30 100,0 Z" />
+          </svg>
+        </div>
+        <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm text-center relative z-10 border border-[#E5E5E5]">
+          <h2 className="text-xl font-bold text-[#333333] mb-2">Welcome, {currentUserName}!</h2>
+          <p className="text-sm text-gray-500 mb-6">Please choose a nickname for your profile before continuing.</p>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const form = e.target as HTMLFormElement;
+            const input = form.elements.namedItem('nickname') as HTMLInputElement;
+            const val = input.value.trim();
+            if (val) {
+              localStorage.setItem('hr-nexus-user-nickname', val);
+              setCurrentUserNickname(val);
+            }
+          }}>
+            <input 
+              name="nickname"
+              type="text" 
+              required
+              placeholder="e.g. Jenny"
+              className="w-full h-12 px-4 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] mb-4 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all text-center"
+            />
+            <button type="submit" className="w-full h-12 bg-[#A32626] hover:bg-[#8F1F1F] text-white font-semibold rounded-xl shadow-md shadow-[#A32626]/20 transition-all focus:outline-none focus:ring-2 focus:ring-[#A32626]/50">
+              Save Nickname
+            </button>
+          </form>
+        </div>
+      </div>
+    );
   }
 
   return (

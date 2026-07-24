@@ -2172,6 +2172,7 @@ export interface UserAccount {
   password: string;
   name: string;
   role: string;
+  nickname?: string;
 }
 
 export const MOCK_USERS: UserAccount[] = [
@@ -2180,6 +2181,24 @@ export const MOCK_USERS: UserAccount[] = [
     password: 'admin123#',
     name: 'Jenny Law',
     role: 'Global Administrator'
+  },
+  {
+    email: 'hr.redpoint',
+    password: 'admin123#',
+    name: 'HR Admin',
+    role: 'Global Administrator'
+  },
+  {
+    email: 'manager.redpoint',
+    password: 'manager123#',
+    name: 'Regional Manager',
+    role: 'Regional Manager'
+  },
+  {
+    email: 'leader.redpoint',
+    password: 'leader123#',
+    name: 'Team Leader',
+    role: 'Leader'
   }
 ];
 
