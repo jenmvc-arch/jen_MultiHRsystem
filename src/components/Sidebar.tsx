@@ -73,28 +73,11 @@ export default function Sidebar({
       <div className="px-5 mb-6 flex flex-col items-center gap-3 bg-white/5 p-4 rounded-lg mx-3 border border-white/10" style={{ viewTransitionName: 'sidebar-brand' } as any}>
         {/* Company Logo */}
         <div className="w-36 h-12 rounded bg-white flex items-center justify-center overflow-hidden shrink-0 shadow-sm border border-white/10 relative" style={{ viewTransitionName: 'corporate-logo' } as any}>
-          {activeEntity?.logoUrl && !activeEntity.logoUrl.includes('placeholder') && !activeEntity.logoUrl.includes('example.com') ? (
-            <>
-              <img 
-                 src={getDirectLogoUrl(activeEntity.logoUrl)} 
-                alt={activeEntity.name} 
-                className="w-full h-full object-contain p-1.5" 
-                referrerPolicy="no-referrer" 
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                  const fallback = e.currentTarget.nextElementSibling as HTMLElement;
-                  if (fallback) fallback.style.display = 'flex';
-                }}
-              />
-              <div style={{ display: 'none' }} className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-xs uppercase">
-                {activeEntity.name.substring(0, 2)}
-              </div>
-            </>
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-xs uppercase">
-              {activeEntity?.name ? activeEntity.name.substring(0, 2) : 'HR'}
-            </div>
-          )}
+          <img 
+            src="/redpoint-logo.png" 
+            alt="RedPoint Logo" 
+            className="w-full h-full object-contain p-1.5" 
+          />
         </div>
 
       </div>

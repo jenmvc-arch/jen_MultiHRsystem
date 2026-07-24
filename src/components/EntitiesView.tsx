@@ -56,7 +56,6 @@ export default function EntitiesView({
   const [formSocsoRef, setFormSocsoRef] = useState('');
   const [formCurrency, setFormCurrency] = useState('RM');
   const [formIsActive, setFormIsActive] = useState<boolean>(true);
-  const [formLogoUrl, setFormLogoUrl] = useState('');
   const [formTheme, setFormTheme] = useState<'theme1' | 'theme2' | 'theme3'>('theme1');
   const [formGoogleScriptUrl, setFormGoogleScriptUrl] = useState('');
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -70,49 +69,7 @@ export default function EntitiesView({
     }
   }, [entities, selectedEntityId]);
 
-  const uploadLogoFile = async (file: File) => {
-    setIsUploadingLogo(true);
-    
-    if (isSupabaseConfigured) {
-      try {
-        onShowNotification('Uploading Logo', 'Uploading company logo to Supabase...');
-        const publicUrl = await supabaseClient.uploadFile(file);
-        setFormLogoUrl(publicUrl);
-        onShowNotification('Logo Uploaded', 'Company logo uploaded successfully.');
-      } catch (err: any) {
-        console.error('[Supabase Logo Upload] Error:', err);
-        onShowNotification('Upload Error', `Could not upload logo: ${err.message}`);
-      } finally {
-        setIsUploadingLogo(false);
-      }
-      return;
-    }
 
-    if (isGoogleConfigured) {
-      try {
-        onShowNotification('Uploading Logo', 'Uploading company logo to Google Drive...');
-        const publicUrl = await googleSheetsClient.uploadFile(file, editingEntity?.googleScriptUrl || undefined);
-        setFormLogoUrl(publicUrl);
-        onShowNotification('Logo Uploaded', 'Company logo uploaded successfully.');
-      } catch (err: any) {
-        console.error('[Google Drive Logo Upload] Error:', err);
-        onShowNotification('Upload Error', `Could not upload logo: ${err.message}`);
-      } finally {
-        setIsUploadingLogo(false);
-      }
-      return;
-    }
-
-    try {
-      const compressedUrl = await compressLogoFile(file);
-      setFormLogoUrl(compressedUrl);
-      onShowNotification('Logo Processed', 'The company logo has been compressed and stored locally.');
-    } catch (err: any) {
-      onShowNotification('Compression Error', 'Could not process logo image.');
-    } finally {
-      setIsUploadingLogo(false);
-    }
-  };
 
   const handleOpenAddModal = () => {
     setFormName('');
@@ -123,7 +80,6 @@ export default function EntitiesView({
     setFormSocsoRef('');
     setFormCurrency('RM');
     setFormIsActive(true);
-    setFormLogoUrl('');
     setFormTheme('theme1');
     setFormGoogleScriptUrl('');
     setIsAddModalOpen(true);
@@ -139,7 +95,6 @@ export default function EntitiesView({
     setFormSocsoRef(String(entity.socsoReferenceNo || ''));
     setFormCurrency(entity.currency);
     setFormIsActive(entity.isActive);
-    setFormLogoUrl(entity.logoUrl || '');
     setFormTheme(entity.theme || 'theme1');
     setFormGoogleScriptUrl(entity.googleScriptUrl || '');
     setIsEditModalOpen(true);
@@ -164,7 +119,7 @@ export default function EntitiesView({
       socsoReferenceNo: String(formSocsoRef).trim() || 'Pending SOCSO registration',
       currency: formCurrency,
       isActive: formIsActive,
-      logoUrl: formLogoUrl || undefined,
+      logoUrl: '/redpoint-logo.png',
       theme: formTheme,
       googleScriptUrl: formGoogleScriptUrl || undefined
     };
@@ -195,7 +150,7 @@ export default function EntitiesView({
       socsoReferenceNo: String(formSocsoRef).trim(),
       currency: formCurrency,
       isActive: formIsActive,
-      logoUrl: formLogoUrl || undefined,
+      logoUrl: '/redpoint-logo.png',
       theme: formTheme,
       googleScriptUrl: formGoogleScriptUrl
     };
@@ -511,50 +466,6 @@ export default function EntitiesView({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Logo Upload */}
-                <div>
-                  <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Company Logo</label>
-                  <div className="space-y-2">
-                    <FilePond
-                      allowImagePreview={true}
-                      maxFiles={1}
-                      acceptedFileTypes={['image/*']}
-                      labelIdle='Drag & Drop logo or <span class="filepond--label-action">Browse</span>'
-                      onupdatefiles={(fileItems) => {
-                        const file = fileItems[0]?.file;
-                        if (file) {
-                          uploadLogoFile(file as File);
-                        }
-                      }}
-                    />
-                    <div className="flex gap-2 items-center">
-                      <span className="text-[10px] text-on-surface-variant font-semibold">Or paste logo URL:</span>
-                      <input
-                        type="text"
-                        placeholder="https://example.com/logo.png"
-                        value={formLogoUrl}
-                        onChange={(e) => setFormLogoUrl(e.target.value)}
-                        className="flex-1 bg-white border border-neutral-border rounded p-1 text-xs focus:ring-1 focus:ring-primary outline-none"
-                      />
-                    </div>
-                    {formLogoUrl && !formLogoUrl.includes('placeholder') && !formLogoUrl.includes('example.com') && (
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] text-on-surface-variant">Preview:</span>
-                        <div className="w-8 h-8 rounded border overflow-hidden bg-white relative">
-                          <img 
-                            src={getDirectLogoUrl(formLogoUrl)} 
-                            alt="Logo preview" 
-                            className="w-full h-full object-cover" 
-                            referrerPolicy="no-referrer" 
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
 
                 {/* Theme Selection */}
                 <div>
@@ -734,50 +645,6 @@ export default function EntitiesView({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Logo Upload */}
-                <div>
-                  <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Company Logo</label>
-                  <div className="space-y-2">
-                    <FilePond
-                      allowImagePreview={true}
-                      maxFiles={1}
-                      acceptedFileTypes={['image/*']}
-                      labelIdle='Drag & Drop logo or <span class="filepond--label-action">Browse</span>'
-                      onupdatefiles={(fileItems) => {
-                        const file = fileItems[0]?.file;
-                        if (file) {
-                          uploadLogoFile(file as File);
-                        }
-                      }}
-                    />
-                    <div className="flex gap-2 items-center">
-                      <span className="text-[10px] text-on-surface-variant font-semibold">Or paste logo URL:</span>
-                      <input
-                        type="text"
-                        placeholder="https://example.com/logo.png"
-                        value={formLogoUrl}
-                        onChange={(e) => setFormLogoUrl(e.target.value)}
-                        className="flex-1 bg-white border border-neutral-border rounded p-1 text-xs focus:ring-1 focus:ring-primary outline-none"
-                      />
-                    </div>
-                    {formLogoUrl && !formLogoUrl.includes('placeholder') && !formLogoUrl.includes('example.com') && (
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] text-on-surface-variant">Preview:</span>
-                        <div className="w-8 h-8 rounded border overflow-hidden bg-white relative">
-                          <img 
-                            src={getDirectLogoUrl(formLogoUrl)} 
-                            alt="Logo preview" 
-                            className="w-full h-full object-cover" 
-                            referrerPolicy="no-referrer" 
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
 
                 {/* Theme Selection */}
                 <div>
