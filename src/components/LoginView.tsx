@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Mail, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { MOCK_USERS, UserAccount } from '../data';
 import { googleSheetsClient, isGoogleConfigured } from '../lib/googleSheetsClient';
+import { supabaseClient, isSupabaseConfigured } from '../lib/supabaseClient';
 
 interface LoginViewProps {
   onLoginSuccess: (user: UserAccount) => void;
@@ -38,9 +39,9 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       }
     };
 
-    if (isGoogleConfigured) {
+    const performRemoteAuth = async (client: any, sourceName: string) => {
       try {
-        const payload = await googleSheetsClient.loadData();
+        const payload = await client.loadData();
         const users = payload.users || [];
         let matched = users.find(
           (u: any) => String(u.email).toLowerCase() === email.trim().toLowerCase() && String(u.password) === password
@@ -68,9 +69,15 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           setError('Invalid username or password. Please try again.');
         }
       } catch (err) {
-        console.error('[Google Sheets Auth Error] Falling back to local accounts:', err);
+        console.error(`[${sourceName} Auth Error] Falling back to local accounts:`, err);
         performLocalFallback();
       }
+    };
+
+    if (isSupabaseConfigured) {
+      await performRemoteAuth(supabaseClient, 'Supabase');
+    } else if (isGoogleConfigured) {
+      await performRemoteAuth(googleSheetsClient, 'Google Sheets');
     } else {
       // Simulate network authentication delay
       setTimeout(() => {
