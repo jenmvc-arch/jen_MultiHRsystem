@@ -20,6 +20,9 @@ import {
   Trash,
   Calendar,
   ShieldAlert,
+  ShieldCheck,
+  CheckSquare,
+  XSquare,
   Phone,
   Globe,
   Heart,
@@ -386,6 +389,7 @@ export default function EmployeeDirectoryView({
   const [editEnableLindung24, setEditEnableLindung24] = useState<boolean>(false);
   const [editTaxNumber, setEditTaxNumber] = useState('');
   const [editEpfNumber, setEditEpfNumber] = useState('');
+  const [isEditingStatutorySettings, setIsEditingStatutorySettings] = useState(false);
 
   // Temp dependant fields for detail editor
   const [detailTempDepName, setDetailTempDepName] = useState('');
@@ -620,6 +624,30 @@ export default function EmployeeDirectoryView({
     setEditTaxNumber(selectedEmployee.taxNumber || '');
     setEditEpfNumber(selectedEmployee.epfNumber || '');
     setIsEditingFamily(true);
+  };
+
+  const handleStartEditStatutorySettings = () => {
+    if (!selectedEmployee) return;
+    setEditOptInEpf(selectedEmployee.optInEpf !== false);
+    setEditOptInSocso(selectedEmployee.optInSocso !== false);
+    setEditOptInEis(selectedEmployee.optInEis !== false);
+    setEditOptInPcb(selectedEmployee.optInPcb !== false);
+    setEditEnableLindung24(!!selectedEmployee.enableLindung24);
+    setIsEditingStatutorySettings(true);
+  };
+
+  const handleSaveStatutorySettings = () => {
+    if (!selectedEmployee) return;
+    const updates: Partial<Employee> = {
+      optInEpf: editOptInEpf,
+      optInSocso: editOptInSocso,
+      optInEis: editOptInEis,
+      optInPcb: editOptInPcb,
+      enableLindung24: editEnableLindung24,
+    };
+    onUpdateEmployee(selectedEmployee.id, updates);
+    setIsEditingStatutorySettings(false);
+    onShowNotification('Statutory Settings Saved', 'Statutory opt-in/opt-out preferences updated and saved to Supabase.');
   };
 
   const handleSaveFamilyUpdates = () => {
@@ -2823,6 +2851,202 @@ export default function EmployeeDirectoryView({
                   </div>
                 )}
 
+                {/* Category: Statutory Settings */}
+                <div className="p-4 border border-neutral-border rounded-lg bg-surface-container-low/35 space-y-4">
+                  <div className="flex justify-between items-center border-b border-neutral-border/50 pb-2">
+                    <h4 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-primary" /> Statutory Settings
+                    </h4>
+                    {!isEditingStatutorySettings ? (
+                      <button 
+                        type="button"
+                        onClick={handleStartEditStatutorySettings}
+                        className="text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors text-xs font-semibold cursor-pointer border border-primary/20"
+                      >
+                        Edit Statutory Settings
+                      </button>
+                    ) : (
+                      <div className="flex gap-1.5">
+                        <button 
+                          type="button"
+                          onClick={() => setIsEditingStatutorySettings(false)}
+                          className="text-on-surface-variant hover:bg-surface-container px-2 py-1 rounded transition-colors text-xs font-semibold cursor-pointer border border-neutral-border"
+                        >
+                          Cancel
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={handleSaveStatutorySettings}
+                          className="bg-primary text-white hover:bg-primary-container px-2 py-1 rounded transition-colors text-xs font-semibold cursor-pointer"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {!isEditingStatutorySettings ? (
+                    /* VIEW MODE: Tick box for opt in, Cross box for opt out */
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      <div className="flex justify-between items-center bg-white p-2 rounded border border-neutral-border/50 shadow-xs">
+                        <span className="font-semibold text-on-surface">KWSP (EPF)</span>
+                        <div>
+                          {selectedEmployee.optInEpf !== false ? (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              <CheckSquare className="w-3.5 h-3.5 text-emerald-600" /> Opt In (✓)
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                              <XSquare className="w-3.5 h-3.5 text-rose-600" /> Opt Out (✕)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between items-center bg-white p-2 rounded border border-neutral-border/50 shadow-xs">
+                        <span className="font-semibold text-on-surface">PERKESO (SOCSO)</span>
+                        <div>
+                          {selectedEmployee.optInSocso !== false ? (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              <CheckSquare className="w-3.5 h-3.5 text-emerald-600" /> Opt In (✓)
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                              <XSquare className="w-3.5 h-3.5 text-rose-600" /> Opt Out (✕)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between items-center bg-white p-2 rounded border border-neutral-border/50 shadow-xs">
+                        <span className="font-semibold text-on-surface">EIS</span>
+                        <div>
+                          {selectedEmployee.optInEis !== false ? (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              <CheckSquare className="w-3.5 h-3.5 text-emerald-600" /> Opt In (✓)
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                              <XSquare className="w-3.5 h-3.5 text-rose-600" /> Opt Out (✕)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between items-center bg-white p-2 rounded border border-neutral-border/50 shadow-xs">
+                        <span className="font-semibold text-on-surface">Income Tax (PCB)</span>
+                        <div>
+                          {selectedEmployee.optInPcb !== false ? (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              <CheckSquare className="w-3.5 h-3.5 text-emerald-600" /> Opt In (✓)
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                              <XSquare className="w-3.5 h-3.5 text-rose-600" /> Opt Out (✕)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="col-span-1 sm:col-span-2 flex justify-between items-center bg-white p-2 rounded border border-neutral-border/50 shadow-xs">
+                        <span className="font-semibold text-on-surface">PERKESO - Lindung 24 Jam</span>
+                        <div>
+                          {selectedEmployee.enableLindung24 ? (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              <CheckSquare className="w-3.5 h-3.5 text-emerald-600" /> Opt In (✓)
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                              <XSquare className="w-3.5 h-3.5 text-rose-600" /> Opt Out (✕)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* EDIT MODE: Tick boxes */
+                    <div className="space-y-3 text-xs bg-white p-3 border border-neutral-border rounded-md">
+                      <span className="text-[11px] font-bold text-primary block mb-2">Tick for Opt In (✓), untick for Opt Out (✕):</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label className="flex items-center gap-2 p-2 border rounded hover:bg-neutral-50 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={editOptInEpf}
+                            onChange={(e) => setEditOptInEpf(e.target.checked)}
+                            className="w-4 h-4 text-primary rounded accent-primary cursor-pointer"
+                          />
+                          <span className="font-semibold text-on-surface">KWSP (EPF)</span>
+                          {editOptInEpf ? (
+                            <span className="text-[10px] text-emerald-700 font-bold ml-auto">(✓ Opt In)</span>
+                          ) : (
+                            <span className="text-[10px] text-rose-700 font-bold ml-auto">(✕ Opt Out)</span>
+                          )}
+                        </label>
+
+                        <label className="flex items-center gap-2 p-2 border rounded hover:bg-neutral-50 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={editOptInSocso}
+                            onChange={(e) => setEditOptInSocso(e.target.checked)}
+                            className="w-4 h-4 text-primary rounded accent-primary cursor-pointer"
+                          />
+                          <span className="font-semibold text-on-surface">PERKESO (SOCSO)</span>
+                          {editOptInSocso ? (
+                            <span className="text-[10px] text-emerald-700 font-bold ml-auto">(✓ Opt In)</span>
+                          ) : (
+                            <span className="text-[10px] text-rose-700 font-bold ml-auto">(✕ Opt Out)</span>
+                          )}
+                        </label>
+
+                        <label className="flex items-center gap-2 p-2 border rounded hover:bg-neutral-50 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={editOptInEis}
+                            onChange={(e) => setEditOptInEis(e.target.checked)}
+                            className="w-4 h-4 text-primary rounded accent-primary cursor-pointer"
+                          />
+                          <span className="font-semibold text-on-surface">EIS</span>
+                          {editOptInEis ? (
+                            <span className="text-[10px] text-emerald-700 font-bold ml-auto">(✓ Opt In)</span>
+                          ) : (
+                            <span className="text-[10px] text-rose-700 font-bold ml-auto">(✕ Opt Out)</span>
+                          )}
+                        </label>
+
+                        <label className="flex items-center gap-2 p-2 border rounded hover:bg-neutral-50 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={editOptInPcb}
+                            onChange={(e) => setEditOptInPcb(e.target.checked)}
+                            className="w-4 h-4 text-primary rounded accent-primary cursor-pointer"
+                          />
+                          <span className="font-semibold text-on-surface">Income Tax (PCB)</span>
+                          {editOptInPcb ? (
+                            <span className="text-[10px] text-emerald-700 font-bold ml-auto">(✓ Opt In)</span>
+                          ) : (
+                            <span className="text-[10px] text-rose-700 font-bold ml-auto">(✕ Opt Out)</span>
+                          )}
+                        </label>
+
+                        <label className="sm:col-span-2 flex items-center gap-2 p-2 border rounded hover:bg-neutral-50 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={editEnableLindung24}
+                            onChange={(e) => setEditEnableLindung24(e.target.checked)}
+                            className="w-4 h-4 text-primary rounded accent-primary cursor-pointer"
+                          />
+                          <span className="font-semibold text-on-surface">PERKESO - Lindung 24 Jam</span>
+                          {editEnableLindung24 ? (
+                            <span className="text-[10px] text-emerald-700 font-bold ml-auto">(✓ Opt In)</span>
+                          ) : (
+                            <span className="text-[10px] text-rose-700 font-bold ml-auto">(✕ Opt Out)</span>
+                          )}
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Spouse & Dependants Registry Card */}
                 <div className="p-4 border border-neutral-border rounded-lg bg-surface-container-low/35 space-y-4">
                   <div className="flex justify-between items-center border-b border-neutral-border/50 pb-2">
@@ -2866,53 +3090,6 @@ export default function EmployeeDirectoryView({
                         <span className="font-bold text-on-surface bg-surface-container-high px-2 py-0.5 rounded flex items-center gap-1">
                           <Heart className="w-3 h-3 text-primary fill-primary" /> {selectedEmployee.maritalStatus || 'Single'}
                         </span>
-                      </div>
-
-                      {/* Statutory Opt In / Out Status List */}
-                      <div className="border border-primary/20 bg-primary/5 p-3 rounded-md space-y-2">
-                        <span className="text-primary font-bold text-[10px] uppercase tracking-wider block">Statutory Contributions (Opt In / Out)</span>
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div className="flex justify-between items-center bg-white p-1.5 rounded border border-neutral-border/50">
-                            <span className="font-semibold text-on-surface-variant">KWSP (EPF)</span>
-                            <span className={`font-bold px-1.5 py-0.5 rounded text-[9px] uppercase font-mono ${
-                              selectedEmployee.optInEpf !== false ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'
-                            }`}>
-                              {selectedEmployee.optInEpf !== false ? 'Opted In' : 'Opted Out'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center bg-white p-1.5 rounded border border-neutral-border/50">
-                            <span className="font-semibold text-on-surface-variant">PERKESO (SOCSO)</span>
-                            <span className={`font-bold px-1.5 py-0.5 rounded text-[9px] uppercase font-mono ${
-                              selectedEmployee.optInSocso !== false ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'
-                            }`}>
-                              {selectedEmployee.optInSocso !== false ? 'Opted In' : 'Opted Out'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center bg-white p-1.5 rounded border border-neutral-border/50">
-                            <span className="font-semibold text-on-surface-variant">EIS</span>
-                            <span className={`font-bold px-1.5 py-0.5 rounded text-[9px] uppercase font-mono ${
-                              selectedEmployee.optInEis !== false ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'
-                            }`}>
-                              {selectedEmployee.optInEis !== false ? 'Opted In' : 'Opted Out'}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center bg-white p-1.5 rounded border border-neutral-border/50">
-                            <span className="font-semibold text-on-surface-variant">Income Tax (PCB)</span>
-                            <span className={`font-bold px-1.5 py-0.5 rounded text-[9px] uppercase font-mono ${
-                              selectedEmployee.optInPcb !== false ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'
-                            }`}>
-                              {selectedEmployee.optInPcb !== false ? 'Opted In' : 'Opted Out'}
-                            </span>
-                          </div>
-                          <div className="col-span-2 flex justify-between items-center bg-white p-1.5 rounded border border-neutral-border/50">
-                            <span className="font-semibold text-on-surface-variant">PERKESO - Lindung 24 Jam</span>
-                            <span className={`font-bold px-1.5 py-0.5 rounded text-[9px] uppercase font-mono ${
-                              selectedEmployee.enableLindung24 ? 'bg-green-100 text-green-700' : 'bg-zinc-100 text-zinc-600'
-                            }`}>
-                              {selectedEmployee.enableLindung24 ? 'Opted In' : 'Opted Out'}
-                            </span>
-                          </div>
-                        </div>
                       </div>
 
                       {/* Married -> Spouse Details */}

@@ -1378,6 +1378,11 @@ export default function App() {
         if (updates.educationCertUrl !== undefined) payloadUpdates.educationCertUrl = updates.educationCertUrl;
         if (updates.skbbkEmployee !== undefined) payloadUpdates.skbbkEmployee = updates.skbbkEmployee;
         if (updates.skbbkEmployer !== undefined) payloadUpdates.skbbkEmployer = updates.skbbkEmployer;
+        if (updates.optInEpf !== undefined) payloadUpdates.optInEpf = updates.optInEpf;
+        if (updates.optInSocso !== undefined) payloadUpdates.optInSocso = updates.optInSocso;
+        if (updates.optInEis !== undefined) payloadUpdates.optInEis = updates.optInEis;
+        if (updates.optInPcb !== undefined) payloadUpdates.optInPcb = updates.optInPcb;
+        if (updates.enableLindung24 !== undefined) payloadUpdates.enableLindung24 = updates.enableLindung24;
         if (updates.careerHistory !== undefined) payloadUpdates.careerHistory = JSON.stringify(updates.careerHistory);
         if (updates.dependants !== undefined) payloadUpdates.dependants = JSON.stringify(updates.dependants);
         if (updates.historicalPayrollRecords !== undefined) payloadUpdates.historicalPayrollRecords = JSON.stringify(updates.historicalPayrollRecords);
