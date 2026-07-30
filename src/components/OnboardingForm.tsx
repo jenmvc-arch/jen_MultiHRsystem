@@ -182,7 +182,7 @@ export default function OnboardingForm({
   const [designation, setDesignation] = useState('');
   const [department, setDepartment] = useState('Engineering');
   const [entityId, setEntityId] = useState('');
-  const [employmentType, setEmploymentType] = useState<'Probationary' | 'Confirmation' | 'Part Time' | 'Internship' | 'Independent Contractor / Freelance'>('Probationary');
+  const [employmentType, setEmploymentType] = useState<Employee['employmentType']>('Permanent');
   const [dateOfJoined, setDateOfJoined] = useState(getGmt8DateString());
   const [basicSalary, setBasicSalary] = useState('');
 
@@ -649,11 +649,12 @@ export default function OnboardingForm({
                   onChange={(e) => setEmploymentType(e.target.value as any)}
                   className="w-full bg-white border border-neutral-border rounded p-2 focus:ring-1 focus:ring-primary outline-none"
                 >
-                  <option value="Probationary">Probationary</option>
-                  <option value="Confirmation">Confirmation</option>
-                  <option value="Part Time">Part Time</option>
                   <option value="Internship">Internship</option>
-                  <option value="Independent Contractor / Freelance">Contractor</option>
+                  <option value="Probation">Probation</option>
+                  <option value="Permanent">Permanent</option>
+                  <option value="Fixed Term Contract">Fixed Term Contract</option>
+                  <option value="Independent Contractor">Independent Contractor</option>
+                  <option value="Part Time">Part Time</option>
                 </select>
               </div>
             </div>

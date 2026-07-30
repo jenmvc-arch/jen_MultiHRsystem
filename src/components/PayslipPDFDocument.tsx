@@ -404,8 +404,13 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
   };
 
   const isEligible = 
+    employee.employmentType === 'Probation' || 
     employee.employmentType === 'Probationary' || 
+    employee.employmentType === 'Permanent' || 
     employee.employmentType === 'Confirmation' || 
+    employee.employmentType === 'Fixed Term Contract' ||
+    employee.employmentType === 'Part Time' ||
+    (employee.employmentType === 'Independent Contractor' && employee.eligibleForStatutory === 'Yes') ||
     (employee.employmentType === 'Independent Contractor / Freelance' && employee.eligibleForStatutory === 'Yes');
 
   // Complete allowances list matching the HTML Payslip preview

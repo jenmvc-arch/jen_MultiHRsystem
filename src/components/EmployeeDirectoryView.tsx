@@ -152,6 +152,10 @@ export default function EmployeeDirectoryView({
   const [formEpfNumber, setFormEpfNumber] = useState('');
   const [formEmploymentType, setFormEmploymentType] = useState<Employee['employmentType']>('Confirmation');
   const [formEligibleForStatutory, setFormEligibleForStatutory] = useState<'Yes' | 'No'>('Yes');
+  const [formOptInEpf, setFormOptInEpf] = useState<boolean>(true);
+  const [formOptInSocso, setFormOptInSocso] = useState<boolean>(true);
+  const [formOptInEis, setFormOptInEis] = useState<boolean>(true);
+  const [formOptInPcb, setFormOptInPcb] = useState<boolean>(true);
   const [formEnableLindung24, setFormEnableLindung24] = useState<boolean>(false);
   const [formMaritalStatus, setFormMaritalStatus] = useState<'Single' | 'Married' | 'Divorced' | 'Widowed'>('Single');
   const [formEmergencyContactName, setFormEmergencyContactName] = useState('');
@@ -375,6 +379,10 @@ export default function EmployeeDirectoryView({
   const [editHasDependants, setEditHasDependants] = useState<'Yes' | 'No'>('No');
   const [editDependants, setEditDependants] = useState<Dependant[]>([]);
   const [editEligibleForStatutory, setEditEligibleForStatutory] = useState<'Yes' | 'No'>('Yes');
+  const [editOptInEpf, setEditOptInEpf] = useState<boolean>(true);
+  const [editOptInSocso, setEditOptInSocso] = useState<boolean>(true);
+  const [editOptInEis, setEditOptInEis] = useState<boolean>(true);
+  const [editOptInPcb, setEditOptInPcb] = useState<boolean>(true);
   const [editEnableLindung24, setEditEnableLindung24] = useState<boolean>(false);
   const [editTaxNumber, setEditTaxNumber] = useState('');
   const [editEpfNumber, setEditEpfNumber] = useState('');
@@ -604,6 +612,10 @@ export default function EmployeeDirectoryView({
     }
     setEditDependants(initialDependants);
     setEditEligibleForStatutory(selectedEmployee.eligibleForStatutory || 'No');
+    setEditOptInEpf(selectedEmployee.optInEpf !== false);
+    setEditOptInSocso(selectedEmployee.optInSocso !== false);
+    setEditOptInEis(selectedEmployee.optInEis !== false);
+    setEditOptInPcb(selectedEmployee.optInPcb !== false);
     setEditEnableLindung24(!!selectedEmployee.enableLindung24);
     setEditTaxNumber(selectedEmployee.taxNumber || '');
     setEditEpfNumber(selectedEmployee.epfNumber || '');
@@ -632,6 +644,10 @@ export default function EmployeeDirectoryView({
       taxNumber: editTaxNumber,
       epfNumber: editEpfNumber,
       eligibleForStatutory: editEligibleForStatutory,
+      optInEpf: editOptInEpf,
+      optInSocso: editOptInSocso,
+      optInEis: editOptInEis,
+      optInPcb: editOptInPcb,
       enableLindung24: editEnableLindung24,
       hasDependants: finalHasDependants,
       dependants: finalHasDependants === 'Yes' ? finalDependants : []
@@ -664,7 +680,7 @@ export default function EmployeeDirectoryView({
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName || !formEmail || !formDesignation || !formAccount || !formNricPassport || !formContactNumber) {
+    if (!formName || !formEmail || !formDesignation || !formAccount || !formNricPassport) {
       onShowNotification('Form Error', 'Please fill in all required corporate and NRIC/Passport fields.');
       return;
     }
@@ -747,7 +763,11 @@ export default function EmployeeDirectoryView({
       epfNumber: formEpfNumber || `EP-${Math.floor(100000000 + Math.random() * 900000000)}`,
       employmentType: formEmploymentType,
       maritalStatus: formMaritalStatus,
-      eligibleForStatutory: formEmploymentType === 'Independent Contractor / Freelance' ? formEligibleForStatutory : 'No',
+      eligibleForStatutory: (formEmploymentType === 'Independent Contractor' || formEmploymentType === 'Independent Contractor / Freelance') ? formEligibleForStatutory : 'No',
+      optInEpf: formOptInEpf,
+      optInSocso: formOptInSocso,
+      optInEis: formOptInEis,
+      optInPcb: formOptInPcb,
       enableLindung24: formEnableLindung24,
       emergencyContactName: formEmergencyContactName || 'N/A',
       emergencyContactRelation: formEmergencyContactRelation || 'Spouse',
@@ -2621,11 +2641,12 @@ export default function EmployeeDirectoryView({
                             onChange={(e) => setEditEmploymentType(e.target.value)}
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           >
-                            <option value="Probationary">Probationary</option>
-                            <option value="Confirmation">Confirmation</option>
-                            <option value="Part Time">Part Time</option>
                             <option value="Internship">Internship</option>
-                            <option value="Independent Contractor / Freelance">Independent Contractor / Freelance</option>
+                            <option value="Probation">Probation</option>
+                            <option value="Permanent">Permanent</option>
+                            <option value="Fixed Term Contract">Fixed Term Contract</option>
+                            <option value="Independent Contractor">Independent Contractor</option>
+                            <option value="Part Time">Part Time</option>
                           </select>
                         </div>
                         <div>
@@ -2847,26 +2868,51 @@ export default function EmployeeDirectoryView({
                         </span>
                       </div>
 
-                      {/* For Independent Contractor or freelancer, display statutory eligibility */}
-                      {selectedEmployee.employmentType === 'Independent Contractor / Freelance' && (
-                        <div className="flex justify-between items-center border border-primary/20 bg-primary/5 p-2 rounded-md">
-                          <span className="text-primary font-bold text-[10px] uppercase tracking-wider">Eligible for Statutory Payment?</span>
-                          <span className={`font-bold px-2 py-0.5 rounded text-[10px] uppercase font-mono ${
-                            selectedEmployee.eligibleForStatutory === 'Yes' ? 'bg-green-100 text-green-700' : 'bg-zinc-100 text-zinc-600'
-                          }`}>
-                            {selectedEmployee.eligibleForStatutory === 'Yes' ? 'Yes (Y)' : 'No (N)'}
-                          </span>
+                      {/* Statutory Opt In / Out Status List */}
+                      <div className="border border-primary/20 bg-primary/5 p-3 rounded-md space-y-2">
+                        <span className="text-primary font-bold text-[10px] uppercase tracking-wider block">Statutory Contributions (Opt In / Out)</span>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="flex justify-between items-center bg-white p-1.5 rounded border border-neutral-border/50">
+                            <span className="font-semibold text-on-surface-variant">KWSP (EPF)</span>
+                            <span className={`font-bold px-1.5 py-0.5 rounded text-[9px] uppercase font-mono ${
+                              selectedEmployee.optInEpf !== false ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'
+                            }`}>
+                              {selectedEmployee.optInEpf !== false ? 'Opted In' : 'Opted Out'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center bg-white p-1.5 rounded border border-neutral-border/50">
+                            <span className="font-semibold text-on-surface-variant">PERKESO (SOCSO)</span>
+                            <span className={`font-bold px-1.5 py-0.5 rounded text-[9px] uppercase font-mono ${
+                              selectedEmployee.optInSocso !== false ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'
+                            }`}>
+                              {selectedEmployee.optInSocso !== false ? 'Opted In' : 'Opted Out'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center bg-white p-1.5 rounded border border-neutral-border/50">
+                            <span className="font-semibold text-on-surface-variant">EIS</span>
+                            <span className={`font-bold px-1.5 py-0.5 rounded text-[9px] uppercase font-mono ${
+                              selectedEmployee.optInEis !== false ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'
+                            }`}>
+                              {selectedEmployee.optInEis !== false ? 'Opted In' : 'Opted Out'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center bg-white p-1.5 rounded border border-neutral-border/50">
+                            <span className="font-semibold text-on-surface-variant">Income Tax (PCB)</span>
+                            <span className={`font-bold px-1.5 py-0.5 rounded text-[9px] uppercase font-mono ${
+                              selectedEmployee.optInPcb !== false ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700'
+                            }`}>
+                              {selectedEmployee.optInPcb !== false ? 'Opted In' : 'Opted Out'}
+                            </span>
+                          </div>
+                          <div className="col-span-2 flex justify-between items-center bg-white p-1.5 rounded border border-neutral-border/50">
+                            <span className="font-semibold text-on-surface-variant">PERKESO - Lindung 24 Jam</span>
+                            <span className={`font-bold px-1.5 py-0.5 rounded text-[9px] uppercase font-mono ${
+                              selectedEmployee.enableLindung24 ? 'bg-green-100 text-green-700' : 'bg-zinc-100 text-zinc-600'
+                            }`}>
+                              {selectedEmployee.enableLindung24 ? 'Opted In' : 'Opted Out'}
+                            </span>
+                          </div>
                         </div>
-                      )}
-
-                      {/* PERKESO - Lindung 24 Jam status */}
-                      <div className="flex justify-between items-center border border-primary/20 bg-primary/5 p-2 rounded-md">
-                        <span className="text-primary font-bold text-[10px] uppercase tracking-wider">PERKESO - Lindung 24 Jam</span>
-                        <span className={`font-bold px-2 py-0.5 rounded text-[10px] uppercase font-mono ${
-                          selectedEmployee.enableLindung24 ? 'bg-green-100 text-green-700' : 'bg-zinc-100 text-zinc-600'
-                        }`}>
-                          {selectedEmployee.enableLindung24 ? 'Opted In' : 'Opted Out'}
-                        </span>
                       </div>
 
                       {/* Married -> Spouse Details */}
@@ -3010,36 +3056,66 @@ export default function EmployeeDirectoryView({
                         </div>
                       </div>
 
-                      {/* For Independent Contractor or freelancer, enable for section > Eligible for Statutory Payment ? (Y / N) */}
-                      {selectedEmployee.employmentType === 'Independent Contractor / Freelance' && (
-                        <div className="p-3 bg-primary/5 border border-primary/25 rounded-md space-y-1 animate-in slide-in-from-top-1 duration-150">
-                          <label className="block text-[10px] font-bold text-primary uppercase mb-1">
-                            Eligible for Statutory Payment ? (Y / N)
-                          </label>
-                          <select
-                            value={editEligibleForStatutory}
-                            onChange={(e) => setEditEligibleForStatutory(e.target.value as 'Yes' | 'No')}
-                            className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
-                          >
-                            <option value="Yes">Yes (Y)</option>
-                            <option value="No">No (N)</option>
-                          </select>
+                      {/* Statutory Opt-In / Out controls */}
+                      <div className="p-3 bg-primary/5 border border-primary/25 rounded-md space-y-2">
+                        <span className="text-[10px] font-bold text-primary uppercase tracking-wider block">Statutory Opt In / Opt Out Options</span>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">KWSP (EPF)</label>
+                            <select
+                              value={editOptInEpf ? 'Yes' : 'No'}
+                              onChange={(e) => setEditOptInEpf(e.target.value === 'Yes')}
+                              className="w-full bg-white border border-neutral-border rounded p-1 text-xs outline-none font-semibold"
+                            >
+                              <option value="Yes">Opt In (Active)</option>
+                              <option value="No">Opt Out (Inactive)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">PERKESO (SOCSO)</label>
+                            <select
+                              value={editOptInSocso ? 'Yes' : 'No'}
+                              onChange={(e) => setEditOptInSocso(e.target.value === 'Yes')}
+                              className="w-full bg-white border border-neutral-border rounded p-1 text-xs outline-none font-semibold"
+                            >
+                              <option value="Yes">Opt In (Active)</option>
+                              <option value="No">Opt Out (Inactive)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">EIS</label>
+                            <select
+                              value={editOptInEis ? 'Yes' : 'No'}
+                              onChange={(e) => setEditOptInEis(e.target.value === 'Yes')}
+                              className="w-full bg-white border border-neutral-border rounded p-1 text-xs outline-none font-semibold"
+                            >
+                              <option value="Yes">Opt In (Active)</option>
+                              <option value="No">Opt Out (Inactive)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Income Tax (PCB)</label>
+                            <select
+                              value={editOptInPcb ? 'Yes' : 'No'}
+                              onChange={(e) => setEditOptInPcb(e.target.value === 'Yes')}
+                              className="w-full bg-white border border-neutral-border rounded p-1 text-xs outline-none font-semibold"
+                            >
+                              <option value="Yes">Opt In (Active)</option>
+                              <option value="No">Opt Out (Inactive)</option>
+                            </select>
+                          </div>
+                          <div className="col-span-2">
+                            <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">PERKESO - Lindung 24 Jam</label>
+                            <select
+                              value={editEnableLindung24 ? 'Yes' : 'No'}
+                              onChange={(e) => setEditEnableLindung24(e.target.value === 'Yes')}
+                              className="w-full bg-white border border-neutral-border rounded p-1 text-xs outline-none font-semibold"
+                            >
+                              <option value="No">Opt Out (Inactive)</option>
+                              <option value="Yes">Opt In (Active)</option>
+                            </select>
+                          </div>
                         </div>
-                      )}
-
-                      {/* PERKESO - Lindung 24 Jam Opt-In / Out toggle */}
-                      <div className="p-3 bg-primary/5 border border-primary/25 rounded-md space-y-1">
-                        <label className="block text-[10px] font-bold text-primary uppercase mb-1">
-                          PERKESO - Lindung 24 Jam (Opt In / Out)
-                        </label>
-                        <select
-                          value={editEnableLindung24 ? 'Yes' : 'No'}
-                          onChange={(e) => setEditEnableLindung24(e.target.value === 'Yes')}
-                          className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
-                        >
-                          <option value="No">Opt Out (Inactive)</option>
-                          <option value="Yes">Opt In (Active)</option>
-                        </select>
                       </div>
 
                       {/* Married -> Spouse Details */}
@@ -3427,11 +3503,12 @@ export default function EmployeeDirectoryView({
                           required
                         >
                           <option value="">-- Choose Employment Type --</option>
-                          <option value="Probationary">Probationary</option>
-                          <option value="Confirmation">Confirmation</option>
-                          <option value="Part Time">Part Time</option>
                           <option value="Internship">Internship</option>
-                          <option value="Independent Contractor / Freelance">Independent Contractor / Freelance</option>
+                          <option value="Probation">Probation</option>
+                          <option value="Permanent">Permanent</option>
+                          <option value="Fixed Term Contract">Fixed Term Contract</option>
+                          <option value="Independent Contractor">Independent Contractor</option>
+                          <option value="Part Time">Part Time</option>
                         </select>
                       )}
 
@@ -3925,11 +4002,12 @@ export default function EmployeeDirectoryView({
                       value={formEmploymentType} onChange={(e) => setFormEmploymentType(e.target.value as any)}
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold text-primary"
                     >
-                      <option value="Probationary">Probationary</option>
-                      <option value="Confirmation">Confirmation</option>
-                      <option value="Part Time">Part Time</option>
                       <option value="Internship">Internship</option>
-                      <option value="Independent Contractor / Freelance">Independent Contractor / Freelance</option>
+                      <option value="Probation">Probation</option>
+                      <option value="Permanent">Permanent</option>
+                      <option value="Fixed Term Contract">Fixed Term Contract</option>
+                      <option value="Independent Contractor">Independent Contractor</option>
+                      <option value="Part Time">Part Time</option>
                     </select>
                   </div>
                   <div>
@@ -3976,16 +4054,65 @@ export default function EmployeeDirectoryView({
                   </div>
                 )}
 
-                <div className="p-3 bg-primary/5 border border-primary/25 rounded-md">
-                  <label className="block text-xs font-bold text-primary uppercase mb-1">PERKESO - Lindung 24 Jam (Opt In / Out)</label>
-                  <select
-                    value={formEnableLindung24 ? 'Yes' : 'No'}
-                    onChange={(e) => setFormEnableLindung24(e.target.value === 'Yes')}
-                    className="w-full bg-white border border-primary/40 rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
-                  >
-                    <option value="No">Opt Out (Inactive)</option>
-                    <option value="Yes">Opt In (Active)</option>
-                  </select>
+                <div className="p-3 bg-primary/5 border border-primary/25 rounded-md space-y-2">
+                  <span className="text-xs font-bold text-primary uppercase tracking-wider block">Statutory Opt In / Opt Out Defaults</span>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <label className="block text-[10px] font-bold text-primary uppercase mb-1">KWSP (EPF)</label>
+                      <select
+                        value={formOptInEpf ? 'Yes' : 'No'}
+                        onChange={(e) => setFormOptInEpf(e.target.value === 'Yes')}
+                        className="w-full bg-white border border-primary/40 rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
+                      >
+                        <option value="Yes">Opt In (Active)</option>
+                        <option value="No">Opt Out (Inactive)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-primary uppercase mb-1">PERKESO (SOCSO)</label>
+                      <select
+                        value={formOptInSocso ? 'Yes' : 'No'}
+                        onChange={(e) => setFormOptInSocso(e.target.value === 'Yes')}
+                        className="w-full bg-white border border-primary/40 rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
+                      >
+                        <option value="Yes">Opt In (Active)</option>
+                        <option value="No">Opt Out (Inactive)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-primary uppercase mb-1">EIS</label>
+                      <select
+                        value={formOptInEis ? 'Yes' : 'No'}
+                        onChange={(e) => setFormOptInEis(e.target.value === 'Yes')}
+                        className="w-full bg-white border border-primary/40 rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
+                      >
+                        <option value="Yes">Opt In (Active)</option>
+                        <option value="No">Opt Out (Inactive)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-primary uppercase mb-1">Income Tax (PCB)</label>
+                      <select
+                        value={formOptInPcb ? 'Yes' : 'No'}
+                        onChange={(e) => setFormOptInPcb(e.target.value === 'Yes')}
+                        className="w-full bg-white border border-primary/40 rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
+                      >
+                        <option value="Yes">Opt In (Active)</option>
+                        <option value="No">Opt Out (Inactive)</option>
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-bold text-primary uppercase mb-1">PERKESO - Lindung 24 Jam</label>
+                      <select
+                        value={formEnableLindung24 ? 'Yes' : 'No'}
+                        onChange={(e) => setFormEnableLindung24(e.target.value === 'Yes')}
+                        className="w-full bg-white border border-primary/40 rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
+                      >
+                        <option value="No">Opt Out (Inactive)</option>
+                        <option value="Yes">Opt In (Active)</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 {/* SECTION 3: Financials & Bank */}

@@ -1879,16 +1879,26 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
     compensationVal;
 
   const isEligible = 
+    mergedEmployee.employmentType === 'Probation' || 
     mergedEmployee.employmentType === 'Probationary' || 
+    mergedEmployee.employmentType === 'Permanent' || 
     mergedEmployee.employmentType === 'Confirmation' || 
+    mergedEmployee.employmentType === 'Fixed Term Contract' ||
+    mergedEmployee.employmentType === 'Part Time' ||
+    (mergedEmployee.employmentType === 'Independent Contractor' && mergedEmployee.eligibleForStatutory === 'Yes') ||
     (mergedEmployee.employmentType === 'Independent Contractor / Freelance' && mergedEmployee.eligibleForStatutory === 'Yes');
+
+  const optInEpf = mergedEmployee.optInEpf !== false;
+  const optInSocso = mergedEmployee.optInSocso !== false;
+  const optInEis = mergedEmployee.optInEis !== false;
+  const optInPcb = mergedEmployee.optInPcb !== false;
 
   const epfRateEmp = mergedEmployee.epfRateEmployee || 11;
   const epfRateEmployerCalculated = basicSalary <= 5000 ? 13 : 12;
   const epfRateEmployer = mergedEmployee.epfRateEmployer || epfRateEmployerCalculated;
 
-  const epfEmployeeValue = isEligible ? Math.round((basicSalary * epfRateEmp) / 100) : 0;
-  const epfEmployerValue = isEligible ? Math.round((basicSalary * epfRateEmployer) / 100) : 0;
+  const epfEmployeeValue = (isEligible && optInEpf) ? Math.round((basicSalary * epfRateEmp) / 100) : 0;
+  const epfEmployerValue = (isEligible && optInEpf) ? Math.round((basicSalary * epfRateEmployer) / 100) : 0;
 
   // Custom Deductions
   const unpaidLeaveVal = mergedEmployee.unpaidLeave || 0;
@@ -1925,18 +1935,18 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
     payrollItems
   });
 
-  const socsoEmployeeVal = isEligible ? socsoRes.employeeInvalidity : 0;
-  const socsoEmployerVal = isEligible ? socsoRes.employerSocsoTotal : 0;
-  const isLindung24OptedIn = mergedEmployee.enableLindung24 === true;
+  const socsoEmployeeVal = (isEligible && optInSocso) ? socsoRes.employeeInvalidity : 0;
+  const socsoEmployerVal = (isEligible && optInSocso) ? socsoRes.employerSocsoTotal : 0;
+  const isLindung24OptedIn = optInSocso && (mergedEmployee.enableLindung24 === true);
   const skbbkEmpVal = (isEligible && isLindung24OptedIn) ? socsoRes.employeeLindung24 : 0;
   const skbbkEmplyrVal = 0; // LINDUNG 24 is employee-borne
-  const eisEmployeeVal = isEligible ? stat2026.eisEmployee : 0;
-  const eisEmployerVal = isEligible ? stat2026.eisEmployer : 0;
+  const eisEmployeeVal = (isEligible && optInEis) ? stat2026.eisEmployee : 0;
+  const eisEmployerVal = (isEligible && optInEis) ? stat2026.eisEmployer : 0;
 
   // Dynamic 2026 PCB calculation if basicSalary changed from original or if taxPcb is missing
   const baseEmp = INITIAL_EMPLOYEES.find(e => e.id === mergedEmployee.id);
   const isSalaryChanged = baseEmp ? baseEmp.basicSalary !== basicSalary : false;
-  const taxPcbVal = isEligible 
+  const taxPcbVal = (isEligible && optInPcb) 
     ? (isSalaryChanged || mergedEmployee.taxPcb === undefined
        ? calculatePcb2026(basicSalary, mergedEmployee.maritalStatus || 'Single', mergedEmployee.spouseIsWorking || 'No', mergedEmployee.dependants?.length || 0, epfEmployeeValue, actMonth)
        : mergedEmployee.taxPcb)

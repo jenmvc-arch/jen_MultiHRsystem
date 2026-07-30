@@ -142,8 +142,13 @@ export default function PayslipDocumentView({
   const payPeriodString = `01 ${monthNameForPeriod} ${payYear} – ${lastDayForPeriod} ${monthNameForPeriod} ${payYear}`;
 
   const isEligible = 
+    activeEmployee.employmentType === 'Probation' || 
     activeEmployee.employmentType === 'Probationary' || 
+    activeEmployee.employmentType === 'Permanent' || 
     activeEmployee.employmentType === 'Confirmation' || 
+    activeEmployee.employmentType === 'Fixed Term Contract' ||
+    activeEmployee.employmentType === 'Part Time' ||
+    (activeEmployee.employmentType === 'Independent Contractor' && activeEmployee.eligibleForStatutory === 'Yes') ||
     (activeEmployee.employmentType === 'Independent Contractor / Freelance' && activeEmployee.eligibleForStatutory === 'Yes');
 
   const isLindung24Enabled = activeEmployee.enableLindung24 === true;

@@ -175,8 +175,13 @@ export default function PayrollView({
   }
 
   const isEligible = 
+    activeEmployee.employmentType === 'Probation' || 
     activeEmployee.employmentType === 'Probationary' || 
+    activeEmployee.employmentType === 'Permanent' || 
     activeEmployee.employmentType === 'Confirmation' || 
+    activeEmployee.employmentType === 'Fixed Term Contract' ||
+    activeEmployee.employmentType === 'Part Time' ||
+    (activeEmployee.employmentType === 'Independent Contractor' && activeEmployee.eligibleForStatutory === 'Yes') ||
     (activeEmployee.employmentType === 'Independent Contractor / Freelance' && activeEmployee.eligibleForStatutory === 'Yes');
 
   const epfEmployee = isEligible ? Math.round((tempBasic * (activeEmployee.epfRateEmployee || 11)) / 100) : 0;
@@ -244,8 +249,13 @@ export default function PayrollView({
     const epfRateEmployerCalculated = tempBasic <= 5000 ? 13 : 12;
     const epfRateEmployer = activeEmployee.epfRateEmployer || epfRateEmployerCalculated;
 
-    const epfEmployeeVal = isEligible ? Math.round((tempBasic * epfRateEmp) / 100) : 0;
-    const epfEmployerVal = isEligible ? Math.round((tempBasic * epfRateEmployer) / 100) : 0;
+    const optInEpf = activeEmployee.optInEpf !== false;
+    const optInSocso = activeEmployee.optInSocso !== false;
+    const optInEis = activeEmployee.optInEis !== false;
+    const optInPcb = activeEmployee.optInPcb !== false;
+
+    const epfEmployeeVal = (isEligible && optInEpf) ? Math.round((tempBasic * epfRateEmp) / 100) : 0;
+    const epfEmployerVal = (isEligible && optInEpf) ? Math.round((tempBasic * epfRateEmployer) / 100) : 0;
 
     const payrollItemsForSocso = [
       { code: 'basic_salary', amount: tempBasic },
@@ -270,11 +280,11 @@ export default function PayrollView({
     });
 
     const stat2026 = getStatutoryDeductions2026(tempBasic);
-    const isLindung24Enabled = activeEmployee.enableLindung24 === true;
-    const socsoEmployee = isEligible ? socsoRes.employeeSocsoTotal : 0;
-    const socsoEmployer = isEligible ? socsoRes.employerSocsoTotal : 0;
-    const eisEmployee = isEligible ? stat2026.eisEmployee : 0;
-    const eisEmployer = isEligible ? stat2026.eisEmployer : 0;
+    const isLindung24Enabled = optInSocso && (activeEmployee.enableLindung24 === true);
+    const socsoEmployee = (isEligible && optInSocso) ? socsoRes.employeeSocsoTotal : 0;
+    const socsoEmployer = (isEligible && optInSocso) ? socsoRes.employerSocsoTotal : 0;
+    const eisEmployee = (isEligible && optInEis) ? stat2026.eisEmployee : 0;
+    const eisEmployer = (isEligible && optInEis) ? stat2026.eisEmployer : 0;
 
     const totalAllowances = (hasAllowances ? allowanceGen : 0) + 
                             (hasAllowances ? allowanceTrans : 0) + 

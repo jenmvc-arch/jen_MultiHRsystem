@@ -120,17 +120,25 @@ export interface Employee {
   // New employee specific compliance fields
   nricPassport: string;
   nationality: string;
-  contactNumber: string;
+  contactNumber?: string;
   taxNumber: string;
   epfNumber?: string;
   employmentType:
+    | 'Internship'
+    | 'Probation'
+    | 'Permanent'
+    | 'Fixed Term Contract'
+    | 'Independent Contractor'
+    | 'Part Time'
     | 'Probationary'
     | 'Confirmation'
-    | 'Part Time'
-    | 'Internship'
     | 'Independent Contractor / Freelance';
   maritalStatus: 'Single' | 'Married' | 'Divorced' | 'Widowed';
   eligibleForStatutory?: 'Yes' | 'No';
+  optInEpf?: boolean;
+  optInSocso?: boolean;
+  optInEis?: boolean;
+  optInPcb?: boolean;
   enableLindung24?: boolean;
   emergencyContactName: string;
   emergencyContactRelation: string;
