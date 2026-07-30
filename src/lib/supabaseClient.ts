@@ -26,11 +26,21 @@ export interface SupabaseDataPayload {
   payroll_records_2026?: any[];
 }
 
+function extractMissingColumn(errorMessage: string): string | null {
+  if (!errorMessage) return null;
+  const match1 = errorMessage.match(/Could not find the '([^']+)' column/i);
+  if (match1) return match1[1];
+  const match2 = errorMessage.match(/column "([^"]+)" of relation/i);
+  if (match2) return match2[1];
+  return null;
+}
+
 // Helper to convert camelCase objects to snake_case for PostgreSQL columns
 function toSnakeCase(obj: any): any {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
   const result: any = {};
   for (const key of Object.keys(obj)) {
+    if (obj[key] === undefined) continue;
     const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
     let val = obj[key];
     
@@ -98,8 +108,27 @@ export const supabaseClient = {
   async insert(table: string, data: any): Promise<any> {
     if (!supabase) return data;
     console.log('[Supabase Client] Inserting record into:', table, data);
-    const snakeData = toSnakeCase(data);
-    const { data: inserted, error } = await supabase.from(table).insert(snakeData).select().single();
+    let snakeData = toSnakeCase(data);
+    let inserted: any = null;
+    let error: any = null;
+    let retries = 0;
+
+    while (retries < 5) {
+      const res = await supabase.from(table).insert(snakeData).select().single();
+      error = res.error;
+      inserted = res.data;
+      if (error) {
+        const missingCol = extractMissingColumn(error.message || '');
+        if (missingCol && snakeData[missingCol] !== undefined) {
+          console.warn(`[Supabase Client] Removing missing column '${missingCol}' and retrying insert...`);
+          delete snakeData[missingCol];
+          retries++;
+          continue;
+        }
+      }
+      break;
+    }
+
     if (error) {
       console.error('[Supabase Insert Error]', error);
       throw new Error(`Supabase Insert Failed: ${error.message}`);
@@ -111,17 +140,56 @@ export const supabaseClient = {
     if (!supabase) return data;
     console.log('[Supabase Client] Updating record in:', table, { idColumn, idValue, data });
     const snakeColumn = idColumn.replace(/([A-Z])/g, '_$1').toLowerCase();
-    const snakeData = toSnakeCase(data);
-    const { data: updated, error } = await supabase
-      .from(table)
-      .update(snakeData)
-      .eq(snakeColumn, idValue)
-      .select();
+    let snakeData = toSnakeCase(data);
+
+    let updated: any[] | null = null;
+    let error: any = null;
+    let retries = 0;
+
+    while (retries < 5) {
+      const res = await supabase
+        .from(table)
+        .update(snakeData)
+        .eq(snakeColumn, idValue)
+        .select();
+      error = res.error;
+      updated = res.data;
+
+      if (error) {
+        const missingCol = extractMissingColumn(error.message || '');
+        if (missingCol && snakeData[missingCol] !== undefined) {
+          console.warn(`[Supabase Client] Removing missing column '${missingCol}' and retrying update...`);
+          delete snakeData[missingCol];
+          retries++;
+          continue;
+        }
+      }
+      break;
+    }
+
+    // Fallback: If 0 rows were updated by primary idColumn on 'employees', attempt matching by email if available
+    if (!error && (!updated || updated.length === 0) && table === 'employees') {
+      const emailValue = data.email || (idValue.includes('@') ? idValue : null);
+      if (emailValue) {
+        console.log('[Supabase Client] Retrying employee update by email:', emailValue);
+        const retryRes = await supabase
+          .from(table)
+          .update(snakeData)
+          .eq('email', emailValue)
+          .select();
+        if (retryRes.data && retryRes.data.length > 0) {
+          updated = retryRes.data;
+        } else if (retryRes.error) {
+          error = retryRes.error;
+        }
+      }
+    }
 
     if (error) {
       console.error('[Supabase Update Error]', error);
       throw new Error(`Supabase Update Failed: ${error.message}`);
     }
+
     return updated && updated[0] ? toCamelCase(updated[0]) : data;
   },
 
@@ -143,8 +211,27 @@ export const supabaseClient = {
   async upsert(table: string, data: any): Promise<any> {
     if (!supabase) return data;
     console.log('[Supabase Client] Upserting record in:', table, data);
-    const snakeData = toSnakeCase(data);
-    const { data: upserted, error } = await supabase.from(table).upsert(snakeData).select().single();
+    let snakeData = toSnakeCase(data);
+    let upserted: any = null;
+    let error: any = null;
+    let retries = 0;
+
+    while (retries < 5) {
+      const res = await supabase.from(table).upsert(snakeData).select().single();
+      error = res.error;
+      upserted = res.data;
+      if (error) {
+        const missingCol = extractMissingColumn(error.message || '');
+        if (missingCol && snakeData[missingCol] !== undefined) {
+          console.warn(`[Supabase Client] Removing missing column '${missingCol}' and retrying upsert...`);
+          delete snakeData[missingCol];
+          retries++;
+          continue;
+        }
+      }
+      break;
+    }
+
     if (error) {
       console.error('[Supabase Upsert Error]', error);
       throw new Error(`Supabase Upsert Failed: ${error.message}`);

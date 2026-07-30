@@ -1463,7 +1463,13 @@ export default function App() {
       }
     });
 
-    if (isGoogleConfigured) {
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseClient.upsert('performances', updatedPerf);
+      } catch (err: any) {
+        console.error('[Supabase Save Performance] Failed:', err);
+      }
+    } else if (isGoogleConfigured) {
       try {
         const emp = employees.find(e => e.email?.toLowerCase() === updatedPerf.employeeId?.toLowerCase());
         const scriptUrl = getScriptUrlForEntity(emp?.entityId);
@@ -1494,7 +1500,14 @@ export default function App() {
   const handleAddEntity = async (newEntity: CorporateEntity) => {
     setEntities(prev => [...prev, newEntity]);
 
-    if (isGoogleConfigured) {
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseClient.insert('corporate_entities', newEntity);
+      } catch (err: any) {
+        console.error('[Supabase Entity Insert] Failed:', err);
+        triggerNotification('Sync Failed', `Could not save new entity to Supabase: ${err.message || err}`, 'info');
+      }
+    } else if (isGoogleConfigured) {
       try {
         await googleSheetsClient.insert('corporate_entities', {
           name: newEntity.name,
@@ -1529,7 +1542,14 @@ export default function App() {
       return ent;
     }));
 
-    if (isGoogleConfigured) {
+    if (isSupabaseConfigured) {
+      try {
+        await supabaseClient.update('corporate_entities', id, updates, 'id');
+      } catch (err: any) {
+        console.error('[Supabase Entity Update] Failed:', err);
+        triggerNotification('Sync Failed', `Could not update entity in Supabase: ${err.message || err}`, 'info');
+      }
+    } else if (isGoogleConfigured) {
       try {
         const payloadUpdates: any = {};
         if (updates.name !== undefined) payloadUpdates.name = updates.name;
