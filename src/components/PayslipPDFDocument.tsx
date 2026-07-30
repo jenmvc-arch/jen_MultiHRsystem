@@ -448,7 +448,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
     payrollItems: payrollItemsForSocso
   });
 
-  const isLindung24Enabled = entity?.enableLindung24 ?? false;
+  const isLindung24Enabled = employee?.enableLindung24 === true;
   const skbbkEmployeeVal = isEligible && isLindung24Enabled ? socsoRes.employeeLindung24 : 0;
 
   // Deductions breakdown

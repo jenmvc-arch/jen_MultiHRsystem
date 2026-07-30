@@ -146,7 +146,7 @@ export default function PayslipDocumentView({
     activeEmployee.employmentType === 'Confirmation' || 
     (activeEmployee.employmentType === 'Independent Contractor / Freelance' && activeEmployee.eligibleForStatutory === 'Yes');
 
-  const isLindung24Enabled = employeeEntity?.enableLindung24 ?? false;
+  const isLindung24Enabled = activeEmployee.enableLindung24 === true;
 
   const skbbkEmployeeVal = activeEmployee.skbbkEmployee !== undefined ? activeEmployee.skbbkEmployee : (isEligible && isLindung24Enabled ? parseFloat(((activeEmployee.socsoEmployee || 0) * 0.25).toFixed(2)) : 0);
   const skbbkEmployerVal = activeEmployee.skbbkEmployer !== undefined ? activeEmployee.skbbkEmployer : (isEligible && isLindung24Enabled ? parseFloat(((activeEmployee.socsoEmployer || 0) * 0.25).toFixed(2)) : 0);

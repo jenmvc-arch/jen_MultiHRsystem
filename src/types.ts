@@ -131,6 +131,7 @@ export interface Employee {
     | 'Independent Contractor / Freelance';
   maritalStatus: 'Single' | 'Married' | 'Divorced' | 'Widowed';
   eligibleForStatutory?: 'Yes' | 'No';
+  enableLindung24?: boolean;
   emergencyContactName: string;
   emergencyContactRelation: string;
   emergencyContactPhone: string;

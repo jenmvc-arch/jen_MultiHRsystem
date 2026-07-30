@@ -1927,7 +1927,8 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
 
   const socsoEmployeeVal = isEligible ? socsoRes.employeeInvalidity : 0;
   const socsoEmployerVal = isEligible ? socsoRes.employerSocsoTotal : 0;
-  const skbbkEmpVal = isEligible ? socsoRes.employeeLindung24 : 0;
+  const isLindung24OptedIn = mergedEmployee.enableLindung24 === true;
+  const skbbkEmpVal = (isEligible && isLindung24OptedIn) ? socsoRes.employeeLindung24 : 0;
   const skbbkEmplyrVal = 0; // LINDUNG 24 is employee-borne
   const eisEmployeeVal = isEligible ? stat2026.eisEmployee : 0;
   const eisEmployerVal = isEligible ? stat2026.eisEmployer : 0;

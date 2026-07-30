@@ -152,6 +152,7 @@ export default function EmployeeDirectoryView({
   const [formEpfNumber, setFormEpfNumber] = useState('');
   const [formEmploymentType, setFormEmploymentType] = useState<Employee['employmentType']>('Confirmation');
   const [formEligibleForStatutory, setFormEligibleForStatutory] = useState<'Yes' | 'No'>('Yes');
+  const [formEnableLindung24, setFormEnableLindung24] = useState<boolean>(false);
   const [formMaritalStatus, setFormMaritalStatus] = useState<'Single' | 'Married' | 'Divorced' | 'Widowed'>('Single');
   const [formEmergencyContactName, setFormEmergencyContactName] = useState('');
   const [formEmergencyContactRelation, setFormEmergencyContactRelation] = useState('');
@@ -374,6 +375,7 @@ export default function EmployeeDirectoryView({
   const [editHasDependants, setEditHasDependants] = useState<'Yes' | 'No'>('No');
   const [editDependants, setEditDependants] = useState<Dependant[]>([]);
   const [editEligibleForStatutory, setEditEligibleForStatutory] = useState<'Yes' | 'No'>('Yes');
+  const [editEnableLindung24, setEditEnableLindung24] = useState<boolean>(false);
   const [editTaxNumber, setEditTaxNumber] = useState('');
   const [editEpfNumber, setEditEpfNumber] = useState('');
 
@@ -602,6 +604,7 @@ export default function EmployeeDirectoryView({
     }
     setEditDependants(initialDependants);
     setEditEligibleForStatutory(selectedEmployee.eligibleForStatutory || 'No');
+    setEditEnableLindung24(!!selectedEmployee.enableLindung24);
     setEditTaxNumber(selectedEmployee.taxNumber || '');
     setEditEpfNumber(selectedEmployee.epfNumber || '');
     setIsEditingFamily(true);
@@ -629,6 +632,7 @@ export default function EmployeeDirectoryView({
       taxNumber: editTaxNumber,
       epfNumber: editEpfNumber,
       eligibleForStatutory: editEligibleForStatutory,
+      enableLindung24: editEnableLindung24,
       hasDependants: finalHasDependants,
       dependants: finalHasDependants === 'Yes' ? finalDependants : []
     };
@@ -744,6 +748,7 @@ export default function EmployeeDirectoryView({
       employmentType: formEmploymentType,
       maritalStatus: formMaritalStatus,
       eligibleForStatutory: formEmploymentType === 'Independent Contractor / Freelance' ? formEligibleForStatutory : 'No',
+      enableLindung24: formEnableLindung24,
       emergencyContactName: formEmergencyContactName || 'N/A',
       emergencyContactRelation: formEmergencyContactRelation || 'Spouse',
       emergencyContactPhone: formEmergencyContactPhone || 'N/A',
@@ -868,7 +873,7 @@ export default function EmployeeDirectoryView({
       previewEmployee.employmentType === 'Confirmation' || 
       (previewEmployee.employmentType === 'Independent Contractor / Freelance' && previewEmployee.eligibleForStatutory === 'Yes');
 
-    const isLindung24Enabled = activeSub?.enableLindung24 ?? false;
+    const isLindung24Enabled = previewEmployee.enableLindung24 === true;
     const skbbkEmployeeVal = previewEmployee.skbbkEmployee !== undefined ? previewEmployee.skbbkEmployee : (isEligible && isLindung24Enabled ? parseFloat(((previewEmployee.socsoEmployee || 0) * 0.25).toFixed(2)) : 0);
     const skbbkEmployerVal = previewEmployee.skbbkEmployer !== undefined ? previewEmployee.skbbkEmployer : (isEligible && isLindung24Enabled ? parseFloat(((previewEmployee.socsoEmployer || 0) * 0.25).toFixed(2)) : 0);
 
@@ -2854,6 +2859,16 @@ export default function EmployeeDirectoryView({
                         </div>
                       )}
 
+                      {/* PERKESO - Lindung 24 Jam status */}
+                      <div className="flex justify-between items-center border border-primary/20 bg-primary/5 p-2 rounded-md">
+                        <span className="text-primary font-bold text-[10px] uppercase tracking-wider">PERKESO - Lindung 24 Jam</span>
+                        <span className={`font-bold px-2 py-0.5 rounded text-[10px] uppercase font-mono ${
+                          selectedEmployee.enableLindung24 ? 'bg-green-100 text-green-700' : 'bg-zinc-100 text-zinc-600'
+                        }`}>
+                          {selectedEmployee.enableLindung24 ? 'Opted In' : 'Opted Out'}
+                        </span>
+                      </div>
+
                       {/* Married -> Spouse Details */}
                       {selectedEmployee.maritalStatus === 'Married' ? (
                         <div className="p-3 bg-white border border-neutral-border/60 rounded-md space-y-2">
@@ -3011,6 +3026,21 @@ export default function EmployeeDirectoryView({
                           </select>
                         </div>
                       )}
+
+                      {/* PERKESO - Lindung 24 Jam Opt-In / Out toggle */}
+                      <div className="p-3 bg-primary/5 border border-primary/25 rounded-md space-y-1">
+                        <label className="block text-[10px] font-bold text-primary uppercase mb-1">
+                          PERKESO - Lindung 24 Jam (Opt In / Out)
+                        </label>
+                        <select
+                          value={editEnableLindung24 ? 'Yes' : 'No'}
+                          onChange={(e) => setEditEnableLindung24(e.target.value === 'Yes')}
+                          className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
+                        >
+                          <option value="No">Opt Out (Inactive)</option>
+                          <option value="Yes">Opt In (Active)</option>
+                        </select>
+                      </div>
 
                       {/* Married -> Spouse Details */}
                       {editMaritalStatus === 'Married' && (
@@ -3945,6 +3975,18 @@ export default function EmployeeDirectoryView({
                     </select>
                   </div>
                 )}
+
+                <div className="p-3 bg-primary/5 border border-primary/25 rounded-md">
+                  <label className="block text-xs font-bold text-primary uppercase mb-1">PERKESO - Lindung 24 Jam (Opt In / Out)</label>
+                  <select
+                    value={formEnableLindung24 ? 'Yes' : 'No'}
+                    onChange={(e) => setFormEnableLindung24(e.target.value === 'Yes')}
+                    className="w-full bg-white border border-primary/40 rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
+                  >
+                    <option value="No">Opt Out (Inactive)</option>
+                    <option value="Yes">Opt In (Active)</option>
+                  </select>
+                </div>
 
                 {/* SECTION 3: Financials & Bank */}
                 <div className="border-b border-neutral-border pb-2 pt-2">
