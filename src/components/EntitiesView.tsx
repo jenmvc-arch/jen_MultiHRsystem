@@ -58,6 +58,7 @@ export default function EntitiesView({
   const [formIsActive, setFormIsActive] = useState<boolean>(true);
   const [formTheme, setFormTheme] = useState<'theme1' | 'theme2' | 'theme3'>('theme1');
   const [formGoogleScriptUrl, setFormGoogleScriptUrl] = useState('');
+  const [formEnableLindung24, setFormEnableLindung24] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   // Active viewing state to list registered employees under a clicked subsidiary card
@@ -82,6 +83,7 @@ export default function EntitiesView({
     setFormIsActive(true);
     setFormTheme('theme1');
     setFormGoogleScriptUrl('');
+    setFormEnableLindung24(false);
     setIsAddModalOpen(true);
   };
 
@@ -97,6 +99,7 @@ export default function EntitiesView({
     setFormIsActive(entity.isActive);
     setFormTheme(entity.theme || 'theme1');
     setFormGoogleScriptUrl(entity.googleScriptUrl || '');
+    setFormEnableLindung24(entity.enableLindung24 || false);
     setIsEditModalOpen(true);
   };
 
@@ -121,7 +124,8 @@ export default function EntitiesView({
       isActive: formIsActive,
       logoUrl: '/redpoint-logo.png',
       theme: formTheme,
-      googleScriptUrl: formGoogleScriptUrl || undefined
+      googleScriptUrl: formGoogleScriptUrl || undefined,
+      enableLindung24: formEnableLindung24
     };
 
     onAddEntity(newEntity);
@@ -152,7 +156,8 @@ export default function EntitiesView({
       isActive: formIsActive,
       logoUrl: '/redpoint-logo.png',
       theme: formTheme,
-      googleScriptUrl: formGoogleScriptUrl
+      googleScriptUrl: formGoogleScriptUrl,
+      enableLindung24: formEnableLindung24
     };
 
     onUpdateEntity(editingEntity.id, updates);
@@ -534,19 +539,34 @@ export default function EntitiesView({
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-neutral-border flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="formIsActive"
-                    checked={formIsActive}
-                    onChange={(e) => setFormIsActive(e.target.checked)}
-                    className="rounded border-neutral-border text-primary focus:ring-primary"
-                  />
-                  <label htmlFor="formIsActive" className="text-xs font-semibold text-on-surface cursor-pointer select-none">
-                    Subsidiary Active for Employee Mapping
-                  </label>
+              <div className="pt-3 border-t border-neutral-border flex justify-between items-center flex-wrap gap-4">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="formIsActive"
+                      checked={formIsActive}
+                      onChange={(e) => setFormIsActive(e.target.checked)}
+                      className="rounded border-neutral-border text-primary focus:ring-primary"
+                    />
+                    <label htmlFor="formIsActive" className="text-xs font-semibold text-on-surface cursor-pointer select-none">
+                      Subsidiary Active for Employee Mapping
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="formEnableLindung24"
+                      checked={formEnableLindung24}
+                      onChange={(e) => setFormEnableLindung24(e.target.checked)}
+                      className="rounded border-neutral-border text-primary focus:ring-primary"
+                    />
+                    <label htmlFor="formEnableLindung24" className="text-xs font-semibold text-on-surface cursor-pointer select-none">
+                      Enable PERKESO - Lindung 24 Jam
+                    </label>
+                  </div>
                 </div>
+
 
                 <div className="flex gap-2">
                   <button
@@ -725,19 +745,34 @@ export default function EntitiesView({
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-neutral-border flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="editIsActive"
-                    checked={formIsActive}
-                    onChange={(e) => setFormIsActive(e.target.checked)}
-                    className="rounded border-neutral-border text-primary focus:ring-primary"
-                  />
-                  <label htmlFor="editIsActive" className="text-xs font-semibold text-on-surface cursor-pointer select-none">
-                    Subsidiary Active for Employee Mapping
-                  </label>
+              <div className="pt-3 border-t border-neutral-border flex justify-between items-center flex-wrap gap-4">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="editIsActive"
+                      checked={formIsActive}
+                      onChange={(e) => setFormIsActive(e.target.checked)}
+                      className="rounded border-neutral-border text-primary focus:ring-primary"
+                    />
+                    <label htmlFor="editIsActive" className="text-xs font-semibold text-on-surface cursor-pointer select-none">
+                      Subsidiary Active for Employee Mapping
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="editEnableLindung24"
+                      checked={formEnableLindung24}
+                      onChange={(e) => setFormEnableLindung24(e.target.checked)}
+                      className="rounded border-neutral-border text-primary focus:ring-primary"
+                    />
+                    <label htmlFor="editEnableLindung24" className="text-xs font-semibold text-on-surface cursor-pointer select-none">
+                      Enable PERKESO - Lindung 24 Jam
+                    </label>
+                  </div>
                 </div>
+
 
                 <div className="flex gap-2">
                   <button

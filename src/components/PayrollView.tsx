@@ -270,6 +270,8 @@ export default function PayrollView({
     });
 
     const stat2026 = getStatutoryDeductions2026(tempBasic);
+    const activeEntity = entities.find(e => e.id === activeEmployee.entityId);
+    const isLindung24Enabled = activeEntity?.enableLindung24 ?? false;
     const socsoEmployee = isEligible ? socsoRes.employeeSocsoTotal : 0;
     const socsoEmployer = isEligible ? socsoRes.employerSocsoTotal : 0;
     const eisEmployee = isEligible ? stat2026.eisEmployee : 0;
@@ -313,7 +315,7 @@ export default function PayrollView({
       epfEmployer: epfEmployerVal,
       socsoEmployee,
       socsoEmployer,
-      lindung24Employee: isEligible ? socsoRes.employeeLindung24 : 0,
+      lindung24Employee: isEligible && isLindung24Enabled ? socsoRes.employeeLindung24 : 0,
       eisEmployee,
       eisEmployer,
       netPay,

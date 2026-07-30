@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Helvetica-Bold',
   },
   companyName: {
-    fontSize: 11,
+    fontSize: 16.5,
     fontFamily: 'Helvetica-Bold',
     color: '#A32626',
   },
@@ -446,7 +446,8 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
     payrollItems: payrollItemsForSocso
   });
 
-  const skbbkEmployeeVal = isEligible ? socsoRes.employeeLindung24 : 0;
+  const isLindung24Enabled = entity?.enableLindung24 ?? false;
+  const skbbkEmployeeVal = isEligible && isLindung24Enabled ? socsoRes.employeeLindung24 : 0;
 
   // Deductions breakdown
   const epfRateEmp = employee.epfRateEmployee || 11;

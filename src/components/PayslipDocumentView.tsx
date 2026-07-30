@@ -146,8 +146,10 @@ export default function PayslipDocumentView({
     activeEmployee.employmentType === 'Confirmation' || 
     (activeEmployee.employmentType === 'Independent Contractor / Freelance' && activeEmployee.eligibleForStatutory === 'Yes');
 
-  const skbbkEmployeeVal = activeEmployee.skbbkEmployee !== undefined ? activeEmployee.skbbkEmployee : (isEligible ? parseFloat(((activeEmployee.socsoEmployee || 0) * 0.25).toFixed(2)) : 0);
-  const skbbkEmployerVal = activeEmployee.skbbkEmployer !== undefined ? activeEmployee.skbbkEmployer : (isEligible ? parseFloat(((activeEmployee.socsoEmployer || 0) * 0.25).toFixed(2)) : 0);
+  const isLindung24Enabled = employeeEntity?.enableLindung24 ?? false;
+
+  const skbbkEmployeeVal = activeEmployee.skbbkEmployee !== undefined ? activeEmployee.skbbkEmployee : (isEligible && isLindung24Enabled ? parseFloat(((activeEmployee.socsoEmployee || 0) * 0.25).toFixed(2)) : 0);
+  const skbbkEmployerVal = activeEmployee.skbbkEmployer !== undefined ? activeEmployee.skbbkEmployer : (isEligible && isLindung24Enabled ? parseFloat(((activeEmployee.socsoEmployer || 0) * 0.25).toFixed(2)) : 0);
 
   const handleZoomIn = () => {
     if (zoom < 150) setZoom(prev => prev + 10);
@@ -323,7 +325,7 @@ export default function PayslipDocumentView({
 
               {/* Company Details */}
               <div className="text-left text-[#333333]">
-                <h1 className="text-xl font-black text-[#A32626] tracking-tight font-sans">
+                <h1 className="text-3xl font-black text-[#A32626] tracking-tight font-sans">
                   {employeeEntity?.name || 'Red Point Sdn Bhd'}
                 </h1>
                 {employeeEntity?.registrationNumber && (

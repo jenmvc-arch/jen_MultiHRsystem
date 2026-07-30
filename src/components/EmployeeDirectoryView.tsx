@@ -868,8 +868,9 @@ export default function EmployeeDirectoryView({
       previewEmployee.employmentType === 'Confirmation' || 
       (previewEmployee.employmentType === 'Independent Contractor / Freelance' && previewEmployee.eligibleForStatutory === 'Yes');
 
-    const skbbkEmployeeVal = previewEmployee.skbbkEmployee !== undefined ? previewEmployee.skbbkEmployee : (isEligible ? parseFloat(((previewEmployee.socsoEmployee || 0) * 0.25).toFixed(2)) : 0);
-    const skbbkEmployerVal = previewEmployee.skbbkEmployer !== undefined ? previewEmployee.skbbkEmployer : (isEligible ? parseFloat(((previewEmployee.socsoEmployer || 0) * 0.25).toFixed(2)) : 0);
+    const isLindung24Enabled = activeSub?.enableLindung24 ?? false;
+    const skbbkEmployeeVal = previewEmployee.skbbkEmployee !== undefined ? previewEmployee.skbbkEmployee : (isEligible && isLindung24Enabled ? parseFloat(((previewEmployee.socsoEmployee || 0) * 0.25).toFixed(2)) : 0);
+    const skbbkEmployerVal = previewEmployee.skbbkEmployer !== undefined ? previewEmployee.skbbkEmployer : (isEligible && isLindung24Enabled ? parseFloat(((previewEmployee.socsoEmployer || 0) * 0.25).toFixed(2)) : 0);
 
     const handleSimulateUpdate = (e: React.FormEvent) => {
       e.preventDefault();
