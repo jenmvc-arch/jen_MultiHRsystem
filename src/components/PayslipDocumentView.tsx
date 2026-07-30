@@ -325,7 +325,7 @@ export default function PayslipDocumentView({
 
               {/* Company Details */}
               <div className="text-left text-[#333333]">
-                <h1 className="text-3xl font-black text-[#A32626] tracking-tight font-sans">
+                <h1 className="text-2xl font-black text-[#A32626] tracking-tight font-sans mb-1 leading-tight">
                   {employeeEntity?.name || 'Red Point Sdn Bhd'}
                 </h1>
                 {employeeEntity?.registrationNumber && (

@@ -34,7 +34,7 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
   },
   logoPlaceholder: {
@@ -57,21 +57,23 @@ const styles = StyleSheet.create({
     fontFamily: 'Helvetica-Bold',
   },
   companyName: {
-    fontSize: 16.5,
+    fontSize: 14.5,
     fontFamily: 'Helvetica-Bold',
     color: '#A32626',
+    marginBottom: 3,
+    lineHeight: 1.15,
   },
   companyReg: {
     fontSize: 7,
     color: '#333333',
     fontFamily: 'Helvetica-Bold',
-    marginTop: 1,
+    marginBottom: 2,
   },
   companyAddress: {
     fontSize: 7,
     color: '#333333',
-    marginTop: 2,
     maxWidth: 240,
+    lineHeight: 1.2,
   },
   rightHeaderBlock: {
     backgroundColor: '#A32626',
