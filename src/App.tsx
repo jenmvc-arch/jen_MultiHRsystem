@@ -1286,8 +1286,8 @@ export default function App() {
   };
 
   const handleUpdateEmployeeSalary = async (id: string, updates: Partial<Employee>) => {
-    const oldEmp = employees.find(e => e.id === id);
-    setEmployees(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+    const oldEmp = employees.find(e => e.id?.toLowerCase() === id?.toLowerCase() || e.email?.toLowerCase() === id?.toLowerCase());
+    setEmployees(prev => prev.map(e => (e.id?.toLowerCase() === id?.toLowerCase() || e.email?.toLowerCase() === id?.toLowerCase()) ? { ...e, ...updates } : e));
 
     if (isSupabaseConfigured) {
       try {
