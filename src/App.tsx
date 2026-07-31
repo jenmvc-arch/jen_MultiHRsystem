@@ -2008,6 +2008,8 @@ export default function App() {
             <DepartmentRoleView 
               onShowNotification={triggerNotification}
               activeEntityId={activeEntityId}
+              employees={employees}
+              onUpdateEmployee={handleUpdateEmployeeSalary}
             />
           )}
 

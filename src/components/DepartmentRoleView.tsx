@@ -17,9 +17,13 @@ import {
   HelpCircle
 } from 'lucide-react';
 
+import { Employee } from '../types';
+
 interface DepartmentRoleViewProps {
   onShowNotification: (title: string, message: string, type?: 'success' | 'info' | 'error') => void;
   activeEntityId: string;
+  employees?: Employee[];
+  onUpdateEmployee?: (id: string, updates: Partial<Employee>) => void;
 }
 
 export const DEFAULT_DEPARTMENTS = [
@@ -43,7 +47,9 @@ export const DEFAULT_ROLES = [
 
 export default function DepartmentRoleView({ 
   onShowNotification,
-  activeEntityId 
+  activeEntityId,
+  employees,
+  onUpdateEmployee
 }: DepartmentRoleViewProps) {
   const [departments, setDepartments] = useState<string[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
@@ -59,29 +65,36 @@ export default function DepartmentRoleView({
   const [editingRoleIndex, setEditingRoleIndex] = useState<number | null>(null);
   const [editingRoleValue, setEditingRoleValue] = useState('');
 
-  // Load and sync from localStorage scoped by activeEntityId
+  // Load and sync from localStorage scoped by activeEntityId and fallback
   useEffect(() => {
-    if (activeEntityId) {
-      const savedDepts = localStorage.getItem(`company_departments_${activeEntityId}`);
-      if (savedDepts) {
-        setDepartments(JSON.parse(savedDepts));
-      } else {
-        setDepartments(DEFAULT_DEPARTMENTS);
-        localStorage.setItem(`company_departments_${activeEntityId}`, JSON.stringify(DEFAULT_DEPARTMENTS));
-      }
+    const savedScopedDepts = activeEntityId ? localStorage.getItem(`company_departments_${activeEntityId}`) : null;
+    const savedGenDepts = localStorage.getItem('company_departments');
+    if (savedScopedDepts) {
+      try { setDepartments(JSON.parse(savedScopedDepts)); } catch(e) { setDepartments(DEFAULT_DEPARTMENTS); }
+    } else if (savedGenDepts) {
+      try { setDepartments(JSON.parse(savedGenDepts)); } catch(e) { setDepartments(DEFAULT_DEPARTMENTS); }
+    } else {
+      setDepartments(DEFAULT_DEPARTMENTS);
+      localStorage.setItem('company_departments', JSON.stringify(DEFAULT_DEPARTMENTS));
+      if (activeEntityId) localStorage.setItem(`company_departments_${activeEntityId}`, JSON.stringify(DEFAULT_DEPARTMENTS));
+    }
 
-      const savedRoles = localStorage.getItem(`company_roles_${activeEntityId}`);
-      if (savedRoles) {
-        setRoles(JSON.parse(savedRoles));
-      } else {
-        setRoles(DEFAULT_ROLES);
-        localStorage.setItem(`company_roles_${activeEntityId}`, JSON.stringify(DEFAULT_ROLES));
-      }
+    const savedScopedRoles = activeEntityId ? localStorage.getItem(`company_roles_${activeEntityId}`) : null;
+    const savedGenRoles = localStorage.getItem('company_roles');
+    if (savedScopedRoles) {
+      try { setRoles(JSON.parse(savedScopedRoles)); } catch(e) { setRoles(DEFAULT_ROLES); }
+    } else if (savedGenRoles) {
+      try { setRoles(JSON.parse(savedGenRoles)); } catch(e) { setRoles(DEFAULT_ROLES); }
+    } else {
+      setRoles(DEFAULT_ROLES);
+      localStorage.setItem('company_roles', JSON.stringify(DEFAULT_ROLES));
+      if (activeEntityId) localStorage.setItem(`company_roles_${activeEntityId}`, JSON.stringify(DEFAULT_ROLES));
     }
   }, [activeEntityId]);
 
   const saveDepartments = (updated: string[]) => {
     setDepartments(updated);
+    localStorage.setItem('company_departments', JSON.stringify(updated));
     if (activeEntityId) {
       localStorage.setItem(`company_departments_${activeEntityId}`, JSON.stringify(updated));
     }
@@ -89,6 +102,7 @@ export default function DepartmentRoleView({
 
   const saveRoles = (updated: string[]) => {
     setRoles(updated);
+    localStorage.setItem('company_roles', JSON.stringify(updated));
     if (activeEntityId) {
       localStorage.setItem(`company_roles_${activeEntityId}`, JSON.stringify(updated));
     }
@@ -162,11 +176,26 @@ export default function DepartmentRoleView({
       return;
     }
 
+    const oldName = departments[index];
     const updated = [...departments];
     updated[index] = cleanVal;
     saveDepartments(updated);
     setEditingDeptIndex(null);
-    onShowNotification('Department Renamed', `Changed to "${cleanVal}".`, 'success');
+
+    // Propagate department name change to all affected employees and save to Supabase
+    if (employees && onUpdateEmployee && oldName && oldName !== cleanVal) {
+      const affected = employees.filter(e => e.department === oldName);
+      affected.forEach(e => {
+        onUpdateEmployee(e.id, { department: cleanVal });
+      });
+      if (affected.length > 0) {
+        onShowNotification('Employee Directory Updated', `Updated department to "${cleanVal}" for ${affected.length} employee(s).`, 'success');
+      } else {
+        onShowNotification('Department Renamed', `Changed to "${cleanVal}".`, 'success');
+      }
+    } else {
+      onShowNotification('Department Renamed', `Changed to "${cleanVal}".`, 'success');
+    }
   };
 
   // Start Edit Role
@@ -185,11 +214,26 @@ export default function DepartmentRoleView({
       return;
     }
 
+    const oldName = roles[index];
     const updated = [...roles];
     updated[index] = cleanVal;
     saveRoles(updated);
     setEditingRoleIndex(null);
-    onShowNotification('Role Renamed', `Changed to "${cleanVal}".`, 'success');
+
+    // Propagate role name change to all affected employees and save to Supabase
+    if (employees && onUpdateEmployee && oldName && oldName !== cleanVal) {
+      const affected = employees.filter(e => e.designation === oldName);
+      affected.forEach(e => {
+        onUpdateEmployee(e.id, { designation: cleanVal });
+      });
+      if (affected.length > 0) {
+        onShowNotification('Employee Directory Updated', `Updated designation to "${cleanVal}" for ${affected.length} employee(s).`, 'success');
+      } else {
+        onShowNotification('Role Renamed', `Changed to "${cleanVal}".`, 'success');
+      }
+    } else {
+      onShowNotification('Role Renamed', `Changed to "${cleanVal}".`, 'success');
+    }
   };
 
   return (
