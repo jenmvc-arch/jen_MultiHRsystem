@@ -33,7 +33,7 @@ import {
 
 interface PCBReconstructionHubProps {
   employees: Employee[];
-  onUpdateEmployee: (id: string, updates: Partial<Employee>) => void;
+  onUpdateEmployee: (id: string, updates: Partial<Employee>) => Promise<void>;
   onShowNotification: (title: string, message: string, type?: 'success' | 'info' | 'error') => void;
 }
 
@@ -111,7 +111,7 @@ export default function PCBReconstructionHub({
     "July", "August", "September", "October", "November", "December"
   ];
 
-  const handleAddPayrollRecord = (e: React.FormEvent) => {
+  const handleAddPayrollRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     const newRecord: HistoricalPayrollRecord = {
       payrollMonth: Number(payMonth),
@@ -130,10 +130,6 @@ export default function PCBReconstructionHub({
     const filtered = currentRecords.filter(r => r.payrollMonth !== Number(payMonth));
     const updated = [...filtered, newRecord].sort((a, b) => a.payrollMonth - b.payrollMonth);
 
-    onUpdateEmployee(activeEmployee.id, {
-      historicalPayrollRecords: updated
-    });
-    
     // Automatically trigger forward recalculation if needed
     const recalculated = recalculatePCBFromMonth({
       employee: { ...activeEmployee, historicalPayrollRecords: updated },
@@ -142,19 +138,22 @@ export default function PCBReconstructionHub({
       calculationBasis: calcBasis
     });
     
-    onUpdateEmployee(activeEmployee.id, {
-      historicalPayrollRecords: updated,
-      historicalPcbResults: recalculated
-    });
-
-    onShowNotification(
-      'Payroll Record Saved', 
-      `Successfully registered payroll for ${MONTH_NAMES[payMonth]} 2026. Recalculated PCB forwarding effects.`,
-      'success'
-    );
+    try {
+      await onUpdateEmployee(activeEmployee.id, {
+        historicalPayrollRecords: updated,
+        historicalPcbResults: recalculated
+      });
+      onShowNotification(
+        'Payroll Record Saved',
+        `Successfully registered payroll for ${MONTH_NAMES[payMonth]} 2026. Recalculated PCB forwarding effects.`,
+        'success'
+      );
+    } catch (error) {
+      console.error('[Historical Payroll Save] Failed:', error);
+    }
   };
 
-  const handleAddEffectiveProfile = (e: React.FormEvent) => {
+  const handleAddEffectiveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     const newProfile: EmployeeTaxProfile = {
       effectiveDate: profEffectiveDate,
@@ -171,15 +170,18 @@ export default function PCBReconstructionHub({
     const filtered = currentProfiles.filter(p => p.effectiveDate !== profEffectiveDate);
     const updated = [...filtered, newProfile].sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate));
 
-    onUpdateEmployee(activeEmployee.id, {
-      effectiveDatedProfiles: updated
-    });
-
-    onShowNotification(
-      'Tax Profile Registered',
-      `Effective profile registered for ${profEffectiveDate}. Run reconstruction to apply updates.`,
-      'success'
-    );
+    try {
+      await onUpdateEmployee(activeEmployee.id, {
+        effectiveDatedProfiles: updated
+      });
+      onShowNotification(
+        'Tax Profile Registered',
+        `Effective profile registered for ${profEffectiveDate}. Run reconstruction to apply updates.`,
+        'success'
+      );
+    } catch (error) {
+      console.error('[Tax Profile Save] Failed:', error);
+    }
   };
 
   const handlePreviewReconstruction = () => {
@@ -196,7 +198,7 @@ export default function PCBReconstructionHub({
     onShowNotification('Reconstruction Previewed', 'Reconstructed chronological PCB calculations generated.', 'info');
   };
 
-  const handleRunReconstruction = () => {
+  const handleRunReconstruction = async () => {
     const computed = reconstructPCBHistory({
       employee: activeEmployee,
       taxYear: 2026,
@@ -231,22 +233,25 @@ export default function PCBReconstructionHub({
     
     const updatedLedger = [...existingAdjustments, ...newLedgers].sort((a, b) => a.payroll_month - b.payroll_month);
 
-    onUpdateEmployee(activeEmployee.id, {
-      historicalPcbResults: computed,
-      employee_pcb_history_ledger: updatedLedger
-    });
-
-    setPreviewResults(computed.filter(r => r.payrollMonth >= Number(startMonth) && r.payrollMonth <= Number(endMonth)));
-    setHasCalculated(true);
-    setLastUsedBasis(calcBasis);
-    onShowNotification(
-      'Reconstruction Finalized', 
-      `Committed chronological calculation results for months 1-12 to the employee's registry and updated the history ledger.`, 
-      'success'
-    );
+    try {
+      await onUpdateEmployee(activeEmployee.id, {
+        historicalPcbResults: computed,
+        employee_pcb_history_ledger: updatedLedger
+      });
+      setPreviewResults(computed.filter(r => r.payrollMonth >= Number(startMonth) && r.payrollMonth <= Number(endMonth)));
+      setHasCalculated(true);
+      setLastUsedBasis(calcBasis);
+      onShowNotification(
+        'Reconstruction Finalized',
+        `Committed chronological calculation results for months 1-12 to the employee's registry and updated the history ledger.`,
+        'success'
+      );
+    } catch (error) {
+      console.error('[PCB Reconstruction Save] Failed:', error);
+    }
   };
 
-  const handleSaveTP3 = (e: React.FormEvent) => {
+  const handleSaveTP3 = async (e: React.FormEvent) => {
     e.preventDefault();
     const newDecl = {
       id: `tp3_${Date.now()}`,
@@ -269,18 +274,21 @@ export default function PCBReconstructionHub({
     const filtered = currentDecls.filter(t => t.taxYear !== 2026);
     const updated = [...filtered, newDecl];
 
-    onUpdateEmployee(activeEmployee.id, {
-      employee_tp3_declarations: updated
-    });
-
-    onShowNotification(
-      'TP3 Declaration Saved',
-      `TP3 form status is ${tp3Status}. Forward recalculations will be updated.`,
-      'success'
-    );
+    try {
+      await onUpdateEmployee(activeEmployee.id, {
+        employee_tp3_declarations: updated
+      });
+      onShowNotification(
+        'TP3 Declaration Saved',
+        `TP3 form status is ${tp3Status}. Forward recalculations will be updated.`,
+        'success'
+      );
+    } catch (error) {
+      console.error('[TP3 Declaration Save] Failed:', error);
+    }
   };
 
-  const handleAddAdjustment = (e: React.FormEvent) => {
+  const handleAddAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
     const userRole = localStorage.getItem('hr-nexus-user-role') || 'Employee';
     const isApprover = userRole === 'Global Administrator' || userRole === 'Payroll Tax Approver' || userRole === 'Administrator';
@@ -315,26 +323,28 @@ export default function PCBReconstructionHub({
     const currentLedger = activeEmployee.employee_pcb_history_ledger || [];
     const updated = [...currentLedger, newEntry];
 
-    onUpdateEmployee(activeEmployee.id, {
-      employee_pcb_history_ledger: updated
-    });
-
-    const recalcResult = recalculatePCBForward({
-      employee: { ...activeEmployee, employee_pcb_history_ledger: updated },
-      assessmentYear: 2026,
-      changedEffectiveMonth: Number(adjMonth),
-      reason: adjReason,
-      changedBy: 'Jenny Law'
-    });
-
-    onShowNotification(
-      'Manual Adjustment Approved',
-      `Manual adjustment of RM ${diff.toFixed(2)} applied. Forward recalculation completed across ${recalcResult.monthsRecalculated.length} months.`,
-      'success'
-    );
+    try {
+      await onUpdateEmployee(activeEmployee.id, {
+        employee_pcb_history_ledger: updated
+      });
+      const recalcResult = recalculatePCBForward({
+        employee: { ...activeEmployee, employee_pcb_history_ledger: updated },
+        assessmentYear: 2026,
+        changedEffectiveMonth: Number(adjMonth),
+        reason: adjReason,
+        changedBy: 'Jenny Law'
+      });
+      onShowNotification(
+        'Manual Adjustment Approved',
+        `Manual adjustment of RM ${diff.toFixed(2)} applied. Forward recalculation completed across ${recalcResult.monthsRecalculated.length} months.`,
+        'success'
+      );
+    } catch (error) {
+      console.error('[PCB Adjustment Save] Failed:', error);
+    }
   };
 
-  const handleReverseLedger = (item: any) => {
+  const handleReverseLedger = async (item: any) => {
     const userRole = localStorage.getItem('hr-nexus-user-role') || 'Employee';
     const isApprover = userRole === 'Global Administrator' || userRole === 'Payroll Tax Approver' || userRole === 'Administrator';
     if (!isApprover) {
@@ -369,19 +379,21 @@ export default function PCBReconstructionHub({
     const updated = currentLedger.map(l => l.id === item.id ? { ...l, status: 'REVERSED' as const } : l);
     updated.push(reversalEntry);
 
-    onUpdateEmployee(activeEmployee.id, {
-      employee_pcb_history_ledger: updated
-    });
-
-    recalculatePCBForward({
-      employee: { ...activeEmployee, employee_pcb_history_ledger: updated },
-      assessmentYear: 2026,
-      changedEffectiveMonth: item.payroll_month,
-      reason: `Reversal of entry ${item.id}`,
-      changedBy: 'Jenny Law'
-    });
-
-    onShowNotification('Entry Reversed', `Successfully reversed tax entry for month ${item.payroll_month}.`, 'success');
+    try {
+      await onUpdateEmployee(activeEmployee.id, {
+        employee_pcb_history_ledger: updated
+      });
+      recalculatePCBForward({
+        employee: { ...activeEmployee, employee_pcb_history_ledger: updated },
+        assessmentYear: 2026,
+        changedEffectiveMonth: item.payroll_month,
+        reason: `Reversal of entry ${item.id}`,
+        changedBy: 'Jenny Law'
+      });
+      onShowNotification('Entry Reversed', `Successfully reversed tax entry for month ${item.payroll_month}.`, 'success');
+    } catch (error) {
+      console.error('[PCB Reversal Save] Failed:', error);
+    }
   };
 
   // Summarize Reconciliation Totals

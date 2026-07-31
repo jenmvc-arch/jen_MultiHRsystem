@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { Mail, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Mail, Lock, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { MOCK_USERS, UserAccount } from '../data';
 import { googleSheetsClient, isGoogleConfigured } from '../lib/googleSheetsClient';
-import { supabaseClient, isSupabaseConfigured } from '../lib/supabaseClient';
+import { supabase, supabaseClient, isSupabaseConfigured } from '../lib/supabaseClient';
 
 interface LoginViewProps {
   onLoginSuccess: (user: UserAccount) => void;
@@ -14,11 +14,106 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  const isEmployeeSigner = (user: Pick<UserAccount, 'role'>) => {
+    const role = String(user.role || '').toLowerCase();
+    return role.includes('employee') || role.includes('candidate');
+  };
+
+  useEffect(() => {
+    if (!supabase) return;
+    let cancelled = false;
+
+    void supabase.auth.getUser().then(async ({ data, error: authError }) => {
+      if (cancelled || authError || !data.user?.email) return;
+
+      setIsLoading(true);
+      const [
+        { data: employee, error: employeeError },
+        { data: candidate, error: candidateError },
+      ] = await Promise.all([
+        supabase
+          .from('employees')
+          .select('email, name')
+          .ilike('email', data.user.email)
+          .maybeSingle(),
+        supabase
+          .from('candidates')
+          .select('email, name')
+          .ilike('email', data.user.email)
+          .maybeSingle(),
+      ]);
+
+      if (cancelled) return;
+      setIsLoading(false);
+      const signer = employee || candidate;
+      if (employeeError || candidateError || !signer) {
+        await supabase.auth.signOut({ scope: 'local' });
+        setError('This secure sign-in link is not connected to an employee onboarding account.');
+        return;
+      }
+
+      onLoginSuccess({
+        email: signer.email,
+        password: '',
+        name: signer.name,
+        role: employee ? 'Employee' : 'Candidate',
+        nickname: String(signer.name || '').trim().split(/\s+/)[0] || 'Employee',
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const completeLogin = async (matchedUser: UserAccount) => {
+    if (supabase && isEmployeeSigner(matchedUser)) {
+      const signerEmail = String(matchedUser.email || '').trim().toLowerCase();
+      if (!signerEmail.includes('@')) {
+        setIsLoading(false);
+        setError('Employee onboarding accounts must use a valid email address.');
+        return;
+      }
+
+      const {
+        data: { user: authenticatedUser },
+      } = await supabase.auth.getUser();
+      if (authenticatedUser?.email?.toLowerCase() === signerEmail) {
+        setIsLoading(false);
+        onLoginSuccess(matchedUser);
+        return;
+      }
+
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: signerEmail,
+        options: {
+          shouldCreateUser: false,
+          emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
+        },
+      });
+      setIsLoading(false);
+      if (otpError) {
+        setError(otpError.message || 'The secure employee sign-in link could not be sent.');
+        return;
+      }
+      setAuthNotice(`A secure sign-in link has been sent to ${signerEmail}.`);
+      return;
+    }
+
+    if (supabase) {
+      await supabase.auth.signOut({ scope: 'local' });
+    }
+    setIsLoading(false);
+    onLoginSuccess(matchedUser);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setAuthNotice(null);
 
     // Validate inputs
     if (!email.trim() || !password) {
@@ -28,13 +123,14 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
     setIsLoading(true);
 
-    const performLocalFallback = () => {
+    const performLocalFallback = async () => {
       const matchedUser = MOCK_USERS.find(
         u => u.email === email.trim().toLowerCase() && u.password === password
       );
       if (matchedUser) {
-        onLoginSuccess(matchedUser);
+        await completeLogin(matchedUser);
       } else {
+        setIsLoading(false);
         setError('Invalid username or password. Please try again.');
       }
     };
@@ -56,21 +152,21 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           }
         }
 
-        setIsLoading(false);
-
         if (matched) {
-          onLoginSuccess({
+          await completeLogin({
             email: matched.email,
             password: matched.password,
             name: matched.name,
-            role: matched.role
+            role: matched.role,
+            nickname: matched.nickname,
           });
         } else {
+          setIsLoading(false);
           setError('Invalid username or password. Please try again.');
         }
       } catch (err) {
         console.error(`[${sourceName} Auth Error] Falling back to local accounts:`, err);
-        performLocalFallback();
+        await performLocalFallback();
       }
     };
 
@@ -81,8 +177,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     } else {
       // Simulate network authentication delay
       setTimeout(() => {
-        setIsLoading(false);
-        performLocalFallback();
+        void performLocalFallback();
       }, 800);
     }
   };
@@ -134,6 +229,12 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             <div className="mb-6 p-4 bg-[#FFF8EF] border border-[#A32626]/30 text-[#8F1F1F] text-sm rounded-lg flex items-start gap-3">
               <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-[#A32626]" />
               <span className="leading-relaxed">{error}</span>
+            </div>
+          )}
+          {authNotice && (
+            <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm rounded-lg flex items-start gap-3">
+              <CheckCircle className="w-5 h-5 shrink-0 mt-0.5 text-emerald-600" />
+              <span className="leading-relaxed">{authNotice}</span>
             </div>
           )}
 

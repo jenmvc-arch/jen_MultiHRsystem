@@ -23,7 +23,20 @@ import { LanguageProvider } from '../onboarding-portal/i18n/LanguageContext';
 import { LanguageSelector } from '../onboarding-portal/components/LanguageSelector';
 import { HandbookView } from '../onboarding-portal/components/HandbookView';
 import { QuizView } from '../onboarding-portal/components/QuizView';
-import { exportFullSignedHandbookPdf } from '../onboarding-portal/utils/pdfExport';
+import {
+  createOrResumeSigningSession,
+  downloadFinalizedHandbook,
+  finalizeSignedHandbook,
+  removeSignatureMark,
+  saveSignatureMark,
+  saveSigningQuizResult,
+} from '../onboarding-portal/signing/signingService';
+import {
+  FINAL_SIGNATURE_PART_NUMBER,
+  HandbookSignatureMark,
+  HandbookSigningSession,
+  INITIAL_PART_NUMBERS,
+} from '../onboarding-portal/signing/types';
 
 type PortalPage = 'journey' | 'handbook' | 'quiz' | 'completion';
 
@@ -47,6 +60,35 @@ const PORTAL_NAV_ITEMS: Array<{
   { id: 'completion', label: 'Completion Record', icon: ClipboardCheck },
 ];
 
+function modulesFromSignatureMarks(
+  marks: Record<number, HandbookSignatureMark>
+): HandbookModule[] {
+  const allInitialsComplete = INITIAL_PART_NUMBERS.every((partNumber) => marks[partNumber]);
+  let firstIncompleteFound = false;
+
+  return HANDBOOK_MODULES.map((module) => {
+    const mark = marks[module.id];
+    if (mark) {
+      return {
+        ...module,
+        status: 'completed',
+        completedSections: module.sectionsCount,
+      };
+    }
+
+    const canStart =
+      module.id === 1 ||
+      (!firstIncompleteFound &&
+        (module.id < FINAL_SIGNATURE_PART_NUMBER || allInitialsComplete));
+    firstIncompleteFound = true;
+    return {
+      ...module,
+      status: canStart ? 'in-progress' : 'locked',
+      completedSections: 0,
+    };
+  });
+}
+
 function OnboardingPortalContent({
   employees,
   candidates,
@@ -57,13 +99,21 @@ function OnboardingPortalContent({
 }: OnboardingPortalViewProps) {
   const [activePage, setActivePage] = useState<PortalPage>('journey');
   const [selectedCandidateId, setSelectedCandidateId] = useState(candidates[0]?.id || '');
+  const [signatureMarks, setSignatureMarks] = useState<
+    Record<number, HandbookSignatureMark>
+  >({});
   const [modules, setModules] = useState<HandbookModule[]>(() =>
-    HANDBOOK_MODULES.map((module) => ({ ...module }))
+    modulesFromSignatureMarks({})
   );
   const [quizResult, setQuizResult] = useState<{ score: number; grade: string } | null>(
     null
   );
-  const [signatureData, setSignatureData] = useState('');
+  const [signingSession, setSigningSession] = useState<HandbookSigningSession | null>(
+    null
+  );
+  const [isSigningSaving, setIsSigningSaving] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [signingError, setSigningError] = useState<string | null>(null);
 
   useEffect(() => {
     if (
@@ -103,6 +153,59 @@ function OnboardingPortalContent({
     selectedCandidate?.department || linkedEmployee?.department || user.department;
   const journeyPosition =
     selectedCandidate?.designation || linkedEmployee?.designation || 'Employee';
+  const signingSubjectType: 'employee' | 'candidate' = linkedEmployee
+    ? 'employee'
+    : selectedCandidate
+      ? 'candidate'
+      : 'employee';
+  const signingSubjectId = linkedEmployee?.id || selectedCandidate?.id || user.id;
+  const signingSubjectEmail =
+    linkedEmployee?.email || selectedCandidate?.email || user.email;
+  const signingEntityId =
+    linkedEmployee?.entityId || selectedCandidate?.entityId || null;
+
+  useEffect(() => {
+    let cancelled = false;
+    setSignatureMarks({});
+    setModules(modulesFromSignatureMarks({}));
+    setQuizResult(null);
+    setSigningSession(null);
+    setSigningError(null);
+
+    void createOrResumeSigningSession({
+      subjectType: signingSubjectType,
+      subjectId: signingSubjectId,
+      subjectEmail: signingSubjectEmail,
+      entityId: signingEntityId,
+    })
+      .then(({ session, marks }) => {
+        if (cancelled) return;
+        setSigningSession(session);
+        setSignatureMarks(marks);
+        setModules(modulesFromSignatureMarks(marks));
+        if (
+          session.quizScorePercent !== null &&
+          session.quizScorePercent !== undefined &&
+          session.quizGrade
+        ) {
+          setQuizResult({
+            score: session.quizScorePercent,
+            grade: session.quizGrade,
+          });
+        }
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setSigningError(
+          error instanceof Error ? error.message : 'Secure handbook signing is unavailable.'
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [signingEntityId, signingSubjectEmail, signingSubjectId, signingSubjectType]);
+
   const profileComplete = Boolean(selectedCandidate || linkedEmployee);
   const onboardingFormProgress = selectedCandidate?.progress ?? (linkedEmployee ? 100 : 0);
   const completedModules = modules.filter((module) => module.status === 'completed').length;
@@ -114,11 +217,21 @@ function OnboardingPortalContent({
       handbookPercent * 0.25 +
       (quizResult ? 25 : 0)
   );
+  const partInitialDataUrls = Object.fromEntries(
+    INITIAL_PART_NUMBERS.flatMap((partNumber) => {
+      const imageDataUrl = signatureMarks[partNumber]?.imageDataUrl;
+      return imageDataUrl ? [[partNumber, imageDataUrl]] : [];
+    })
+  ) as Record<number, string>;
+  const finalSignatureDataUrl =
+    signatureMarks[FINAL_SIGNATURE_PART_NUMBER]?.imageDataUrl || null;
   const completionReady =
-    completedModules === modules.length && Boolean(quizResult) && Boolean(signatureData);
+    INITIAL_PART_NUMBERS.every((partNumber) => signatureMarks[partNumber]) &&
+    Boolean(finalSignatureDataUrl) &&
+    Boolean(quizResult) &&
+    Boolean(signingSession?.quizPassed);
 
-  const handleAcknowledgeModule = (moduleId: number, signature: string) => {
-    setSignatureData(signature);
+  const handleAcknowledgeModule = (moduleId: number) => {
     setModules((currentModules) =>
       currentModules.map((module) => {
         if (module.id === moduleId) {
@@ -136,35 +249,128 @@ function OnboardingPortalContent({
     );
   };
 
-  const handleCompleteQuiz = (score: number, grade: string) => {
-    setQuizResult({ score, grade });
+  const saveMark = async (
+    partNumber: number,
+    kind: 'initial' | 'final_signature',
+    imageDataUrl: string
+  ) => {
+    if (!signingSession) {
+      throw new Error(
+        signingError || 'Please open this onboarding record through the secure employee link.'
+      );
+    }
+    setIsSigningSaving(true);
+    try {
+      const savedMark = await saveSignatureMark({
+        session: signingSession,
+        partNumber,
+        kind,
+        imageDataUrl,
+      });
+      setSignatureMarks((currentMarks) => {
+        const nextMarks = { ...currentMarks, [partNumber]: savedMark };
+        setModules(modulesFromSignatureMarks(nextMarks));
+        return nextMarks;
+      });
+      setSigningError(null);
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'The handwritten mark could not be saved.';
+      setSigningError(message);
+      onShowNotification('Signature Not Saved', message);
+      throw error;
+    } finally {
+      setIsSigningSaving(false);
+    }
   };
 
-  const handleDownloadCompletionRecord = () => {
+  const clearMark = async (partNumber: number) => {
+    const mark = signatureMarks[partNumber];
+    if (!mark || !signingSession) return;
+    setIsSigningSaving(true);
+    try {
+      await removeSignatureMark(signingSession, mark);
+      setSignatureMarks((currentMarks) => {
+        const nextMarks = { ...currentMarks };
+        delete nextMarks[partNumber];
+        setModules(modulesFromSignatureMarks(nextMarks));
+        return nextMarks;
+      });
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'The handwritten mark could not be cleared.';
+      onShowNotification('Signature Not Cleared', message);
+      throw error;
+    } finally {
+      setIsSigningSaving(false);
+    }
+  };
+
+  const handleCompleteQuiz = (score: number, grade: string) => {
+    setQuizResult({ score, grade });
+    if (!signingSession) {
+      setSigningError(
+        signingError || 'Please open this onboarding record through the secure employee link.'
+      );
+      return;
+    }
+    setIsSigningSaving(true);
+    void saveSigningQuizResult(signingSession, score, grade)
+      .then((updatedSession) => {
+        setSigningSession(updatedSession);
+        setSigningError(null);
+      })
+      .catch((error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : 'The quiz result could not be saved.';
+        setSigningError(message);
+        onShowNotification('Quiz Sync Failed', message);
+      })
+      .finally(() => setIsSigningSaving(false));
+  };
+
+  const handleDownloadCompletionRecord = async () => {
     if (!completionReady || !quizResult) {
       onShowNotification(
         'Record Not Ready',
-        'Complete all handbook acknowledgements and the compliance quiz first.'
+        signingError ||
+          'Complete all handbook acknowledgements and the compliance quiz first.'
+      );
+      return;
+    }
+    if (!signingSession) {
+      onShowNotification(
+        'Secure Session Required',
+        signingError || 'Please sign in through the secure employee onboarding link.'
       );
       return;
     }
 
-    exportFullSignedHandbookPdf({
-      employeeName: journeyName,
-      employeeId: linkedEmployee?.id || selectedCandidate?.id || user.id,
-      department: journeyDepartment,
-      position: journeyPosition,
-      signedDate: new Date().toLocaleDateString('en-MY'),
-      signatureTextOrImage: signatureData,
-      quizScorePercent: quizResult.score,
-      quizGrade: quizResult.grade,
-      quizQuestions: QUIZ_QUESTIONS,
-      modules,
-    });
-    onShowNotification(
-      'Completion Record Generated',
-      `The signed onboarding record for ${journeyName} has been downloaded.`
-    );
+    setIsFinalizing(true);
+    try {
+      const result = await finalizeSignedHandbook(signingSession);
+      downloadFinalizedHandbook(result.downloadUrl, journeyName, result.revision);
+      setSigningSession((currentSession) =>
+        currentSession
+          ? {
+              ...currentSession,
+              status: 'finalized',
+              finalPdfSha256: result.sha256,
+            }
+          : currentSession
+      );
+      onShowNotification(
+        'Completion Record Generated',
+        `The signed onboarding record for ${journeyName} has been archived and downloaded.`
+      );
+    } catch (error: unknown) {
+      onShowNotification(
+        'Finalization Failed',
+        error instanceof Error ? error.message : 'The signed handbook could not be finalized.'
+      );
+    } finally {
+      setIsFinalizing(false);
+    }
   };
 
   return (
@@ -300,6 +506,25 @@ function OnboardingPortalContent({
             modules={modules}
             onAcknowledgeModule={handleAcknowledgeModule}
             onOpenAiAssistant={() => undefined}
+            partInitials={partInitialDataUrls}
+            finalSignatureDataUrl={finalSignatureDataUrl}
+            isSigningLocked={
+              !signingSession ||
+              signingSession.status === 'finalized' ||
+              isSigningSaving ||
+              isFinalizing
+            }
+            onSavePartInitial={(moduleId, signature) =>
+              saveMark(moduleId, 'initial', signature)
+            }
+            onClearPartInitial={clearMark}
+            onSaveFinalSignature={(signature) =>
+              saveMark(FINAL_SIGNATURE_PART_NUMBER, 'final_signature', signature)
+            }
+            onClearFinalSignature={() => clearMark(FINAL_SIGNATURE_PART_NUMBER)}
+            onDownloadFullHandbook={() => {
+              void handleDownloadCompletionRecord();
+            }}
           />
         )}
 
@@ -333,8 +558,8 @@ function OnboardingPortalContent({
               />
               <RequirementStatus
                 label="Digital Signature"
-                value={signatureData ? 'Captured' : 'Pending'}
-                complete={Boolean(signatureData)}
+                value={finalSignatureDataUrl ? 'Captured' : 'Pending'}
+                complete={Boolean(finalSignatureDataUrl)}
               />
             </div>
 
@@ -362,8 +587,10 @@ function OnboardingPortalContent({
               </div>
               <button
                 type="button"
-                onClick={handleDownloadCompletionRecord}
-                disabled={!completionReady}
+                onClick={() => {
+                  void handleDownloadCompletionRecord();
+                }}
+                disabled={!completionReady || isSigningSaving || isFinalizing}
                 className="flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-on-surface-variant"
               >
                 <Download className="h-4 w-4" />

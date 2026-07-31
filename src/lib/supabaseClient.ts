@@ -112,8 +112,9 @@ export const supabaseClient = {
     let inserted: any = null;
     let error: any = null;
     let retries = 0;
+    const maxRetries = Object.keys(snakeData).length + 1;
 
-    while (retries < 5) {
+    while (retries < maxRetries) {
       const res = await supabase.from(table).insert(snakeData).select().single();
       error = res.error;
       inserted = res.data;
@@ -142,34 +143,17 @@ export const supabaseClient = {
     const snakeColumn = idColumn.replace(/([A-Z])/g, '_$1').toLowerCase();
     let snakeData = toSnakeCase(data);
 
-    let updated: any[] | null = null;
-    let error: any = null;
-    let retries = 0;
-
-    while (retries < 5) {
-      const res = await supabase
-        .from(table)
-        .update(snakeData)
-        .eq(snakeColumn, idValue)
-        .select();
-      error = res.error;
-      updated = res.data;
-
-      if (error) {
-        const missingCol = extractMissingColumn(error.message || '');
-        if (missingCol && snakeData[missingCol] !== undefined) {
-          console.warn(`[Supabase Client] Removing missing column '${missingCol}' and retrying update...`);
-          delete snakeData[missingCol];
-          retries++;
-          continue;
-        }
-      }
-      break;
-    }
+    const updateResult = await supabase
+      .from(table)
+      .update(snakeData)
+      .eq(snakeColumn, idValue)
+      .select();
+    let updated = updateResult.data;
+    let error = updateResult.error;
 
     // Fallback: If 0 rows were updated by primary idColumn on 'employees', attempt matching by email if available
     if (!error && (!updated || updated.length === 0) && table === 'employees') {
-      const emailValue = data.email || (idValue.includes('@') ? idValue : null);
+      const emailValue = idValue.includes('@') ? idValue : data.email;
       if (emailValue) {
         console.log('[Supabase Client] Retrying employee update by email:', emailValue);
         const retryRes = await supabase
@@ -189,23 +173,45 @@ export const supabaseClient = {
       console.error('[Supabase Update Error]', error);
       throw new Error(`Supabase Update Failed: ${error.message}`);
     }
+    if (!updated || updated.length === 0) {
+      throw new Error(
+        `Supabase Update Failed: no ${table} row matched ${snakeColumn}=${idValue}.`
+      );
+    }
 
-    return updated && updated[0] ? toCamelCase(updated[0]) : data;
+    return toCamelCase(updated[0]);
   },
 
-  async delete(table: string, idValue: string, idColumn: string = 'id'): Promise<void> {
+  async delete(table: string, idValue: string, idColumn: string = 'id'): Promise<any> {
     if (!supabase) return;
     console.log('[Supabase Client] Deleting record from:', table, { idColumn, idValue });
     const snakeColumn = idColumn.replace(/([A-Z])/g, '_$1').toLowerCase();
-    const { error } = await supabase
+    let { data: deleted, error } = await supabase
       .from(table)
       .delete()
-      .eq(snakeColumn, idValue);
+      .eq(snakeColumn, idValue)
+      .select();
+
+    if (!error && (!deleted || deleted.length === 0) && table === 'employees' && idValue.includes('@')) {
+      const retryRes = await supabase
+        .from(table)
+        .delete()
+        .eq('email', idValue)
+        .select();
+      deleted = retryRes.data;
+      error = retryRes.error;
+    }
 
     if (error) {
       console.error('[Supabase Delete Error]', error);
       throw new Error(`Supabase Delete Failed: ${error.message}`);
     }
+    if (!deleted || deleted.length === 0) {
+      throw new Error(
+        `Supabase Delete Failed: no ${table} row matched ${snakeColumn}=${idValue}.`
+      );
+    }
+    return toCamelCase(deleted[0]);
   },
 
   async upsert(table: string, data: any): Promise<any> {
@@ -215,8 +221,9 @@ export const supabaseClient = {
     let upserted: any = null;
     let error: any = null;
     let retries = 0;
+    const maxRetries = Object.keys(snakeData).length + 1;
 
-    while (retries < 5) {
+    while (retries < maxRetries) {
       const res = await supabase.from(table).upsert(snakeData).select().single();
       error = res.error;
       upserted = res.data;

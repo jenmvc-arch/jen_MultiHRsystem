@@ -59,7 +59,7 @@ import OnboardingForm from './components/OnboardingForm';
 import { EntityContextProvider } from './context/EntityContext';
 
 import { googleSheetsClient, isGoogleConfigured, SheetsDataPayload } from './lib/googleSheetsClient';
-import { supabaseClient, isSupabaseConfigured } from './lib/supabaseClient';
+import { supabase, supabaseClient, isSupabaseConfigured } from './lib/supabaseClient';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -175,6 +175,7 @@ export default function App() {
   };
 
   const handleSignOut = () => {
+    void supabase?.auth.signOut({ scope: 'local' });
     localStorage.removeItem('hr-nexus-auth');
     localStorage.removeItem('hr-nexus-user-email');
     localStorage.removeItem('hr-nexus-user-name');
@@ -615,6 +616,9 @@ export default function App() {
           let historicalVariances = [];
           let tp1Declarations = [];
           let tp3Data = undefined;
+          let socsoProfile = undefined;
+          let employeePcbHistoryLedger = [];
+          let employeeTp3Declarations = [];
           
           try {
             if (e.careerHistory && typeof e.careerHistory === 'string') {
@@ -687,6 +691,33 @@ export default function App() {
             }
           } catch (err) {
             console.error('Error parsing tp3Data for employee', e.id, err);
+          }
+          try {
+            if (e.socsoProfile && typeof e.socsoProfile === 'string') {
+              socsoProfile = JSON.parse(e.socsoProfile);
+            } else if (typeof e.socsoProfile === 'object' && e.socsoProfile !== null) {
+              socsoProfile = e.socsoProfile;
+            }
+          } catch (err) {
+            console.error('Error parsing socsoProfile for employee', e.id, err);
+          }
+          try {
+            if (e.employeePcbHistoryLedger && typeof e.employeePcbHistoryLedger === 'string') {
+              employeePcbHistoryLedger = JSON.parse(e.employeePcbHistoryLedger);
+            } else if (Array.isArray(e.employeePcbHistoryLedger)) {
+              employeePcbHistoryLedger = e.employeePcbHistoryLedger;
+            }
+          } catch (err) {
+            console.error('Error parsing employeePcbHistoryLedger for employee', e.id, err);
+          }
+          try {
+            if (e.employeeTp3Declarations && typeof e.employeeTp3Declarations === 'string') {
+              employeeTp3Declarations = JSON.parse(e.employeeTp3Declarations);
+            } else if (Array.isArray(e.employeeTp3Declarations)) {
+              employeeTp3Declarations = e.employeeTp3Declarations;
+            }
+          } catch (err) {
+            console.error('Error parsing employeeTp3Declarations for employee', e.id, err);
           }
           let salaryAdjustments = [];
           try {
@@ -779,13 +810,21 @@ export default function App() {
             educationCertUrl: e.educationCertUrl || '',
             skbbkEmployee: Number(e.skbbkEmployee || 0),
             skbbkEmployer: Number(e.skbbkEmployer || 0),
+            optInEpf: e.optInEpf !== false,
+            optInSocso: e.optInSocso !== false,
+            optInEis: e.optInEis !== false,
+            optInPcb: e.optInPcb !== false,
+            enableLindung24: e.enableLindung24 === true,
             historicalPayrollRecords,
             effectiveDatedProfiles,
             historicalPcbResults,
             historicalVariances,
             tp1Declarations,
             tp3Data,
-            salaryAdjustments
+            salaryAdjustments,
+            socsoProfile,
+            employee_pcb_history_ledger: employeePcbHistoryLedger,
+            employee_tp3_declarations: employeeTp3Declarations
           };
         });
         setEmployees(parsedEmployees.filter(emp => emp.entityId === 'ENT-92'));
@@ -1247,23 +1286,30 @@ export default function App() {
   const handleDeleteEmployee = async (id: string) => {
     const targetEmp = employees.find(e => e.id === id);
     const lookupKey = targetEmp?.name || id;
-    setEmployees(prev => prev.filter(e => e.id !== id));
-    setPerformances(prev => prev.filter(p => p.employeeId !== id));
+    if (!targetEmp) {
+      throw new Error('The employee record could not be found.');
+    }
 
     if (isSupabaseConfigured) {
       try {
-        await supabaseClient.delete('employees', id, 'id');
-        await supabaseClient.insert('audit_logs', {
-          id: `log_${Date.now()}`,
-          employeeEmail: targetEmp?.email || lookupKey,
-          changedBy: currentUserEmail || 'admin@acme.com',
-          changeType: 'DELETE_EMPLOYEE',
-          oldValue: `Employee Email: ${lookupKey}`,
-          newValue: '',
-          createdAt: getGmt8Timestamp()
-        });
-      } catch (err) {
+        await supabaseClient.delete('employees', targetEmp.email || id, 'email');
+        try {
+          await supabaseClient.insert('audit_logs', {
+            id: `log_${Date.now()}`,
+            employeeEmail: targetEmp.email || lookupKey,
+            changedBy: currentUserEmail || 'admin@acme.com',
+            changeType: 'DELETE_EMPLOYEE',
+            oldValue: JSON.stringify(targetEmp),
+            newValue: '',
+            createdAt: getGmt8Timestamp()
+          });
+        } catch (auditError) {
+          console.warn('[Supabase Audit Warning] Employee was deleted but audit logging failed:', auditError);
+        }
+      } catch (err: any) {
         console.error('[Supabase Delete Error]', err);
+        triggerNotification('Delete Failed', `Could not delete employee from Supabase: ${err.message || err}`, 'info');
+        throw err;
       }
     } else if (isGoogleConfigured) {
       try {
@@ -1281,26 +1327,36 @@ export default function App() {
         }, scriptUrl);
       } catch (err) {
         console.error('[Google Sheets Delete] Failed to delete employee:', err);
+        throw err;
       }
     }
+
+    setEmployees(prev => prev.filter(e => e.id !== id));
+    setPerformances(prev => prev.filter(p => p.employeeId !== id));
   };
 
   const handleUpdateEmployeeSalary = async (id: string, updates: Partial<Employee>) => {
     const oldEmp = employees.find(e => e.id?.toLowerCase() === id?.toLowerCase() || e.email?.toLowerCase() === id?.toLowerCase());
-    setEmployees(prev => prev.map(e => (e.id?.toLowerCase() === id?.toLowerCase() || e.email?.toLowerCase() === id?.toLowerCase()) ? { ...e, ...updates } : e));
+    if (!oldEmp) {
+      throw new Error('The employee record could not be found.');
+    }
 
     if (isSupabaseConfigured) {
       try {
         await supabaseClient.update('employees', id, updates, 'id');
-        await supabaseClient.insert('audit_logs', {
-          id: `log_${Date.now()}`,
-          employeeEmail: oldEmp?.email || id,
-          changedBy: currentUserEmail || 'admin@acme.com',
-          changeType: 'UPDATE_EMPLOYEE',
-          oldValue: JSON.stringify(oldEmp),
-          newValue: JSON.stringify(updates),
-          createdAt: getGmt8Timestamp()
-        });
+        try {
+          await supabaseClient.insert('audit_logs', {
+            id: `log_${Date.now()}`,
+            employeeEmail: oldEmp.email || id,
+            changedBy: currentUserEmail || 'admin@acme.com',
+            changeType: 'UPDATE_EMPLOYEE',
+            oldValue: JSON.stringify(oldEmp),
+            newValue: JSON.stringify(updates),
+            createdAt: getGmt8Timestamp()
+          });
+        } catch (auditError) {
+          console.warn('[Supabase Audit Warning] Employee was updated but audit logging failed:', auditError);
+        }
       } catch (err: any) {
         console.error('[Supabase Update Error]', err);
         triggerNotification('Sync Failed', `Could not update employee in Supabase: ${err.message || err}`, 'info');
@@ -1413,19 +1469,16 @@ export default function App() {
         throw err;
       }
     }
+
+    setEmployees(prev => prev.map(e => {
+      const matches = e.id?.toLowerCase() === id?.toLowerCase() || e.email?.toLowerCase() === id?.toLowerCase();
+      if (!matches) return e;
+      const nextId = updates.email && e.id === e.email ? updates.email : e.id;
+      return { ...e, ...updates, id: nextId };
+    }));
   };
 
   const handleSavePayrollRecord2026 = async (record: PayrollRecord2026) => {
-    setPayrollRecords2026(prev => {
-      const filtered = prev.filter(r => 
-        r.id !== record.id && 
-        !(r.employeeEmail.toLowerCase() === record.employeeEmail.toLowerCase() && 
-          r.payrollMonth === record.payrollMonth && 
-          r.payrollYear === record.payrollYear)
-      );
-      return [...filtered, record];
-    });
-
     if (isSupabaseConfigured) {
       try {
         await supabaseClient.upsert('payroll_records_2026', record);
@@ -1433,6 +1486,7 @@ export default function App() {
       } catch (err: any) {
         console.error('[Supabase] Failed to save payroll record 2026:', err);
         triggerNotification('Sync Failed', `Could not save payroll record: ${err.message || err}`, 'info');
+        throw err;
       }
     } else if (isGoogleConfigured) {
       try {
@@ -1449,8 +1503,19 @@ export default function App() {
       } catch (err: any) {
         console.error('[Google Sheets] Failed to save payroll record 2026:', err);
         triggerNotification('Sync Failed', `Could not save payroll record: ${err.message || err}`, 'info');
+        throw err;
       }
     }
+
+    setPayrollRecords2026(prev => {
+      const filtered = prev.filter(r =>
+        r.id !== record.id &&
+        !(r.employeeEmail.toLowerCase() === record.employeeEmail.toLowerCase() &&
+          r.payrollMonth === record.payrollMonth &&
+          r.payrollYear === record.payrollYear)
+      );
+      return [...filtered, record];
+    });
   };
 
   const handleSavePerformance = async (updatedPerf: EmployeePerformance) => {

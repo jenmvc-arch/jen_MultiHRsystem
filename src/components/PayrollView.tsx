@@ -14,8 +14,8 @@ interface PayrollViewProps {
   employees: Employee[];
   entities: CorporateEntity[];
   payrollRecords2026?: PayrollRecord2026[];
-  onSavePayrollRecord2026?: (record: PayrollRecord2026) => void;
-  onUpdateEmployeeSalary: (id: string, updates: Partial<Employee>) => void;
+  onSavePayrollRecord2026?: (record: PayrollRecord2026) => Promise<void>;
+  onUpdateEmployeeSalary: (id: string, updates: Partial<Employee>) => Promise<void>;
   onNavigateToDocument: (employeeId: string) => void;
   onShowNotification: (title: string, message: string) => void;
   activeEntity?: CorporateEntity;
@@ -50,6 +50,7 @@ export default function PayrollView({
 
   // Edit states for dynamic live testing!
   const [isEditing, setIsEditing] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [tempBasic, setTempBasic] = useState(0);
   const [tempTax, setTempTax] = useState(0);
   const [hasAllowances, setHasAllowances] = useState(false);
@@ -244,7 +245,9 @@ export default function PayrollView({
     setIsEditing(true);
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
+    setIsSavingEdit(true);
+    try {
     const epfRateEmp = activeEmployee.epfRateEmployee || 11;
     const epfRateEmployerCalculated = tempBasic <= 5000 ? 13 : 12;
     const epfRateEmployer = activeEmployee.epfRateEmployer || epfRateEmployerCalculated;
@@ -332,7 +335,7 @@ export default function PayrollView({
     };
 
     if (onSavePayrollRecord2026) {
-      onSavePayrollRecord2026(record2026);
+      await onSavePayrollRecord2026(record2026);
     }
 
     const newRecord: HistoricalPayrollRecord = {
@@ -359,7 +362,7 @@ export default function PayrollView({
       calculationBasis: 'actual_deduction_history'
     });
 
-    onUpdateEmployeeSalary(activeEmployee.id, {
+    await onUpdateEmployeeSalary(activeEmployee.id, {
       basicSalary: tempBasic,
       allowanceGeneral: hasAllowances ? allowanceGen : 0,
       allowanceTransport: hasAllowances ? allowanceTrans : 0,
@@ -402,6 +405,11 @@ export default function PayrollView({
       'Payslip & Past Records Updated',
       `Live updates and historical records saved and recalculated for ${activeEmployee.name} in ${selectedPayPeriod}.`
     );
+    } catch (error) {
+      console.error('[Payroll Save] Failed:', error);
+    } finally {
+      setIsSavingEdit(false);
+    }
   };
 
   const handleBulkGenerate = () => {
@@ -1200,9 +1208,10 @@ export default function PayrollView({
                   </button>
                   <button 
                     onClick={saveEdit}
+                    disabled={isSavingEdit}
                     className="px-4 py-2 bg-primary text-[#f7f0e0] rounded text-xs font-bold hover:bg-primary-dark transition-all cursor-pointer shadow-xs"
                   >
-                    Recalculate & Save
+                    {isSavingEdit ? 'Saving...' : 'Recalculate & Save'}
                   </button>
                 </div>
               </div>

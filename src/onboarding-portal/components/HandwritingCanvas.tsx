@@ -10,6 +10,7 @@ interface HandwritingCanvasProps {
   onSaveSignature: (dataUrl: string | null) => void;
   onClear?: () => void;
   confirmButtonText?: string;
+  disabled?: boolean;
 }
 
 export const HandwritingCanvas: React.FC<HandwritingCanvasProps> = ({
@@ -20,6 +21,7 @@ export const HandwritingCanvas: React.FC<HandwritingCanvasProps> = ({
   onSaveSignature,
   onClear,
   confirmButtonText = 'Confirm Initial',
+  disabled = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -34,6 +36,7 @@ export const HandwritingCanvas: React.FC<HandwritingCanvasProps> = ({
 
     if (existingDataUrl) {
       const img = new Image();
+      img.crossOrigin = 'anonymous';
       img.onload = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -45,6 +48,54 @@ export const HandwritingCanvas: React.FC<HandwritingCanvasProps> = ({
       setHasStrokes(false);
     }
   }, [existingDataUrl]);
+
+  const exportCroppedDrawing = (canvas: HTMLCanvasElement): string | null => {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let minX = canvas.width;
+    let minY = canvas.height;
+    let maxX = -1;
+    let maxY = -1;
+
+    for (let y = 0; y < canvas.height; y += 1) {
+      for (let x = 0; x < canvas.width; x += 1) {
+        const alpha = pixels.data[(y * canvas.width + x) * 4 + 3];
+        if (alpha > 8) {
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+      }
+    }
+
+    if (maxX < minX || maxY < minY) return null;
+
+    const padding = 12;
+    const sourceX = Math.max(0, minX - padding);
+    const sourceY = Math.max(0, minY - padding);
+    const sourceWidth = Math.min(canvas.width - sourceX, maxX - minX + 1 + padding * 2);
+    const sourceHeight = Math.min(canvas.height - sourceY, maxY - minY + 1 + padding * 2);
+    const cropped = document.createElement('canvas');
+    cropped.width = sourceWidth;
+    cropped.height = sourceHeight;
+    const croppedCtx = cropped.getContext('2d');
+    if (!croppedCtx) return null;
+    croppedCtx.drawImage(
+      canvas,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      0,
+      0,
+      sourceWidth,
+      sourceHeight
+    );
+    return cropped.toDataURL('image/png');
+  };
 
   const getPos = (
     e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>,
@@ -65,6 +116,7 @@ export const HandwritingCanvas: React.FC<HandwritingCanvasProps> = ({
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (disabled) return;
     // Prevent scrolling on touch devices while drawing
     if ('touches' in e && e.cancelable) {
       e.preventDefault();
@@ -105,12 +157,15 @@ export const HandwritingCanvas: React.FC<HandwritingCanvasProps> = ({
     if (!isDrawing) return;
     setIsDrawing(false);
     const canvas = canvasRef.current;
-    if (canvas && hasStrokes) {
-      onSaveSignature(canvas.toDataURL('image/png'));
+    if (canvas) {
+      const drawing = exportCroppedDrawing(canvas);
+      setHasStrokes(Boolean(drawing));
+      if (drawing) onSaveSignature(drawing);
     }
   };
 
   const handleClear = () => {
+    if (disabled) return;
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext('2d');
@@ -134,6 +189,7 @@ export const HandwritingCanvas: React.FC<HandwritingCanvasProps> = ({
           <button
             type="button"
             onClick={handleClear}
+            disabled={disabled}
             className="text-xs text-[#810912] hover:underline flex items-center gap-1 cursor-pointer"
           >
             <RotateCcw className="w-3 h-3" />
@@ -155,7 +211,7 @@ export const HandwritingCanvas: React.FC<HandwritingCanvasProps> = ({
           onTouchMove={draw}
           onTouchEnd={stopDrawing}
           style={{ height: `${height}px` }}
-          className="w-full cursor-crosshair touch-none block"
+          className={`w-full touch-none block ${disabled ? 'cursor-default' : 'cursor-crosshair'}`}
         />
 
         {!hasStrokes && (

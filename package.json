@@ -9,8 +9,10 @@
     "preview": "./node_modules/.bin/vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
+    "onboarding:register-template": "./node_modules/.bin/tsx scripts/register-handbook-template.ts",
     "server": "./node_modules/.bin/tsx server.ts",
-    "test": "./node_modules/.bin/tsx src/test_pcb.ts && ./node_modules/.bin/tsx src/test_entity_switching.ts && ./node_modules/.bin/tsx src/test_enroll_enlist.ts && ./node_modules/.bin/tsx src/test_diagnostics.ts && ./node_modules/.bin/tsx src/test_supabase.ts"
+    "test:supabase-persistence": "./node_modules/.bin/tsx scripts/test-employee-persistence.ts",
+    "test": "./node_modules/.bin/tsx src/test_pcb.ts && ./node_modules/.bin/tsx src/test_entity_switching.ts && ./node_modules/.bin/tsx src/test_enroll_enlist.ts && ./node_modules/.bin/tsx src/test_diagnostics.ts && ./node_modules/.bin/tsx src/test_supabase.ts && ./node_modules/.bin/tsx src/test_handbook_signing.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -26,6 +28,8 @@
     "jspdf": "^4.2.1",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "pdf-lib": "^1.17.1",
+    "pngjs": "^7.0.0",
     "puppeteer": "^25.2.1",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
@@ -36,6 +40,7 @@
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
+    "@types/pngjs": "^6.0.5",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",

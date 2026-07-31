@@ -28,27 +28,42 @@ import {
   X,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
-import { exportAcknowledgementPdf, exportFullSignedHandbookPdf } from '../utils/pdfExport';
+import { exportAcknowledgementPdf } from '../utils/pdfExport';
 
 interface HandbookViewProps {
   modules: HandbookModule[];
   onAcknowledgeModule: (moduleId: number, signature: string) => void;
   onOpenAiAssistant: () => void;
+  partInitials: Record<number, string>;
+  finalSignatureDataUrl: string | null;
+  isSigningLocked?: boolean;
+  onSavePartInitial: (moduleId: number, signature: string) => Promise<void>;
+  onClearPartInitial: (moduleId: number) => Promise<void>;
+  onSaveFinalSignature: (signature: string) => Promise<void>;
+  onClearFinalSignature: () => Promise<void>;
+  onDownloadFullHandbook: () => void;
 }
 
 export const HandbookView: React.FC<HandbookViewProps> = ({
   modules,
   onAcknowledgeModule,
   onOpenAiAssistant,
+  partInitials,
+  finalSignatureDataUrl,
+  isSigningLocked = false,
+  onSavePartInitial,
+  onClearPartInitial,
+  onSaveFinalSignature,
+  onClearFinalSignature,
+  onDownloadFullHandbook,
 }) => {
   const { t } = useLanguage();
   const [selectedModuleId, setSelectedModuleId] = useState<number>(1); // Part 1 - Introduction
   const [contentType, setContentType] = useState<'full' | 'summary'>('full');
-  const [hasSigned, setHasSigned] = useState<boolean>(false);
   const [isPlayingVideo, setIsPlayingVideo] = useState<boolean>(false);
-  const [finalSignatureDataUrl, setFinalSignatureDataUrl] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const hasSigned = Boolean(finalSignatureDataUrl);
 
   // Employee Particulars State
   const [empName, setEmpName] = useState<string>('Sarah Lin');
@@ -56,26 +71,17 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   const [empPosition, setEmpPosition] = useState<string>('Digital Content Specialist');
   const [empDate, setEmpDate] = useState<string>(new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' }));
 
-  // Track handwritten initials per part (Parts 1 to 14 dataUrls)
-  const [partInitials, setPartInitials] = useState<Record<number, string>>(() => {
-    const initialMap: Record<number, string> = {};
-    modules.forEach((m) => {
-      if (m.status === 'completed') {
-        initialMap[m.id] = 'PRE_COMPLETED';
-      }
-    });
-    return initialMap;
-  });
-
   // Overall progress calculation
-  const completedCount = modules.filter(
-    (m) => m.status === 'completed' || !!partInitials[m.id]
-  ).length;
+  const completedCount = modules.filter((m) => !!partInitials[m.id]).length;
   const overallPercent = Math.round((completedCount / modules.length) * 100);
 
   // 5-point Covenant Checklist
   const [covenants, setCovenants] = useState<boolean[]>([true, true, true, true, true]);
   const [isFinalSigned, setIsFinalSigned] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isSigningLocked) setIsFinalSigned(true);
+  }, [isSigningLocked]);
 
   const covenantTexts = [
     'I have received a copy of the RedPoint Sdn. Bhd. Employee Handbook (Version 1.0).',
@@ -178,18 +184,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   };
 
   const handleDownloadFullHandbookPdf = () => {
-    exportFullSignedHandbookPdf({
-      employeeName: empName || 'Sarah Lin',
-      employeeId: 'EMP-1092',
-      department: empDept || 'Marketing & Creative Strategy',
-      position: empPosition || 'Digital Content Specialist',
-      signedDate: empDate || new Date().toLocaleDateString(),
-      signatureTextOrImage: finalSignatureDataUrl || empName || 'Sarah Lin',
-      quizScorePercent: 90,
-      quizGrade: 'Grade S (PASSED)',
-      covenants: covenantTexts,
-      modules,
-    });
+    onDownloadFullHandbook();
   };
 
   return (
@@ -732,13 +727,16 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                 subLabel="Draw your official signature below on the digital signature pad using mouse, touchpad, or touchscreen stylus."
                 height={130}
                 existingDataUrl={finalSignatureDataUrl}
+                disabled={isSigningLocked}
                 onSaveSignature={(dataUrl) => {
-                  setFinalSignatureDataUrl(dataUrl);
-                  setHasSigned(!!dataUrl);
+                  if (dataUrl) {
+                    void onSaveFinalSignature(dataUrl).catch(() => undefined);
+                  } else {
+                    void onClearFinalSignature().catch(() => undefined);
+                  }
+                  setIsFinalSigned(false);
                 }}
                 onClear={() => {
-                  setFinalSignatureDataUrl(null);
-                  setHasSigned(false);
                   setIsFinalSigned(false);
                 }}
               />
@@ -844,17 +842,15 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                 label={`Employee Handwritten Initial Pad (Part ${activeModule.id})`}
                 subLabel={`Please draw your handwritten initial below to confirm you have thoroughly reviewed Part ${activeModule.id} – ${activeModule.content.sectionTitle}.`}
                 height={110}
-                existingDataUrl={partInitials[activeModule.id] && partInitials[activeModule.id] !== 'PRE_COMPLETED' ? partInitials[activeModule.id] : null}
+                existingDataUrl={partInitials[activeModule.id] || null}
+                disabled={isSigningLocked}
                 onSaveSignature={(dataUrl) => {
                   if (dataUrl) {
-                    setPartInitials((prev) => ({ ...prev, [activeModule.id]: dataUrl }));
-                    onAcknowledgeModule(activeModule.id, dataUrl);
+                    void onSavePartInitial(activeModule.id, dataUrl).then(() => {
+                      onAcknowledgeModule(activeModule.id, dataUrl);
+                    }).catch(() => undefined);
                   } else {
-                    setPartInitials((prev) => {
-                      const updated = { ...prev };
-                      delete updated[activeModule.id];
-                      return updated;
-                    });
+                    void onClearPartInitial(activeModule.id).catch(() => undefined);
                   }
                 }}
               />

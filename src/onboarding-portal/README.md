@@ -6,9 +6,31 @@ This feature was adapted from:
 - Imported commit: `939344f851dce1dd827ddaaba8f86ecc670e7a87`
 
 The standalone login and outer navigation shell were intentionally omitted. The portal
-now runs inside the Red Point HRMS Hire & Onboarding section and reuses the HRMS session,
-employees, and candidates.
+now runs inside the Red Point HRMS Hire & Onboarding section and reuses the HRMS
+employees and candidates. Employee signing additionally requires a matching Supabase
+Auth session; HR administrators can preview the portal but cannot sign for an employee.
 
 Duplicate standalone dashboard, document-upload, and HR analytics views were removed.
 Recruitment administration remains in the parent Hire & Onboarding workflow; this portal
 contains only the employee journey, handbook, compliance quiz, and completion record.
+
+## Signed handbook archive
+
+The visible handbook workflow is unchanged. Parts 1 through 14 save cropped initial
+images and server timestamps to a private signing session. Part 15 saves the final
+signature. Refreshing or changing devices restores those marks from Supabase.
+
+Finalization is handled by `POST /api/onboarding/finalize-handbook`. The endpoint verifies
+the Supabase Auth user, subject record, quiz result, 15 signature marks, immutable
+template version, page count, and template SHA-256 before overlaying marks with
+`pdf-lib`. It stores the completed PDF in the private `signed-handbooks` bucket and
+returns a five-minute signed download URL.
+
+Apply `supabase/migrations/20260731_onboarding_handbook_signing.sql` before enabling the
+feature. Configure `SUPABASE_SERVICE_ROLE_KEY` only in the Vercel server environment.
+Each employee or candidate signer must exist in Supabase Auth and in the corresponding
+HR table with the same email address. Employee login sends a Supabase magic link and
+restores the HR session after that link is opened.
+
+See `docs/onboarding-handbook-template.md` for original PDF registration and placement
+manifest instructions.

@@ -27,7 +27,7 @@ import PCBReconstructionHub from './PCBReconstructionHub';
 
 interface TaxSettingsViewProps {
   employees: Employee[];
-  onUpdateEmployee: (id: string, updates: Partial<Employee>) => void;
+  onUpdateEmployee: (id: string, updates: Partial<Employee>) => Promise<void>;
   onShowNotification: (title: string, message: string, type?: 'success' | 'info' | 'error') => void;
 }
 
@@ -97,20 +97,24 @@ export default function TaxSettingsView({
     }
   }, [selectedEmployeeId, activeEmployee]);
 
-  const handleSaveTP3 = () => {
-    onUpdateEmployee(activeEmployee.id, {
-      tp3Data: {
-        accumulatedPriorRemuneration: Number(tp3PrevSalary),
-        accumulatedPriorEPF: Number(tp3PrevEpf),
-        accumulatedPriorPCB: Number(tp3PrevPcb),
-        accumulatedPriorSocso: Number(tp3PrevSocso)
-      }
-    });
-    onShowNotification(
-      'TP3 Record Synced',
-      `Prior employment earnings of RM ${Number(tp3PrevSalary).toLocaleString()} have been registered for ${activeEmployee.name} to optimize remaining 2026 PCB calculations.`,
-      'success'
-    );
+  const handleSaveTP3 = async () => {
+    try {
+      await onUpdateEmployee(activeEmployee.id, {
+        tp3Data: {
+          accumulatedPriorRemuneration: Number(tp3PrevSalary),
+          accumulatedPriorEPF: Number(tp3PrevEpf),
+          accumulatedPriorPCB: Number(tp3PrevPcb),
+          accumulatedPriorSocso: Number(tp3PrevSocso)
+        }
+      });
+      onShowNotification(
+        'TP3 Record Synced',
+        `Prior employment earnings of RM ${Number(tp3PrevSalary).toLocaleString()} have been registered for ${activeEmployee.name} to optimize remaining 2026 PCB calculations.`,
+        'success'
+      );
+    } catch (error) {
+      console.error('[TP3 Save] Failed:', error);
+    }
   };
 
   return (

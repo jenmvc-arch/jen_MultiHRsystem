@@ -59,8 +59,8 @@ interface EmployeeDirectoryViewProps {
   employees: Employee[];
   entities: CorporateEntity[];
   onAddEmployee: (emp: Employee) => void;
-  onDeleteEmployee: (id: string) => void;
-  onUpdateEmployee: (id: string, updates: Partial<Employee>) => void;
+  onDeleteEmployee: (id: string) => Promise<void>;
+  onUpdateEmployee: (id: string, updates: Partial<Employee>) => Promise<void>;
   onShowNotification: (title: string, message: string) => void;
   activeEntityId?: string;
 }
@@ -130,6 +130,7 @@ export default function EmployeeDirectoryView({
   // Add Employee Modal form states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSavingForm, setIsSavingForm] = useState(false);
+  const [savingAction, setSavingAction] = useState<string | null>(null);
   const [formEntityId, setFormEntityId] = useState(activeEntityId || entities[0]?.id || 'ENT-92');
   
   useEffect(() => {
@@ -251,7 +252,7 @@ export default function EmployeeDirectoryView({
     setIsEditingGeneralInfo(true);
   };
 
-  const handleSaveGeneralInfoUpdates = () => {
+  const handleSaveGeneralInfoUpdates = async () => {
     if (!selectedEmployee) return;
     
     const updates: Partial<Employee> = {
@@ -286,9 +287,16 @@ export default function EmployeeDirectoryView({
       entityId: editEntityId
     };
 
-    onUpdateEmployee(selectedEmployee.id, updates);
-    setIsEditingGeneralInfo(false);
-    onShowNotification('Profile Saved', 'Employee personal and corporate profile updated successfully.');
+    setSavingAction('general');
+    try {
+      await onUpdateEmployee(selectedEmployee.id, updates);
+      setIsEditingGeneralInfo(false);
+      onShowNotification('Profile Saved', 'Employee personal and corporate profile updated successfully.');
+    } catch (error) {
+      console.error('[Employee Profile Save] Failed:', error);
+    } finally {
+      setSavingAction(null);
+    }
   };
 
   const getScriptUrlForEntity = (entityNameOrId?: string): string | undefined => {
@@ -336,7 +344,7 @@ export default function EmployeeDirectoryView({
     if (!isGoogleConfigured) {
       // Offline fallback: Use local blob URL
       const localUrl = URL.createObjectURL(file);
-      onUpdateEmployee(employeeId, { avatarUrl: localUrl });
+      await onUpdateEmployee(employeeId, { avatarUrl: localUrl });
       onShowNotification('Avatar Selected', 'Simulated avatar change locally.');
       setIsUploadingAvatar(false);
       return;
@@ -348,7 +356,7 @@ export default function EmployeeDirectoryView({
       const scriptUrl = getScriptUrlForEntity(emp?.entityId);
       const publicUrl = await googleSheetsClient.uploadFile(file, scriptUrl);
 
-      onUpdateEmployee(employeeId, { avatarUrl: publicUrl });
+      await onUpdateEmployee(employeeId, { avatarUrl: publicUrl });
 
       // Log update to audit log table
       await googleSheetsClient.insert('audit_logs', {
@@ -479,23 +487,30 @@ export default function EmployeeDirectoryView({
     }
   };
 
-  const handleSaveCareerChanges = () => {
+  const handleSaveCareerChanges = async () => {
     if (!selectedEmployee) return;
-    onUpdateEmployee(selectedEmployee.id, {
-      designation: localDesignation,
-      department: localDepartment,
-      status: localStatus,
-      employmentType: localEmploymentType,
-      basicSalary: localBasicSalary,
-      taxPcb: localTaxPcb,
-      entityId: localEntityId,
-      salaryAdjustments: localSalaryAdjustments,
-      careerHistory: localCareerHistory
-    });
-    onShowNotification(
-      'Database Synced',
-      `Staged career adjustments for ${selectedEmployee.name} saved and synced to Google Sheets database.`
-    );
+    setSavingAction('career');
+    try {
+      await onUpdateEmployee(selectedEmployee.id, {
+        designation: localDesignation,
+        department: localDepartment,
+        status: localStatus,
+        employmentType: localEmploymentType,
+        basicSalary: localBasicSalary,
+        taxPcb: localTaxPcb,
+        entityId: localEntityId,
+        salaryAdjustments: localSalaryAdjustments,
+        careerHistory: localCareerHistory
+      });
+      onShowNotification(
+        'Database Synced',
+        `Staged career and salary adjustments for ${selectedEmployee.name} were saved.`
+      );
+    } catch (error) {
+      console.error('[Career Save] Failed:', error);
+    } finally {
+      setSavingAction(null);
+    }
   };
 
   // Filter list
@@ -630,7 +645,7 @@ export default function EmployeeDirectoryView({
     setIsEditingStatutorySettings(true);
   };
 
-  const handleSaveStatutorySettings = () => {
+  const handleSaveStatutorySettings = async () => {
     if (!selectedEmployee) return;
     const updates: Partial<Employee> = {
       optInEpf: editOptInEpf,
@@ -639,12 +654,19 @@ export default function EmployeeDirectoryView({
       optInPcb: editOptInPcb,
       enableLindung24: editEnableLindung24,
     };
-    onUpdateEmployee(selectedEmployee.id, updates);
-    setIsEditingStatutorySettings(false);
-    onShowNotification('Statutory Settings Saved', 'Statutory opt-in/opt-out preferences updated and saved to Supabase.');
+    setSavingAction('statutory');
+    try {
+      await onUpdateEmployee(selectedEmployee.id, updates);
+      setIsEditingStatutorySettings(false);
+      onShowNotification('Statutory Settings Saved', 'Statutory opt-in/opt-out preferences updated and saved.');
+    } catch (error) {
+      console.error('[Statutory Save] Failed:', error);
+    } finally {
+      setSavingAction(null);
+    }
   };
 
-  const handleSaveFamilyUpdates = () => {
+  const handleSaveFamilyUpdates = async () => {
     if (!selectedEmployee) return;
 
     let finalDependants = [...editDependants];
@@ -690,9 +712,16 @@ export default function EmployeeDirectoryView({
       updates.spousePosition = '';
     }
 
-    onUpdateEmployee(selectedEmployee.id, updates);
-    setIsEditingFamily(false);
-    onShowNotification('Profile Updated', 'Family and compliance registry updated successfully.');
+    setSavingAction('family');
+    try {
+      await onUpdateEmployee(selectedEmployee.id, updates);
+      setIsEditingFamily(false);
+      onShowNotification('Profile Updated', 'Family and compliance registry updated successfully.');
+    } catch (error) {
+      console.error('[Family Save] Failed:', error);
+    } finally {
+      setSavingAction(null);
+    }
   };
 
   const handleAddSubmit = async (e: React.FormEvent) => {
@@ -822,12 +851,19 @@ export default function EmployeeDirectoryView({
       }
    };
 
-  const handleDelete = (id: string, name: string) => {
+  const handleDelete = async (id: string, name: string) => {
     if (window.confirm(`Are you sure you want to terminate/remove ${name} from active payroll directory?`)) {
-      onDeleteEmployee(id);
-      onShowNotification('Employee Deleted', `${name} removed successfully.`);
-      if (selectedEmployeeId === id) {
-        setIsDetailOpen(false);
+      setSavingAction(`delete:${id}`);
+      try {
+        await onDeleteEmployee(id);
+        onShowNotification('Employee Deleted', `${name} removed successfully.`);
+        if (selectedEmployeeId === id) {
+          setIsDetailOpen(false);
+        }
+      } catch (error) {
+        console.error('[Employee Delete] Failed:', error);
+      } finally {
+        setSavingAction(null);
       }
     }
   };
@@ -914,19 +950,26 @@ export default function EmployeeDirectoryView({
     const skbbkEmployeeVal = previewEmployee.skbbkEmployee !== undefined ? previewEmployee.skbbkEmployee : (isEligible && isLindung24Enabled ? parseFloat(((previewEmployee.socsoEmployee || 0) * 0.25).toFixed(2)) : 0);
     const skbbkEmployerVal = previewEmployee.skbbkEmployer !== undefined ? previewEmployee.skbbkEmployer : (isEligible && isLindung24Enabled ? parseFloat(((previewEmployee.socsoEmployer || 0) * 0.25).toFixed(2)) : 0);
 
-    const handleSimulateUpdate = (e: React.FormEvent) => {
+    const handleSimulateUpdate = async (e: React.FormEvent) => {
       e.preventDefault();
-      onUpdateEmployee(previewEmployee.id, {
-        contactNumber: selfServiceContactNumber,
-        emergencyContactName: selfServiceEmergencyName,
-        emergencyContactRelation: selfServiceEmergencyRelation,
-        emergencyContactPhone: selfServiceEmergencyPhone
-      });
-      setIsSelfServiceEditingProfile(false);
-      onShowNotification(
-        'Profile Saved',
-        `Contact and emergency records for ${previewEmployee.name} updated successfully in the primary directory.`
-      );
+      setSavingAction('self-service');
+      try {
+        await onUpdateEmployee(previewEmployee.id, {
+          contactNumber: selfServiceContactNumber,
+          emergencyContactName: selfServiceEmergencyName,
+          emergencyContactRelation: selfServiceEmergencyRelation,
+          emergencyContactPhone: selfServiceEmergencyPhone
+        });
+        setIsSelfServiceEditingProfile(false);
+        onShowNotification(
+          'Profile Saved',
+          `Contact and emergency records for ${previewEmployee.name} updated successfully in the primary directory.`
+        );
+      } catch (error) {
+        console.error('[Self-service Profile Save] Failed:', error);
+      } finally {
+        setSavingAction(null);
+      }
     };
 
     return (
@@ -1245,9 +1288,10 @@ export default function EmployeeDirectoryView({
                           </button>
                           <button
                             type="submit"
+                            disabled={savingAction === 'self-service'}
                             className="px-4 py-2 bg-primary text-white rounded text-xs font-semibold hover:bg-primary-container cursor-pointer"
                           >
-                            Save Employee Changes
+                            {savingAction === 'self-service' ? 'Saving...' : 'Save Employee Changes'}
                           </button>
                         </div>
                       </form>
@@ -2269,6 +2313,7 @@ export default function EmployeeDirectoryView({
                             </button>
                             <button 
                               onClick={() => handleDelete(emp.id, emp.name)}
+                              disabled={savingAction === `delete:${emp.id}`}
                               className="text-error hover:text-red-700 hover:bg-error/10 p-1.5 rounded transition-colors inline-flex items-center gap-1 font-semibold cursor-pointer"
                               title="Remove Employee"
                             >
@@ -2371,15 +2416,15 @@ export default function EmployeeDirectoryView({
                       </button>
                       <button 
                         type="button"
-                        disabled={isUploadingAvatar}
+                        disabled={isUploadingAvatar || savingAction === 'general'}
                         onClick={handleSaveGeneralInfoUpdates}
                         className={`px-3 py-1.5 rounded transition-colors text-xs font-semibold cursor-pointer ${
-                          isUploadingAvatar 
+                          isUploadingAvatar || savingAction === 'general'
                             ? 'bg-zinc-300 text-zinc-500 cursor-not-allowed' 
                             : 'bg-primary text-[#f7f0e0] hover:opacity-95'
                         }`}
                       >
-                        {isUploadingAvatar ? 'Uploading...' : 'Save Changes'}
+                        {isUploadingAvatar ? 'Uploading...' : savingAction === 'general' ? 'Saving...' : 'Save Changes'}
                       </button>
                     </div>
                   )}
@@ -2866,9 +2911,10 @@ export default function EmployeeDirectoryView({
                         <button 
                           type="button"
                           onClick={handleSaveStatutorySettings}
+                          disabled={savingAction === 'statutory'}
                           className="bg-primary text-white hover:bg-primary-container px-2 py-1 rounded transition-colors text-xs font-semibold cursor-pointer"
                         >
-                          Save
+                          {savingAction === 'statutory' ? 'Saving...' : 'Save'}
                         </button>
                       </div>
                     )}
@@ -3062,9 +3108,10 @@ export default function EmployeeDirectoryView({
                         <button 
                           type="button"
                           onClick={handleSaveFamilyUpdates}
+                          disabled={savingAction === 'family'}
                           className="bg-primary text-white hover:bg-primary-container px-2 py-1 rounded transition-colors text-xs font-semibold cursor-pointer"
                         >
-                          Save
+                          {savingAction === 'family' ? 'Saving...' : 'Save'}
                         </button>
                       </div>
                     )}
@@ -3402,9 +3449,10 @@ export default function EmployeeDirectoryView({
                         <button 
                           type="button"
                           onClick={handleSaveFamilyUpdates}
+                          disabled={savingAction === 'family'}
                           className="px-3 py-1.5 bg-primary text-white hover:bg-primary-container rounded text-xs cursor-pointer"
                         >
-                          Save Family Registry
+                          {savingAction === 'family' ? 'Saving...' : 'Save Family Registry'}
                         </button>
                       </div>
                     </div>
@@ -3731,9 +3779,10 @@ export default function EmployeeDirectoryView({
                   <button
                     type="button"
                     onClick={handleSaveCareerChanges}
+                    disabled={savingAction === 'career'}
                     className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-2.5 rounded text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
                   >
-                    <Save className="w-4 h-4 text-white animate-pulse" /> Save Career & Salary Changes (Sync to Sheets)
+                    <Save className="w-4 h-4 text-white animate-pulse" /> {savingAction === 'career' ? 'Saving Career & Salary Changes...' : 'Save Career & Salary Changes'}
                   </button>
                 </div>
 
