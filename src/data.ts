@@ -45,7 +45,47 @@ import {
 
 export const INITIAL_ENTITIES: CorporateEntity[] = [];
 
-export const INITIAL_EMPLOYEES: Employee[] = [];
+export const INITIAL_EMPLOYEES: Employee[] = [
+  {
+    id: 'EMP-CHIN-KEE-JEAY',
+    entityId: 'ENT-92',
+    name: 'CHIN KEE JEAY',
+    email: 'chinkeejeay@gmail.com',
+    designation: 'Software Engineer',
+    department: 'Engineering',
+    status: 'Active',
+    bankName: 'Maybank',
+    accountNo: '114012345678',
+    basicSalary: 5000,
+    housingAllowance: 500,
+    transportAllowance: 300,
+    overtime: 0,
+    performanceBonus: 0,
+    epfRateEmployee: 11,
+    epfRateEmployer: 13,
+    socsoEmployee: 0,
+    socsoEmployer: 0,
+    eisEmployee: 0,
+    eisEmployer: 0,
+    taxPcb: 0,
+    unpaidLeave: 0,
+    hrdCorp: 0,
+    nricPassport: '900101-14-5555',
+    nationality: 'Malaysian',
+    employmentType: 'Permanent',
+    maritalStatus: 'Single',
+    eligibleForStatutory: 'Yes',
+    optInEpf: true,
+    optInSocso: true,
+    optInEis: true,
+    optInPcb: true,
+    enableLindung24: false,
+    emergencyContactName: '',
+    emergencyContactRelation: '',
+    emergencyContactPhone: '',
+    dateOfJoined: '2024-01-01'
+  }
+];
 
 export const INITIAL_REVIEW_CYCLES: ReviewCycle[] = [];
 
