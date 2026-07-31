@@ -72,6 +72,7 @@ export const INITIAL_EMPLOYEES: Employee[] = [
     hrdCorp: 0,
     nricPassport: '900101-14-5555',
     nationality: 'Malaysian',
+    taxNumber: '',
     employmentType: 'Permanent',
     maritalStatus: 'Single',
     eligibleForStatutory: 'Yes',
@@ -3444,4 +3445,3 @@ export async function compressLogoFile(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
-

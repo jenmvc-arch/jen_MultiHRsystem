@@ -22,12 +22,15 @@ import {
   LayoutGrid,
   UserCheck,
   Share2,
-  Link as LinkIcon
+  Link as LinkIcon,
+  BookOpen
 } from 'lucide-react';
-import { CorporateEntity, Candidate } from '../types';
+import { CorporateEntity, Candidate, Employee } from '../types';
 import JobApplicationForm from './JobApplicationForm';
 import OnboardingForm from './OnboardingForm';
 import { getGmt8DateString } from '../lib/dateUtils';
+
+const OnboardingPortalView = React.lazy(() => import('./OnboardingPortalView'));
 
 interface OnboardingTask {
   id: string;
@@ -40,9 +43,13 @@ interface HireOnboardingViewProps {
   entities: CorporateEntity[];
   onShowNotification: (title: string, message: string) => void;
   onAddEmployee?: (newEmployee: any) => void;
+  employees: Employee[];
   candidates: Candidate[];
   onAddCandidate: (newCandidate: Candidate) => void;
   onUpdateCandidate: (id: string, updates: Partial<Candidate>) => void;
+  currentUserName?: string | null;
+  currentUserEmail?: string | null;
+  currentUserRole?: string | null;
 }
 
 const INITIAL_ONBOARDING_TASKS: OnboardingTask[] = [
@@ -58,13 +65,19 @@ export default function HireOnboardingView({
   entities,
   onShowNotification,
   onAddEmployee,
+  employees,
   candidates,
   onAddCandidate,
-  onUpdateCandidate
+  onUpdateCandidate,
+  currentUserName,
+  currentUserEmail,
+  currentUserRole
 }: HireOnboardingViewProps) {
   const [tasks, setTasks] = useState<OnboardingTask[]>(INITIAL_ONBOARDING_TASKS);
   const [selectedCandidateId, setSelectedCandidateId] = useState('CAN-01');
-  const [activeTab, setActiveTab] = useState<'pipeline' | 'application-form' | 'onboarding-form'>('pipeline');
+  const [activeTab, setActiveTab] = useState<
+    'pipeline' | 'application-form' | 'onboarding-form' | 'onboarding-portal'
+  >('pipeline');
 
   // Load departments and roles dynamically
   const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
@@ -261,7 +274,7 @@ export default function HireOnboardingView({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0 self-start md:self-auto">
-          <div className="flex space-x-2 border border-neutral-border rounded-lg p-1 bg-white">
+          <div className="flex flex-wrap gap-1 border border-neutral-border rounded-lg p-1 bg-white">
             <button
               onClick={() => setActiveTab('pipeline')}
               className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${
@@ -295,6 +308,17 @@ export default function HireOnboardingView({
               <UserCheck className="w-4 h-4" />
               Onboarding Form
             </button>
+            <button
+              onClick={() => setActiveTab('onboarding-portal')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${
+                activeTab === 'onboarding-portal'
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'text-on-surface hover:bg-neutral-50'
+              }`}
+            >
+              <BookOpen className="w-4 h-4" />
+              Onboarding Portal
+            </button>
           </div>
 
           <button
@@ -312,7 +336,26 @@ export default function HireOnboardingView({
         </div>
       </div>
 
-      {activeTab === 'application-form' ? (
+      {activeTab === 'onboarding-portal' ? (
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <React.Suspense
+            fallback={
+              <div className="flex min-h-64 items-center justify-center border-y border-neutral-border text-sm font-semibold text-on-surface-variant">
+                Loading Onboarding Portal...
+              </div>
+            }
+          >
+            <OnboardingPortalView
+              employees={employees}
+              candidates={candidates}
+              currentUserName={currentUserName}
+              currentUserEmail={currentUserEmail}
+              currentUserRole={currentUserRole}
+              onShowNotification={onShowNotification}
+            />
+          </React.Suspense>
+        </div>
+      ) : activeTab === 'application-form' ? (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
           <JobApplicationForm 
             onApplicationSubmit={handleApplicationSubmit}

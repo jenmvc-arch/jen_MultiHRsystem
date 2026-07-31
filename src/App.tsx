@@ -1998,9 +1998,13 @@ export default function App() {
               entities={entities}
               onShowNotification={triggerNotification}
               onAddEmployee={handleAddEmployee}
+              employees={filteredEmployees}
               candidates={filteredCandidates}
               onAddCandidate={handleAddCandidate}
               onUpdateCandidate={handleUpdateCandidate}
+              currentUserName={currentUserName}
+              currentUserEmail={currentUserEmail}
+              currentUserRole={currentUserRole}
             />
           )}
 
