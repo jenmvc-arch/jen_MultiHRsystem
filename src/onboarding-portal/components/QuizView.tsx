@@ -34,6 +34,9 @@ interface QuizViewProps {
   employeeId?: string;
   department?: string;
   position?: string;
+  partInitials?: Record<number, string>;
+  finalSignatureDataUrl?: string | null;
+  onShowNotification?: (title: string, message: string) => void;
 }
 
 const LOCAL_STORAGE_KEY = 'redpoint_quiz_progress_v1';
@@ -81,6 +84,9 @@ export const QuizView: React.FC<QuizViewProps> = ({
   employeeId = 'EMP-ONBOARDING',
   department = 'Operations',
   position = 'Staff Member',
+  partInitials,
+  finalSignatureDataUrl,
+  onShowNotification,
 }) => {
   const { t } = useLanguage();
   const questions = fallbackQuestions;
@@ -807,11 +813,12 @@ export const QuizView: React.FC<QuizViewProps> = ({
                         department,
                         position,
                         signedDate: new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' }),
-                        signatureTextOrImage: employeeName,
+                        signatureTextOrImage: finalSignatureDataUrl || employeeName,
                         quizScorePercent: finalScore,
                         quizGrade: finalGrade,
                         quizQuestions: questions,
                         userAnswers,
+                        initialSignatures: partInitials,
                       });
                     }}
                     className="w-full sm:w-auto py-2.5 px-5 rounded-lg bg-[#810912] text-white font-extrabold text-xs hover:bg-[#a32626] transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer hover:-translate-y-0.5"

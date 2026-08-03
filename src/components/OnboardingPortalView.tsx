@@ -833,6 +833,12 @@ function OnboardingPortalContent({
             onCompleteQuiz={handleCompleteQuiz}
             viewRole={viewRole}
             onShowNotification={onShowNotification}
+            employeeName={journeyName}
+            employeeId={journeyId}
+            department={journeyDepartment}
+            position={journeyPosition}
+            partInitials={partInitialDataUrls}
+            finalSignatureDataUrl={finalSignatureDataUrl}
           />
         )}
 

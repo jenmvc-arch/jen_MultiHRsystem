@@ -473,6 +473,7 @@ export interface AcknowledgementPdfData {
   signatureTextOrImage: string;
   verifiedByHR?: string;
   covenants: string[];
+  initialSignatures?: Record<number, string>;
 }
 
 export function exportAcknowledgementPdf(data: AcknowledgementPdfData): void {
@@ -680,6 +681,8 @@ export interface FullSignedHandbookPdfData {
   userAnswers?: Record<number, number>;
   covenants?: string[];
   modules?: HandbookModule[];
+  initialSignatures?: Record<number, string>;
+  initialsTimestamp?: Record<number, string>;
 }
 
 export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): void {
@@ -871,9 +874,67 @@ export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): vo
   doc.setFontSize(8);
   doc.setTextColor(80, 80, 80);
   doc.text('Verbatim text of all 15 handbook modules as acknowledged by the employee.', marginLeft, currentY);
+  currentY += 8;
+
+  // 14-Part Initial Ledger Matrix
+  checkPageBreak(50);
+  doc.setFillColor(250, 246, 239);
+  doc.setDrawColor(129, 9, 18);
+  doc.roundedRect(marginLeft, currentY, contentWidth, 8, 1, 1, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.setTextColor(129, 9, 18);
+  doc.text('SUMMARY OF 14-PART HANDBOOK INITIALS & COMPLIANCE VERIFICATION', marginLeft + 4, currentY + 5.5);
   currentY += 10;
 
   const modulesList = data.modules || OFFICIAL_HANDBOOK_MODULES;
+
+  // Render 2-column matrix of all 14 parts' initial marks
+  const colW = (contentWidth - 4) / 2;
+  const initialEntries = modulesList.slice(0, 14);
+
+  for (let i = 0; i < initialEntries.length; i += 2) {
+    checkPageBreak(12);
+    const m1 = initialEntries[i];
+    const m2 = initialEntries[i + 1];
+
+    [m1, m2].forEach((m, colIdx) => {
+      if (!m) return;
+      const xPos = marginLeft + (colIdx === 0 ? 0 : colW + 4);
+
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(220, 200, 200);
+      doc.roundedRect(xPos, currentY, colW, 9.5, 1, 1, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(129, 9, 18);
+      doc.text(`Part ${m.id}:`, xPos + 2.5, currentY + 4);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.setTextColor(50, 50, 50);
+      const titleTrunc = m.title.length > 24 ? m.title.substring(0, 22) + '...' : m.title;
+      doc.text(titleTrunc, xPos + 14, currentY + 4);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(19, 115, 51);
+      doc.text('[✓ Initialed]', xPos + 2.5, currentY + 8);
+
+      const mark = data.initialSignatures?.[m.id] || data.signatureTextOrImage || data.employeeName;
+      const initText = mark && !mark.startsWith('data:image/') ? mark : data.employeeName.split(' ').map((n: string) => n[0]).join('');
+      doc.setFont('times', 'bolditalic');
+      doc.setFontSize(7.5);
+      doc.setTextColor(129, 9, 18);
+      doc.text(`Init: ${initText}`, xPos + colW - 3, currentY + 8, { align: 'right' });
+    });
+
+    currentY += 11.5;
+  }
+
+  currentY += 6;
 
   modulesList.forEach((mod) => {
     checkPageBreak(30);
@@ -998,6 +1059,56 @@ export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): vo
           currentY += 3;
         }
       });
+    }
+
+    // Official Employee Initial Stamp Box for each part (Parts 1 to 14)
+    if (mod.id <= 14) {
+      checkPageBreak(25);
+      doc.setFillColor(250, 246, 239);
+      doc.setDrawColor(129, 9, 18);
+      doc.roundedRect(marginLeft, currentY, contentWidth, 20, 2, 2, 'FD');
+
+      // Left information
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(129, 9, 18);
+      doc.text(`PART ${mod.id} COMPLIANCE ACKNOWLEDGEMENT & EMPLOYEE INITIAL:`, marginLeft + 4, currentY + 5.5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.2);
+      doc.setTextColor(60, 60, 60);
+      doc.text(`I hereby confirm that I have reviewed, understood, and agreed to abide by Part ${mod.id} (${mod.title}).`, marginLeft + 4, currentY + 10.5);
+      doc.text(`Signer: ${data.employeeName} | Date: ${data.signedDate} | Status: Verified & Initialed`, marginLeft + 4, currentY + 15.5);
+
+      // Right initial stamp box
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(129, 9, 18);
+      doc.roundedRect(marginRight - 46, currentY + 2.5, 43, 15, 1.5, 1.5, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(129, 9, 18);
+      doc.text('EMPLOYEE INITIAL', marginRight - 24.5, currentY + 5.5, { align: 'center' });
+
+      const mark = data.initialSignatures?.[mod.id] || data.signatureTextOrImage || data.employeeName;
+      if (mark && mark.startsWith('data:image/')) {
+        try {
+          doc.addImage(mark, 'PNG', marginRight - 42, currentY + 6.5, 35, 9.5);
+        } catch {
+          doc.setFont('times', 'bolditalic');
+          doc.setFontSize(9);
+          doc.setTextColor(129, 9, 18);
+          doc.text(`[${data.employeeName.split(' ').map((n: string) => n[0]).join('')}]`, marginRight - 24.5, currentY + 12, { align: 'center' });
+        }
+      } else {
+        doc.setFont('times', 'bolditalic');
+        doc.setFontSize(10);
+        doc.setTextColor(129, 9, 18);
+        const initialLetters = mark ? mark : data.employeeName.split(' ').map((n: string) => n[0]).join('');
+        doc.text(initialLetters, marginRight - 24.5, currentY + 12, { align: 'center' });
+      }
+
+      currentY += 25;
     }
 
     currentY += 6;

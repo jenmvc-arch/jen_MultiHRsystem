@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
   Play,
@@ -15,7 +15,16 @@ import {
   FileCode,
   Copy,
   Check,
-  Download
+  Download,
+  ArrowRight,
+  ArrowLeft,
+  PenTool,
+  CheckSquare,
+  Square,
+  RefreshCw,
+  AlertCircle,
+  PlayCircle,
+  Layers
 } from 'lucide-react';
 import { HANDBOOK_MODULES, QUIZ_QUESTIONS } from '../data';
 import { exportFullSignedHandbookPdf } from '../utils/pdfExport';
@@ -41,24 +50,40 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
   onShowNotification,
 }) => {
   // Test Candidate Profile
-  const [testName, setTestName] = useState('Audit Test Trainee (Simulated)');
-  const [testDept, setTestDept] = useState('Quality Assurance & Compliance');
-  const [testPosition, setTestPosition] = useState('Operations Specialist');
+  const [testName, setTestName] = useState('Sarah Lin (Audit Simulation)');
+  const [testDept, setTestDept] = useState('Marketing & Brand Communications');
+  const [testPosition, setTestPosition] = useState('Digital Content Specialist');
   const [testEntity, setTestEntity] = useState('Red Point Sdn. Bhd.');
 
-  // Active Tab
-  const [activeTab, setActiveTab] = useState<'flow' | 'handbook' | 'quiz' | 'audit'>('flow');
+  // Stepper / Tab state: 1. Setup -> 2. Handbook -> 3. Quiz -> 4. Audit & Record
+  const [activeStep, setActiveStep] = useState<'setup' | 'handbook' | 'quiz' | 'audit'>('setup');
 
-  // Simulation State
+  // Step 1: Session Initiation State
   const [sessionStarted, setSessionStarted] = useState(false);
   const [simulatedDay, setSimulatedDay] = useState(1);
+
+  // Step 2: Handbook Sequential Progression State (Parts 1 to 15)
+  const [activeHandbookPart, setActiveHandbookPart] = useState<number>(1);
   const [testInitials, setTestInitials] = useState<Record<number, string>>({});
+  const [covenants, setCovenants] = useState<boolean[]>([true, true, true, true, true]);
   const [testFinalSignature, setTestFinalSignature] = useState<string | null>(null);
+  const [isAutomatingHandbook, setIsAutomatingHandbook] = useState<boolean>(false);
+
+  // Canvas ref for drawing initial/signature
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasCanvasDrawn, setHasCanvasDrawn] = useState(false);
+
+  // Step 3: Quiz Assessment Sequential Progression State (Questions 1 to 30)
+  const [currentQuizIndex, setCurrentQuizIndex] = useState<number>(0);
+  const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({});
+  const [isQuizSubmitted, setIsQuizSubmitted] = useState<boolean>(false);
   const [quizScore, setQuizScore] = useState<number | null>(null);
   const [quizGrade, setQuizGrade] = useState<string | null>(null);
-  const [copiedLog, setCopiedLog] = useState(false);
+  const [isAutomatingQuiz, setIsAutomatingQuiz] = useState<boolean>(false);
 
-  // Audit Event Logs
+  // Step 4: Audit Logs & Clipboard
+  const [copiedLog, setCopiedLog] = useState(false);
   const [logs, setLogs] = useState<TestAuditLogEntry[]>([
     {
       id: 'LOG-001',
@@ -89,11 +114,83 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
     ]);
   };
 
-  // Handbook Simulation Helpers
-  const completedHandbookCount = Object.keys(testInitials).length;
-  const isHandbookFullyInitialed = completedHandbookCount >= 14;
-  const isHandbookFullySigned = isHandbookFullyInitialed && Boolean(testFinalSignature);
+  // Helper to generate styled SVG initial data URL
+  const generateInitialDataUrl = (name: string, partId: number) => {
+    const initials = name
+      .split(' ')
+      .filter(Boolean)
+      .map((n) => n[0])
+      .join('')
+      .substring(0, 3)
+      .toUpperCase() || 'SL';
+    return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="70"><rect width="100%" height="100%" fill="%23FAF6EF" rx="6"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-family="cursive, serif" font-size="28" font-style="italic" font-weight="bold" fill="%23810912">${initials} (P${partId})</text><line x1="20" y1="52" x2="140" y2="52" stroke="%23810912" stroke-width="1.5" stroke-dasharray="3,2"/></svg>`;
+  };
 
+  const generateSignatureDataUrl = (name: string) => {
+    return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="280" height="80"><rect width="100%" height="100%" fill="%23FAF6EF" rx="8"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-family="cursive, serif" font-size="26" font-style="italic" font-weight="bold" fill="%23810912">${name}</text><line x1="20" y1="62" x2="260" y2="62" stroke="%23810912" stroke-width="2"/></svg>`;
+  };
+
+  // Handbook progress helpers
+  const completedHandbookCount = Object.keys(testInitials).length;
+  const isHandbook14Initialed = completedHandbookCount >= 14;
+  const isHandbookFullyCompleted = isHandbook14Initialed && Boolean(testFinalSignature);
+
+  // Initialize Canvas
+  useEffect(() => {
+    if (activeStep === 'handbook' && canvasRef.current) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#FAF6EF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#810912';
+      }
+    }
+  }, [activeStep, activeHandbookPart]);
+
+  const clearCanvas = () => {
+    if (canvasRef.current) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#FAF6EF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      setHasCanvasDrawn(false);
+    }
+  };
+
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    setIsDrawing(true);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.beginPath();
+    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.stroke();
+    setHasCanvasDrawn(true);
+  };
+
+  const handleCanvasMouseUp = () => {
+    setIsDrawing(false);
+  };
+
+  // STEP 1 ACTIONS
   const handleStartSimulatedSession = () => {
     setSessionStarted(true);
     addLog(
@@ -102,64 +199,180 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
       `7-Day Onboarding clock initiated for ${testName} (Entity: ${testEntity}).`,
       'success'
     );
-    onShowNotification('Test Session Started', 'Simulated 7-day onboarding period is now running.');
+    onShowNotification('Test Session Started', 'Simulated 7-day onboarding period is now active.');
+    setActiveStep('handbook');
   };
 
-  const handleAutoInitialAll = () => {
-    if (!sessionStarted) setSessionStarted(true);
-    const mockInitial = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><text x="10" y="40" font-family="cursive" font-size="28" fill="%23810912">AuditInitial</text></svg>';
-    const allInitials: Record<number, string> = {};
-    for (let i = 1; i <= 14; i++) {
-      allInitials[i] = mockInitial;
+  // STEP 2 ACTIONS: Sequential Initialing of Parts 1..14 & Part 15
+  const handleInitialCurrentPart = () => {
+    let mark = '';
+    if (hasCanvasDrawn && canvasRef.current) {
+      mark = canvasRef.current.toDataURL('image/png');
+    } else {
+      mark = generateInitialDataUrl(testName, activeHandbookPart);
     }
-    setTestInitials(allInitials);
-    setTestFinalSignature(mockInitial);
-    addLog(
-      'All 15 Parts Auto-Signed',
-      'Handbook',
-      'Parts 1–14 handwritten initials and Part 15 final digital signature recorded.',
-      'success'
-    );
-    onShowNotification('Handbook Completed', 'All 15 sections simulated and signed.');
-  };
 
-  const handleTogglePartInitial = (partId: number) => {
-    if (!sessionStarted) setSessionStarted(true);
-    const mockInitial = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><text x="10" y="40" font-family="cursive" font-size="28" fill="%23810912">Initial</text></svg>';
-    setTestInitials((prev) => {
-      const next = { ...prev };
-      if (next[partId]) {
-        delete next[partId];
-        addLog(`Part ${partId} Cleared`, 'Handbook', `Cleared signature mark for Part ${partId}.`, 'warning');
-      } else {
-        next[partId] = mockInitial;
-        addLog(`Part ${partId} Initialed`, 'Handbook', `Recorded handwritten initial mark for Part ${partId}.`, 'success');
+    if (activeHandbookPart <= 14) {
+      setTestInitials((prev) => ({
+        ...prev,
+        [activeHandbookPart]: mark,
+      }));
+      addLog(
+        `Part ${activeHandbookPart} Initial Recorded`,
+        'Handbook',
+        `Recorded mandatory employee initial for Part ${activeHandbookPart} (${HANDBOOK_MODULES[activeHandbookPart - 1]?.title || ''}).`,
+        'success'
+      );
+
+      // Move to next part
+      if (activeHandbookPart < 15) {
+        setActiveHandbookPart(activeHandbookPart + 1);
+        clearCanvas();
       }
-      return next;
+    } else if (activeHandbookPart === 15) {
+      // Part 15 Final Signature
+      const finalMark = hasCanvasDrawn && canvasRef.current
+        ? canvasRef.current.toDataURL('image/png')
+        : generateSignatureDataUrl(testName);
+      setTestFinalSignature(finalMark);
+      addLog(
+        'Part 15 Final Signature Executed',
+        'Handbook',
+        `Employee completed all 5 covenants and recorded official digital signature.`,
+        'success'
+      );
+      onShowNotification('Handbook Completed', 'All 15 handbook parts initialed & signed!');
+    }
+  };
+
+  // Automated step-through simulation for Handbook
+  const handleRunSequentialHandbookWalkthrough = () => {
+    setIsAutomatingHandbook(true);
+    addLog('Sequential Walkthrough Started', 'Handbook', 'Commencing automated step-by-step handbook signing flow (Parts 1–15).', 'info');
+
+    let current = 1;
+    const interval = setInterval(() => {
+      if (current <= 14) {
+        const mark = generateInitialDataUrl(testName, current);
+        setTestInitials((prev) => ({ ...prev, [current]: mark }));
+        addLog(`Part ${current} Initialed`, 'Handbook', `Recorded initial stamp for Part ${current}.`, 'success');
+        setActiveHandbookPart(current + 1);
+        current++;
+      } else if (current === 15) {
+        const finalMark = generateSignatureDataUrl(testName);
+        setTestFinalSignature(finalMark);
+        addLog('Part 15 Final Digital Signature Recorded', 'Handbook', 'All 15 parts completed.', 'success');
+        setIsAutomatingHandbook(false);
+        clearInterval(interval);
+        onShowNotification('Handbook Walkthrough Complete', 'All 14 parts initialed and Part 15 signed.');
+      }
+    }, 350);
+  };
+
+  // STEP 3 ACTIONS: Sequential Quiz Answering
+  const handleSelectQuizAnswer = (optionIdx: number) => {
+    setQuizAnswers((prev) => ({
+      ...prev,
+      [currentQuizIndex]: optionIdx,
+    }));
+  };
+
+  const handleNextQuizQuestion = () => {
+    if (quizAnswers[currentQuizIndex] === undefined) {
+      // default to correct answer for smooth testing if not selected
+      const correctIdx = QUIZ_QUESTIONS[currentQuizIndex]?.correctOptionIndex ?? 0;
+      setQuizAnswers((prev) => ({ ...prev, [currentQuizIndex]: correctIdx }));
+    }
+
+    if (currentQuizIndex < QUIZ_QUESTIONS.length - 1) {
+      setCurrentQuizIndex(currentQuizIndex + 1);
+    } else {
+      // Calculate final score
+      handleFinishQuiz();
+    }
+  };
+
+  const handleFinishQuiz = () => {
+    let correctCount = 0;
+    QUIZ_QUESTIONS.forEach((q, idx) => {
+      const ans = quizAnswers[idx] !== undefined ? quizAnswers[idx] : q.correctOptionIndex;
+      if (ans === q.correctOptionIndex) {
+        correctCount++;
+      }
     });
-  };
 
-  const handleApplyQuizPreset = (score: number, grade: string) => {
-    setQuizScore(score);
+    const percent = Math.round((correctCount / QUIZ_QUESTIONS.length) * 100);
+    let grade = 'Grade S (PASSED - EXEMPLARY)';
+    if (percent >= 90) grade = 'Grade S (PASSED - EXEMPLARY)';
+    else if (percent >= 75) grade = 'Grade A (PASSED - MERIT)';
+    else if (percent >= 65) grade = 'Grade B (PASSED - STANDARD)';
+    else grade = 'Failed (RETAKE REQUIRED)';
+
+    setQuizScore(percent);
     setQuizGrade(grade);
+    setIsQuizSubmitted(true);
+
     addLog(
-      `Quiz Completed (${grade})`,
+      `Compliance Quiz Submitted (${percent}%)`,
       'Quiz',
-      `Assessment score evaluated at ${score}% (${grade}). Pass status: ${score >= 65 ? 'PASSED' : 'FAILED'}.`,
-      score >= 65 ? 'success' : 'warning'
+      `Assessment completed with ${correctCount}/${QUIZ_QUESTIONS.length} correct answers (${percent}%). Result: ${grade}.`,
+      percent >= 65 ? 'success' : 'warning'
     );
-    onShowNotification('Quiz Preset Applied', `Score: ${score}% (${grade})`);
+    onShowNotification('Quiz Completed', `Score: ${percent}% · ${grade}`);
   };
 
-  const handleResetSandbox = () => {
-    setSessionStarted(false);
-    setSimulatedDay(1);
-    setTestInitials({});
-    setTestFinalSignature(null);
-    setQuizScore(null);
-    setQuizGrade(null);
-    addLog('Sandbox Reset', 'Session', 'All simulated marks and quiz records purged.', 'warning');
-    onShowNotification('Sandbox Reset', 'Test onboarding records have been cleared.');
+  // Automated step-through simulation for Quiz
+  const handleRunSequentialQuizWalkthrough = () => {
+    setIsAutomatingQuiz(true);
+    addLog('Sequential Quiz Walkthrough Started', 'Quiz', 'Simulating step-by-step answering of 30 compliance questions from Q1 to Q30.', 'info');
+
+    let qIdx = 0;
+    const simulatedAnswers: Record<number, number> = {};
+
+    const interval = setInterval(() => {
+      if (qIdx < QUIZ_QUESTIONS.length) {
+        const correct = QUIZ_QUESTIONS[qIdx].correctOptionIndex ?? 0;
+        simulatedAnswers[qIdx] = correct;
+        setQuizAnswers({ ...simulatedAnswers });
+        setCurrentQuizIndex(qIdx);
+        qIdx++;
+      } else {
+        clearInterval(interval);
+        setIsAutomatingQuiz(false);
+        setQuizScore(100);
+        setQuizGrade('Grade S (PASSED - EXEMPLARY)');
+        setIsQuizSubmitted(true);
+        addLog('Quiz Walkthrough Completed (100%)', 'Quiz', 'All 30 questions answered and validated with 100% score.', 'success');
+        onShowNotification('Quiz Simulation Complete', 'Score: 100% (Grade S PASSED)');
+      }
+    }, 120);
+  };
+
+  // STEP 4 ACTIONS: Export PDF & Audit Trail
+  const handleDownloadSignedHandbookPdf = () => {
+    const finalAnswers = { ...quizAnswers };
+    QUIZ_QUESTIONS.forEach((q, idx) => {
+      if (finalAnswers[idx] === undefined) {
+        finalAnswers[idx] = q.correctOptionIndex ?? 0;
+      }
+    });
+
+    exportFullSignedHandbookPdf({
+      employeeName: testName,
+      employeeId: 'TEST-AUDIT-001',
+      department: testDept,
+      position: testPosition,
+      signedDate: new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' }),
+      signatureTextOrImage: testFinalSignature || testName,
+      quizScorePercent: quizScore ?? 100,
+      quizGrade: quizGrade ?? 'Grade S (PASSED)',
+      quizQuestions: QUIZ_QUESTIONS,
+      userAnswers: finalAnswers,
+      initialSignatures: testInitials,
+    });
+
+    addLog('Full Signed PDF Generated', 'Audit', 'Exported 15-part signed handbook PDF containing all 14 handwritten initials and Part 15 execution signature.', 'success');
+    onShowNotification('Signed PDF Downloaded', 'Official Handbook with all 14 Part initials compiled!');
   };
 
   const handleExportAuditJson = () => {
@@ -174,12 +387,14 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
       handbookStatus: {
         sessionStarted,
         partsInitialed: Object.keys(testInitials).length,
+        initialSignaturesRecord: testInitials,
         finalSigned: Boolean(testFinalSignature),
       },
       quizStatus: {
         score: quizScore,
         grade: quizGrade,
         passed: (quizScore ?? 0) >= 65,
+        userAnswers: quizAnswers,
       },
       logs,
     };
@@ -204,47 +419,43 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
     onShowNotification('Copied', 'Audit trail log copied to clipboard.');
   };
 
-  const handleDownloadTestPdf = () => {
-    const mockUserAnswers: Record<number, number> = {};
-    QUIZ_QUESTIONS.forEach((q, idx) => {
-      mockUserAnswers[idx] = q.correctOptionIndex ?? 0;
-    });
-
-    exportFullSignedHandbookPdf({
-      employeeName: testName,
-      employeeId: 'TEST-AUDIT-001',
-      department: testDept,
-      position: testPosition,
-      signedDate: new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' }),
-      signatureTextOrImage: testName,
-      quizScorePercent: quizScore ?? 100,
-      quizGrade: quizGrade ?? 'Grade S (PASSED)',
-      quizQuestions: QUIZ_QUESTIONS,
-      userAnswers: mockUserAnswers,
-    });
-    addLog('PDF Certificate Generated', 'Audit', 'Signed handbook & quiz record PDF compiled and exported.', 'success');
+  const handleResetSandbox = () => {
+    setSessionStarted(false);
+    setSimulatedDay(1);
+    setActiveHandbookPart(1);
+    setTestInitials({});
+    setTestFinalSignature(null);
+    setCurrentQuizIndex(0);
+    setQuizAnswers({});
+    setIsQuizSubmitted(false);
+    setQuizScore(null);
+    setQuizGrade(null);
+    setActiveStep('setup');
+    clearCanvas();
+    addLog('Sandbox Reset', 'Session', 'All simulated marks, quiz records, and progression states purged.', 'warning');
+    onShowNotification('Sandbox Reset', 'Test onboarding simulation has been reset to starting state.');
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto animate-fade-in">
-      <div className="relative w-full max-w-5xl max-h-[92vh] bg-white rounded-2xl shadow-2xl border border-[#F2E8D8] flex flex-col overflow-hidden text-left">
+      <div className="relative w-full max-w-5xl max-h-[94vh] bg-white rounded-2xl shadow-2xl border border-[#F2E8D8] flex flex-col overflow-hidden text-left">
         {/* Header Bar */}
         <div className="bg-gradient-to-r from-[#810912] via-[#5a060d] to-[#1b1c1c] text-white p-5 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-white/10 rounded-xl border border-white/20">
+            <div className="p-2.5 bg-white/10 rounded-xl border border-white/20">
               <ShieldCheck className="w-6 h-6 text-[#D4AF37]" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-lg font-black tracking-tight">Test Onboarding Sandbox</h3>
-                <span className="bg-[#D4AF37] text-black text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full">
-                  Audit & Tutorial Mode
+                <span className="bg-[#D4AF37] text-black text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full">
+                  Complete Progression Flow Mode
                 </span>
               </div>
               <p className="text-xs text-white/80 mt-0.5">
-                Simulate end-to-end onboarding lifecycle, verify audit trail timestamps, and test PDF generation safely.
+                Simulate the entire end-to-end employee journey: 7-day briefing start, sequential 14-part initialing, linear quiz, and certified PDF export.
               </p>
             </div>
           </div>
@@ -258,86 +469,119 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
           </button>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex items-center justify-between border-b border-[#F2E8D8] bg-[#FAF6EF] px-5 py-2.5">
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setActiveTab('flow')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'flow'
-                  ? 'bg-[#810912] text-white shadow-xs'
-                  : 'text-[#59413f] hover:bg-white/60 hover:text-[#1b1c1c]'
-              }`}
-            >
-              <UserCheck className="w-3.5 h-3.5" />
-              <span>1. Profile & Flow</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('handbook')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'handbook'
-                  ? 'bg-[#810912] text-white shadow-xs'
-                  : 'text-[#59413f] hover:bg-white/60 hover:text-[#1b1c1c]'
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              <span>2. Handbook Simulation</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('quiz')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'quiz'
-                  ? 'bg-[#810912] text-white shadow-xs'
-                  : 'text-[#59413f] hover:bg-white/60 hover:text-[#1b1c1c]'
-              }`}
-            >
-              <GraduationCap className="w-3.5 h-3.5" />
-              <span>3. Quiz Assessment</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('audit')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'audit'
-                  ? 'bg-[#810912] text-white shadow-xs'
-                  : 'text-[#59413f] hover:bg-white/60 hover:text-[#1b1c1c]'
-              }`}
-            >
-              <ClipboardCheck className="w-3.5 h-3.5" />
-              <span>4. Audit Trail & Log ({logs.length})</span>
-            </button>
-          </div>
-
+        {/* 4-Step Sequential Progression Bar */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 border-b border-[#F2E8D8] bg-[#FAF6EF] p-2 gap-1.5">
+          {/* Step 1 */}
           <button
-            onClick={handleResetSandbox}
-            className="px-2.5 py-1 text-xs font-bold text-[#810912] hover:bg-[#810912]/10 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
-            title="Reset sandbox state"
+            type="button"
+            onClick={() => setActiveStep('setup')}
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+              activeStep === 'setup'
+                ? 'bg-[#810912] text-white shadow-xs'
+                : sessionStarted
+                ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                : 'text-[#59413f] hover:bg-white/60'
+            }`}
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset Sandbox</span>
+            <UserCheck className="w-4 h-4 shrink-0" />
+            <div className="text-left leading-tight">
+              <div className="text-[10px] uppercase font-bold opacity-80">Step 1</div>
+              <div className="font-extrabold truncate">Profile & Start</div>
+            </div>
+          </button>
+
+          {/* Step 2 */}
+          <button
+            type="button"
+            onClick={() => {
+              if (!sessionStarted) {
+                onShowNotification('Step 1 Required', 'Please start the 7-day briefing session in Step 1 first.');
+                return;
+              }
+              setActiveStep('handbook');
+            }}
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+              activeStep === 'handbook'
+                ? 'bg-[#810912] text-white shadow-xs'
+                : isHandbookFullyCompleted
+                ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                : 'text-[#59413f] hover:bg-white/60'
+            }`}
+          >
+            <BookOpen className="w-4 h-4 shrink-0" />
+            <div className="text-left leading-tight">
+              <div className="text-[10px] uppercase font-bold opacity-80">Step 2 ({completedHandbookCount}/14)</div>
+              <div className="font-extrabold truncate">15-Part Handbook</div>
+            </div>
+          </button>
+
+          {/* Step 3 */}
+          <button
+            type="button"
+            onClick={() => {
+              if (!isHandbookFullyCompleted) {
+                onShowNotification('Step 2 Required', 'Please complete all 14 handbook initials and Part 15 signature first.');
+                return;
+              }
+              setActiveStep('quiz');
+            }}
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+              activeStep === 'quiz'
+                ? 'bg-[#810912] text-white shadow-xs'
+                : isQuizSubmitted
+                ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                : 'text-[#59413f] hover:bg-white/60'
+            }`}
+          >
+            <GraduationCap className="w-4 h-4 shrink-0" />
+            <div className="text-left leading-tight">
+              <div className="text-[10px] uppercase font-bold opacity-80">
+                Step 3 {quizScore !== null ? `(${quizScore}%)` : ''}
+              </div>
+              <div className="font-extrabold truncate">30-Q Compliance Quiz</div>
+            </div>
+          </button>
+
+          {/* Step 4 */}
+          <button
+            type="button"
+            onClick={() => setActiveStep('audit')}
+            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+              activeStep === 'audit'
+                ? 'bg-[#810912] text-white shadow-xs'
+                : 'text-[#59413f] hover:bg-white/60'
+            }`}
+          >
+            <ClipboardCheck className="w-4 h-4 shrink-0" />
+            <div className="text-left leading-tight">
+              <div className="text-[10px] uppercase font-bold opacity-80">Step 4</div>
+              <div className="font-extrabold truncate">Audit & PDF Record</div>
+            </div>
           </button>
         </div>
 
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* TAB 1: Profile & Flow Overview */}
-          {activeTab === 'flow' && (
-            <div className="space-y-6">
-              {/* Test Profile Configurator */}
+          {/* ========================================================================= */}
+          {/* STEP 1: Candidate Profile & Start Briefing Session */}
+          {/* ========================================================================= */}
+          {activeStep === 'setup' && (
+            <div className="space-y-6 animate-fade-in">
               <div className="bg-[#FAF6EF] p-5 rounded-xl border border-[#e0bfbc]">
                 <h4 className="text-xs font-black uppercase text-[#810912] tracking-wider mb-3 flex items-center gap-2">
                   <UserCheck className="w-4 h-4" />
-                  <span>Simulated Trainee Identity</span>
+                  <span>Simulated Trainee Identity Particulars</span>
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <div>
                     <label className="text-[10px] font-bold text-[#59413f] uppercase block mb-1">
-                      Trainee Name
+                      Candidate Name
                     </label>
                     <input
                       type="text"
                       value={testName}
                       onChange={(e) => setTestName(e.target.value)}
-                      className="w-full bg-white border border-[#e0bfbc] rounded-lg px-3 py-1.5 text-xs font-semibold text-[#1b1c1c] focus:border-[#810912] focus:outline-hidden"
+                      className="w-full bg-white border border-[#e0bfbc] rounded-lg px-3 py-2 text-xs font-semibold text-[#1b1c1c] focus:border-[#810912] focus:outline-hidden"
                     />
                   </div>
                   <div>
@@ -348,7 +592,7 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
                       type="text"
                       value={testDept}
                       onChange={(e) => setTestDept(e.target.value)}
-                      className="w-full bg-white border border-[#e0bfbc] rounded-lg px-3 py-1.5 text-xs font-semibold text-[#1b1c1c] focus:border-[#810912] focus:outline-hidden"
+                      className="w-full bg-white border border-[#e0bfbc] rounded-lg px-3 py-2 text-xs font-semibold text-[#1b1c1c] focus:border-[#810912] focus:outline-hidden"
                     />
                   </div>
                   <div>
@@ -359,7 +603,7 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
                       type="text"
                       value={testPosition}
                       onChange={(e) => setTestPosition(e.target.value)}
-                      className="w-full bg-white border border-[#e0bfbc] rounded-lg px-3 py-1.5 text-xs font-semibold text-[#1b1c1c] focus:border-[#810912] focus:outline-hidden"
+                      className="w-full bg-white border border-[#e0bfbc] rounded-lg px-3 py-2 text-xs font-semibold text-[#1b1c1c] focus:border-[#810912] focus:outline-hidden"
                     />
                   </div>
                   <div>
@@ -370,44 +614,61 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
                       type="text"
                       value={testEntity}
                       onChange={(e) => setTestEntity(e.target.value)}
-                      className="w-full bg-white border border-[#e0bfbc] rounded-lg px-3 py-1.5 text-xs font-semibold text-[#1b1c1c] focus:border-[#810912] focus:outline-hidden"
+                      className="w-full bg-white border border-[#e0bfbc] rounded-lg px-3 py-2 text-xs font-semibold text-[#1b1c1c] focus:border-[#810912] focus:outline-hidden"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* 7-Day Journey Simulation Bar */}
-              <div className="bg-white p-5 rounded-xl border border-[#F2E8D8] shadow-xs space-y-4">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              {/* Start Session Initiation Card */}
+              <div className="bg-white p-6 rounded-xl border border-[#F2E8D8] shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
-                    <h4 className="text-sm font-bold text-[#1b1c1c]">7-Day Completion Window Simulation</h4>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="bg-[#810912] text-white text-[10px] font-black uppercase px-2 py-0.5 rounded-full">
+                        7-Day Requirement
+                      </span>
+                      <h4 className="text-sm font-bold text-[#1b1c1c]">1. Start Official Briefing Session</h4>
+                    </div>
                     <p className="text-xs text-[#59413f]">
-                      Test employee onboarding session start, timeline expiration, and progression tracking.
+                      Employees must press "Start" to initiate their 7-day orientation window. Without starting, all handbook parts remain locked.
                     </p>
                   </div>
 
                   {!sessionStarted ? (
                     <button
+                      type="button"
                       onClick={handleStartSimulatedSession}
-                      className="px-4 py-2 bg-[#810912] text-white text-xs font-bold rounded-lg hover:bg-[#a32626] transition-all flex items-center gap-2 cursor-pointer shadow-xs"
+                      className="px-5 py-2.5 bg-[#810912] hover:bg-[#a32626] text-white text-xs font-extrabold rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-md hover:-translate-y-0.5"
                     >
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>Start Briefing Session</span>
+                      <Play className="w-4 h-4 fill-current" />
+                      <span>START 7-DAY BRIEFING SESSION</span>
                     </button>
                   ) : (
-                    <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-1.5 rounded-lg text-xs font-bold">
-                      <Clock className="w-4 h-4 text-emerald-600" />
-                      <span>Session Active: Day {simulatedDay} of 7 ({7 - simulatedDay} days remaining)</span>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 px-3.5 py-2 rounded-lg text-xs font-bold">
+                        <Clock className="w-4 h-4 text-emerald-600 animate-pulse" />
+                        <span>Session Active: Day {simulatedDay} of 7</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveStep('handbook')}
+                        className="px-4 py-2 bg-[#810912] text-white text-xs font-bold rounded-lg hover:bg-[#a32626] transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      >
+                        <span>Continue to Handbook</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   )}
                 </div>
 
                 {sessionStarted && (
-                  <div className="flex items-center gap-2 pt-2 border-t border-[#F2E8D8]">
-                    <span className="text-xs font-semibold text-[#59413f]">Simulate Time Elapsed:</span>
+                  <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[#F2E8D8]">
+                    <span className="text-xs font-semibold text-[#59413f]">Simulate Elapsed Day:</span>
                     {[1, 2, 3, 4, 5, 6, 7].map((day) => (
                       <button
                         key={day}
+                        type="button"
                         onClick={() => {
                           setSimulatedDay(day);
                           addLog(
@@ -417,7 +678,7 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
                             'info'
                           );
                         }}
-                        className={`px-2.5 py-1 text-xs font-bold rounded-md transition-colors cursor-pointer ${
+                        className={`px-3 py-1 text-xs font-bold rounded-md transition-colors cursor-pointer ${
                           simulatedDay === day
                             ? 'bg-[#810912] text-white'
                             : 'bg-[#FAF6EF] text-[#59413f] hover:bg-[#e0bfbc]'
@@ -429,233 +690,507 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
                   </div>
                 )}
               </div>
-
-              {/* Progress Summary Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="bg-white p-4 rounded-xl border border-[#F2E8D8] shadow-xs">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-[#59413f]">Handbook Sign-off</span>
-                    <BookOpen className="w-4 h-4 text-[#810912]" />
-                  </div>
-                  <p className="text-xl font-extrabold text-[#1b1c1c]">
-                    {completedHandbookCount} / 14 Parts
-                  </p>
-                  <p className="text-[11px] text-[#59413f] mt-1">
-                    Final Sign-off (Part 15): {testFinalSignature ? '✅ Signed' : '⏳ Pending'}
-                  </p>
-                </div>
-
-                <div className="bg-white p-4 rounded-xl border border-[#F2E8D8] shadow-xs">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-[#59413f]">Compliance Quiz</span>
-                    <GraduationCap className="w-4 h-4 text-[#810912]" />
-                  </div>
-                  <p className="text-xl font-extrabold text-[#1b1c1c]">
-                    {quizScore !== null ? `${quizScore}%` : 'Not Taken'}
-                  </p>
-                  <p className="text-[11px] text-[#59413f] mt-1">
-                    Grade: {quizGrade || 'Pending Assessment'}
-                  </p>
-                </div>
-
-                <div className="bg-white p-4 rounded-xl border border-[#F2E8D8] shadow-xs">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-[#59413f]">Onboarding Record</span>
-                    <ShieldCheck className="w-4 h-4 text-[#810912]" />
-                  </div>
-                  <p className="text-xl font-extrabold text-[#1b1c1c]">
-                    {isHandbookFullySigned && (quizScore ?? 0) >= 65 ? 'Ready' : 'Incomplete'}
-                  </p>
-                  <p className="text-[11px] text-[#59413f] mt-1">
-                    Audit Status: Isolated Sandbox
-                  </p>
-                </div>
-              </div>
             </div>
           )}
 
-          {/* TAB 2: Handbook Briefing Simulation */}
-          {activeTab === 'handbook' && (
-            <div className="space-y-6">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#FAF6EF] p-4 rounded-xl border border-[#e0bfbc]">
+          {/* ========================================================================= */}
+          {/* STEP 2: 15-Part Sequential Handbook Progression & Handwritten Initials */}
+          {/* ========================================================================= */}
+          {activeStep === 'handbook' && (
+            <div className="space-y-6 animate-fade-in">
+              {/* Progress Summary & Automated Walkthrough trigger */}
+              <div className="bg-[#FAF6EF] p-4 rounded-xl border border-[#e0bfbc] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                  <h4 className="text-xs font-bold text-[#1b1c1c] uppercase tracking-wider">
-                    Handbook Sections Initial & Signature Simulator
-                  </h4>
-                  <p className="text-xs text-[#59413f]">
-                    Toggle individual section initials or click auto-initial to complete all 15 parts instantly.
-                  </p>
-                </div>
-                <button
-                  onClick={handleAutoInitialAll}
-                  className="px-4 py-2 bg-[#810912] text-white text-xs font-bold rounded-lg hover:bg-[#a32626] transition-all flex items-center gap-2 cursor-pointer shadow-xs shrink-0"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
-                  <span>Auto-Initial All 15 Parts</span>
-                </button>
-              </div>
-
-              {/* Grid of 15 Modules */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                {HANDBOOK_MODULES.map((mod) => {
-                  const isInitialed = Boolean(testInitials[mod.id]);
-                  return (
-                    <div
-                      key={mod.id}
-                      className={`p-3.5 rounded-xl border transition-all ${
-                        isInitialed
-                          ? 'bg-emerald-50/70 border-emerald-300 text-emerald-950'
-                          : 'bg-white border-[#F2E8D8] text-[#1b1c1c]'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[11px] font-extrabold uppercase text-[#810912]">
-                          Part {mod.id}
-                        </span>
-                        {isInitialed ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                            <span>Initialed</span>
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-semibold text-gray-400">
-                            Pending Initial
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs font-bold line-clamp-1 mb-2">{mod.title}</p>
-                      <button
-                        onClick={() => handleTogglePartInitial(mod.id)}
-                        className={`w-full py-1 text-[11px] font-bold rounded-md transition-colors cursor-pointer ${
-                          isInitialed
-                            ? 'bg-emerald-200/60 hover:bg-emerald-200 text-emerald-900'
-                            : 'bg-[#FAF6EF] hover:bg-[#e0bfbc] text-[#810912] border border-[#e0bfbc]'
-                        }`}
-                      >
-                        {isInitialed ? 'Remove Initial' : 'Simulate Initial'}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: Quiz Assessment Simulation */}
-          {activeTab === 'quiz' && (
-            <div className="space-y-6">
-              <div className="bg-[#FAF6EF] p-4 rounded-xl border border-[#e0bfbc]">
-                <h4 className="text-xs font-bold text-[#1b1c1c] uppercase tracking-wider mb-1">
-                  Compliance Assessment Simulation Presets
-                </h4>
-                <p className="text-xs text-[#59413f] mb-4">
-                  Quickly test different quiz score tiers to verify passing rules, certificate issuance, and failure locks.
-                </p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <button
-                    onClick={() => handleApplyQuizPreset(100, 'Grade S (PASSED)')}
-                    className="p-4 bg-white hover:bg-emerald-50 border border-emerald-300 rounded-xl text-left transition-all cursor-pointer shadow-xs group"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-extrabold text-emerald-700 uppercase">Preset 1: Perfect</span>
-                      <Award className="w-4 h-4 text-emerald-600" />
-                    </div>
-                    <p className="text-lg font-black text-emerald-900">100% · Grade S</p>
-                    <p className="text-[11px] text-emerald-700 mt-1">30 of 30 questions answered correctly.</p>
-                  </button>
-
-                  <button
-                    onClick={() => handleApplyQuizPreset(75, 'Grade A (PASSED)')}
-                    className="p-4 bg-white hover:bg-blue-50 border border-blue-300 rounded-xl text-left transition-all cursor-pointer shadow-xs group"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-extrabold text-blue-700 uppercase">Preset 2: Standard Pass</span>
-                      <CheckCircle2 className="w-4 h-4 text-blue-600" />
-                    </div>
-                    <p className="text-lg font-black text-blue-900">75% · Grade A</p>
-                    <p className="text-[11px] text-blue-700 mt-1">Pass mark threshold met (≥ 65%).</p>
-                  </button>
-
-                  <button
-                    onClick={() => handleApplyQuizPreset(40, 'Failed (RETAKE REQUIRED)')}
-                    className="p-4 bg-white hover:bg-red-50 border border-red-300 rounded-xl text-left transition-all cursor-pointer shadow-xs group"
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-extrabold text-red-700 uppercase">Preset 3: Below Threshold</span>
-                      <RotateCcw className="w-4 h-4 text-red-600" />
-                    </div>
-                    <p className="text-lg font-black text-red-900">40% · Failed</p>
-                    <p className="text-[11px] text-red-700 mt-1">Below 65% pass criteria. Retake enforced.</p>
-                  </button>
-                </div>
-              </div>
-
-              {quizScore !== null && (
-                <div className="bg-white p-5 rounded-xl border border-[#F2E8D8] shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <div>
-                    <h5 className="text-xs font-extrabold uppercase text-[#810912]">Assessment Test Result</h5>
-                    <p className="text-base font-black text-[#1b1c1c] mt-0.5">
-                      Score: {quizScore}% — {quizGrade}
-                    </p>
-                    <p className="text-xs text-[#59413f] mt-1">
-                      Linear Question Progression & Answer Key masking verified for test candidate.
-                    </p>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-[#810912] text-white text-[10px] font-black uppercase px-2 py-0.5 rounded-full">
+                      Sequential Progression
+                    </span>
+                    <h4 className="text-xs font-black uppercase text-[#1b1c1c]">
+                      Handbook Initial Progress: {completedHandbookCount} / 14 Parts ({Math.round((completedHandbookCount / 14) * 100)}%)
+                    </h4>
                   </div>
-
-                  <button
-                    onClick={handleDownloadTestPdf}
-                    className="px-4 py-2 bg-[#810912] text-white text-xs font-bold rounded-lg hover:bg-[#a32626] transition-all flex items-center gap-2 cursor-pointer shadow-xs shrink-0"
-                  >
-                    <Download className="w-3.5 h-3.5 text-[#D4AF37]" />
-                    <span>Download Test Certificate PDF</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* TAB 4: Audit Trail & Logs */}
-          {activeTab === 'audit' && (
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                <div>
-                  <h4 className="text-sm font-bold text-[#1b1c1c]">Simulation Audit Trail Ledger</h4>
-                  <p className="text-xs text-[#59413f]">
-                    Detailed chronological ledger of all actions for audit review and tutorial records.
+                  <p className="text-xs text-[#59413f] mt-1">
+                    Every part must be thoroughly reviewed and stamped with a handwritten initial before unlocking the next section.
                   </p>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={handleCopyLogs}
-                    className="px-3 py-1.5 text-xs font-bold text-[#59413f] hover:text-[#1b1c1c] bg-[#FAF6EF] border border-[#e0bfbc] rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                    type="button"
+                    onClick={handleRunSequentialHandbookWalkthrough}
+                    disabled={isAutomatingHandbook}
+                    className="px-3.5 py-2 bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-xs"
+                    title="Simulate all 15 parts sequentially step-by-step"
                   >
-                    {copiedLog ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedLog ? 'Copied' : 'Copy Log'}</span>
-                  </button>
-                  <button
-                    onClick={handleExportAuditJson}
-                    className="px-3 py-1.5 text-xs font-bold text-white bg-[#810912] hover:bg-[#a32626] rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <FileCode className="w-3.5 h-3.5" />
-                    <span>Export JSON Report</span>
+                    <PlayCircle className="w-3.5 h-3.5 text-purple-200" />
+                    <span>{isAutomatingHandbook ? 'Simulating Parts...' : '▶ Step-Through All 15 Parts'}</span>
                   </button>
                 </div>
               </div>
 
-              {/* Log Table */}
-              <div className="bg-[#1b1c1c] text-white rounded-xl p-4 font-mono text-xs max-h-80 overflow-y-auto space-y-2 border border-black/40">
-                {logs.map((log) => (
-                  <div key={log.id} className="flex items-start gap-3 py-1 border-b border-white/10 last:border-0">
-                    <span className="text-[#D4AF37] shrink-0">[{log.timestamp}]</span>
-                    <span className="text-[#ffbbb5] font-bold shrink-0">[{log.category}]</span>
-                    <div className="min-w-0 flex-1">
-                      <span className="text-white font-bold">{log.action}: </span>
-                      <span className="text-white/80">{log.detail}</span>
+              {/* 15-Part Stepper Chips */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-thin">
+                {HANDBOOK_MODULES.map((mod) => {
+                  const isInitialed = mod.id <= 14 ? Boolean(testInitials[mod.id]) : Boolean(testFinalSignature);
+                  const isCurrent = activeHandbookPart === mod.id;
+                  const isLocked = mod.id > 1 && !testInitials[mod.id - 1] && !isInitialed;
+
+                  return (
+                    <button
+                      key={mod.id}
+                      type="button"
+                      onClick={() => setActiveHandbookPart(mod.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition-all flex items-center gap-1.5 cursor-pointer ${
+                        isCurrent
+                          ? 'bg-[#810912] text-white shadow-xs ring-2 ring-[#D4AF37]'
+                          : isInitialed
+                          ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                          : isLocked
+                          ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
+                          : 'bg-white text-[#59413f] border border-[#F2E8D8] hover:bg-[#FAF6EF]'
+                      }`}
+                    >
+                      <span>Part {mod.id}</span>
+                      {isInitialed && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Active Part Content & Initialing Station */}
+              {activeHandbookPart <= 14 ? (
+                <div className="bg-white rounded-xl border border-[#F2E8D8] p-5 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between border-b border-[#F2E8D8] pb-3">
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-[#810912] tracking-wider">
+                        Part {activeHandbookPart} of 14 · Policy Review & Initial
+                      </span>
+                      <h3 className="text-base font-black text-[#1b1c1c]">
+                        {HANDBOOK_MODULES[activeHandbookPart - 1]?.title}
+                      </h3>
+                      <p className="text-xs text-[#59413f] mt-0.5">
+                        {HANDBOOK_MODULES[activeHandbookPart - 1]?.content.sectionTitle}
+                      </p>
+                    </div>
+
+                    {testInitials[activeHandbookPart] ? (
+                      <span className="bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-extrabold px-3 py-1 rounded-full flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Part {activeHandbookPart} Initialed</span>
+                      </span>
+                    ) : (
+                      <span className="bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Initial Required</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Policy Summary Callout */}
+                  <div className="bg-[#FAF6EF] p-4 rounded-lg border-l-4 border-[#810912] text-xs text-[#333]">
+                    <span className="font-bold text-[#810912]">Key Compliance Requirement: </span>
+                    <span>
+                      {HANDBOOK_MODULES[activeHandbookPart - 1]?.content.keyTakeaway ||
+                        HANDBOOK_MODULES[activeHandbookPart - 1]?.content.bodyParagraphs[0]}
+                    </span>
+                  </div>
+
+                  {/* Initial Stamp Drawing Canvas / Quick Stamp Area */}
+                  <div className="p-4 bg-[#FAF6EF] rounded-xl border border-[#e0bfbc] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <PenTool className="w-4 h-4 text-[#810912]" />
+                        <span className="text-xs font-bold text-[#1b1c1c]">
+                          Handwritten Initial Pad for Part {activeHandbookPart}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={clearCanvas}
+                        className="text-[11px] font-bold text-[#810912] hover:underline cursor-pointer"
+                      >
+                        Clear Pad
+                      </button>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-4">
+                      <canvas
+                        ref={canvasRef}
+                        width={240}
+                        height={75}
+                        onMouseDown={handleCanvasMouseDown}
+                        onMouseMove={handleCanvasMouseMove}
+                        onMouseUp={handleCanvasMouseUp}
+                        onMouseLeave={handleCanvasMouseUp}
+                        className="w-[240px] h-[75px] bg-white border-2 border-dashed border-[#810912]/40 rounded-lg cursor-crosshair shadow-inner"
+                        title="Draw your initial signature"
+                      />
+
+                      <div className="text-left space-y-2 flex-1">
+                        <p className="text-xs text-[#59413f]">
+                          Draw your initial with your mouse/touch, or click the button below to record the official timestamped initial for <strong>Part {activeHandbookPart}</strong>.
+                        </p>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleInitialCurrentPart}
+                            className="px-4 py-2 bg-[#810912] hover:bg-[#a32626] text-white text-xs font-extrabold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                          >
+                            <PenTool className="w-3.5 h-3.5 text-[#D4AF37]" />
+                            <span>Stamp Initial & Advance to Part {activeHandbookPart + 1}</span>
+                          </button>
+
+                          {activeHandbookPart < 14 && testInitials[activeHandbookPart] && (
+                            <button
+                              type="button"
+                              onClick={() => setActiveHandbookPart(activeHandbookPart + 1)}
+                              className="px-3.5 py-2 bg-white border border-[#F2E8D8] text-[#59413f] hover:text-[#1b1c1c] text-xs font-bold rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <span>Next Part</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                ))}
+                </div>
+              ) : (
+                /* PART 15: Final Execution & Covenants */
+                <div className="bg-white rounded-xl border border-[#F2E8D8] p-5 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between border-b border-[#F2E8D8] pb-3">
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-[#810912] tracking-wider">
+                        Part 15 of 15 · Final Covenants & Digital Signature
+                      </span>
+                      <h3 className="text-base font-black text-[#1b1c1c]">
+                        Final Acknowledgment & Digital Execution
+                      </h3>
+                    </div>
+
+                    {testFinalSignature ? (
+                      <span className="bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-extrabold px-3 py-1 rounded-full flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Part 15 Digitally Signed</span>
+                      </span>
+                    ) : (
+                      <span className="bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Final Signature Pending</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* 5 Covenants Checkbox List */}
+                  <div className="space-y-2 text-xs text-[#333]">
+                    <p className="font-bold text-[#810912]">Mandatory Compliance Covenants (5 of 5):</p>
+                    {[
+                      'I have received and reviewed the RedPoint Employee Handbook.',
+                      'I understand and agree to comply with all policies, rules, and guidelines.',
+                      'I acknowledge confidentiality, PDPA privacy, and IT security obligations.',
+                      'I understand this handbook does not alter my formal contract of employment.',
+                      'I will seek HR clarification for any questions regarding handbook contents.',
+                    ].map((cov, idx) => (
+                      <div key={idx} className="flex items-center gap-2 bg-[#FAF6EF] p-2.5 rounded-lg border border-[#e0bfbc]">
+                        <CheckSquare className="w-4 h-4 text-[#810912] shrink-0" />
+                        <span className="font-medium">{cov}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Final Signature Pad */}
+                  <div className="p-4 bg-[#FAF6EF] rounded-xl border border-[#e0bfbc] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#1b1c1c]">
+                        Digital Signature of Employee ({testName})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={clearCanvas}
+                        className="text-[11px] font-bold text-[#810912] hover:underline cursor-pointer"
+                      >
+                        Clear Canvas
+                      </button>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-4">
+                      <canvas
+                        ref={canvasRef}
+                        width={280}
+                        height={80}
+                        onMouseDown={handleCanvasMouseDown}
+                        onMouseMove={handleCanvasMouseMove}
+                        onMouseUp={handleCanvasMouseUp}
+                        onMouseLeave={handleCanvasMouseUp}
+                        className="w-[280px] h-[80px] bg-white border-2 border-dashed border-[#810912]/40 rounded-lg cursor-crosshair shadow-inner"
+                        title="Draw your full signature"
+                      />
+
+                      <div className="space-y-2 flex-1">
+                        <button
+                          type="button"
+                          onClick={handleInitialCurrentPart}
+                          className="px-5 py-2.5 bg-[#810912] hover:bg-[#a32626] text-white text-xs font-extrabold rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-md"
+                        >
+                          <ShieldCheck className="w-4 h-4 text-[#D4AF37]" />
+                          <span>SIGN & EXECUTE PART 15</span>
+                        </button>
+
+                        {isHandbookFullyCompleted && (
+                          <button
+                            type="button"
+                            onClick={() => setActiveStep('quiz')}
+                            className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                          >
+                            <span>Proceed to Compliance Quiz (Step 3)</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* STEP 3: 30-Question Linear Compliance Quiz Walkthrough */}
+          {/* ========================================================================= */}
+          {activeStep === 'quiz' && (
+            <div className="space-y-6 animate-fade-in">
+              <div className="bg-[#FAF6EF] p-4 rounded-xl border border-[#e0bfbc] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-[#810912] text-white text-[10px] font-black uppercase px-2 py-0.5 rounded-full">
+                      Linear Assessment Flow
+                    </span>
+                    <h4 className="text-xs font-black uppercase text-[#1b1c1c]">
+                      Compliance Quiz (Question {currentQuizIndex + 1} of {QUIZ_QUESTIONS.length})
+                    </h4>
+                  </div>
+                  <p className="text-xs text-[#59413f] mt-1">
+                    Answer questions sequentially from Q1 to Q30 without skipping. Pass criteria: ≥ 65%.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRunSequentialQuizWalkthrough}
+                    disabled={isAutomatingQuiz}
+                    className="px-3.5 py-2 bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-xs"
+                    title="Simulate answering all 30 questions sequentially"
+                  >
+                    <PlayCircle className="w-3.5 h-3.5 text-purple-200" />
+                    <span>{isAutomatingQuiz ? 'Answering Questions...' : '▶ Step-Through Quiz (Q1–Q30)'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Active Quiz Question Card */}
+              {!isQuizSubmitted ? (
+                <div className="bg-white rounded-xl border border-[#F2E8D8] p-5 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between border-b border-[#F2E8D8] pb-3">
+                    <span className="text-xs font-extrabold text-[#810912] uppercase">
+                      Question {currentQuizIndex + 1} · {QUIZ_QUESTIONS[currentQuizIndex]?.category}
+                    </span>
+                    <span className="text-xs text-gray-500 font-medium">
+                      Answered: {Object.keys(quizAnswers).length} / {QUIZ_QUESTIONS.length}
+                    </span>
+                  </div>
+
+                  <h3 className="text-sm font-bold text-[#1b1c1c]">
+                    {QUIZ_QUESTIONS[currentQuizIndex]?.question}
+                  </h3>
+
+                  {/* Options List */}
+                  <div className="space-y-2">
+                    {QUIZ_QUESTIONS[currentQuizIndex]?.options.map((opt, optIdx) => {
+                      const isSelected = quizAnswers[currentQuizIndex] === optIdx;
+                      return (
+                        <button
+                          key={optIdx}
+                          type="button"
+                          onClick={() => handleSelectQuizAnswer(optIdx)}
+                          className={`w-full p-3 rounded-lg border text-left text-xs font-semibold transition-all flex items-center justify-between cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#810912]/10 border-[#810912] text-[#810912] shadow-xs'
+                              : 'bg-[#FAF6EF] border-[#e0bfbc] text-[#333] hover:bg-white'
+                          }`}
+                        >
+                          <span>{opt}</span>
+                          {isSelected && <CheckCircle2 className="w-4 h-4 text-[#810912]" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Navigation Controls */}
+                  <div className="flex items-center justify-between pt-3 border-t border-[#F2E8D8]">
+                    <button
+                      type="button"
+                      disabled={currentQuizIndex === 0}
+                      onClick={() => setCurrentQuizIndex(currentQuizIndex - 1)}
+                      className="px-3.5 py-1.5 text-xs font-bold text-[#59413f] hover:text-[#1b1c1c] disabled:opacity-40 flex items-center gap-1 cursor-pointer"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      <span>Previous</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleNextQuizQuestion}
+                      className="px-5 py-2 bg-[#810912] hover:bg-[#a32626] text-white text-xs font-extrabold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <span>
+                        {currentQuizIndex < QUIZ_QUESTIONS.length - 1 ? 'Submit & Next Question' : 'Finish Quiz Assessment'}
+                      </span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Quiz Result Card */
+                <div className="bg-white rounded-xl border border-[#F2E8D8] p-6 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+                        Quiz Assessment Evaluated
+                      </span>
+                      <h3 className="text-xl font-black text-[#1b1c1c] mt-1">
+                        Score: {quizScore}% — {quizGrade}
+                      </h3>
+                      <p className="text-xs text-[#59413f]">
+                        Pass criteria: ≥ 65%. Linear question progression verified.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveStep('audit')}
+                      className="px-5 py-2.5 bg-[#810912] hover:bg-[#a32626] text-white text-xs font-extrabold rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-md"
+                    >
+                      <span>Proceed to Audit & Export (Step 4)</span>
+                      <ArrowRight className="w-4 h-4 text-[#D4AF37]" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* STEP 4: Audit Verification, Certified PDF & JSON Report */}
+          {/* ========================================================================= */}
+          {activeStep === 'audit' && (
+            <div className="space-y-6 animate-fade-in">
+              {/* Comprehensive Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-white p-4 rounded-xl border border-[#F2E8D8] shadow-xs">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-[#59413f]">14 Part Initials</span>
+                    <BookOpen className="w-4 h-4 text-[#810912]" />
+                  </div>
+                  <p className="text-lg font-black text-[#1b1c1c]">
+                    {completedHandbookCount} / 14 Parts Initialed
+                  </p>
+                  <p className="text-[11px] text-emerald-700 font-semibold mt-1">
+                    {isHandbook14Initialed ? '✅ All 14 Parts Initialed' : '⏳ Pending Initials'}
+                  </p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-[#F2E8D8] shadow-xs">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-[#59413f]">Part 15 Final Execution</span>
+                    <ShieldCheck className="w-4 h-4 text-[#810912]" />
+                  </div>
+                  <p className="text-lg font-black text-[#1b1c1c]">
+                    {testFinalSignature ? 'Digitally Signed' : 'Pending Signature'}
+                  </p>
+                  <p className="text-[11px] text-emerald-700 font-semibold mt-1">
+                    {testFinalSignature ? '✅ 5 Covenants Agreed' : '⏳ Pending Covenants'}
+                  </p>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-[#F2E8D8] shadow-xs">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-[#59413f]">Compliance Quiz</span>
+                    <GraduationCap className="w-4 h-4 text-[#810912]" />
+                  </div>
+                  <p className="text-lg font-black text-[#1b1c1c]">
+                    {quizScore !== null ? `${quizScore}%` : 'Not Taken'}
+                  </p>
+                  <p className="text-[11px] text-emerald-700 font-semibold mt-1">
+                    {quizGrade || '⏳ Pending Assessment'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Official Download Action Bar */}
+              <div className="bg-[#FAF6EF] p-5 rounded-xl border border-[#e0bfbc] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                  <h4 className="text-xs font-black uppercase text-[#810912] tracking-wider">
+                    Official Signed PDF Export with All 14 Initials
+                  </h4>
+                  <p className="text-xs text-[#59413f] mt-0.5">
+                    Compiles full verbatim 15-part handbook with each part's handwritten initial stamp, final digital signature, and quiz verification certificate.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadSignedHandbookPdf}
+                  className="px-5 py-2.5 bg-[#810912] hover:bg-[#a32626] text-white text-xs font-extrabold rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-md shrink-0 hover:-translate-y-0.5"
+                >
+                  <Download className="w-4 h-4 text-[#D4AF37]" />
+                  <span>Download Signed PDF (With All Part Initials)</span>
+                </button>
+              </div>
+
+              {/* Audit Ledger Section */}
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div>
+                    <h4 className="text-xs font-bold text-[#1b1c1c] uppercase tracking-wider">
+                      Chronological Audit Trail Ledger ({logs.length} events)
+                    </h4>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCopyLogs}
+                      className="px-3 py-1.5 text-xs font-bold text-[#59413f] hover:text-[#1b1c1c] bg-[#FAF6EF] border border-[#e0bfbc] rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {copiedLog ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedLog ? 'Copied' : 'Copy Log'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleExportAuditJson}
+                      className="px-3 py-1.5 text-xs font-bold text-white bg-[#810912] hover:bg-[#a32626] rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <FileCode className="w-3.5 h-3.5" />
+                      <span>Export JSON Report</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Log Terminal Display */}
+                <div className="bg-[#1b1c1c] text-white rounded-xl p-4 font-mono text-xs max-h-72 overflow-y-auto space-y-2 border border-black/40">
+                  {logs.map((log) => (
+                    <div key={log.id} className="flex items-start gap-3 py-1 border-b border-white/10 last:border-0">
+                      <span className="text-[#D4AF37] shrink-0">[{log.timestamp}]</span>
+                      <span className="text-[#ffbbb5] font-bold shrink-0">[{log.category}]</span>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-white font-bold">{log.action}: </span>
+                        <span className="text-white/80">{log.detail}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -663,12 +1198,17 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
 
         {/* Footer Actions */}
         <div className="border-t border-[#F2E8D8] bg-[#FAF6EF] px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-[#59413f]">
-            <Sparkles className="w-4 h-4 text-[#810912]" />
-            <span>RedPoint Onboarding Portal · Audit & Training Verification Engine</span>
-          </div>
+          <button
+            type="button"
+            onClick={handleResetSandbox}
+            className="px-3 py-1.5 text-xs font-bold text-[#810912] hover:bg-[#810912]/10 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Reset Simulation</span>
+          </button>
 
           <button
+            type="button"
             onClick={onClose}
             className="px-5 py-2 bg-[#1b1c1c] hover:bg-black text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
           >
