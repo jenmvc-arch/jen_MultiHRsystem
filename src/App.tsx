@@ -38,6 +38,7 @@ import {
   compressLogoFile
 } from './data';
 import { getGmt8Timestamp, getGmt8DateString } from './lib/dateUtils';
+import { formatNricOrPassport } from './lib/employeeInput';
 
 import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
@@ -762,7 +763,7 @@ export default function App() {
             hrdCorp: Number(e.hrdCorp || 0),
             avatarUrl: e.avatarUrl || '',
             gender: e.gender || 'Male',
-            nricPassport: e.nricPassport || '',
+            nricPassport: formatNricOrPassport(e.nricPassport || ''),
             nationality: e.nationality || 'Malaysian',
             contactNumber: e.contactNumber || '',
             taxNumber: e.taxNumber || '',
@@ -1103,16 +1104,20 @@ export default function App() {
   const handleAddCandidate = async (candidateInput: Candidate) => {
     const newCandidate: Candidate = {
       ...candidateInput,
+      email: candidateInput.email.trim().toLowerCase(),
       entityId: candidateInput.entityId || activeEntityId || 'ENT-92'
     };
-    setCandidates(prev => [...prev, newCandidate]);
+
+    if (candidates.some(candidate => candidate.email.toLowerCase() === newCandidate.email)) {
+      throw new Error('A candidate with this email address already exists.');
+    }
 
     if (isSupabaseConfigured) {
       try {
         await supabaseClient.insert('candidates', newCandidate);
-      } catch (err) {
+      } catch (err: any) {
         console.error('[Supabase Candidate Insert] Failed:', err);
-        triggerNotification('Sync Failed', 'Could not save new candidate to Supabase.', 'info');
+        throw new Error(`Could not save new candidate to Supabase: ${err.message || err}`);
       }
     } else if (isGoogleConfigured) {
       try {
@@ -1131,20 +1136,20 @@ export default function App() {
         }, scriptUrl);
       } catch (err) {
         console.error('[Google Sheets Candidate Insert] Failed:', err);
-        triggerNotification('Sync Failed', 'Could not save new candidate to Google Sheets.', 'info');
+        throw err;
       }
     }
+
+    setCandidates(prev => [...prev, newCandidate]);
   };
 
   const handleUpdateCandidate = async (id: string, updates: Partial<Candidate>) => {
-    setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
-
     if (isSupabaseConfigured) {
       try {
         await supabaseClient.update('candidates', id, updates, 'id');
-      } catch (err) {
+      } catch (err: any) {
         console.error('[Supabase Candidate Update] Failed:', err);
-        triggerNotification('Sync Failed', 'Could not update candidate in Supabase.', 'info');
+        throw new Error(`Could not update candidate in Supabase: ${err.message || err}`);
       }
     } else if (isGoogleConfigured) {
       try {
@@ -1158,21 +1163,38 @@ export default function App() {
         await googleSheetsClient.update('candidates', id, payloadUpdates, 'id', scriptUrl);
       } catch (err) {
         console.error('[Google Sheets Candidate Update] Failed:', err);
-        triggerNotification('Sync Failed', 'Could not update candidate in Google Sheets.', 'info');
+        throw err;
       }
     }
+
+    setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
   const handleAddEmployee = async (employeeInput: Employee) => {
+    const normalizedEmail = employeeInput.email.trim().toLowerCase();
     const newEmployee: Employee = {
       ...employeeInput,
+      id: employeeInput.id === employeeInput.email ? normalizedEmail : employeeInput.id,
+      email: normalizedEmail,
+      bankName: employeeInput.bankName.trim(),
+      nricPassport: formatNricOrPassport(employeeInput.nricPassport),
       entityId: employeeInput.entityId || activeEntityId || 'ENT-92'
     };
-    setEmployees(prev => [newEmployee, ...prev]);
+
+    if (employees.some(employee => employee.email.toLowerCase() === newEmployee.email)) {
+      throw new Error('An employee with this email address already exists.');
+    }
 
     if (isSupabaseConfigured) {
       try {
         await supabaseClient.insert('employees', newEmployee);
+      } catch (err: any) {
+        console.error('[Supabase Insert Error]', err);
+        triggerNotification('Sync Failed', `Could not save new employee to Supabase: ${err.message || err}`, 'info');
+        throw err;
+      }
+
+      try {
         await supabaseClient.insert('audit_logs', {
           id: `log_${Date.now()}`,
           employeeEmail: newEmployee.email,
@@ -1182,10 +1204,8 @@ export default function App() {
           newValue: JSON.stringify(newEmployee),
           createdAt: getGmt8Timestamp()
         });
-      } catch (err: any) {
-        console.error('[Supabase Insert Error]', err);
-        triggerNotification('Sync Failed', `Could not save new employee to Supabase: ${err.message || err}`, 'info');
-        throw err;
+      } catch (auditError) {
+        console.warn('[Supabase Audit Warning] Employee was created but audit logging failed:', auditError);
       }
     } else if (isGoogleConfigured) {
       try {
@@ -1266,6 +1286,14 @@ export default function App() {
           salaryAdjustments: JSON.stringify(newEmployee.salaryAdjustments || [])
         }, scriptUrl);
 
+      } catch (err: any) {
+        console.error('[Google Sheets Insert] Failed to insert employee:', err);
+        triggerNotification('Sync Failed', `Could not save new employee: ${err.message || err}`, 'info');
+        throw err;
+      }
+
+      try {
+        const scriptUrl = getScriptUrlForEntity(newEmployee.entityId);
         await googleSheetsClient.insert('audit_logs', {
           id: `log_${Date.now()}`,
           employeeEmail: newEmployee.email,
@@ -1275,12 +1303,12 @@ export default function App() {
           newValue: JSON.stringify(newEmployee),
           createdAt: getGmt8Timestamp()
         }, scriptUrl);
-      } catch (err: any) {
-        console.error('[Google Sheets Insert] Failed to insert employee:', err);
-        triggerNotification('Sync Failed', `Could not save new employee: ${err.message || err}`, 'info');
-        throw err;
+      } catch (auditError) {
+        console.warn('[Google Sheets Audit Warning] Employee was created but audit logging failed:', auditError);
       }
     }
+
+    setEmployees(prev => [newEmployee, ...prev]);
   };
 
   const handleDeleteEmployee = async (id: string) => {
@@ -1336,6 +1364,9 @@ export default function App() {
   };
 
   const handleUpdateEmployeeSalary = async (id: string, updates: Partial<Employee>) => {
+    if (updates.nricPassport !== undefined) {
+      updates = { ...updates, nricPassport: formatNricOrPassport(updates.nricPassport) };
+    }
     const oldEmp = employees.find(e => e.id?.toLowerCase() === id?.toLowerCase() || e.email?.toLowerCase() === id?.toLowerCase());
     if (!oldEmp) {
       throw new Error('The employee record could not be found.');

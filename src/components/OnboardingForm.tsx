@@ -20,13 +20,14 @@ import {
 } from 'lucide-react';
 import { CorporateEntity, Employee, Candidate } from '../types';
 import { getGmt8DateString } from '../lib/dateUtils';
+import { formatNricOrPassport, MALAYSIAN_BANK_NAMES } from '../lib/employeeInput';
 
 interface OnboardingFormProps {
   candidates: Candidate[];
   entities: CorporateEntity[];
-  onOnboardingComplete: (newEmployee: Employee) => void;
+  onOnboardingComplete: (newEmployee: Employee) => Promise<void>;
   onShowNotification: (title: string, message: string) => void;
-  onAdvanceCandidateStage?: (candidateId: string, stage: 'Applied' | 'Interviewing' | 'Offered' | 'Onboarding') => void;
+  onAdvanceCandidateStage?: (candidateId: string, stage: 'Applied' | 'Interviewing' | 'Offered' | 'Onboarding') => Promise<void>;
 }
 
 interface DocumentFile {
@@ -195,7 +196,7 @@ export default function OnboardingForm({
   const [maritalStatus, setMaritalStatus] = useState<'Single' | 'Married' | 'Divorced' | 'Widowed'>('Single');
 
   // Form Section 3: Bank Details
-  const [bankName, setBankName] = useState('Maybank');
+  const [bankName, setBankName] = useState('Maybank Berhad');
   const [accountNo, setAccountNo] = useState('');
 
   // Form Section 4: Emergency Contact
@@ -221,6 +222,8 @@ export default function OnboardingForm({
       rls = JSON.parse(savedRoles);
     }
     setAvailableRoles(rls);
+    setDesignation(current => current || rls[0] || '');
+    setDepartment(current => depts.includes(current) ? current : (depts[0] || ''));
   }, []);
 
   // Form Section 5: Required Document Uploads
@@ -238,8 +241,8 @@ export default function OnboardingForm({
       setFullName('');
       setEmail('');
       setPhone('');
-      setDesignation('');
-      setDepartment('Engineering');
+      setDesignation(availableRoles[0] || '');
+      setDepartment(availableDepartments[0] || '');
       setEntityId(entities[0]?.id || 'ENT-92');
       return;
     }
@@ -253,7 +256,7 @@ export default function OnboardingForm({
       setDepartment(cand.department || 'Engineering');
       setEntityId(cand.entityId || entities[0]?.id || 'ENT-92');
     }
-  }, [selectedCandidateId, candidates, entities]);
+  }, [selectedCandidateId, candidates, entities, availableDepartments, availableRoles]);
 
   // Handle entity initialization
   useEffect(() => {
@@ -344,7 +347,11 @@ export default function OnboardingForm({
       }
     }
 
-    // Bank Account Number
+    // Bank Account
+    if (!bankName.trim()) {
+      errs.bankName = 'Bank name is required for payroll processing.';
+    }
+
     const cleanBank = accountNo.replace(/[^0-9]/g, '');
     if (!accountNo.trim()) {
       errs.accountNo = 'Bank account number is required for payroll processing.';
@@ -411,7 +418,7 @@ export default function OnboardingForm({
         taxPcb: salaryAmount > 4000 ? (salaryAmount - 4000) * 0.15 : 0,
         unpaidLeave: 0,
         hrdCorp: salaryAmount * 0.01,
-        nricPassport: nricPassport.toUpperCase(),
+        nricPassport: formatNricOrPassport(nricPassport),
         nationality: nationality,
         contactNumber: phone,
         taxNumber: taxNumber.toUpperCase(),
@@ -444,7 +451,7 @@ export default function OnboardingForm({
       // If a candidate was selected and we have an advance handler, mark them completed
       if (selectedCandidateId !== 'manual' && onAdvanceCandidateStage) {
         // Set progress to 100 and clean up stage
-        onAdvanceCandidateStage(selectedCandidateId, 'Onboarding');
+        await onAdvanceCandidateStage(selectedCandidateId, 'Onboarding');
       }
 
       // Reset Form
@@ -706,7 +713,7 @@ export default function OnboardingForm({
                   type="text"
                   placeholder="e.g. 951214-14-5512"
                   value={nricPassport}
-                  onChange={(e) => setNricPassport(e.target.value)}
+                  onChange={(e) => setNricPassport(formatNricOrPassport(e.target.value))}
                   className={`w-full bg-white border ${errors.nricPassport ? 'border-error' : 'border-neutral-border'} rounded p-2 focus:ring-1 focus:ring-primary outline-none font-mono uppercase`}
                 />
                 {errors.nricPassport && (
@@ -817,20 +824,20 @@ export default function OnboardingForm({
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block font-bold text-on-surface-variant uppercase mb-1">Disbursement Bank</label>
-                <select
+                <input
+                  type="text"
+                  list="onboarding-bank-options"
                   value={bankName}
                   onChange={(e) => setBankName(e.target.value)}
-                  className="w-full bg-white border border-neutral-border rounded p-2 focus:ring-1 focus:ring-primary outline-none font-semibold text-on-surface"
-                >
-                  <option>Maybank</option>
-                  <option>CIMB Bank</option>
-                  <option>Public Bank</option>
-                  <option>RHB Bank</option>
-                  <option>Hong Leong Bank</option>
-                  <option>AmBank</option>
-                  <option>Standard Chartered</option>
-                  <option>HSBC Bank</option>
-                </select>
+                  placeholder="Select or enter bank name"
+                  className={`w-full bg-white border ${errors.bankName ? 'border-error' : 'border-neutral-border'} rounded p-2 focus:ring-1 focus:ring-primary outline-none font-semibold text-on-surface`}
+                />
+                <datalist id="onboarding-bank-options">
+                  {MALAYSIAN_BANK_NAMES.map(bank => <option key={bank} value={bank} />)}
+                </datalist>
+                {errors.bankName && (
+                  <span className="text-error text-[10px] mt-1 block font-semibold">{errors.bankName}</span>
+                )}
               </div>
 
               <div className="col-span-2">

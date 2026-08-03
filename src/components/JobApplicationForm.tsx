@@ -25,10 +25,11 @@ import {
   FileCheck
 } from 'lucide-react';
 import { getGmt8DateString } from '../lib/dateUtils';
+import { formatNricOrPassport } from '../lib/employeeInput';
 
 interface JobApplicationFormProps {
   onShowNotification: (title: string, message: string) => void;
-  onApplicationSubmit?: (candidateData: any) => void;
+  onApplicationSubmit?: (candidateData: any) => Promise<void>;
 }
 
 interface OtherLanguage {
@@ -303,8 +304,7 @@ export default function JobApplicationForm({
     return Object.keys(newErrors).length === 0;
   };
 
-  // Final Form Submit with simulated loader and transition
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!validateForm()) {
@@ -314,13 +314,9 @@ export default function JobApplicationForm({
 
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setIsSubmitted(true);
-      onShowNotification('Application Processed', 'Job Application Form submitted and pre-screened successfully.');
-      
+    try {
       if (onApplicationSubmit) {
-        onApplicationSubmit({
+        await onApplicationSubmit({
           id: `CAN-${Date.now()}`,
           name: fullName,
           email: email.toLowerCase(),
@@ -334,7 +330,14 @@ export default function JobApplicationForm({
           photoUrl: photoPreview
         });
       }
-    }, 2000);
+
+      setIsSubmitting(false);
+      setIsSubmitted(true);
+      onShowNotification('Application Processed', 'Job Application Form submitted and pre-screened successfully.');
+    } catch (error: any) {
+      setIsSubmitting(false);
+      onShowNotification('Submission Failed', error.message || 'The application could not be saved.');
+    }
   };
 
   return (
@@ -558,7 +561,7 @@ export default function JobApplicationForm({
                         type="text" 
                         placeholder="e.g. 980101-14-1234 or A1234567"
                         value={nricNumber}
-                        onChange={(e) => setNricNumber(e.target.value)}
+                        onChange={(e) => setNricNumber(formatNricOrPassport(e.target.value))}
                         className={`w-full bg-white border ${errors.nricNumber ? 'border-error' : 'border-neutral-border'} rounded p-2 focus:ring-1 focus:ring-primary outline-none font-mono`}
                       />
                       {errors.nricNumber && (

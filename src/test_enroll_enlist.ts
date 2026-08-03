@@ -4,10 +4,25 @@
  */
 
 import { Candidate, Employee } from './types';
+import { formatNricOrPassport, getCandidateNameFromApplication } from './lib/employeeInput';
 
 console.log('==================================================');
 console.log('RUNNING ENROLL & ENLIST VERIFICATION SUITE');
 console.log('==================================================');
+
+if (formatNricOrPassport('900101145566') === '900101-14-5566') {
+  console.log('✅ Passed: Malaysian NRIC is formatted automatically');
+} else {
+  console.error('❌ Failed: Malaysian NRIC formatting');
+  process.exit(1);
+}
+
+if (formatNricOrPassport('a59483721') === 'A59483721') {
+  console.log('✅ Passed: Passport identifiers remain unhyphenated');
+} else {
+  console.error('❌ Failed: Passport formatting');
+  process.exit(1);
+}
 
 const activeEntityId = 'ENT-92';
 
@@ -29,6 +44,14 @@ if (jobFormPayload.name && jobFormPayload.entityId === activeEntityId) {
   console.log('✅ Passed: Job application form passes valid candidate name & entityId');
 } else {
   console.error('❌ Failed: Job application form candidate payload invalid');
+  process.exit(1);
+}
+
+const mappedCandidateName = getCandidateNameFromApplication(jobFormPayload);
+if (mappedCandidateName === 'Jane Doe') {
+  console.log('✅ Passed: Enlistment accepts the job application name payload');
+} else {
+  console.error('❌ Failed: Job application name payload mapping');
   process.exit(1);
 }
 

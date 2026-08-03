@@ -29,6 +29,7 @@ import { CorporateEntity, Candidate, Employee } from '../types';
 import JobApplicationForm from './JobApplicationForm';
 import OnboardingForm from './OnboardingForm';
 import { getGmt8DateString } from '../lib/dateUtils';
+import { getCandidateNameFromApplication } from '../lib/employeeInput';
 
 const OnboardingPortalView = React.lazy(() => import('./OnboardingPortalView'));
 
@@ -42,11 +43,11 @@ interface OnboardingTask {
 interface HireOnboardingViewProps {
   entities: CorporateEntity[];
   onShowNotification: (title: string, message: string) => void;
-  onAddEmployee?: (newEmployee: any) => void;
+  onAddEmployee?: (newEmployee: Employee) => Promise<void>;
   employees: Employee[];
   candidates: Candidate[];
-  onAddCandidate: (newCandidate: Candidate) => void;
-  onUpdateCandidate: (id: string, updates: Partial<Candidate>) => void;
+  onAddCandidate: (newCandidate: Candidate) => Promise<void>;
+  onUpdateCandidate: (id: string, updates: Partial<Candidate>) => Promise<void>;
   currentUserName?: string | null;
   currentUserEmail?: string | null;
   currentUserRole?: string | null;
@@ -97,23 +98,25 @@ export default function HireOnboardingView({
       rls = JSON.parse(savedRoles);
     }
     setAvailableRoles(rls);
+    setCandRole(current => current || rls[0] || '');
+    setCandDept(current => depts.includes(current) ? current : (depts[0] || ''));
   }, []);
 
-  const handleApplicationSubmit = (formData: any) => {
+  const handleApplicationSubmit = async (formData: any) => {
     const newCandidate: Candidate = {
-      id: `CAN-${Date.now()}`,
-      name: formData.fullName,
+      id: formData.id || `CAN-${Date.now()}`,
+      name: getCandidateNameFromApplication(formData),
       email: formData.email,
       phone: formData.phone,
       designation: formData.designation,
-      department: 'Engineering',
-      entityId: entities[0]?.id || '',
-      stage: formData.stage,
-      progress: 0,
+      department: formData.department || availableDepartments[0] || 'Human Resources',
+      entityId: formData.entityId || entities[0]?.id || 'ENT-92',
+      stage: formData.stage || 'Applied',
+      progress: Number(formData.progress || 0),
       dateJoined: formData.dateJoined || getGmt8DateString()
     };
 
-    onAddCandidate(newCandidate);
+    await onAddCandidate(newCandidate);
     setSelectedCandidateId(newCandidate.id);
     setActiveTab('pipeline');
     onShowNotification(
@@ -122,20 +125,14 @@ export default function HireOnboardingView({
     );
   };
 
-  const handleOnboardingComplete = (newEmployee: any) => {
-    if (onAddEmployee) {
-      onAddEmployee(newEmployee);
-    }
-    // Set candidate's onboarding progress to 100% and stage to Onboarding
-    const matched = candidates.find(c => c.email.toLowerCase() === newEmployee.email.toLowerCase() || c.name.toLowerCase() === newEmployee.name.toLowerCase());
-    if (matched) {
-      onUpdateCandidate(matched.id, { stage: 'Onboarding', progress: 100 });
-    }
+  const handleOnboardingComplete = async (newEmployee: Employee) => {
+    if (!onAddEmployee) throw new Error('Employee enrollment is unavailable.');
+    await onAddEmployee(newEmployee);
     setActiveTab('pipeline');
   };
 
-  const handleOnboardingStageAdvance = (candidateId: string, stage: 'Applied' | 'Interviewing' | 'Offered' | 'Onboarding') => {
-    onUpdateCandidate(candidateId, { stage, progress: 100 });
+  const handleOnboardingStageAdvance = async (candidateId: string, stage: 'Applied' | 'Interviewing' | 'Offered' | 'Onboarding') => {
+    await onUpdateCandidate(candidateId, { stage, progress: 100 });
   };
 
   // Candidate Create Form States
@@ -225,7 +222,7 @@ export default function HireOnboardingView({
     }
   };
 
-  const handlePromoteStage = (candidateId: string) => {
+  const handlePromoteStage = async (candidateId: string) => {
     const c = candidates.find(cand => cand.id === candidateId);
     if (c) {
       let nextStage: 'Applied' | 'Interviewing' | 'Offered' | 'Onboarding' = 'Applied';
@@ -237,29 +234,35 @@ export default function HireOnboardingView({
         return;
       }
 
-      onShowNotification(
-        'Hiring Stage Advanced',
-        `Advanced ${c.name} to the "${nextStage}" phase.`
-      );
-
-      onUpdateCandidate(candidateId, { stage: nextStage });
+      try {
+        await onUpdateCandidate(candidateId, { stage: nextStage });
+        onShowNotification(
+          'Hiring Stage Advanced',
+          `Advanced ${c.name} to the "${nextStage}" phase.`
+        );
+      } catch (error: any) {
+        onShowNotification('Stage Update Failed', error.message || 'The candidate stage could not be saved.');
+      }
     }
   };
 
-  const handleToggleTask = (taskId: string) => {
+  const handleToggleTask = async (taskId: string) => {
     const updatedTasks = tasks.map(t => {
       if (t.id === taskId) {
         return { ...t, completed: !t.completed };
       }
       return t;
     });
-    setTasks(updatedTasks);
-
     // Recompute percentage progress for selected candidate
     const completedCount = updatedTasks.filter(t => t.completed).length;
     const percentage = Math.round((completedCount / updatedTasks.length) * 100);
 
-    onUpdateCandidate(selectedCandidateId, { progress: percentage });
+    try {
+      await onUpdateCandidate(selectedCandidateId, { progress: percentage });
+      setTasks(updatedTasks);
+    } catch (error: any) {
+      onShowNotification('Task Update Failed', error.message || 'The onboarding progress could not be saved.');
+    }
   };
 
   const activeEntityName = entities.find(e => e.id === selectedCandidate?.entityId)?.name || 'Acme Tech';

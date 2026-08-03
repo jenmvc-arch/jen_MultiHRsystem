@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { googleSheetsClient, isGoogleConfigured } from '../lib/googleSheetsClient';
 import { getGmt8Timestamp, getGmt8DateString, formatToDDMMMYYYY } from '../lib/dateUtils';
+import { formatNricOrPassport, MALAYSIAN_BANK_NAMES } from '../lib/employeeInput';
 import { 
   Users, 
   Search, 
@@ -542,8 +543,8 @@ export default function EmployeeDirectoryView({
     setFormEntityId(activeEntityId || entities[0]?.id || 'ENT-92');
     setFormName('');
     setFormEmail('');
-    setFormDesignation('');
-    setFormDepartment('Engineering');
+    setFormDesignation(availableRoles[0] || 'Software Engineer');
+    setFormDepartment(availableDepartments[0] || 'Product & Engineering');
     setFormStatus('Active');
     setFormBank('Maybank Berhad');
     setFormAccount('');
@@ -555,7 +556,7 @@ export default function EmployeeDirectoryView({
     setFormContactNumber('');
     setFormTaxNumber('');
     setFormEpfNumber('');
-    setFormEmploymentType('Full-Time');
+    setFormEmploymentType('Permanent');
     setFormMaritalStatus('Single');
     setFormEmergencyContactName('');
     setFormEmergencyContactRelation('');
@@ -740,8 +741,8 @@ export default function EmployeeDirectoryView({
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName || !formEmail || !formDesignation || !formAccount || !formNricPassport) {
-      onShowNotification('Form Error', 'Please fill in all required corporate and NRIC/Passport fields.');
+    if (!formName || !formEmail || !formDesignation || !formBank.trim() || !formAccount || !formNricPassport) {
+      onShowNotification('Form Error', 'Please fill in all required corporate, banking, and NRIC/Passport fields.');
       return;
     }
 
@@ -816,7 +817,7 @@ export default function EmployeeDirectoryView({
       avatarUrl: formAvatarUrl || '',
       
       // New fields mapping
-      nricPassport: formNricPassport,
+      nricPassport: formatNricOrPassport(formNricPassport),
       nationality: formNationality,
       contactNumber: formContactNumber,
       taxNumber: formTaxNumber || `TX-${Math.floor(100000000 + Math.random() * 900000000)}`,
@@ -2688,7 +2689,7 @@ export default function EmployeeDirectoryView({
                           <input
                             type="text"
                             value={editNricPassport}
-                            onChange={(e) => setEditNricPassport(e.target.value)}
+                            onChange={(e) => setEditNricPassport(formatNricOrPassport(e.target.value))}
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           />
                         </div>
@@ -2846,10 +2847,15 @@ export default function EmployeeDirectoryView({
                           <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Bank Name</label>
                           <input
                             type="text"
+                            list="employee-edit-bank-options"
                             value={editBankName}
                             onChange={(e) => setEditBankName(e.target.value)}
+                            placeholder="Select or enter bank name"
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           />
+                          <datalist id="employee-edit-bank-options">
+                            {MALAYSIAN_BANK_NAMES.map(bank => <option key={bank} value={bank} />)}
+                          </datalist>
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Bank Account Number</label>
@@ -3889,7 +3895,7 @@ export default function EmployeeDirectoryView({
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">NRIC / Passport Number *</label>
                     <input 
                       type="text" required
-                      value={formNricPassport} onChange={(e) => setFormNricPassport(e.target.value)}
+                      value={formNricPassport} onChange={(e) => setFormNricPassport(formatNricOrPassport(e.target.value))}
                       placeholder="950124-14-5226 / Passport ID"
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
                     />
@@ -4292,15 +4298,16 @@ export default function EmployeeDirectoryView({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Recipient Bank Name</label>
-                    <select
+                    <input
+                      type="text"
+                      list="employee-bank-options"
                       value={formBank} onChange={(e) => setFormBank(e.target.value)}
+                      placeholder="Select or enter bank name"
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
-                    >
-                      <option>Maybank Berhad</option>
-                      <option>CIMB Bank Berhad</option>
-                      <option>Citibank Berhad</option>
-                      <option>Public Bank Berhad</option>
-                    </select>
+                    />
+                    <datalist id="employee-bank-options">
+                      {MALAYSIAN_BANK_NAMES.map(bank => <option key={bank} value={bank} />)}
+                    </datalist>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Bank Account Number *</label>
