@@ -53,6 +53,7 @@ interface HireOnboardingViewProps {
   candidates: Candidate[];
   onAddCandidate: (newCandidate: Candidate) => Promise<void>;
   onUpdateCandidate: (id: string, updates: Partial<Candidate>) => Promise<void>;
+  onUpdateEmployee?: (id: string, updates: Partial<Employee>) => Promise<void>;
   currentUserName?: string | null;
   currentUserEmail?: string | null;
   currentUserRole?: string | null;
@@ -75,6 +76,7 @@ export default function HireOnboardingView({
   candidates,
   onAddCandidate,
   onUpdateCandidate,
+  onUpdateEmployee,
   currentUserName,
   currentUserEmail,
   currentUserRole
@@ -376,6 +378,8 @@ export default function HireOnboardingView({
               currentUserEmail={currentUserEmail}
               currentUserRole={currentUserRole}
               onShowNotification={onShowNotification}
+              onUpdateCandidate={onUpdateCandidate}
+              onUpdateEmployee={onUpdateEmployee}
             />
           </React.Suspense>
         </div>

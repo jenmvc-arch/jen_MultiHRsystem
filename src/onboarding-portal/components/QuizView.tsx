@@ -17,9 +17,10 @@ import {
   Award,
   Layers,
   HelpCircle,
-  Eye,
   RefreshCw,
   Sparkles,
+  Lock,
+  ShieldCheck,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { exportFullSignedHandbookPdf } from '../utils/pdfExport';
@@ -27,6 +28,12 @@ import { exportFullSignedHandbookPdf } from '../utils/pdfExport';
 interface QuizViewProps {
   questions: QuizQuestion[];
   onCompleteQuiz: (scorePercent: number, grade: string) => void;
+  viewRole?: 'employee' | 'hr-admin';
+  isTestMode?: boolean;
+  employeeName?: string;
+  employeeId?: string;
+  department?: string;
+  position?: string;
 }
 
 const LOCAL_STORAGE_KEY = 'redpoint_quiz_progress_v1';
@@ -65,9 +72,19 @@ const CATEGORY_LIST = [
   'General Employee Responsibilities',
 ] as const;
 
-export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions, onCompleteQuiz }) => {
+export const QuizView: React.FC<QuizViewProps> = ({
+  questions: fallbackQuestions,
+  onCompleteQuiz,
+  viewRole = 'employee',
+  isTestMode = false,
+  employeeName = 'Employee',
+  employeeId = 'EMP-ONBOARDING',
+  department = 'Operations',
+  position = 'Staff Member',
+}) => {
   const { t } = useLanguage();
   const questions = fallbackQuestions;
+  const isEmployeeView = viewRole === 'employee' && !isTestMode;
 
   const savedProgress = useMemo(() => loadSavedProgress(), []);
 
@@ -99,6 +116,23 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
   const [finalGrade, setFinalGrade] = useState<string>(
     savedProgress?.finalGrade ?? ''
   );
+
+  // Furthest question index unlocked for linear progression in employee view
+  const maxUnlockedIndex = useMemo(() => {
+    if (!isEmployeeView || isSubmitted) return questions.length - 1;
+    // An employee can navigate to any question up to (highest answered question index + 1)
+    const answeredIndices = Object.keys(userAnswers).map(Number);
+    if (answeredIndices.length === 0) return 0;
+    const maxAnswered = Math.max(...answeredIndices, 0);
+    return Math.min(questions.length - 1, maxAnswered + 1);
+  }, [isEmployeeView, isSubmitted, userAnswers, questions.length]);
+
+  // Ensure current question is valid
+  useEffect(() => {
+    if (isEmployeeView && !isSubmitted && currentQuestionIndex > maxUnlockedIndex) {
+      setCurrentQuestionIndex(maxUnlockedIndex);
+    }
+  }, [isEmployeeView, isSubmitted, currentQuestionIndex, maxUnlockedIndex]);
 
   // Auto-save progress to localStorage on any state change
   useEffect(() => {
@@ -133,16 +167,6 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  // Filter questions by category
-  const filteredQuestionIndices = useMemo(() => {
-    if (selectedCategory === 'All') {
-      return questions.map((_, i) => i);
-    }
-    return questions
-      .map((q, i) => (q.category === selectedCategory ? i : -1))
-      .filter((i) => i !== -1);
-  }, [questions, selectedCategory]);
-
   const activeQuestion = questions[currentQuestionIndex] || questions[0];
 
   // Helper to check if a question is answered correctly
@@ -163,7 +187,7 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
 
   // Option select handler
   const handleSelectOption = (qIdx: number, optionIdx: number) => {
-    if (isSubmitted || submittedQuestions[qIdx]) return; // Freeze selection once submitted
+    if (isSubmitted || submittedQuestions[qIdx]) return;
     const q = questions[qIdx];
 
     if (q.questionType === 'multiple' || q.correctOptionIndices) {
@@ -271,7 +295,7 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
   }, [questions, searchKeyQuery]);
 
   return (
-    <div className="w-full max-w-[1280px] mx-auto flex flex-col gap-6 pb-16">
+    <div className="w-full max-w-[1280px] mx-auto flex flex-col gap-6 pb-16 text-left">
       {/* Top Banner & Tab Navigation */}
       <div className="bg-white rounded-xl p-6 shadow-[0_4px_6px_-1px_rgba(51,51,51,0.05),0_10px_15px_-3px_rgba(51,51,51,0.1)] border border-[#F2E8D8] flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
@@ -280,43 +304,61 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
             <h2 className="text-2xl font-black text-[#1b1c1c] tracking-tight">
               {t.quizTitle || 'Employee Handbook Compliance Quiz'}
             </h2>
+            {isEmployeeView ? (
+              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-[#FAF6EF] text-[#810912] border border-[#e0bfbc]">
+                Employee Assessment
+              </span>
+            ) : (
+              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-[#810912] text-white">
+                HR Admin Audit
+              </span>
+            )}
           </div>
           <p className="text-xs sm:text-sm text-[#59413f]">
-            30 handbook-based questions covering SOPs, approvals, conduct, safety, AI & PDPA compliance.
+            {isEmployeeView
+              ? '30 questions covering SOPs, approvals, conduct, safety, AI & PDPA compliance. Complete sequentially from Question 1.'
+              : '30 handbook-based questions with full HR citations, grading validation, and answer keys.'}
           </p>
         </div>
 
-        {/* View Mode Tabs */}
-        <div className="flex items-center gap-2 bg-[#FAF6EF] p-1.5 rounded-lg border border-[#e0bfbc] shrink-0">
-          <button
-            type="button"
-            onClick={() => setActiveTab('quiz')}
-            className={`px-4 py-2 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'quiz'
-                ? 'bg-[#810912] text-white shadow-xs'
-                : 'text-[#59413f] hover:text-[#810912]'
-            }`}
-          >
-            <HelpCircle className="w-3.5 h-3.5" />
-            <span>Interactive Quiz</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('answer-key')}
-            className={`px-4 py-2 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'answer-key'
-                ? 'bg-[#810912] text-white shadow-xs'
-                : 'text-[#59413f] hover:text-[#810912]'
-            }`}
-          >
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>HR Answer Key & Sources</span>
-          </button>
-        </div>
+        {/* View Mode Tabs (Hidden for Employee View to prevent leaking answer key) */}
+        {!isEmployeeView ? (
+          <div className="flex items-center gap-2 bg-[#FAF6EF] p-1.5 rounded-lg border border-[#e0bfbc] shrink-0">
+            <button
+              type="button"
+              onClick={() => setActiveTab('quiz')}
+              className={`px-4 py-2 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'quiz'
+                  ? 'bg-[#810912] text-white shadow-xs'
+                  : 'text-[#59413f] hover:text-[#810912]'
+              }`}
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span>Interactive Quiz</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('answer-key')}
+              className={`px-4 py-2 text-xs font-bold rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'answer-key'
+                  ? 'bg-[#810912] text-white shadow-xs'
+                  : 'text-[#59413f] hover:text-[#810912]'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>HR Answer Key & Sources</span>
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 px-3.5 py-2 rounded-lg text-xs font-bold shrink-0">
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            <span>Secure Compliance Mode</span>
+          </div>
+        )}
       </div>
 
-      {activeTab === 'answer-key' ? (
-        /* HR Answer Key & Handbook Source View */
+      {activeTab === 'answer-key' && !isEmployeeView ? (
+        /* HR Answer Key & Handbook Source View (Only accessible for HR Admin) */
         <div className="bg-white rounded-xl p-6 shadow-[0_4px_6px_-1px_rgba(51,51,51,0.05),0_10px_15px_-3px_rgba(51,51,51,0.1)] border border-[#F2E8D8] space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-[#F2E8D8] pb-4">
             <div>
@@ -399,27 +441,45 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
         <div className="flex flex-col lg:flex-row gap-8 items-start">
           {/* Main Question & Navigation Area */}
           <div className="flex-1 w-full flex flex-col gap-6">
-            {/* Category Filter Pills */}
+            {/* Category Status & Info */}
             <div className="bg-white rounded-xl p-4 shadow-[0_4px_6px_-1px_rgba(51,51,51,0.05),0_10px_15px_-3px_rgba(51,51,51,0.1)] border border-[#F2E8D8] overflow-x-auto">
               <div className="flex items-center gap-2 min-w-max">
                 <span className="text-xs font-bold text-[#59413f] flex items-center gap-1 mr-1 shrink-0">
                   <Layers className="w-3.5 h-3.5 text-[#810912]" />
-                  <span>Category:</span>
+                  <span>{isEmployeeView ? 'Module Topics:' : 'Category Filter:'}</span>
                 </span>
                 {CATEGORY_LIST.map((cat) => {
+                  const isCurrentCategory = activeQuestion.category === cat || (cat === 'All' && !isEmployeeView);
                   const isCatSelected = selectedCategory === cat;
                   const count =
                     cat === 'All'
                       ? questions.length
                       : questions.filter((q) => q.category === cat).length;
 
+                  if (isEmployeeView) {
+                    // In Employee View: category pills are indicators only, cannot skip questions
+                    return (
+                      <span
+                        key={cat}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                          activeQuestion.category === cat
+                            ? 'bg-[#810912] text-white font-bold shadow-2xs'
+                            : 'bg-[#FAF6EF] text-[#59413f]/80 border border-[#e0bfbc]/40'
+                        }`}
+                        title={cat === 'All' ? 'All 30 questions' : `${cat} (${count} questions)`}
+                      >
+                        {cat === 'All' ? 'All Modules (30)' : `${cat.split(',')[0]} (${count})`}
+                      </span>
+                    );
+                  }
+
+                  // HR Admin View allows filtering & jumping
                   return (
                     <button
                       key={cat}
                       type="button"
                       onClick={() => {
                         setSelectedCategory(cat);
-                        // Jump to first question in that category
                         if (cat !== 'All') {
                           const firstIdx = questions.findIndex((q) => q.category === cat);
                           if (firstIdx !== -1) setCurrentQuestionIndex(firstIdx);
@@ -479,7 +539,7 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
               const hasActiveSelection =
                 activeAns !== undefined && (Array.isArray(activeAns) ? activeAns.length > 0 : true);
               const isCurrentQuestionSubmitted = isSubmitted || !!submittedQuestions[currentQuestionIndex];
-              const showCorrectAnswerAndRationale = isCurrentQuestionSubmitted && hasActiveSelection;
+              const showCorrectAnswerAndRationale = (!isEmployeeView || isSubmitted) && isCurrentQuestionSubmitted && hasActiveSelection;
 
               return (
                 <div className="bg-white rounded-xl p-6 sm:p-8 shadow-[0_4px_6px_-1px_rgba(51,51,51,0.05),0_10px_15px_-3px_rgba(51,51,51,0.1)] border border-[#F2E8D8]">
@@ -495,8 +555,8 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
                       );
                     })()}
 
-                    {/* Status Badge */}
-                    {isCurrentQuestionSubmitted && (
+                    {/* Status Badge (Only shown after full quiz submission for employees or in HR Admin mode) */}
+                    {isCurrentQuestionSubmitted && (!isEmployeeView || isSubmitted) && (
                       <span
                         className={`text-xs font-bold px-3 py-1 rounded-md border flex items-center gap-1.5 ${
                           isQuestionCorrect(currentQuestionIndex)
@@ -510,6 +570,13 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
                           <XCircle className="w-3.5 h-3.5 text-red-700" />
                         )}
                         <span>{isQuestionCorrect(currentQuestionIndex) ? 'Answer Correct' : 'Answer Incorrect'}</span>
+                      </span>
+                    )}
+
+                    {isCurrentQuestionSubmitted && isEmployeeView && !isSubmitted && (
+                      <span className="text-xs font-bold px-3 py-1 rounded-md border bg-emerald-50 text-emerald-800 border-emerald-200 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Answer Saved</span>
                       </span>
                     )}
                   </div>
@@ -527,11 +594,11 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
                         ? Array.isArray(activeAns) && activeAns.includes(optionIdx)
                         : activeAns === optionIdx;
 
-                      // Show correct / incorrect styling ONLY after submission AND selection
+                      // Show correct / incorrect styling ONLY after submission AND selection (or in HR Admin mode)
                       let borderStyle = 'border-[#e0bfbc] hover:bg-[#FAF6EF]';
                       let iconBg = 'border-[#8c706e]';
 
-                      if (isCurrentQuestionSubmitted && hasActiveSelection) {
+                      if ((!isEmployeeView || isSubmitted) && isCurrentQuestionSubmitted && hasActiveSelection) {
                         const isCorrectOpt = isMultiple
                           ? (activeQuestion.correctOptionIndices || []).includes(optionIdx)
                           : activeQuestion.correctOptionIndex === optionIdx;
@@ -552,10 +619,10 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
                         <button
                           key={optionIdx}
                           type="button"
-                          disabled={isCurrentQuestionSubmitted}
+                          disabled={isSubmitted || (isEmployeeView && isCurrentQuestionSubmitted)}
                           onClick={() => handleSelectOption(currentQuestionIndex, optionIdx)}
                           className={`w-full p-4 rounded-xl border-2 text-left flex items-start gap-4 transition-all ${
-                            isCurrentQuestionSubmitted ? 'cursor-default' : 'cursor-pointer'
+                            isSubmitted || (isEmployeeView && isCurrentQuestionSubmitted) ? 'cursor-default' : 'cursor-pointer'
                           } ${borderStyle}`}
                         >
                           <div
@@ -599,27 +666,35 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
                   ) : (
                     <div
                       className={`mt-5 p-3 rounded-lg border text-xs font-bold flex items-center justify-between ${
-                        isQuestionCorrect(currentQuestionIndex)
+                        isEmployeeView && !isSubmitted
+                          ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                          : isQuestionCorrect(currentQuestionIndex)
                           ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
                           : 'bg-red-50 text-red-900 border-red-300'
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        {isQuestionCorrect(currentQuestionIndex) ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        {isEmployeeView && !isSubmitted ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>Answer recorded. Click 'Next Question' to proceed.</span>
+                          </>
+                        ) : isQuestionCorrect(currentQuestionIndex) ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>Correct! Handbook rationale and source unlocked below.</span>
+                          </>
                         ) : (
-                          <XCircle className="w-4 h-4 text-red-600 shrink-0" />
+                          <>
+                            <XCircle className="w-4 h-4 text-red-600 shrink-0" />
+                            <span>Incorrect selection. Official answer and rationale unlocked below.</span>
+                          </>
                         )}
-                        <span>
-                          {isQuestionCorrect(currentQuestionIndex)
-                            ? 'Correct! Correct answer and rationale unlocked below.'
-                            : 'Incorrect selection. Correct answer and rationale unlocked below.'}
-                        </span>
                       </div>
                     </div>
                   )}
 
-                  {/* Rationale & Source Box (ONLY shown after selecting an answer AND submitting) */}
+                  {/* Rationale & Source Box (Only shown for HR Admin or post-submission for Employees) */}
                   {showCorrectAnswerAndRationale && (
                     <div className="mt-6 p-4 rounded-xl bg-[#FAF6EF] border border-[#e0bfbc] space-y-2 animate-fadeIn">
                       <div className="flex items-center justify-between">
@@ -664,10 +739,19 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
                 {currentQuestionIndex < questions.length - 1 ? (
                   <button
                     type="button"
-                    onClick={() =>
-                      setCurrentQuestionIndex((prev) => Math.min(questions.length - 1, prev + 1))
-                    }
-                    className="w-full sm:w-auto px-8 py-3 rounded-lg bg-[#810912] text-white font-bold text-xs hover:bg-[#a32626] transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer hover:-translate-y-0.5"
+                    onClick={() => {
+                      const nextIdx = Math.min(questions.length - 1, currentQuestionIndex + 1);
+                      if (isEmployeeView && !isSubmitted && nextIdx > maxUnlockedIndex) {
+                        return;
+                      }
+                      setCurrentQuestionIndex(nextIdx);
+                    }}
+                    disabled={isEmployeeView && !isSubmitted && currentQuestionIndex + 1 > maxUnlockedIndex}
+                    className={`w-full sm:w-auto px-8 py-3 rounded-lg font-bold text-xs transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer ${
+                      isEmployeeView && !isSubmitted && currentQuestionIndex + 1 > maxUnlockedIndex
+                        ? 'bg-[#ebe1d1] text-[#8c706e] opacity-60 cursor-not-allowed'
+                        : 'bg-[#810912] text-white hover:bg-[#a32626] hover:-translate-y-0.5'
+                    }`}
                   >
                     <span>{t.saveNextBtn || 'Next Question'}</span>
                     <ArrowRight className="w-4 h-4" />
@@ -718,12 +802,12 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
                     type="button"
                     onClick={() => {
                       exportFullSignedHandbookPdf({
-                        employeeName: 'Sarah Lin',
-                        employeeId: 'EMP-1234',
-                        department: 'Product Design',
-                        position: 'Digital Content Specialist',
+                        employeeName,
+                        employeeId,
+                        department,
+                        position,
                         signedDate: new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' }),
-                        signatureTextOrImage: 'Sarah Lin',
+                        signatureTextOrImage: employeeName,
                         quizScorePercent: finalScore,
                         quizGrade: finalGrade,
                         quizQuestions: questions,
@@ -810,10 +894,13 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
                   const isQSubmitted = isSubmitted || !!submittedQuestions[qIdx];
                   const isCorrect = isQSubmitted && isQuestionCorrect(qIdx);
                   const isIncorrect = isQSubmitted && !isQuestionCorrect(qIdx);
+                  const isLocked = isEmployeeView && !isSubmitted && qIdx > maxUnlockedIndex;
 
                   let btnBg = 'border border-[#e0bfbc] text-[#8c706e] hover:bg-[#FAF6EF]';
 
-                  if (isQSubmitted) {
+                  if (isLocked) {
+                    btnBg = 'bg-[#FAF6EF]/60 border border-gray-200 text-gray-400 opacity-50 cursor-not-allowed';
+                  } else if ((!isEmployeeView || isSubmitted) && isQSubmitted) {
                     if (isCorrect) {
                       btnBg = 'bg-emerald-600 text-white font-bold border-emerald-700';
                     } else if (isIncorrect) {
@@ -829,11 +916,20 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
                     <button
                       key={qIdx}
                       type="button"
-                      onClick={() => setCurrentQuestionIndex(qIdx)}
-                      className={`w-9 h-9 rounded-md text-xs flex items-center justify-center transition-all cursor-pointer ${btnBg}`}
-                      title={`Question ${qIdx + 1}: ${questions[qIdx].category}`}
+                      disabled={isLocked}
+                      onClick={() => {
+                        if (!isLocked) setCurrentQuestionIndex(qIdx);
+                      }}
+                      className={`w-9 h-9 rounded-md text-xs flex items-center justify-center transition-all ${
+                        isLocked ? 'cursor-not-allowed' : 'cursor-pointer'
+                      } ${btnBg}`}
+                      title={
+                        isLocked
+                          ? `Question ${qIdx + 1} locked: Please answer earlier questions first.`
+                          : `Question ${qIdx + 1}: ${questions[qIdx].category}`
+                      }
                     >
-                      {qIdx + 1}
+                      {isLocked ? <Lock className="w-3 h-3 text-gray-400" /> : qIdx + 1}
                     </button>
                   );
                 })}
@@ -849,14 +945,23 @@ export const QuizView: React.FC<QuizViewProps> = ({ questions: fallbackQuestions
                   <div className="w-3 h-3 rounded-xs border-2 border-[#810912] bg-[#810912]/10"></div>
                   <span>Current</span>
                 </div>
-                <div className="flex items-center gap-1.5 text-emerald-700 font-semibold">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                  <span>Correct</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-red-700 font-semibold">
-                  <XCircle className="w-3 h-3 text-red-600" />
-                  <span>Incorrect</span>
-                </div>
+                {(!isEmployeeView || isSubmitted) ? (
+                  <>
+                    <div className="flex items-center gap-1.5 text-emerald-700 font-semibold">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      <span>Correct</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-red-700 font-semibold">
+                      <XCircle className="w-3 h-3 text-red-600" />
+                      <span>Incorrect</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="col-span-2 flex items-center gap-1.5 text-gray-500">
+                    <Lock className="w-3 h-3 text-gray-400" />
+                    <span>Locked (Linear flow)</span>
+                  </div>
+                )}
               </div>
 
               <button

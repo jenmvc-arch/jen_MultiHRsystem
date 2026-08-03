@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { HandbookModule } from '../types';
 import { HandwritingCanvas } from './HandwritingCanvas';
 import { DocumentPreviewModal } from './DocumentPreviewModal';
@@ -27,6 +27,12 @@ import {
   ExternalLink,
   Search,
   X,
+  Timer,
+  Clock,
+  BookmarkCheck,
+  PlayCircle,
+  Save,
+  AlertCircle,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { exportAcknowledgementPdf } from '../utils/pdfExport';
@@ -47,7 +53,36 @@ interface HandbookViewProps {
   officialHandbookUrl?: string | null;
   officialHandbookVersion?: string;
   officialHandbookPageCount?: number;
+  employeeName?: string;
+  employeeId?: string;
+  employeeDepartment?: string;
+  employeePosition?: string;
+  viewRole?: 'employee' | 'hr-admin';
+  onShowNotification?: (title: string, message: string) => void;
 }
+
+type BriefingStatus = 'not_started' | 'in_progress' | 'saved_for_later' | 'completed';
+
+interface SavedBriefingSession {
+  briefingStatus: BriefingStatus;
+  startedAt: number | null;
+  deadlineAt: number | null;
+  lastSavedAt: number | null;
+  selectedModuleId: number;
+}
+
+const BRIEFING_STORAGE_KEY = 'redpoint_handbook_briefing_v1';
+
+const loadSavedBriefing = (): SavedBriefingSession | null => {
+  try {
+    const raw = localStorage.getItem(BRIEFING_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error('Failed to load handbook briefing session:', err);
+    return null;
+  }
+};
 
 export const HandbookView: React.FC<HandbookViewProps> = ({
   modules,
@@ -64,20 +99,61 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   officialHandbookUrl = null,
   officialHandbookVersion,
   officialHandbookPageCount,
+  employeeName = 'Sarah Lin',
+  employeeId = 'EMP-ONBOARDING',
+  employeeDepartment = 'Operations',
+  employeePosition = 'Specialist',
+  viewRole = 'employee',
+  onShowNotification,
 }) => {
   const { t } = useLanguage();
-  const [selectedModuleId, setSelectedModuleId] = useState<number>(1); // Part 1 - Introduction
+  const savedBriefing = useMemo(() => loadSavedBriefing(), []);
+
+  const [briefingStatus, setBriefingStatus] = useState<BriefingStatus>(() => {
+    if (Object.keys(partInitials).length > 0 || finalSignatureDataUrl) {
+      return 'in_progress';
+    }
+    return savedBriefing?.briefingStatus || 'not_started';
+  });
+
+  const [startedAt, setStartedAt] = useState<number | null>(() => {
+    return savedBriefing?.startedAt || null;
+  });
+
+  const [deadlineAt, setDeadlineAt] = useState<number | null>(() => {
+    return savedBriefing?.deadlineAt || null;
+  });
+
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(() => {
+    return savedBriefing?.lastSavedAt || null;
+  });
+
+  const [selectedModuleId, setSelectedModuleId] = useState<number>(() => {
+    return savedBriefing?.selectedModuleId || 1;
+  });
+
   const [contentType, setContentType] = useState<'full' | 'summary'>('full');
   const [isPlayingVideo, setIsPlayingVideo] = useState<boolean>(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [timeRemainingText, setTimeRemainingText] = useState<string>('7 Days Remaining');
+  const [isOverdue, setIsOverdue] = useState<boolean>(false);
+
   const hasSigned = Boolean(finalSignatureDataUrl);
 
   // Employee Particulars State
-  const [empName, setEmpName] = useState<string>('Sarah Lin');
-  const [empDept, setEmpDept] = useState<string>('Marketing & Creative Strategy');
-  const [empPosition, setEmpPosition] = useState<string>('Digital Content Specialist');
-  const [empDate, setEmpDate] = useState<string>(new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' }));
+  const [empName, setEmpName] = useState<string>(employeeName);
+  const [empDept, setEmpDept] = useState<string>(employeeDepartment);
+  const [empPosition, setEmpPosition] = useState<string>(employeePosition);
+  const [empDate, setEmpDate] = useState<string>(
+    new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' })
+  );
+
+  useEffect(() => {
+    if (employeeName) setEmpName(employeeName);
+    if (employeeDepartment) setEmpDept(employeeDepartment);
+    if (employeePosition) setEmpPosition(employeePosition);
+  }, [employeeName, employeeDepartment, employeePosition]);
 
   // Overall progress calculation
   const completedCount = modules.filter((m) => !!partInitials[m.id]).length;
@@ -90,6 +166,63 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   useEffect(() => {
     if (isSigningLocked) setIsFinalSigned(true);
   }, [isSigningLocked]);
+
+  // If completed, update status
+  useEffect(() => {
+    if (overallPercent === 100 && hasSigned) {
+      setBriefingStatus('completed');
+    }
+  }, [overallPercent, hasSigned]);
+
+  // Auto-persist briefing session state
+  useEffect(() => {
+    try {
+      const data: SavedBriefingSession = {
+        briefingStatus,
+        startedAt,
+        deadlineAt,
+        lastSavedAt,
+        selectedModuleId,
+      };
+      localStorage.setItem(BRIEFING_STORAGE_KEY, JSON.stringify(data));
+    } catch (err) {
+      console.error('Failed to save briefing state:', err);
+    }
+  }, [briefingStatus, startedAt, deadlineAt, lastSavedAt, selectedModuleId]);
+
+  // 7-day Countdown Timer Calculation
+  useEffect(() => {
+    if (!deadlineAt) {
+      setTimeRemainingText('7-Day Period');
+      return;
+    }
+
+    const updateTimer = () => {
+      const now = Date.now();
+      const diff = deadlineAt - now;
+
+      if (diff <= 0) {
+        setIsOverdue(true);
+        setTimeRemainingText('7-Day Window Expired');
+        return;
+      }
+
+      setIsOverdue(false);
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+      if (days > 0) {
+        setTimeRemainingText(`${days}d ${hours}h left`);
+      } else {
+        setTimeRemainingText(`${hours}h ${mins}m left`);
+      }
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 60000);
+    return () => clearInterval(interval);
+  }, [deadlineAt]);
 
   const covenantTexts = [
     'I have received a copy of the RedPoint Sdn. Bhd. Employee Handbook (Version 1.0).',
@@ -134,8 +267,21 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
     return searchableText.includes(q);
   });
 
-  const activeModule = modules.find((m) => m.id === selectedModuleId) || modules[1];
-  const activePageRange = OFFICIAL_HANDBOOK.partPages[activeModule.id];
+  const activeModule = modules.find((m) => m.id === selectedModuleId) || modules[0] || {
+    id: 1,
+    title: 'Part 1 – Introduction & Red Point Corporate Identity',
+    subtitle: 'Company background, culture, and organizational values',
+    status: 'in-progress',
+    sectionsCount: 4,
+    completedSections: 0,
+    content: {
+      sectionTitle: 'Part 1: Introduction and Corporate Overview',
+      bodyParagraphs: ['Welcome to the official Red Point Employee Handbook.'],
+      keyTakeaway: 'Compliance and integrity are core to Red Point operations.',
+    },
+  };
+
+  const activePageRange = OFFICIAL_HANDBOOK.partPages[activeModule.id] || { start: 1, end: 5 };
   const officialPdfUrl = officialHandbookUrl && activePageRange
     ? `${officialHandbookUrl}#page=${activePageRange.start}&view=FitH&toolbar=1&navpanes=0`
     : null;
@@ -186,6 +332,74 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // START BRIEFING SESSION HANDLER
+  const handleStartBriefing = () => {
+    const now = Date.now();
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const deadline = now + sevenDaysMs;
+
+    setStartedAt(now);
+    setDeadlineAt(deadline);
+    setLastSavedAt(now);
+    setBriefingStatus('in_progress');
+    setSelectedModuleId(1);
+
+    if (onShowNotification) {
+      onShowNotification(
+        'Briefing Session Started',
+        'Your 7-day onboarding period is now active. You have 7 days to complete all 15 handbook sections.'
+      );
+    }
+  };
+
+  // SAVE FOR LATER HANDLER
+  const handleSaveForLater = () => {
+    const now = Date.now();
+    setLastSavedAt(now);
+    setBriefingStatus('saved_for_later');
+
+    const dueFormatted = deadlineAt
+      ? new Date(deadlineAt).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })
+      : '7 days from start';
+
+    if (onShowNotification) {
+      onShowNotification(
+        'Progress Saved for Later',
+        `Your onboarding progress (Part ${selectedModuleId}) has been safely saved. You can resume anytime before ${dueFormatted}.`
+      );
+    }
+  };
+
+  // CONTINUE SESSION HANDLER
+  const handleContinueSession = () => {
+    setBriefingStatus('in_progress');
+    if (onShowNotification) {
+      onShowNotification(
+        'Briefing Resumed',
+        `Welcome back! Continuing Part ${selectedModuleId} of the Employee Handbook.`
+      );
+    }
+  };
+
+  // START OVER HANDLER
+  const handleStartOver = () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to start over? This will reset your briefing session back to Part 1.'
+    );
+    if (!confirmed) return;
+
+    setSelectedModuleId(1);
+    setBriefingStatus('in_progress');
+    setLastSavedAt(Date.now());
+
+    if (onShowNotification) {
+      onShowNotification(
+        'Briefing Session Reset',
+        'Handbook briefing has been reset to Part 1.'
+      );
+    }
+  };
+
   const handleAcknowledge = () => {
     if (!hasSigned || !finalSignatureDataUrl) return;
     setIsFinalSigned(true);
@@ -208,7 +422,141 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   };
 
   return (
-    <div className="w-full max-w-[1200px] mx-auto space-y-4 pb-12">
+    <div className="w-full max-w-[1200px] mx-auto space-y-5 pb-12 text-left">
+      {/* ========================================================================= */}
+      {/* 7-DAY BRIEFING CONTROL BAR & STATUS HEADER */}
+      {/* ========================================================================= */}
+      <div className="bg-white rounded-xl shadow-xs border border-[#F2E8D8] p-5 sm:p-6 transition-all">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+          <div>
+            <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
+              <span className="bg-[#810912] text-white text-[11px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                7-Day Onboarding Cycle
+              </span>
+              {briefingStatus === 'not_started' && (
+                <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  Not Started
+                </span>
+              )}
+              {briefingStatus === 'in_progress' && (
+                <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <PlayCircle className="w-3 h-3 text-emerald-700" />
+                  In Progress (Part {selectedModuleId}/15)
+                </span>
+              )}
+              {briefingStatus === 'saved_for_later' && (
+                <span className="bg-blue-100 text-blue-800 border border-blue-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <BookmarkCheck className="w-3 h-3 text-blue-700" />
+                  Saved for Later
+                </span>
+              )}
+              {briefingStatus === 'completed' && (
+                <span className="bg-emerald-600 text-white text-[11px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <CheckCircle className="w-3 h-3 text-white" />
+                  All 15 Parts Completed
+                </span>
+              )}
+            </div>
+
+            <h2 className="text-xl sm:text-2xl font-black text-[#1b1c1c] tracking-tight">
+              Employee Handbook & Policy Briefing
+            </h2>
+            <p className="text-xs sm:text-sm text-[#59413f] mt-1">
+              Employees have a mandatory 7-day period to review all 15 handbook sections, acknowledge SOPs, and complete digital sign-off.
+            </p>
+          </div>
+
+          {/* Right Action Cluster for 7-Day Session Management */}
+          <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto shrink-0 justify-start lg:justify-end">
+            {/* Countdown Badge if session has started */}
+            {briefingStatus !== 'not_started' && deadlineAt && (
+              <div
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold border shrink-0 ${
+                  isOverdue
+                    ? 'bg-red-100 text-red-900 border-red-300'
+                    : 'bg-[#FAF6EF] text-[#810912] border-[#e0bfbc]'
+                }`}
+                title={`Due by: ${new Date(deadlineAt).toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' })}`}
+              >
+                <Timer className={`w-4 h-4 ${isOverdue ? 'text-red-700 animate-bounce' : 'text-[#810912]'}`} />
+                <span>{timeRemainingText}</span>
+              </div>
+            )}
+
+            {/* If Not Started: Show Big START button */}
+            {briefingStatus === 'not_started' ? (
+              <button
+                type="button"
+                onClick={handleStartBriefing}
+                className="px-6 py-2.5 rounded-xl bg-[#810912] text-white font-extrabold text-xs hover:bg-[#a32626] transition-all shadow-md flex items-center gap-2 cursor-pointer hover:-translate-y-0.5"
+              >
+                <Play className="w-4 h-4 fill-current" />
+                <span>START BRIEFING SESSION</span>
+              </button>
+            ) : (
+              /* If Session Active: Show Save for Later, Continue, and Start Over buttons */
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveForLater}
+                  className="px-3.5 py-2 rounded-lg bg-[#FAF6EF] border border-[#e0bfbc] text-[#59413f] font-bold text-xs hover:bg-[#f2e8d8] transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Save your current progress and resume anytime within your 7-day window"
+                >
+                  <Save className="w-3.5 h-3.5 text-[#810912]" />
+                  <span>Save for Later</span>
+                </button>
+
+                {briefingStatus === 'saved_for_later' && (
+                  <button
+                    type="button"
+                    onClick={handleContinueSession}
+                    className="px-4 py-2 rounded-lg bg-[#810912] text-white font-bold text-xs hover:bg-[#a32626] transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <span>Continue Session</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleStartOver}
+                  className="px-3.5 py-2 rounded-lg border border-gray-300 text-gray-600 font-bold text-xs hover:bg-gray-100 transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Restart handbook briefing from Part 1"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-gray-500" />
+                  <span>Start Over</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Informative Guidance Banner if not started */}
+        {briefingStatus === 'not_started' && (
+          <div className="mt-4 p-4 rounded-xl bg-[#FAF6EF] border border-[#e0bfbc] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-[#810912] shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-bold text-[#1b1c1c]">
+                  Welcome to your Onboarding Briefing Session
+                </p>
+                <p className="text-[11px] text-[#59413f] mt-0.5">
+                  Click the <strong>START</strong> button above to activate your 7-day orientation window. You can save your progress at any time and return before the deadline.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleStartBriefing}
+              className="px-4 py-1.5 rounded-lg bg-[#810912] text-white text-xs font-bold shrink-0 hover:bg-[#a32626] transition-colors cursor-pointer"
+            >
+              Start Now →
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Sticky Module Reading Progress Bar */}
       <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md border border-[#F2E8D8] rounded-xl p-3 sm:p-4 shadow-[0_4px_12px_rgba(51,51,51,0.08)] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 transition-all">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -249,6 +597,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-bold text-[#1b1c1c]">{t.handbookHeaderTitle}</h3>
               <button
+                type="button"
                 onClick={onOpenAiAssistant}
                 className="p-1.5 rounded-lg bg-[#a32626]/10 text-[#810912] hover:bg-[#a32626]/20 transition-colors flex items-center gap-1 text-xs font-semibold cursor-pointer"
                 title={t.askAiAboutModule}
@@ -334,7 +683,11 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                   return (
                     <li key={m.id}>
                       <button
+                        type="button"
                         onClick={() => {
+                          if (briefingStatus === 'not_started') {
+                            handleStartBriefing();
+                          }
                           if (isLocked && m.id > 1) {
                             const prevUncompleted = modules.find(
                               (prev) => prev.id < m.id && prev.status !== 'completed' && !partInitials[prev.id]
@@ -384,606 +737,470 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
 
         {/* Center/Main Column: Policy Content & Video */}
         <div ref={contentCardRef} className="lg:w-2/3 flex flex-col gap-6">
-        {/* Content Card */}
-        <div className="bg-white rounded-xl shadow-[0_4px_6px_-1px_rgba(51,51,51,0.05),0_10px_15px_-3px_rgba(51,51,51,0.1)] border border-[#F2E8D8] overflow-hidden flex flex-col">
-          {/* Video Mockup Frame */}
-          <div className="relative w-full h-64 sm:h-72 bg-[#403f3a] overflow-hidden group">
-            <img
-              src={
-                activeModule.videoUrl ||
-                'https://lh3.googleusercontent.com/aida-public/AB6AXuCYBshVaRzF-d4q2MwqtPNHups0sJL4vP55I_Cld2Ys0CmWVkjoyFfvsee30o-jAgKjdFFO0nEK_BYfwjNEwNgQlifa8TRPDMbduG4kb-QZEc2mIJ3muKpq6TNpB_1lsvNGRmaJe2vcZy9z4kFdpJlYm2tOQnGuwnieXjThuelP5v-m9M5vtssch_hXqjBriqL1njDnb35r3XZYuwduFVEcwIo6jSTlxQqVsAmoAZ3bqbqVJ4-ftEkJgJqY_W2B5bqBarfwJ_u7uoY'
-              }
-              alt="Training Video Preview"
-              className="w-full h-full object-cover opacity-80 mix-blend-overlay group-hover:scale-105 transition-transform duration-500"
-            />
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
-              <button
-                onClick={() => setIsPlayingVideo(!isPlayingVideo)}
-                className="w-16 h-16 bg-[#a32626] text-white rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform cursor-pointer"
-              >
-                <Play className="w-8 h-8 fill-current ml-1" />
-              </button>
-              <span className="mt-4 text-xs font-semibold text-white bg-black/60 px-3 py-1 rounded-full backdrop-blur-xs">
-                {activeModule.title} ({activeModule.videoDuration || '3:45'})
-              </span>
-            </div>
-
-            {isPlayingVideo && (
-              <div className="absolute inset-0 bg-black/90 p-4 flex flex-col justify-between z-20 text-white">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-[#ffbbb5]">Video Briefing Player</span>
-                  <button
-                    onClick={() => setIsPlayingVideo(false)}
-                    className="text-xs text-white hover:underline cursor-pointer"
-                  >
-                    Close Video ✕
-                  </button>
-                </div>
-                <div className="text-center my-auto px-6">
-                  <p className="text-sm font-semibold mb-2">
-                    [Playing] Executive Introduction to Red Point Integrity Guidelines
-                  </p>
-                  <div className="w-full bg-white/20 rounded-full h-1.5 overflow-hidden max-w-md mx-auto">
-                    <div className="bg-[#a32626] h-full w-2/3 animate-pulse"></div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Text Content */}
-          <div className="p-6 sm:p-8 flex-1">
-            {/* View Mode Switcher Header Bar */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 pb-4 border-b border-[#F2E8D8]">
-              <div className="flex items-center gap-2">
-                <span className="bg-[#810912]/10 text-[#810912] px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider">
-                  Section {activeModule.id}
-                </span>
-                <span className="text-xs text-[#59413f]">
-                  {activeModule.completedSections}/{activeModule.sectionsCount} {t.sectionsLabel}
+          {/* Content Card */}
+          <div className="bg-white rounded-xl shadow-[0_4px_6px_-1px_rgba(51,51,51,0.05),0_10px_15px_-3px_rgba(51,51,51,0.1)] border border-[#F2E8D8] overflow-hidden flex flex-col">
+            {/* Video Mockup Frame */}
+            <div className="relative w-full h-64 sm:h-72 bg-[#403f3a] overflow-hidden group">
+              <img
+                src={
+                  activeModule.videoUrl ||
+                  'https://lh3.googleusercontent.com/aida-public/AB6AXuCYBshVaRzF-d4q2MwqtPNHups0sJL4vP55I_Cld2Ys0CmWVkjoyFfvsee30o-jAgKjdFFO0nEK_BYfwjNEwNgQlifa8TRPDMbduG4kb-QZEc2mIJ3muKpq6TNpB_1lsvNGRmaJe2vcZy9z4kFdpJlYm2tOQnGuwnieXjThuelP5v-m9M5vtssch_hXqjBriqL1njDnb35r3XZYuwduFVEcwIo6jSTlxQqVsAmoAZ3bqbqVJ4-ftEkJgJqY_W2B5bqBarfwJ_u7uoY'
+                }
+                alt="Training Video Preview"
+                className="w-full h-full object-cover opacity-80 mix-blend-overlay group-hover:scale-105 transition-transform duration-500"
+              />
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (briefingStatus === 'not_started') handleStartBriefing();
+                    setIsPlayingVideo(!isPlayingVideo);
+                  }}
+                  className="w-16 h-16 bg-[#a32626] text-white rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform cursor-pointer"
+                >
+                  <Play className="w-8 h-8 fill-current ml-1" />
+                </button>
+                <span className="mt-4 text-xs font-semibold text-white bg-black/60 px-3 py-1 rounded-full backdrop-blur-xs">
+                  {activeModule.title} ({activeModule.videoDuration || '3:45'})
                 </span>
               </div>
 
-              {/* Segmented Mode Switcher: Full Detail vs Executive Summary */}
-              <div className="inline-flex p-1 bg-[#FAF6EF] border border-[#e0bfbc] rounded-xl shadow-xs">
-                <button
-                  type="button"
-                  onClick={() => setContentType('full')}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    contentType === 'full'
-                      ? 'bg-[#810912] text-white shadow-xs'
-                      : 'text-[#59413f] hover:text-[#1b1c1c] hover:bg-white/60'
-                  }`}
-                >
-                  <FileText className="w-3.5 h-3.5" />
-                  <span>Full Detail</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setContentType('summary')}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    contentType === 'summary'
-                      ? 'bg-[#810912] text-white shadow-xs'
-                      : 'text-[#59413f] hover:text-[#1b1c1c] hover:bg-white/60'
-                  }`}
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
-                  <span>Executive Summary</span>
-                </button>
-              </div>
-            </div>
-
-            <h1 className="text-2xl sm:text-3xl font-bold text-[#1b1c1c] mb-6">
-              {activeModule.content.sectionTitle}
-            </h1>
-
-            {/* FULL DETAIL VIEW MODE */}
-            {contentType === 'full' ? (
-              <div className="space-y-4 text-base text-[#59413f] leading-relaxed">
-                {officialPdfUrl && (
-                  <section className="space-y-3" aria-label="Official employee handbook PDF">
-                    <div className="flex flex-col gap-2 border-b border-[#F2E8D8] pb-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-sm font-extrabold text-[#1b1c1c]">
-                          Official Employee Handbook
-                        </p>
-                        <p className="text-xs text-[#59413f]">
-                          {officialHandbookVersion || OFFICIAL_HANDBOOK.displayVersion} · Pages {activePageRange.start}-{activePageRange.end} of {officialHandbookPageCount || OFFICIAL_HANDBOOK.pageCount}
-                        </p>
-                      </div>
-                      <a
-                        href={officialPdfUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[#e0bfbc] bg-white px-3 text-xs font-bold text-[#810912] hover:bg-[#FAF6EF]"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                        <span>Open PDF</span>
-                      </a>
-                    </div>
-                    <object
-                      key={`${activeModule.id}-${officialPdfUrl}`}
-                      data={officialPdfUrl}
-                      type="application/pdf"
-                      className="h-[72vh] min-h-[620px] w-full border border-[#e0bfbc] bg-white"
-                      aria-label={`${activeModule.title} official handbook pages`}
+              {isPlayingVideo && (
+                <div className="absolute inset-0 bg-black/90 p-4 flex flex-col justify-between z-20 text-white">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-[#ffbbb5]">Video Briefing Player</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsPlayingVideo(false)}
+                      className="text-xs text-white hover:underline cursor-pointer"
                     >
-                      <a href={officialPdfUrl} target="_blank" rel="noopener noreferrer">
-                        Open the official handbook PDF
-                      </a>
-                    </object>
-                  </section>
-                )}
-
-                {!officialPdfUrl && (
-                  <div className="border-l-4 border-[#810912] bg-[#FAF6EF] px-4 py-3 text-sm text-[#59413f]">
-                    The secure official PDF will appear here after the employee signing session is authenticated.
+                      Close Video ✕
+                    </button>
                   </div>
-                )}
-
-                <div className="pt-2">
-                {activeModule.content.bodyParagraphs.map((para, idx) => (
-                  <p key={idx}>{para}</p>
-                ))}
-                </div>
-
-                {/* Subsections rendering */}
-                {activeModule.content.subsections && activeModule.content.subsections.length > 0 && (
-                  <div className="space-y-6 mt-6 pt-6 border-t border-[#F2E8D8]">
-                    {activeModule.content.subsections.map((sub, sIdx) => (
-                      <div key={sIdx} className="space-y-3 bg-[#FAF6EF]/60 p-4 rounded-xl border border-[#e0bfbc]/60">
-                        {sub.title && (
-                          <h3 className="text-base sm:text-lg font-extrabold text-[#1b1c1c] border-b border-[#e0bfbc]/50 pb-1.5 flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-[#810912]"></span>
-                            <span>{sub.title}</span>
-                          </h3>
-                        )}
-                        {sub.paragraphs.map((p, pIdx) => (
-                          <p key={pIdx} className="text-sm text-[#1b1c1c] leading-relaxed">
-                            {p}
-                          </p>
-                        ))}
-                        {sub.bulletPoints && sub.bulletPoints.length > 0 && (
-                          <ul className="space-y-2 pl-3 pt-1">
-                            {sub.bulletPoints.map((bp, bIdx) => (
-                              <li key={bIdx} className="text-xs sm:text-sm text-[#59413f] flex items-start gap-2.5">
-                                <span className="text-[#810912] font-bold text-sm leading-none mt-0.5">•</span>
-                                <span className="leading-snug">{bp}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                        {sub.table && (
-                          <div className="overflow-x-auto my-3 border border-[#e0bfbc] rounded-xl shadow-xs">
-                            <table className="w-full text-xs text-left border-collapse">
-                              <thead className="bg-[#810912] text-white">
-                                <tr>
-                                  {sub.table.headers.map((h, hIdx) => (
-                                    <th key={hIdx} className="px-3.5 py-2.5 font-bold uppercase tracking-wider">
-                                      {h}
-                                    </th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-[#e0bfbc]/60 bg-white">
-                                {sub.table.rows.map((row, rIdx) => (
-                                  <tr key={rIdx} className={rIdx % 2 === 0 ? 'bg-[#FAF6EF]/50' : 'bg-white'}>
-                                    {row.map((cell, cIdx) => (
-                                      <td key={cIdx} className="px-3.5 py-2.5 font-medium text-[#1b1c1c]">
-                                        {cell}
-                                      </td>
-                                    ))}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Key Takeaway Callout Box */}
-                <div className="bg-[#f6f3f2] border-l-4 border-[#810912] p-4 rounded-r-lg my-6">
-                  <p className="text-sm font-medium text-[#1b1c1c]">
-                    <strong className="text-[#810912]">{t.keyTakeawayLabel}</strong>{' '}
-                    {activeModule.content.keyTakeaway}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              /* EXECUTIVE SUMMARY VIEW MODE */
-              <div className="space-y-6">
-                {/* Executive Key Takeaway Card */}
-                <div className="p-5 rounded-xl bg-gradient-to-r from-[#810912] to-[#5a060d] text-white shadow-md relative overflow-hidden">
-                  <div className="absolute right-3 bottom-1 opacity-10 text-white pointer-events-none">
-                    <Sparkles className="w-32 h-32" />
-                  </div>
-                  <div className="flex items-center gap-2 mb-2 text-[#D4AF37] font-extrabold text-xs tracking-wider uppercase">
-                    <Award className="w-4 h-4" />
-                    <span>Executive Section Takeaway</span>
-                  </div>
-                  <p className="text-base sm:text-lg font-bold leading-snug">
-                    "{activeModule.content.keyTakeaway}"
-                  </p>
-                </div>
-
-                {/* Section Overview Paragraph */}
-                <div className="bg-[#FAF6EF] p-4 rounded-xl border border-[#e0bfbc] space-y-2">
-                  <h3 className="text-xs font-black uppercase text-[#810912] tracking-wider flex items-center gap-1.5">
-                    <Layers className="w-4 h-4" />
-                    <span>Summary Briefing</span>
-                  </h3>
-                  <p className="text-sm text-[#1b1c1c] leading-relaxed font-medium">
-                    {activeModule.content.bodyParagraphs[0] || 'This section outlines key operational principles, rules, and employee responsibilities.'}
-                  </p>
-                </div>
-
-                {/* Subsections Quick Bullet Summary Cards */}
-                {activeModule.content.subsections && activeModule.content.subsections.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="text-xs font-black uppercase text-[#1b1c1c] tracking-wider flex items-center gap-1.5">
-                      <ListFilter className="w-4 h-4 text-[#810912]" />
-                      <span>Key Policy Subsections Summary ({activeModule.content.subsections.length} Topics)</span>
-                    </h3>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {activeModule.content.subsections.map((sub, idx) => (
-                        <div
-                          key={idx}
-                          className="p-3.5 bg-white rounded-xl border border-[#F2E8D8] shadow-xs flex flex-col justify-between gap-2 hover:border-[#810912]/40 transition-colors"
-                        >
-                          <div>
-                            <h4 className="text-xs font-extrabold text-[#810912] mb-1">
-                              {sub.title || `Topic ${idx + 1}`}
-                            </h4>
-                            <p className="text-xs text-[#59413f] line-clamp-3 leading-snug">
-                              {sub.paragraphs[0] || 'Key requirements and compliance standards apply.'}
-                            </p>
-                          </div>
-                          {sub.bulletPoints && sub.bulletPoints.length > 0 && (
-                            <div className="text-[11px] font-semibold text-[#810912] bg-[#FAF6EF] px-2 py-1 rounded-md">
-                              {sub.bulletPoints.length} key rules defined
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                  <div className="text-center my-auto px-6">
+                    <p className="text-sm font-semibold mb-2">
+                      [Playing] Executive Introduction to Red Point Integrity Guidelines
+                    </p>
+                    <div className="w-full bg-white/20 rounded-full h-1.5 overflow-hidden max-w-md mx-auto">
+                      <div className="bg-[#a32626] h-full w-2/3 animate-pulse"></div>
                     </div>
                   </div>
-                )}
-
-                {/* Prompt to switch back to full detail */}
-                <div className="p-4 bg-[#FAF6EF]/80 border border-[#e0bfbc] rounded-xl flex items-center justify-between gap-3 text-xs">
-                  <span className="text-[#59413f] font-medium">
-                    Need the complete line-by-line legal text and tables?
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setContentType('full')}
-                    className="px-3 py-1.5 bg-[#1b1c1c] hover:bg-black text-white font-bold rounded-lg shrink-0 flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>View Full Detail</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Digital Signature & Final Provision Acknowledgement Card - ONLY SHOW AT PART 15 */}
-        {activeModule.id === 15 ? (
-          <div className="bg-white rounded-xl shadow-[0_4px_6px_-1px_rgba(51,51,51,0.05),0_10px_15px_-3px_rgba(51,51,51,0.1)] border-2 border-[#810912]/20 p-6 sm:p-8 flex flex-col gap-6 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-[#810912]"></div>
-
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-[#F2E8D8]">
-              <div className="flex gap-3 items-center">
-                <div className="p-2.5 bg-[#810912] text-white rounded-lg shadow-xs">
-                  <ShieldCheck className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base sm:text-lg font-black text-[#1b1c1c] uppercase tracking-wide">
-                    FINAL PROVISION & EMPLOYEE ACKNOWLEDGEMENT
-                  </h3>
-                  <p className="text-xs text-[#59413f]">
-                    RedPoint Sdn. Bhd. Employee Handbook • Formal Digital Sign-Off Form
-                  </p>
-                </div>
-              </div>
-
-              {isFinalSigned && (
-                <div className="flex items-center gap-2 bg-[#E6F4EA] border border-[#34A853]/40 text-[#137333] px-3 py-1.5 rounded-full text-xs font-bold animate-fade-in">
-                  <FileCheck className="w-4 h-4" />
-                  <span>Acknowledged & Archived</span>
                 </div>
               )}
             </div>
 
-            {/* Employee Particulars Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-[#FAF6EF] p-4 rounded-xl border border-[#e0bfbc]">
-              <div>
-                <label className="text-[10px] uppercase font-bold text-[#810912] tracking-wider block mb-1">
-                  Employee Full Name
-                </label>
-                <input
-                  type="text"
-                  value={empName}
-                  onChange={(e) => setEmpName(e.target.value)}
-                  className="w-full text-xs font-semibold text-[#1b1c1c] bg-white border border-[#e0bfbc] rounded-md px-2.5 py-1.5 focus:border-[#810912] focus:outline-hidden"
-                />
-              </div>
+            {/* Text Content */}
+            <div className="p-6 sm:p-8 flex-1">
+              {/* View Mode Switcher Header Bar */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 pb-4 border-b border-[#F2E8D8]">
+                <div className="flex items-center gap-2">
+                  <span className="bg-[#810912]/10 text-[#810912] px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider">
+                    Section {activeModule.id}
+                  </span>
+                  <span className="text-xs text-[#59413f]">
+                    {activeModule.completedSections}/{activeModule.sectionsCount} {t.sectionsLabel}
+                  </span>
+                </div>
 
-              <div>
-                <label className="text-[10px] uppercase font-bold text-[#810912] tracking-wider block mb-1">
-                  Department
-                </label>
-                <input
-                  type="text"
-                  value={empDept}
-                  onChange={(e) => setEmpDept(e.target.value)}
-                  className="w-full text-xs font-semibold text-[#1b1c1c] bg-white border border-[#e0bfbc] rounded-md px-2.5 py-1.5 focus:border-[#810912] focus:outline-hidden"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] uppercase font-bold text-[#810912] tracking-wider block mb-1">
-                  Position / Title
-                </label>
-                <input
-                  type="text"
-                  value={empPosition}
-                  onChange={(e) => setEmpPosition(e.target.value)}
-                  className="w-full text-xs font-semibold text-[#1b1c1c] bg-white border border-[#e0bfbc] rounded-md px-2.5 py-1.5 focus:border-[#810912] focus:outline-hidden"
-                />
-              </div>
-
-              <div>
-                <label className="text-[10px] uppercase font-bold text-[#810912] tracking-wider block mb-1">
-                  Date of Signature
-                </label>
-                <input
-                  type="text"
-                  value={empDate}
-                  onChange={(e) => setEmpDate(e.target.value)}
-                  className="w-full text-xs font-semibold text-[#1b1c1c] bg-white border border-[#e0bfbc] rounded-md px-2.5 py-1.5 focus:border-[#810912] focus:outline-hidden"
-                />
-              </div>
-            </div>
-
-            {/* 5 Compliance Covenants Checklist */}
-            <div className="space-y-2.5">
-              <h4 className="text-xs font-extrabold text-[#1b1c1c] uppercase tracking-wider flex items-center gap-1.5">
-                <Award className="w-4 h-4 text-[#810912]" />
-                <span>Mandatory Compliance Covenants (Check all to proceed)</span>
-              </h4>
-
-              <div className="space-y-2">
-                {covenantTexts.map((covText, idx) => (
+                {/* Segmented Mode Switcher: Full Detail vs Executive Summary */}
+                <div className="inline-flex p-1 bg-[#FAF6EF] border border-[#e0bfbc] rounded-xl shadow-xs">
                   <button
-                    key={idx}
                     type="button"
-                    onClick={() => toggleCovenant(idx)}
-                    className={`w-full text-left p-3 rounded-lg border text-xs sm:text-sm flex items-start gap-3 transition-all cursor-pointer ${
-                      covenants[idx]
-                        ? 'bg-[#FAF6EF] border-[#810912]/40 text-[#1b1c1c]'
-                        : 'bg-white border-[#e0bfbc] text-[#59413f] opacity-80 hover:opacity-100'
+                    onClick={() => setContentType('full')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      contentType === 'full'
+                        ? 'bg-[#810912] text-white shadow-xs'
+                        : 'text-[#59413f] hover:text-[#1b1c1c] hover:bg-white/60'
                     }`}
                   >
-                    <span className="mt-0.5 shrink-0 text-[#810912]">
-                      {covenants[idx] ? (
-                        <CheckSquare className="w-4 h-4 text-[#810912]" />
-                      ) : (
-                        <Square className="w-4 h-4 text-[#e0bfbc]" />
-                      )}
-                    </span>
-                    <span className="leading-snug font-medium">{covText}</span>
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Full Detail</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setContentType('summary')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      contentType === 'summary'
+                        ? 'bg-[#810912] text-white shadow-xs'
+                        : 'text-[#59413f] hover:text-[#1b1c1c] hover:bg-white/60'
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
+                    <span>Executive Summary</span>
+                  </button>
+                </div>
+              </div>
+
+              <h1 className="text-2xl sm:text-3xl font-bold text-[#1b1c1c] mb-6">
+                {activeModule.content.sectionTitle}
+              </h1>
+
+              {/* FULL DETAIL VIEW MODE */}
+              {contentType === 'full' ? (
+                <div className="space-y-4 text-base text-[#59413f] leading-relaxed">
+                  {officialPdfUrl && (
+                    <section className="space-y-3" aria-label="Official employee handbook PDF">
+                      <div className="flex flex-col gap-2 border-b border-[#F2E8D8] pb-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-sm font-extrabold text-[#1b1c1c]">
+                            Official Employee Handbook
+                          </p>
+                          <p className="text-xs text-[#59413f]">
+                            {officialHandbookVersion || OFFICIAL_HANDBOOK.displayVersion} · Pages {activePageRange.start}-{activePageRange.end} of {officialHandbookPageCount || OFFICIAL_HANDBOOK.pageCount}
+                          </p>
+                        </div>
+                        <a
+                          href={officialPdfUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[#e0bfbc] bg-white px-3 text-xs font-bold text-[#810912] hover:bg-[#FAF6EF]"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          <span>Open in separate tab</span>
+                        </a>
+                      </div>
+
+                      <div className="overflow-hidden rounded-xl border border-[#e0bfbc] bg-[#FAF6EF]">
+                        <iframe
+                          src={officialPdfUrl}
+                          title={`Official Handbook Pages ${activePageRange.start}-${activePageRange.end}`}
+                          className="h-[560px] w-full bg-white"
+                        />
+                      </div>
+                    </section>
+                  )}
+
+                  {activeModule.content.bodyParagraphs?.map((paragraph, index) => (
+                    <p key={index} className="text-sm sm:text-base leading-relaxed text-[#1b1c1c]">
+                      {paragraph}
+                    </p>
+                  ))}
+
+                  {/* Subsections rendering */}
+                  {activeModule.content.subsections?.map((subsection, subIdx) => (
+                    <div key={subIdx} className="pt-4 space-y-3 border-t border-[#F2E8D8]">
+                      {subsection.title && (
+                        <h3 className="text-base sm:text-lg font-bold text-[#1b1c1c]">
+                          {subsection.title}
+                        </h3>
+                      )}
+                      {subsection.paragraphs?.map((p, pIdx) => (
+                        <p key={pIdx} className="text-xs sm:text-sm text-[#59413f] leading-relaxed">
+                          {p}
+                        </p>
+                      ))}
+
+                      {subsection.bulletPoints && subsection.bulletPoints.length > 0 && (
+                        <ul className="list-disc list-inside space-y-1.5 pl-2 text-xs sm:text-sm text-[#59413f]">
+                          {subsection.bulletPoints.map((point, bpIdx) => (
+                            <li key={bpIdx} className="leading-relaxed">
+                              {point}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+
+                      {/* Sub-tables if present */}
+                      {subsection.table && (
+                        <div className="overflow-x-auto my-3">
+                          <table className="w-full text-xs text-left border-collapse border border-[#e0bfbc] rounded-lg">
+                            <thead className="bg-[#810912] text-white font-bold">
+                              <tr>
+                                {subsection.table.headers.map((header, hIdx) => (
+                                  <th key={hIdx} className="p-2.5 border border-[#810912]">
+                                    {header}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[#e0bfbc]">
+                              {subsection.table.rows.map((row, rIdx) => (
+                                <tr key={rIdx} className="hover:bg-[#FAF6EF]/50">
+                                  {row.map((cell, cIdx) => (
+                                    <td key={cIdx} className="p-2.5 border border-[#e0bfbc] text-[#1b1c1c]">
+                                      {cell}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* EXECUTIVE SUMMARY VIEW MODE */
+                <div className="space-y-4 text-xs sm:text-sm text-[#59413f]">
+                  <div className="p-4 bg-[#FAF6EF] rounded-xl border border-[#e0bfbc]">
+                    <h4 className="font-bold text-[#810912] mb-2 flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-[#D4AF37]" />
+                      Executive Summary & Key Takeaway
+                    </h4>
+                    <p className="text-xs sm:text-sm text-[#1b1c1c] leading-relaxed">
+                      {activeModule.content.keyTakeaway ||
+                        'Employees are expected to adhere strictly to all Red Point operational standards and code of conduct policies.'}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ========================================================================= */}
+          {/* SIGNATURE / INITIAL CARD PER PART */}
+          {/* ========================================================================= */}
+          {activeModule.id === 15 ? (
+            /* FINAL COVENANTS & COMPREHENSIVE SIGN-OFF CARD FOR PART 15 */
+            <div className="bg-white rounded-xl shadow-md border-2 border-[#810912] p-6 sm:p-8 space-y-6">
+              <div className="border-b border-[#F2E8D8] pb-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Award className="w-6 h-6 text-[#810912]" />
+                  <h3 className="text-lg sm:text-xl font-extrabold text-[#1b1c1c]">
+                    Part 15: Final Acknowledgement & Digital Sign-off
+                  </h3>
+                </div>
+                <p className="text-xs sm:text-sm text-[#59413f]">
+                  Please review the 5-point covenant and draw your full digital signature below to finalize your onboarding.
+                </p>
+              </div>
+
+              {/* 5 Covenants */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-[#1b1c1c] uppercase tracking-wider">
+                  Employee Covenants
+                </h4>
+                {covenantTexts.map((text, idx) => (
+                  <label
+                    key={idx}
+                    className="flex items-start gap-3 p-3 rounded-lg border border-[#e0bfbc] hover:bg-[#FAF6EF] cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={covenants[idx]}
+                      onChange={() => toggleCovenant(idx)}
+                      className="mt-0.5 w-4 h-4 accent-[#810912]"
+                    />
+                    <span className="text-xs text-[#1b1c1c] leading-relaxed">{text}</span>
+                  </label>
                 ))}
               </div>
-            </div>
 
-            {/* Handwriting Signature Canvas Pad */}
-            <div className="space-y-2">
-              <HandwritingCanvas
-                label="Employee Handwritten Digital Signature"
-                subLabel="Draw your official signature below on the digital signature pad using mouse, touchpad, or touchscreen stylus."
-                height={130}
-                existingDataUrl={finalSignatureDataUrl}
-                disabled={isSigningLocked}
-                onSaveSignature={(dataUrl) => {
-                  if (dataUrl) {
-                    void onSaveFinalSignature(dataUrl).catch(() => undefined);
-                  } else {
-                    void onClearFinalSignature().catch(() => undefined);
-                  }
-                  setIsFinalSigned(false);
-                }}
-                onClear={() => {
-                  setIsFinalSigned(false);
-                }}
-              />
-            </div>
-
-            {/* Action Buttons & Verification Badge */}
-            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-2">
-              <div className="flex items-center gap-2 text-xs text-[#59413f]">
-                <Sparkles className="w-4 h-4 text-[#810912] shrink-0" />
-                <span>RedPoint HR Compliance Audit Logged</span>
+              {/* Signature Box */}
+              <div className="bg-[#FAF6EF] p-4 rounded-xl border border-[#e0bfbc]">
+                <HandwritingCanvas
+                  key="final-signature"
+                  label="Employee Formal Signature Pad"
+                  subLabel="Draw your full formal signature to legally acknowledge the Red Point Employee Handbook."
+                  height={140}
+                  existingDataUrl={finalSignatureDataUrl}
+                  disabled={isSigningLocked}
+                  onSaveSignature={(dataUrl) => {
+                    if (dataUrl) {
+                      void onSaveFinalSignature(dataUrl).then(() => {
+                        setIsFinalSigned(true);
+                      }).catch(() => undefined);
+                    } else {
+                      void onClearFinalSignature().then(() => {
+                        setIsFinalSigned(false);
+                      }).catch(() => undefined);
+                    }
+                  }}
+                  onClear={() => {
+                    setIsFinalSigned(false);
+                  }}
+                />
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsPreviewOpen(true)}
-                  className="py-2.5 px-4 rounded-lg font-bold text-xs transition-all flex items-center gap-2 cursor-pointer bg-[#FAF6EF] border border-[#e0bfbc] text-[#810912] hover:bg-[#f2e8d8] shadow-xs hover:-translate-y-0.5"
-                >
-                  <Eye className="w-4 h-4 text-[#810912]" />
-                  <span>Preview Document</span>
-                </button>
+              {/* Action Buttons & Verification Badge */}
+              <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-2">
+                <div className="flex items-center gap-2 text-xs text-[#59413f]">
+                  <Sparkles className="w-4 h-4 text-[#810912] shrink-0" />
+                  <span>RedPoint HR Compliance Audit Logged</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsPreviewOpen(true)}
+                    className="py-2.5 px-4 rounded-lg font-bold text-xs transition-all flex items-center gap-2 cursor-pointer bg-[#FAF6EF] border border-[#e0bfbc] text-[#810912] hover:bg-[#f2e8d8] shadow-xs hover:-translate-y-0.5"
+                  >
+                    <Eye className="w-4 h-4 text-[#810912]" />
+                    <span>Preview Document</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadPdfCertificate}
+                    disabled={!isFinalSigned && !hasSigned}
+                    className={`py-2.5 px-3.5 rounded-lg font-bold text-xs transition-all flex items-center gap-2 cursor-pointer ${
+                      isFinalSigned || hasSigned
+                        ? 'bg-[#FAF6EF] border border-[#e0bfbc] text-[#1b1c1c] hover:bg-[#f2e8d8]'
+                        : 'bg-[#f6f3f2] text-[#59413f] cursor-not-allowed opacity-60 border border-[#e0bfbc]'
+                    }`}
+                  >
+                    <Download className="w-3.5 h-3.5 text-[#810912]" />
+                    <span>Acknowledgement Certificate (PDF)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadFullHandbookPdf}
+                    disabled={!isFinalSigned && !hasSigned}
+                    className={`py-2.5 px-4 rounded-lg font-bold text-xs transition-all flex items-center gap-2 cursor-pointer ${
+                      isFinalSigned || hasSigned
+                        ? 'bg-[#810912] text-white hover:bg-[#a32626] shadow-sm hover:-translate-y-0.5'
+                        : 'bg-[#f6f3f2] text-[#59413f] cursor-not-allowed opacity-60 border border-[#e0bfbc]'
+                    }`}
+                  >
+                    <Download className="w-4 h-4 text-[#D4AF37]" />
+                    <span>Download Full Handbook + Quiz Record (PDF)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleAcknowledge}
+                    disabled={!hasSigned || !allCovenantsChecked}
+                    className={`py-2.5 px-5 rounded-lg font-extrabold text-xs tracking-wider uppercase transition-all flex items-center gap-2 cursor-pointer ${
+                      hasSigned && allCovenantsChecked
+                        ? 'bg-[#1b1c1c] text-white hover:bg-black shadow-md hover:-translate-y-0.5'
+                        : 'bg-[#f6f3f2] text-[#59413f] cursor-not-allowed opacity-60 border border-[#e0bfbc]'
+                    }`}
+                  >
+                    <span>{isFinalSigned ? 'Re-confirm Sign-off' : 'Sign & Acknowledge'}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* INITIAL SIGNATURE & SECTION ACKNOWLEDGEMENT CARD FOR PARTS 1 - 14 */
+            <div className="bg-white rounded-xl shadow-md border-2 border-[#810912]/20 p-6 flex flex-col gap-5 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-[#810912]"></div>
+
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-[#F2E8D8]">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-[#810912] text-white rounded-lg shadow-xs">
+                    <PenTool className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm sm:text-base font-extrabold text-[#1b1c1c] uppercase tracking-wide">
+                      Part {activeModule.id} Employee Handwritten Initial
+                    </h4>
+                    <p className="text-xs text-[#59413f]">
+                      Draw your handwritten initial on the signature pad below to unlock Part {activeModule.id + 1}
+                    </p>
+                  </div>
+                </div>
+
+                {partInitials[activeModule.id] || activeModule.status === 'completed' ? (
+                  <div className="flex items-center gap-1.5 bg-[#E6F4EA] border border-[#34A853]/40 text-[#137333] px-3 py-1 rounded-full text-xs font-bold animate-fade-in">
+                    <FileCheck className="w-4 h-4" />
+                    <span>Handwritten Initial Recorded</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 bg-[#FFF0F0] border border-[#a32626]/30 text-[#810912] px-3 py-1 rounded-full text-xs font-bold">
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Handwritten Initial Required</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-[#FAF6EF] p-4 rounded-xl border border-[#e0bfbc]">
+                <HandwritingCanvas
+                  key={activeModule.id}
+                  label={`Employee Handwritten Initial Pad (Part ${activeModule.id})`}
+                  subLabel={`Please draw your handwritten initial below to confirm you have thoroughly reviewed Part ${activeModule.id} – ${activeModule.content.sectionTitle}.`}
+                  height={110}
+                  existingDataUrl={partInitials[activeModule.id] || null}
+                  disabled={isSigningLocked}
+                  onSaveSignature={(dataUrl) => {
+                    if (dataUrl) {
+                      if (briefingStatus === 'not_started') {
+                        handleStartBriefing();
+                      }
+                      void onSavePartInitial(activeModule.id, dataUrl).then(() => {
+                        onAcknowledgeModule(activeModule.id, dataUrl);
+                        if (onShowNotification) {
+                          onShowNotification(
+                            `Part ${activeModule.id} Initial Saved`,
+                            `Your initial for Part ${activeModule.id} has been recorded.`
+                          );
+                        }
+                      }).catch(() => undefined);
+                    } else {
+                      void onClearPartInitial(activeModule.id).catch(() => undefined);
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Section Navigation & Proceed Button */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-1">
+                <div className="text-xs text-[#59413f]">
+                  {partInitials[activeModule.id] || activeModule.status === 'completed' ? (
+                    <span className="text-[#137333] font-bold flex items-center gap-1.5">
+                      <CheckCircle className="w-4 h-4 text-emerald-600" />
+                      Part {activeModule.id} initialed and verified. You may proceed to the next section.
+                    </span>
+                  ) : (
+                    <span className="text-[#810912] font-semibold flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5 text-[#810912]" />
+                      Handwrite your initial on the signature pad above to enable proceeding.
+                    </span>
+                  )}
+                </div>
 
                 <button
                   type="button"
-                  onClick={handleDownloadPdfCertificate}
-                  disabled={!isFinalSigned && !hasSigned}
-                  className={`py-2.5 px-3.5 rounded-lg font-bold text-xs transition-all flex items-center gap-2 cursor-pointer ${
-                    isFinalSigned || hasSigned
-                      ? 'bg-[#FAF6EF] border border-[#e0bfbc] text-[#1b1c1c] hover:bg-[#f2e8d8]'
-                      : 'bg-[#f6f3f2] text-[#59413f] cursor-not-allowed opacity-60 border border-[#e0bfbc]'
-                  }`}
-                >
-                  <Download className="w-3.5 h-3.5 text-[#810912]" />
-                  <span>Acknowledgement Certificate (PDF)</span>
-                </button>
+                  onClick={() => {
+                    if (!partInitials[activeModule.id] && activeModule.status !== 'completed') {
+                      alert(`Please draw your handwritten initial signature on the pad for Part ${activeModule.id} before proceeding.`);
+                      return;
+                    }
 
-                <button
-                  type="button"
-                  onClick={handleDownloadFullHandbookPdf}
-                  disabled={!isFinalSigned && !hasSigned}
-                  className={`py-2.5 px-4 rounded-lg font-bold text-xs transition-all flex items-center gap-2 cursor-pointer ${
-                    isFinalSigned || hasSigned
-                      ? 'bg-[#810912] text-white hover:bg-[#a32626] shadow-sm hover:-translate-y-0.5'
+                    if (activeModule.id < 15) {
+                      handleSelectModule(activeModule.id + 1);
+                    }
+                  }}
+                  disabled={!partInitials[activeModule.id] && activeModule.status !== 'completed'}
+                  className={`py-2.5 px-5 rounded-lg font-bold text-xs transition-all shadow-xs flex items-center gap-2 shrink-0 ${
+                    partInitials[activeModule.id] || activeModule.status === 'completed'
+                      ? 'bg-[#1b1c1c] hover:bg-black text-white cursor-pointer shadow-md hover:-translate-y-0.5'
                       : 'bg-[#f6f3f2] text-[#59413f] cursor-not-allowed opacity-60 border border-[#e0bfbc]'
                   }`}
                 >
-                  <Download className="w-4 h-4 text-[#D4AF37]" />
-                  <span>Download Full Handbook + Quiz Record (PDF)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleAcknowledge}
-                  disabled={!hasSigned || !allCovenantsChecked}
-                  className={`py-2.5 px-5 rounded-lg font-extrabold text-xs tracking-wider uppercase transition-all flex items-center gap-2 cursor-pointer ${
-                    hasSigned && allCovenantsChecked
-                      ? 'bg-[#1b1c1c] text-white hover:bg-black shadow-md hover:-translate-y-0.5'
-                      : 'bg-[#f6f3f2] text-[#59413f] cursor-not-allowed opacity-60 border border-[#e0bfbc]'
-                  }`}
-                >
-                  <span>{isFinalSigned ? 'Re-confirm Sign-off' : 'Sign & Acknowledge'}</span>
+                  <span>
+                    {activeModule.id === 14
+                      ? 'Proceed to Part 15 — Final Provisions & Signature'
+                      : `Next: Part ${activeModule.id + 1} — ${modules.find(m => m.id === activeModule.id + 1)?.title.replace(/^Part \d+ – /, '') || 'Next Section'}`}
+                  </span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
-          </div>
-        ) : (
-          /* INITIAL SIGNATURE & SECTION ACKNOWLEDGEMENT CARD FOR PARTS 1 - 14 */
-          <div className="bg-white rounded-xl shadow-md border-2 border-[#810912]/20 p-6 flex flex-col gap-5 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-[#810912]"></div>
+          )}
+        </div>
 
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-[#F2E8D8]">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-[#810912] text-white rounded-lg shadow-xs">
-                  <PenTool className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-sm sm:text-base font-extrabold text-[#1b1c1c] uppercase tracking-wide">
-                    Part {activeModule.id} Employee Handwritten Initial
-                  </h4>
-                  <p className="text-xs text-[#59413f]">
-                    Draw your handwritten initial on the signature pad below to unlock Part {activeModule.id + 1}
-                  </p>
-                </div>
-              </div>
-
-              {partInitials[activeModule.id] || activeModule.status === 'completed' ? (
-                <div className="flex items-center gap-1.5 bg-[#E6F4EA] border border-[#34A853]/40 text-[#137333] px-3 py-1 rounded-full text-xs font-bold animate-fade-in">
-                  <FileCheck className="w-4 h-4" />
-                  <span>Handwritten Initial Recorded</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1.5 bg-[#FFF0F0] border border-[#a32626]/30 text-[#810912] px-3 py-1 rounded-full text-xs font-bold">
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>Handwritten Initial Required</span>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-[#FAF6EF] p-4 rounded-xl border border-[#e0bfbc]">
-              <HandwritingCanvas
-                key={activeModule.id}
-                label={`Employee Handwritten Initial Pad (Part ${activeModule.id})`}
-                subLabel={`Please draw your handwritten initial below to confirm you have thoroughly reviewed Part ${activeModule.id} – ${activeModule.content.sectionTitle}.`}
-                height={110}
-                existingDataUrl={partInitials[activeModule.id] || null}
-                disabled={isSigningLocked}
-                onSaveSignature={(dataUrl) => {
-                  if (dataUrl) {
-                    void onSavePartInitial(activeModule.id, dataUrl).then(() => {
-                      onAcknowledgeModule(activeModule.id, dataUrl);
-                    }).catch(() => undefined);
-                  } else {
-                    void onClearPartInitial(activeModule.id).catch(() => undefined);
-                  }
-                }}
-              />
-            </div>
-
-            {/* Section Navigation & Proceed Button */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-1">
-              <div className="text-xs text-[#59413f]">
-                {partInitials[activeModule.id] || activeModule.status === 'completed' ? (
-                  <span className="text-[#137333] font-bold flex items-center gap-1.5">
-                    <CheckCircle className="w-4 h-4 text-emerald-600" />
-                    Part {activeModule.id} initialed and verified. You may proceed to the next section.
-                  </span>
-                ) : (
-                  <span className="text-[#810912] font-semibold flex items-center gap-1.5">
-                    <Lock className="w-3.5 h-3.5 text-[#810912]" />
-                    Handwrite your initial on the signature pad above to enable proceeding.
-                  </span>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (!partInitials[activeModule.id] && activeModule.status !== 'completed') {
-                    alert(`Please draw your handwritten initial signature on the pad for Part ${activeModule.id} before proceeding.`);
-                    return;
-                  }
-
-                  if (activeModule.id < 15) {
-                    handleSelectModule(activeModule.id + 1);
-                  }
-                }}
-                disabled={!partInitials[activeModule.id] && activeModule.status !== 'completed'}
-                className={`py-2.5 px-5 rounded-lg font-bold text-xs transition-all shadow-xs flex items-center gap-2 shrink-0 ${
-                  partInitials[activeModule.id] || activeModule.status === 'completed'
-                    ? 'bg-[#1b1c1c] hover:bg-black text-white cursor-pointer shadow-md hover:-translate-y-0.5'
-                    : 'bg-[#f6f3f2] text-[#59413f] cursor-not-allowed opacity-60 border border-[#e0bfbc]'
-                }`}
-              >
-                <span>
-                  {activeModule.id === 14
-                    ? 'Proceed to Part 15 — Final Provisions & Signature'
-                    : `Next: Part ${activeModule.id + 1} — ${modules.find(m => m.id === activeModule.id + 1)?.title.replace(/^Part \d+ – /, '') || 'Next Section'}`}
-                </span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
+        {/* Preview Document Modal */}
+        <DocumentPreviewModal
+          isOpen={isPreviewOpen}
+          onClose={() => setIsPreviewOpen(false)}
+          empName={empName}
+          empDept={empDept}
+          empPosition={empPosition}
+          empDate={empDate}
+          finalSignatureDataUrl={finalSignatureDataUrl}
+          partInitials={partInitials}
+          covenants={covenants}
+          covenantTexts={covenantTexts}
+          modules={modules}
+          quizScorePercent={90}
+          quizGrade="Grade S (PASSED)"
+          onDownloadPdf={handleDownloadFullHandbookPdf}
+        />
       </div>
-
-      {/* Preview Document Modal */}
-      <DocumentPreviewModal
-        isOpen={isPreviewOpen}
-        onClose={() => setIsPreviewOpen(false)}
-        empName={empName}
-        empDept={empDept}
-        empPosition={empPosition}
-        empDate={empDate}
-        finalSignatureDataUrl={finalSignatureDataUrl}
-        partInitials={partInitials}
-        covenants={covenants}
-        covenantTexts={covenantTexts}
-        modules={modules}
-        quizScorePercent={90}
-        quizGrade="Grade S (PASSED)"
-        onDownloadPdf={handleDownloadFullHandbookPdf}
-      />
     </div>
-  </div>
-);
+  );
 };

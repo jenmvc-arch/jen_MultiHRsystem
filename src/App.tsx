@@ -2198,6 +2198,7 @@ export default function App() {
               candidates={filteredCandidates}
               onAddCandidate={handleAddCandidate}
               onUpdateCandidate={handleUpdateCandidate}
+              onUpdateEmployee={handleUpdateEmployeeSalary}
               currentUserName={currentUserName}
               currentUserEmail={currentUserEmail}
               currentUserRole={currentUserRole}
