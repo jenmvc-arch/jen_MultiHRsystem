@@ -1,5 +1,6 @@
 -- Private, versioned handbook signing and archive records.
 -- Run this migration after Supabase Auth is enabled for employee signers.
+-- Policy definitions use DROP IF EXISTS so a partial migration can be rerun safely.
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
@@ -70,18 +71,24 @@ ALTER TABLE public.handbook_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.onboarding_signing_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.onboarding_signature_marks ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Authenticated users can read active handbook templates"
+    ON public.handbook_templates;
 CREATE POLICY "Authenticated users can read active handbook templates"
     ON public.handbook_templates
     FOR SELECT
     TO authenticated
     USING (is_active = TRUE);
 
+DROP POLICY IF EXISTS "Signers can read own handbook sessions"
+    ON public.onboarding_signing_sessions;
 CREATE POLICY "Signers can read own handbook sessions"
     ON public.onboarding_signing_sessions
     FOR SELECT
     TO authenticated
     USING (signer_user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Signers can read own handbook marks"
+    ON public.onboarding_signature_marks;
 CREATE POLICY "Signers can read own handbook marks"
     ON public.onboarding_signature_marks
     FOR SELECT
@@ -95,6 +102,8 @@ CREATE POLICY "Signers can read own handbook marks"
         )
     );
 
+DROP POLICY IF EXISTS "Signers can delete marks from own open session"
+    ON public.onboarding_signature_marks;
 CREATE POLICY "Signers can delete marks from own open session"
     ON public.onboarding_signature_marks
     FOR DELETE
@@ -116,6 +125,7 @@ VALUES
     ('signed-handbooks', 'signed-handbooks', FALSE)
 ON CONFLICT (id) DO UPDATE SET public = FALSE;
 
+DROP POLICY IF EXISTS "Signers can read own signature images" ON storage.objects;
 CREATE POLICY "Signers can read own signature images"
     ON storage.objects
     FOR SELECT
@@ -125,6 +135,7 @@ CREATE POLICY "Signers can read own signature images"
         AND (storage.foldername(name))[1] = auth.uid()::TEXT
     );
 
+DROP POLICY IF EXISTS "Signers can upload own signature images" ON storage.objects;
 CREATE POLICY "Signers can upload own signature images"
     ON storage.objects
     FOR INSERT
@@ -134,6 +145,7 @@ CREATE POLICY "Signers can upload own signature images"
         AND (storage.foldername(name))[1] = auth.uid()::TEXT
     );
 
+DROP POLICY IF EXISTS "Signers can replace own signature images" ON storage.objects;
 CREATE POLICY "Signers can replace own signature images"
     ON storage.objects
     FOR UPDATE
@@ -147,6 +159,7 @@ CREATE POLICY "Signers can replace own signature images"
         AND (storage.foldername(name))[1] = auth.uid()::TEXT
     );
 
+DROP POLICY IF EXISTS "Signers can remove own signature images" ON storage.objects;
 CREATE POLICY "Signers can remove own signature images"
     ON storage.objects
     FOR DELETE
@@ -156,6 +169,7 @@ CREATE POLICY "Signers can remove own signature images"
         AND (storage.foldername(name))[1] = auth.uid()::TEXT
     );
 
+DROP POLICY IF EXISTS "Signers can read own finalized handbooks" ON storage.objects;
 CREATE POLICY "Signers can read own finalized handbooks"
     ON storage.objects
     FOR SELECT

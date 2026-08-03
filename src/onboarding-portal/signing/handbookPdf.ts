@@ -12,6 +12,7 @@ import {
   HandbookPdfMarkInput,
   HandbookPlacementManifest,
   HandbookStampPlacement,
+  HandbookTextPlacement,
   INITIAL_PART_NUMBERS,
 } from './types';
 
@@ -86,6 +87,35 @@ export function validatePlacementManifest(manifest: HandbookPlacementManifest): 
       throw new Error(`Part ${placement.partNumber} placement size must be greater than zero.`);
     }
   });
+
+  if (manifest.identity) {
+    if (
+      !Number.isInteger(manifest.identity.page) ||
+      manifest.identity.page < 1 ||
+      manifest.identity.page > manifest.pageCount
+    ) {
+      throw new Error('Employee identity placement references an invalid PDF page.');
+    }
+    const fields: Array<[string, HandbookTextPlacement]> = [
+      ['employeeName', manifest.identity.employeeName],
+      ['department', manifest.identity.department],
+      ['position', manifest.identity.position],
+    ];
+    fields.forEach(([name, placement]) => {
+      assertPositiveNumber(placement.x, `Identity ${name} x`);
+      assertPositiveNumber(placement.y, `Identity ${name} y`);
+      assertPositiveNumber(placement.maxWidth, `Identity ${name} maxWidth`);
+      if (placement.maxWidth === 0) {
+        throw new Error(`Identity ${name} maxWidth must be greater than zero.`);
+      }
+      if (placement.fontSize !== undefined) {
+        assertPositiveNumber(placement.fontSize, `Identity ${name} fontSize`);
+        if (placement.fontSize === 0) {
+          throw new Error(`Identity ${name} fontSize must be greater than zero.`);
+        }
+      }
+    });
+  }
 }
 
 function validatePlacementBounds(page: PDFPage, placement: HandbookStampPlacement): void {
@@ -161,6 +191,53 @@ function stampMark(
     size: placement.date.fontSize ?? 8,
     font,
     color: DARK,
+  });
+}
+
+function stampIdentityField(
+  page: PDFPage,
+  placement: HandbookTextPlacement,
+  value: string,
+  font: PDFFont
+) {
+  const fontSize = placement.fontSize ?? 9;
+  const text = value.trim() || '-';
+  const fittedSize = Math.max(
+    6,
+    Math.min(fontSize, fontSize * (placement.maxWidth / font.widthOfTextAtSize(text, fontSize)))
+  );
+  page.drawText(text, {
+    x: placement.x,
+    y: topLeftY(page, placement.y, fittedSize),
+    size: fittedSize,
+    font,
+    color: DARK,
+    maxWidth: placement.maxWidth,
+  });
+}
+
+function stampEmployeeIdentity(
+  pdf: PDFDocument,
+  manifest: HandbookPlacementManifest,
+  audit: HandbookAuditData,
+  font: PDFFont
+) {
+  if (!manifest.identity) return;
+  const page = pdf.getPage(manifest.identity.page - 1);
+  const fields: Array<[HandbookTextPlacement, string]> = [
+    [manifest.identity.employeeName, audit.employeeName],
+    [manifest.identity.department, audit.department],
+    [manifest.identity.position, audit.position],
+  ];
+  fields.forEach(([placement, value]) => {
+    const fontSize = placement.fontSize ?? 9;
+    if (
+      placement.x + placement.maxWidth > page.getWidth() ||
+      placement.y + fontSize > page.getHeight()
+    ) {
+      throw new Error('Employee identity placement exceeds the PDF page bounds.');
+    }
+    stampIdentityField(page, placement, value, font);
   });
 }
 
@@ -388,17 +465,21 @@ function appendAuditAppendix(
     );
   });
 
-  first.drawText(
-    'The SHA-256 fingerprint of the completed PDF is retained in the private signing record because embedding a file hash inside the same file would invalidate that hash.',
-    {
+  const hashNote = wrapText(
+    'The completed PDF SHA-256 is stored in the private signing record. It is not embedded because doing so would change the file hash.',
+    font,
+    7,
+    A4_WIDTH - PAGE_MARGIN * 2
+  );
+  hashNote.forEach((line, index) => {
+    first.drawText(line, {
       x: PAGE_MARGIN,
-      y: 38,
+      y: 35 - index * 9,
       size: 7,
       font,
       color: MUTED,
-      maxWidth: A4_WIDTH - PAGE_MARGIN * 2,
-    }
-  );
+    });
+  });
 
   const finalMark = marks.find(
     (mark) =>
@@ -571,6 +652,8 @@ export async function stampHandbookTemplate(input: {
     }
     stampMark(page, placement, image, mark.capturedAt, font);
   }
+
+  stampEmployeeIdentity(pdf, input.manifest, input.audit, font);
 
   if (!finalSignatureImage) {
     throw new Error('The final signature image could not be embedded.');

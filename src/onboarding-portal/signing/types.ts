@@ -14,6 +14,17 @@ export interface HandbookDatePlacement {
   fontSize?: number;
 }
 
+export interface HandbookTextPlacement extends HandbookDatePlacement {
+  maxWidth: number;
+}
+
+export interface HandbookIdentityPlacement {
+  page: number;
+  employeeName: HandbookTextPlacement;
+  department: HandbookTextPlacement;
+  position: HandbookTextPlacement;
+}
+
 export interface HandbookStampPlacement {
   partNumber: number;
   kind: HandbookMarkKind;
@@ -30,6 +41,7 @@ export interface HandbookPlacementManifest {
   templateVersion: string;
   pageCount: number;
   placements: HandbookStampPlacement[];
+  identity?: HandbookIdentityPlacement;
 }
 
 export interface HandbookSignatureMark {
@@ -93,4 +105,12 @@ export interface FinalizeHandbookResponse {
   revision: number;
   downloadUrl: string;
   sha256: string;
+}
+
+export interface HandbookTemplateAccessResponse {
+  downloadUrl: string;
+  version: string;
+  pageCount: number;
+  sha256: string;
+  expiresIn: number;
 }

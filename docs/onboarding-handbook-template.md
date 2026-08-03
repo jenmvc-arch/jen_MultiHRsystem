@@ -3,6 +3,10 @@
 The production handbook is not stored in the repository. Register it in the private
 `handbook-templates` Supabase Storage bucket after the signing migration is applied.
 
+The calibrated Version 1.0 manifest for the 91-page refined handbook is stored at
+`config/handbook/redpoint-handbook-v1.0-2026-08-02.json`. It expects SHA-256
+`a7a676f8b0b0ce0812404635d2c28320e17cff5bd9f4e0b0b40c62e296f8214e`.
+
 ## Placement manifest
 
 Create a JSON file with one placement for Parts 1 through 14 and one final signature
@@ -45,9 +49,24 @@ npm run onboarding:register-template -- \
 Template versions are immutable. Any PDF or coordinate change requires a new
 `templateVersion`.
 
+## Placement preview
+
+Generate a local PDF with test initials, final signature, employee particulars, and
+the audit appendix before registering the template:
+
+```bash
+npm run onboarding:preview-template -- \
+  --pdf "/absolute/path/RedPoint_Employee_Handbook_Refined.pdf" \
+  --manifest "config/handbook/redpoint-handbook-v1.0-2026-08-02.json" \
+  --output "output/pdf/RedPoint_Handbook_Placement_Preview.pdf"
+```
+
 ## Production checklist
 
-1. Apply `supabase/migrations/20260731_onboarding_handbook_signing.sql`.
+1. For an existing RedPoint database, do not rerun `supabase_schema.sql`. Apply
+   `supabase/migrations/20260731_employee_persistence_alignment.sql` first, followed by
+   `supabase/migrations/20260731_onboarding_handbook_signing.sql`. Both migrations are
+   safe to rerun after a partial execution.
 2. Enable email magic-link authentication in Supabase Auth.
 3. Provision each signer in Supabase Auth using the same email stored in `employees`
    or `candidates`.

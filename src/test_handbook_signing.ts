@@ -46,6 +46,12 @@ function createManifest(): HandbookPlacementManifest {
         },
       };
     }),
+    identity: {
+      page: 15,
+      employeeName: { x: 36, y: 190, maxWidth: 180, fontSize: 9 },
+      department: { x: 36, y: 210, maxWidth: 180, fontSize: 9 },
+      position: { x: 36, y: 230, maxWidth: 180, fontSize: 9 },
+    },
   };
 }
 
@@ -153,6 +159,25 @@ async function run() {
         audit,
       }),
     /version does not match/
+  );
+
+  const invalidIdentityManifest = createManifest();
+  invalidIdentityManifest.identity = {
+    ...invalidIdentityManifest.identity!,
+    employeeName: {
+      ...invalidIdentityManifest.identity!.employeeName,
+      x: 600,
+    },
+  };
+  await expectReject(
+    () =>
+      stampHandbookTemplate({
+        templateBytes,
+        manifest: invalidIdentityManifest,
+        marks,
+        audit,
+      }),
+    /identity placement exceeds/i
   );
 
   console.log('HANDBOOK SIGNING PDF TESTS PASSED');

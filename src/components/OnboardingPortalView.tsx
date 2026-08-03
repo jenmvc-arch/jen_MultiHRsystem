@@ -27,6 +27,7 @@ import {
   createOrResumeSigningSession,
   downloadFinalizedHandbook,
   finalizeSignedHandbook,
+  getOfficialHandbookTemplate,
   removeSignatureMark,
   saveSignatureMark,
   saveSigningQuizResult,
@@ -35,6 +36,7 @@ import {
   FINAL_SIGNATURE_PART_NUMBER,
   HandbookSignatureMark,
   HandbookSigningSession,
+  HandbookTemplateAccessResponse,
   INITIAL_PART_NUMBERS,
 } from '../onboarding-portal/signing/types';
 
@@ -114,6 +116,8 @@ function OnboardingPortalContent({
   const [isSigningSaving, setIsSigningSaving] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [signingError, setSigningError] = useState<string | null>(null);
+  const [handbookTemplate, setHandbookTemplate] =
+    useState<HandbookTemplateAccessResponse | null>(null);
 
   useEffect(() => {
     if (
@@ -205,6 +209,29 @@ function OnboardingPortalContent({
       cancelled = true;
     };
   }, [signingEntityId, signingSubjectEmail, signingSubjectId, signingSubjectType]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHandbookTemplate(null);
+    if (!signingSession) return () => {
+      cancelled = true;
+    };
+
+    void getOfficialHandbookTemplate(signingSession)
+      .then((template) => {
+        if (!cancelled) setHandbookTemplate(template);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setSigningError(
+          error instanceof Error ? error.message : 'The official handbook could not be loaded.'
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [signingSession?.id]);
 
   const profileComplete = Boolean(selectedCandidate || linkedEmployee);
   const onboardingFormProgress = selectedCandidate?.progress ?? (linkedEmployee ? 100 : 0);
@@ -525,6 +552,9 @@ function OnboardingPortalContent({
             onDownloadFullHandbook={() => {
               void handleDownloadCompletionRecord();
             }}
+            officialHandbookUrl={handbookTemplate?.downloadUrl || null}
+            officialHandbookVersion={handbookTemplate?.version || signingSession?.templateVersion}
+            officialHandbookPageCount={handbookTemplate?.pageCount}
           />
         )}
 

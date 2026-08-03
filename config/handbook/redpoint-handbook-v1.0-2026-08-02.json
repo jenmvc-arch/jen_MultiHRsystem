@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "templateVersion": "redpoint-handbook-v1.0-2026-08-02",
+  "pageCount": 91,
+  "placements": [
+    { "partNumber": 1, "kind": "initial", "page": 7, "x": 65, "y": 737.5, "width": 132, "height": 18, "date": { "x": 304, "y": 745.5, "fontSize": 9 } },
+    { "partNumber": 2, "kind": "initial", "page": 12, "x": 65, "y": 711.7, "width": 132, "height": 18, "date": { "x": 304, "y": 719.7, "fontSize": 9 } },
+    { "partNumber": 3, "kind": "initial", "page": 19, "x": 65, "y": 106.6, "width": 132, "height": 18, "date": { "x": 304, "y": 114.6, "fontSize": 9 } },
+    { "partNumber": 4, "kind": "initial", "page": 25, "x": 65, "y": 368.6, "width": 132, "height": 18, "date": { "x": 304, "y": 376.6, "fontSize": 9 } },
+    { "partNumber": 5, "kind": "initial", "page": 31, "x": 65, "y": 300.3, "width": 132, "height": 18, "date": { "x": 304, "y": 308.3, "fontSize": 9 } },
+    { "partNumber": 6, "kind": "initial", "page": 37, "x": 65, "y": 179.7, "width": 132, "height": 18, "date": { "x": 304, "y": 187.7, "fontSize": 9 } },
+    { "partNumber": 7, "kind": "initial", "page": 43, "x": 65, "y": 179.7, "width": 132, "height": 18, "date": { "x": 304, "y": 187.7, "fontSize": 9 } },
+    { "partNumber": 8, "kind": "initial", "page": 49, "x": 65, "y": 688.3, "width": 132, "height": 18, "date": { "x": 304, "y": 696.3, "fontSize": 9 } },
+    { "partNumber": 9, "kind": "initial", "page": 58, "x": 65, "y": 272.7, "width": 132, "height": 18, "date": { "x": 304, "y": 280.7, "fontSize": 9 } },
+    { "partNumber": 10, "kind": "initial", "page": 65, "x": 65, "y": 382.4, "width": 132, "height": 18, "date": { "x": 304, "y": 390.4, "fontSize": 9 } },
+    { "partNumber": 11, "kind": "initial", "page": 71, "x": 65, "y": 216.9, "width": 132, "height": 18, "date": { "x": 304, "y": 224.9, "fontSize": 9 } },
+    { "partNumber": 12, "kind": "initial", "page": 77, "x": 65, "y": 556.9, "width": 132, "height": 18, "date": { "x": 304, "y": 564.9, "fontSize": 9 } },
+    { "partNumber": 13, "kind": "initial", "page": 83, "x": 65, "y": 397.5, "width": 132, "height": 18, "date": { "x": 304, "y": 405.5, "fontSize": 9 } },
+    { "partNumber": 14, "kind": "initial", "page": 89, "x": 65, "y": 106.6, "width": 132, "height": 18, "date": { "x": 304, "y": 114.6, "fontSize": 9 } },
+    { "partNumber": 15, "kind": "final_signature", "page": 91, "x": 188, "y": 608, "width": 210, "height": 18, "date": { "x": 420, "y": 613, "fontSize": 9 } }
+  ],
+  "identity": {
+    "page": 91,
+    "employeeName": { "x": 188, "y": 544, "fontSize": 9, "maxWidth": 220 },
+    "department": { "x": 188, "y": 566, "fontSize": 9, "maxWidth": 220 },
+    "position": { "x": 188, "y": 588, "fontSize": 9, "maxWidth": 220 }
+  }
+}

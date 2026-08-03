@@ -1,10 +1,14 @@
 -- ====================================================================
 -- SUPABASE POSTGRESQL SCHEMA FOR RED POINT REMOTE HR SYSTEM / MEGA HR
 -- Paste and execute this script in your Supabase SQL Editor
+-- New-project bootstrap only. Existing projects should apply versioned migrations.
+-- The legacy anonymous policies below preserve the current HR app behaviour but are
+-- not suitable as the final production authorization model.
 -- ====================================================================
 
 -- Enable UUID Extension if not enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 1. CORPORATE ENTITIES TABLE
 CREATE TABLE IF NOT EXISTS public.corporate_entities (
@@ -211,14 +215,22 @@ ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- CREATE ALL-ACCESS ANONYMOUS POLICIES (for dev & web app usage)
+DROP POLICY IF EXISTS "Allow all access to corporate_entities" ON public.corporate_entities;
 CREATE POLICY "Allow all access to corporate_entities" ON public.corporate_entities FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow all access to employees" ON public.employees;
 CREATE POLICY "Allow all access to employees" ON public.employees FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow all access to candidates" ON public.candidates;
 CREATE POLICY "Allow all access to candidates" ON public.candidates FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow all access to performances" ON public.performances;
 CREATE POLICY "Allow all access to performances" ON public.performances FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow all access to payroll_records_2026" ON public.payroll_records_2026;
 CREATE POLICY "Allow all access to payroll_records_2026" ON public.payroll_records_2026 FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow all access to users" ON public.users;
 CREATE POLICY "Allow all access to users" ON public.users FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow all access to audit_logs" ON public.audit_logs;
 CREATE POLICY "Allow all access to audit_logs" ON public.audit_logs FOR ALL USING (true) WITH CHECK (true);
 
 -- STORAGE BUCKET FOR DOCUMENTS
 INSERT INTO storage.buckets (id, name, public) VALUES ('hr-documents', 'hr-documents', true) ON CONFLICT (id) DO NOTHING;
+DROP POLICY IF EXISTS "Public Storage Access" ON storage.objects;
 CREATE POLICY "Public Storage Access" ON storage.objects FOR ALL USING (bucket_id = 'hr-documents') WITH CHECK (bucket_id = 'hr-documents');

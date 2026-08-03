@@ -24,11 +24,13 @@ import {
   ListFilter,
   Layers,
   Eye,
+  ExternalLink,
   Search,
   X,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { exportAcknowledgementPdf } from '../utils/pdfExport';
+import { OFFICIAL_HANDBOOK } from '../data/handbookDocument';
 
 interface HandbookViewProps {
   modules: HandbookModule[];
@@ -42,6 +44,9 @@ interface HandbookViewProps {
   onSaveFinalSignature: (signature: string) => Promise<void>;
   onClearFinalSignature: () => Promise<void>;
   onDownloadFullHandbook: () => void;
+  officialHandbookUrl?: string | null;
+  officialHandbookVersion?: string;
+  officialHandbookPageCount?: number;
 }
 
 export const HandbookView: React.FC<HandbookViewProps> = ({
@@ -56,6 +61,9 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   onSaveFinalSignature,
   onClearFinalSignature,
   onDownloadFullHandbook,
+  officialHandbookUrl = null,
+  officialHandbookVersion,
+  officialHandbookPageCount,
 }) => {
   const { t } = useLanguage();
   const [selectedModuleId, setSelectedModuleId] = useState<number>(1); // Part 1 - Introduction
@@ -109,16 +117,28 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   const filteredModules = modules.filter((m) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase().trim();
-    return (
-      m.title.toLowerCase().includes(q) ||
-      m.content.sectionTitle.toLowerCase().includes(q) ||
-      m.content.fullText.toLowerCase().includes(q) ||
-      m.content.summaryText.toLowerCase().includes(q) ||
-      (m.content.keyTakeaways && m.content.keyTakeaways.some((takeaway) => takeaway.toLowerCase().includes(q)))
-    );
+    const searchableText = [
+      m.title,
+      m.subtitle,
+      m.content.sectionTitle,
+      ...m.content.bodyParagraphs,
+      m.content.keyTakeaway,
+      ...(m.content.subsections || []).flatMap((subsection) => [
+        subsection.title || '',
+        ...subsection.paragraphs,
+        ...(subsection.bulletPoints || []),
+        ...(subsection.table?.headers || []),
+        ...(subsection.table?.rows.flat() || []),
+      ]),
+    ].join(' ').toLowerCase();
+    return searchableText.includes(q);
   });
 
   const activeModule = modules.find((m) => m.id === selectedModuleId) || modules[1];
+  const activePageRange = OFFICIAL_HANDBOOK.partPages[activeModule.id];
+  const officialPdfUrl = officialHandbookUrl && activePageRange
+    ? `${officialHandbookUrl}#page=${activePageRange.start}&view=FitH&toolbar=1&navpanes=0`
+    : null;
 
   useEffect(() => {
     const calculateScrollProgress = () => {
@@ -460,9 +480,52 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
             {/* FULL DETAIL VIEW MODE */}
             {contentType === 'full' ? (
               <div className="space-y-4 text-base text-[#59413f] leading-relaxed">
+                {officialPdfUrl && (
+                  <section className="space-y-3" aria-label="Official employee handbook PDF">
+                    <div className="flex flex-col gap-2 border-b border-[#F2E8D8] pb-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-extrabold text-[#1b1c1c]">
+                          Official Employee Handbook
+                        </p>
+                        <p className="text-xs text-[#59413f]">
+                          {officialHandbookVersion || OFFICIAL_HANDBOOK.displayVersion} · Pages {activePageRange.start}-{activePageRange.end} of {officialHandbookPageCount || OFFICIAL_HANDBOOK.pageCount}
+                        </p>
+                      </div>
+                      <a
+                        href={officialPdfUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[#e0bfbc] bg-white px-3 text-xs font-bold text-[#810912] hover:bg-[#FAF6EF]"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        <span>Open PDF</span>
+                      </a>
+                    </div>
+                    <object
+                      key={`${activeModule.id}-${officialPdfUrl}`}
+                      data={officialPdfUrl}
+                      type="application/pdf"
+                      className="h-[72vh] min-h-[620px] w-full border border-[#e0bfbc] bg-white"
+                      aria-label={`${activeModule.title} official handbook pages`}
+                    >
+                      <a href={officialPdfUrl} target="_blank" rel="noopener noreferrer">
+                        Open the official handbook PDF
+                      </a>
+                    </object>
+                  </section>
+                )}
+
+                {!officialPdfUrl && (
+                  <div className="border-l-4 border-[#810912] bg-[#FAF6EF] px-4 py-3 text-sm text-[#59413f]">
+                    The secure official PDF will appear here after the employee signing session is authenticated.
+                  </div>
+                )}
+
+                <div className="pt-2">
                 {activeModule.content.bodyParagraphs.map((para, idx) => (
                   <p key={idx}>{para}</p>
                 ))}
+                </div>
 
                 {/* Subsections rendering */}
                 {activeModule.content.subsections && activeModule.content.subsections.length > 0 && (

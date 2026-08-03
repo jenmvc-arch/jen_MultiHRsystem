@@ -2,6 +2,7 @@ import { isSupabaseConfigured, supabase } from '../../lib/supabaseClient';
 import {
   FINAL_SIGNATURE_PART_NUMBER,
   FinalizeHandbookResponse,
+  HandbookTemplateAccessResponse,
   HandbookMarkKind,
   HandbookSignatureMark,
   HandbookSigningSession,
@@ -235,6 +236,31 @@ export async function finalizeSignedHandbook(
     throw new Error(payload?.error || 'The signed handbook could not be finalized.');
   }
   return payload as FinalizeHandbookResponse;
+}
+
+export async function getOfficialHandbookTemplate(
+  session: HandbookSigningSession
+): Promise<HandbookTemplateAccessResponse> {
+  const client = requireSupabase();
+  await requireAuthenticatedSigner(session.subjectEmail);
+  const {
+    data: { session: authSession },
+  } = await client.auth.getSession();
+  if (!authSession?.access_token) {
+    throw new Error('The secure employee session has expired.');
+  }
+
+  const response = await fetch(
+    `/api/onboarding/handbook-template?sessionId=${encodeURIComponent(session.id)}`,
+    {
+      headers: { Authorization: `Bearer ${authSession.access_token}` },
+    }
+  );
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.error || 'The official handbook could not be loaded.');
+  }
+  return payload as HandbookTemplateAccessResponse;
 }
 
 export function downloadFinalizedHandbook(
