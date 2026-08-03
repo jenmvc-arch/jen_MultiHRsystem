@@ -59,8 +59,8 @@ interface OnboardingPortalViewProps {
   currentUserEmail?: string | null;
   currentUserRole?: string | null;
   onShowNotification: (title: string, message: string) => void;
-  onUpdateCandidate?: (candidate: Candidate) => Promise<void> | void;
-  onUpdateEmployee?: (employee: Employee) => Promise<void> | void;
+  onUpdateCandidate?: (id: string, updates: Partial<Candidate>) => Promise<void> | void;
+  onUpdateEmployee?: (id: string, updates: Partial<Employee>) => Promise<void> | void;
 }
 
 const PORTAL_NAV_ITEMS: Array<{
@@ -339,7 +339,7 @@ function OnboardingPortalContent({
       // Update candidate progress if available
       if (selectedCandidate && onUpdateCandidate) {
         const nextProgress = Math.min(100, Math.max(selectedCandidate.progress, overallProgress));
-        onUpdateCandidate({ ...selectedCandidate, progress: nextProgress });
+        onUpdateCandidate(selectedCandidate.id, { progress: nextProgress });
       }
     } catch (error: unknown) {
       const message =
