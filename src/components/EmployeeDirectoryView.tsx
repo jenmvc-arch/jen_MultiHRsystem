@@ -92,20 +92,34 @@ export default function EmployeeDirectoryView({
   const [availableRoles, setAvailableRoles] = useState<string[]>([]);
 
   useEffect(() => {
-    const cacheKeyDepts = activeEntityId ? `departments_${activeEntityId}` : 'company_departments';
-    const cacheKeyRoles = activeEntityId ? `roles_${activeEntityId}` : 'company_roles';
+    const cacheKeyDepts = activeEntityId ? `company_departments_${activeEntityId}` : 'company_departments';
+    const cacheKeyRoles = activeEntityId ? `company_roles_${activeEntityId}` : 'company_roles';
 
-    const savedDepts = localStorage.getItem(cacheKeyDepts);
+    const legacyDeptKey = activeEntityId ? `departments_${activeEntityId}` : null;
+    const legacyRoleKey = activeEntityId ? `roles_${activeEntityId}` : null;
+    const savedDepts = localStorage.getItem(cacheKeyDepts)
+      || (legacyDeptKey ? localStorage.getItem(legacyDeptKey) : null)
+      || localStorage.getItem('company_departments');
     let depts = ['Product & Engineering', 'Finance', 'Human Resources', 'Sales & Marketing', 'Strategy', 'Operations'];
     if (savedDepts) {
-      depts = JSON.parse(savedDepts);
+      try {
+        depts = JSON.parse(savedDepts);
+      } catch (error) {
+        console.warn('[Department Settings] Ignoring invalid saved departments:', error);
+      }
     }
     setAvailableDepartments(depts);
 
-    const savedRoles = localStorage.getItem(cacheKeyRoles);
+    const savedRoles = localStorage.getItem(cacheKeyRoles)
+      || (legacyRoleKey ? localStorage.getItem(legacyRoleKey) : null)
+      || localStorage.getItem('company_roles');
     let rls = ['Software Engineer', 'Senior Software Engineer', 'Product Manager', 'UX Designer', 'HR Specialist', 'Finance Manager', 'Consultant'];
     if (savedRoles) {
-      rls = JSON.parse(savedRoles);
+      try {
+        rls = JSON.parse(savedRoles);
+      } catch (error) {
+        console.warn('[Role Settings] Ignoring invalid saved roles:', error);
+      }
     }
     setAvailableRoles(rls);
   }, [activeEntityId]);

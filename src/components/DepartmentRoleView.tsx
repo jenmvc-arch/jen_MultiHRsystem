@@ -23,7 +23,7 @@ interface DepartmentRoleViewProps {
   onShowNotification: (title: string, message: string, type?: 'success' | 'info' | 'error') => void;
   activeEntityId: string;
   employees?: Employee[];
-  onUpdateEmployee?: (id: string, updates: Partial<Employee>) => void;
+  onUpdateEmployee?: (id: string, updates: Partial<Employee>) => Promise<void>;
 }
 
 export const DEFAULT_DEPARTMENTS = [
@@ -167,7 +167,7 @@ export default function DepartmentRoleView({
   };
 
   // Submit Edit Dept
-  const submitEditDept = (index: number) => {
+  const submitEditDept = async (index: number) => {
     const cleanVal = editingDeptValue.trim();
     if (!cleanVal) return;
 
@@ -177,23 +177,32 @@ export default function DepartmentRoleView({
     }
 
     const oldName = departments[index];
-    const updated = [...departments];
-    updated[index] = cleanVal;
-    saveDepartments(updated);
-    setEditingDeptIndex(null);
-
     // Propagate department name change to all affected employees and save to Supabase
     if (employees && onUpdateEmployee && oldName && oldName !== cleanVal) {
       const affected = employees.filter(e => e.department === oldName);
-      affected.forEach(e => {
-        onUpdateEmployee(e.id, { department: cleanVal });
-      });
+      try {
+        await Promise.all(affected.map(e => onUpdateEmployee(e.id, { department: cleanVal })));
+      } catch (error) {
+        console.error('[Department Rename] Employee synchronization failed:', error);
+        onShowNotification('Sync Failed', 'The department was not renamed because Employee Directory could not be updated.', 'error');
+        return;
+      }
+
+      const updated = [...departments];
+      updated[index] = cleanVal;
+      saveDepartments(updated);
+      setEditingDeptIndex(null);
+
       if (affected.length > 0) {
         onShowNotification('Employee Directory Updated', `Updated department to "${cleanVal}" for ${affected.length} employee(s).`, 'success');
       } else {
         onShowNotification('Department Renamed', `Changed to "${cleanVal}".`, 'success');
       }
     } else {
+      const updated = [...departments];
+      updated[index] = cleanVal;
+      saveDepartments(updated);
+      setEditingDeptIndex(null);
       onShowNotification('Department Renamed', `Changed to "${cleanVal}".`, 'success');
     }
   };
@@ -205,7 +214,7 @@ export default function DepartmentRoleView({
   };
 
   // Submit Edit Role
-  const submitEditRole = (index: number) => {
+  const submitEditRole = async (index: number) => {
     const cleanVal = editingRoleValue.trim();
     if (!cleanVal) return;
 
@@ -215,23 +224,32 @@ export default function DepartmentRoleView({
     }
 
     const oldName = roles[index];
-    const updated = [...roles];
-    updated[index] = cleanVal;
-    saveRoles(updated);
-    setEditingRoleIndex(null);
-
     // Propagate role name change to all affected employees and save to Supabase
     if (employees && onUpdateEmployee && oldName && oldName !== cleanVal) {
       const affected = employees.filter(e => e.designation === oldName);
-      affected.forEach(e => {
-        onUpdateEmployee(e.id, { designation: cleanVal });
-      });
+      try {
+        await Promise.all(affected.map(e => onUpdateEmployee(e.id, { designation: cleanVal })));
+      } catch (error) {
+        console.error('[Role Rename] Employee synchronization failed:', error);
+        onShowNotification('Sync Failed', 'The role was not renamed because Employee Directory could not be updated.', 'error');
+        return;
+      }
+
+      const updated = [...roles];
+      updated[index] = cleanVal;
+      saveRoles(updated);
+      setEditingRoleIndex(null);
+
       if (affected.length > 0) {
         onShowNotification('Employee Directory Updated', `Updated designation to "${cleanVal}" for ${affected.length} employee(s).`, 'success');
       } else {
         onShowNotification('Role Renamed', `Changed to "${cleanVal}".`, 'success');
       }
     } else {
+      const updated = [...roles];
+      updated[index] = cleanVal;
+      saveRoles(updated);
+      setEditingRoleIndex(null);
       onShowNotification('Role Renamed', `Changed to "${cleanVal}".`, 'success');
     }
   };
