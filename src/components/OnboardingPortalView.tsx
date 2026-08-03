@@ -859,7 +859,7 @@ function OnboardingPortalContent({
         {activePage === 'quiz' && (
           <QuizView
             questions={QUIZ_QUESTIONS}
-            onCompleteQuiz={handleCompleteQuiz}
+            onCompleteQuiz={handleQuizComplete}
             viewRole={viewRole}
             onShowNotification={onShowNotification}
             employeeName={journeyName}
