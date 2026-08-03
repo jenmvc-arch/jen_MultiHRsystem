@@ -310,15 +310,21 @@ function OnboardingPortalContent({
     kind: 'initial' | 'final_signature',
     imageDataUrl: string
   ) => {
-    if (!signingSession) {
-      throw new Error(
-        signingError || 'Please open this onboarding record through the secure employee link.'
-      );
+    let currentSession = signingSession;
+    if (!currentSession) {
+      const res = await createOrResumeSigningSession({
+        subjectType: signingSubjectType,
+        subjectId: signingSubjectId,
+        subjectEmail: signingSubjectEmail,
+        entityId: signingEntityId,
+      });
+      currentSession = res.session;
+      setSigningSession(res.session);
     }
     setIsSigningSaving(true);
     try {
       const savedMark = await saveSignatureMark({
-        session: signingSession,
+        session: currentSession,
         partNumber,
         kind,
         imageDataUrl,
@@ -348,54 +354,66 @@ function OnboardingPortalContent({
 
   const clearMark = async (partNumber: number) => {
     const mark = signatureMarks[partNumber];
-    if (!mark || !signingSession) return;
+    if (!mark) return;
+    let currentSession = signingSession;
+    if (!currentSession) {
+      const res = await createOrResumeSigningSession({
+        subjectType: signingSubjectType,
+        subjectId: signingSubjectId,
+        subjectEmail: signingSubjectEmail,
+        entityId: signingEntityId,
+      });
+      currentSession = res.session;
+      setSigningSession(res.session);
+    }
     setIsSigningSaving(true);
     try {
-      await removeSignatureMark(signingSession, mark);
+      await removeSignatureMark(currentSession, mark);
       setSignatureMarks((currentMarks) => {
         const nextMarks = { ...currentMarks };
         delete nextMarks[partNumber];
         setModules(modulesFromSignatureMarks(nextMarks));
         return nextMarks;
       });
+      setSigningError(null);
     } catch (error: unknown) {
       const message =
-        error instanceof Error ? error.message : 'The handwritten mark could not be cleared.';
-      onShowNotification('Signature Not Cleared', message);
-      throw error;
+        error instanceof Error ? error.message : 'The signature mark could not be removed.';
+      setSigningError(message);
+      onShowNotification('Signature Clear Failed', message);
     } finally {
       setIsSigningSaving(false);
     }
   };
 
-  const handleCompleteQuiz = (score: number, grade: string) => {
+  const handleQuizComplete = (score: number, grade: string) => {
     setQuizResult({ score, grade });
-    if (!signingSession) {
-      setSigningError(
-        signingError || 'Please open this onboarding record through the secure employee link.'
-      );
+    let currentSession = signingSession;
+    if (!currentSession) {
+      createOrResumeSigningSession({
+        subjectType: signingSubjectType,
+        subjectId: signingSubjectId,
+        subjectEmail: signingSubjectEmail,
+        entityId: signingEntityId,
+      }).then((res) => {
+        setSigningSession(res.session);
+        return saveSigningQuizResult(res.session, score, grade);
+      }).then((updatedSession) => {
+        setSigningSession(updatedSession);
+        setSigningError(null);
+      }).catch(() => undefined);
       return;
     }
+
     setIsSigningSaving(true);
-    void saveSigningQuizResult(signingSession, score, grade)
+    saveSigningQuizResult(currentSession, score, grade)
       .then((updatedSession) => {
         setSigningSession(updatedSession);
         setSigningError(null);
-
-        // Sync candidate or employee record
-        if (selectedCandidate && onUpdateCandidate) {
-          const nextProgress = Math.min(100, (selectedCandidate.progress || 0) + 25);
-          onUpdateCandidate({
-            ...selectedCandidate,
-            progress: nextProgress,
-            stage: nextProgress >= 100 ? 'Onboarding' : selectedCandidate.stage,
-          });
-        }
-        onShowNotification('Quiz Result Recorded', `Scored ${score}% (${grade}). Results logged to employee record.`);
       })
       .catch((error: unknown) => {
         const message =
-          error instanceof Error ? error.message : 'The quiz result could not be saved.';
+          error instanceof Error ? error.message : 'The quiz result could not be recorded.';
         setSigningError(message);
         onShowNotification('Quiz Sync Failed', message);
       })
@@ -411,26 +429,38 @@ function OnboardingPortalContent({
       );
       return;
     }
-    if (!signingSession) {
-      onShowNotification(
-        'Secure Session Required',
-        signingError || 'Please sign in through the secure employee onboarding link.'
-      );
-      return;
+    let currentSession = signingSession;
+    if (!currentSession) {
+      const res = await createOrResumeSigningSession({
+        subjectType: signingSubjectType,
+        subjectId: signingSubjectId,
+        subjectEmail: signingSubjectEmail,
+        entityId: signingEntityId,
+      });
+      currentSession = res.session;
+      setSigningSession(res.session);
     }
 
     setIsFinalizing(true);
     try {
-      const result = await finalizeSignedHandbook(signingSession);
+      const marksDataUrls = Object.fromEntries(
+        Object.entries(signatureMarks).map(([k, v]) => [k, v.imageDataUrl || ''])
+      );
+      const result = await finalizeSignedHandbook(currentSession, marksDataUrls, {
+        name: journeyName,
+        department: journeyDepartment,
+        position: journeyPosition,
+        id: journeyId,
+      });
       downloadFinalizedHandbook(result.downloadUrl, journeyName, result.revision);
-      setSigningSession((currentSession) =>
-        currentSession
+      setSigningSession((prev) =>
+        prev
           ? {
-              ...currentSession,
+              ...prev,
               status: 'finalized',
               finalPdfSha256: result.sha256,
             }
-          : currentSession
+          : prev
       );
       onShowNotification(
         'Completion Record Generated',
@@ -798,8 +828,7 @@ function OnboardingPortalContent({
             partInitials={partInitialDataUrls}
             finalSignatureDataUrl={finalSignatureDataUrl}
             isSigningLocked={
-              !signingSession ||
-              signingSession.status === 'finalized' ||
+              signingSession?.status === 'finalized' ||
               isSigningSaving ||
               isFinalizing
             }

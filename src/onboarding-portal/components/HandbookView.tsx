@@ -287,48 +287,87 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
     : null;
 
   useEffect(() => {
+    const getScrollParent = (node: HTMLElement | null): HTMLElement | Window => {
+      if (!node) return window;
+      let current: HTMLElement | null = node.parentElement;
+      while (current) {
+        const style = window.getComputedStyle(current);
+        if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+          return current;
+        }
+        current = current.parentElement;
+      }
+      return window;
+    };
+
     const calculateScrollProgress = () => {
       if (!contentCardRef.current) return;
       const element = contentCardRef.current;
-      const rect = element.getBoundingClientRect();
-      const windowHeight = window.innerHeight;
+      const scrollParent = getScrollParent(element);
 
-      const headerOffset = 124;
-      const elementHeight = rect.height;
-      const scrolledPx = headerOffset - rect.top;
-      const maxScrollPx = elementHeight - (windowHeight - headerOffset);
+      let containerRectTop = 0;
+      let containerHeight = window.innerHeight;
 
-      if (maxScrollPx <= 0) {
+      if (scrollParent instanceof HTMLElement) {
+        const parentRect = scrollParent.getBoundingClientRect();
+        containerRectTop = parentRect.top;
+        containerHeight = parentRect.height;
+      }
+
+      const elementRect = element.getBoundingClientRect();
+      const headerOffset = 110;
+      const scrolledPx = containerRectTop + headerOffset - elementRect.top;
+      const totalScrollablePx = elementRect.height - (containerHeight - headerOffset);
+
+      if (totalScrollablePx <= 40) {
         setScrollProgress(100);
         return;
       }
 
       if (scrolledPx <= 0) {
         setScrollProgress(0);
-      } else if (scrolledPx >= maxScrollPx) {
+      } else if (scrolledPx >= totalScrollablePx) {
         setScrollProgress(100);
       } else {
         const percentage = Math.min(
           100,
-          Math.max(0, Math.round((scrolledPx / maxScrollPx) * 100))
+          Math.max(0, Math.round((scrolledPx / totalScrollablePx) * 100))
         );
         setScrollProgress(percentage);
       }
     };
 
-    window.addEventListener('scroll', calculateScrollProgress, { passive: true });
+    const scrollTarget = getScrollParent(contentCardRef.current);
+
+    window.addEventListener('scroll', calculateScrollProgress, { capture: true, passive: true });
+    document.addEventListener('scroll', calculateScrollProgress, { capture: true, passive: true });
+    if (scrollTarget instanceof HTMLElement) {
+      scrollTarget.addEventListener('scroll', calculateScrollProgress, { passive: true });
+    }
     window.addEventListener('resize', calculateScrollProgress, { passive: true });
 
     calculateScrollProgress();
+    const timeoutId = setTimeout(calculateScrollProgress, 120);
 
     return () => {
-      window.removeEventListener('scroll', calculateScrollProgress);
+      clearTimeout(timeoutId);
+      window.removeEventListener('scroll', calculateScrollProgress, { capture: true });
+      document.removeEventListener('scroll', calculateScrollProgress, { capture: true });
+      if (scrollTarget instanceof HTMLElement) {
+        scrollTarget.removeEventListener('scroll', calculateScrollProgress);
+      }
       window.removeEventListener('resize', calculateScrollProgress);
     };
   }, [selectedModuleId]);
 
   const handleSelectModule = (id: number) => {
     setSelectedModuleId(id);
+    const scrollParent = contentCardRef.current
+      ? (contentCardRef.current.closest('main') || contentCardRef.current.parentElement)
+      : null;
+    if (scrollParent) {
+      scrollParent.scrollTo({ top: 0, behavior: 'smooth' });
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -996,8 +1035,12 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                   height={140}
                   existingDataUrl={finalSignatureDataUrl}
                   disabled={isSigningLocked}
+                  signerName={employeeName}
                   onSaveSignature={(dataUrl) => {
                     if (dataUrl) {
+                      if (briefingStatus === 'not_started') {
+                        handleStartBriefing();
+                      }
                       void onSaveFinalSignature(dataUrl).then(() => {
                         setIsFinalSigned(true);
                       }).catch(() => undefined);
@@ -1115,6 +1158,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                   height={110}
                   existingDataUrl={partInitials[activeModule.id] || null}
                   disabled={isSigningLocked}
+                  signerName={employeeName}
                   onSaveSignature={(dataUrl) => {
                     if (dataUrl) {
                       if (briefingStatus === 'not_started') {
