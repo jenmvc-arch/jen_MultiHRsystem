@@ -422,22 +422,29 @@ export default function PayrollView({
       allowancePhone: hasAllowances ? allowancePh : 0,
       
       reimbursementAmount: reimbursementAmt,
+      reimbursementDesc,
       
       bonusAmount: bonusAmt,
+      bonusDesc,
       performanceBonus: bonusAmt,
 
       commissionAmount: commissionAmt,
+      commissionDesc,
 
       backPayAmount: backPayAmt,
+      backPayDesc,
 
       awsAmount: awsAmt,
+      awsDesc,
 
       compensationAmount: compensationAmt,
+      compensationDesc,
 
       unpaidLeave: unpaidLeave,
       deductionInLieu: deductionInLieu,
       deductionCp38: deductionCp38,
       deductionOthers: deductionOthers,
+      deductionOthersDesc,
 
       historicalPayrollRecords: updatedRecords,
       historicalPcbResults: recalculated
@@ -1004,7 +1011,7 @@ export default function PayrollView({
                 {/* 2. Supplemental & Variable Payments */}
                 <div className="bg-white p-4 rounded border border-neutral-border/60 space-y-4">
                   <h3 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1">
-                    <TrendingUp className="w-4 h-4" /> 2. Supplemental Payments (with descriptions)
+                    <TrendingUp className="w-4 h-4" /> 2. Supplemental Payments
                   </h3>
                   <div className="space-y-4">
                     {/* Bonus & Commission */}
@@ -1014,6 +1021,7 @@ export default function PayrollView({
                         <div>
                           <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Amount (RM)</label>
                           <input 
+                            data-testid="payroll-bonus-amount"
                             type="number" 
                             value={bonusAmt} 
                             onChange={(e) => setBonusAmt(Number(e.target.value))} 
@@ -1021,8 +1029,9 @@ export default function PayrollView({
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Description</label>
+                          <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Payslip Description</label>
                           <input 
+                            data-testid="payslip-description-bonus"
                             type="text" 
                             placeholder="e.g. Q3 Merit Bonus" 
                             value={bonusDesc} 
@@ -1037,6 +1046,7 @@ export default function PayrollView({
                         <div>
                           <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Amount (RM)</label>
                           <input 
+                            data-testid="payroll-commission-amount"
                             type="number" 
                             value={commissionAmt} 
                             onChange={(e) => setCommissionAmt(Number(e.target.value))} 
@@ -1044,8 +1054,9 @@ export default function PayrollView({
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Description</label>
+                          <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Payslip Description</label>
                           <input 
+                            data-testid="payslip-description-commission"
                             type="text" 
                             placeholder="e.g. Sept Sales Commission" 
                             value={commissionDesc} 
@@ -1063,6 +1074,7 @@ export default function PayrollView({
                         <div>
                           <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Amount (RM)</label>
                           <input 
+                            data-testid="payroll-back-pay-amount"
                             type="number" 
                             value={backPayAmt} 
                             onChange={(e) => setBackPayAmt(Number(e.target.value))} 
@@ -1070,8 +1082,9 @@ export default function PayrollView({
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Description</label>
+                          <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Payslip Description</label>
                           <input 
+                            data-testid="payslip-description-back-pay"
                             type="text" 
                             placeholder="e.g. June Increment Adjustment" 
                             value={backPayDesc} 
@@ -1086,6 +1099,7 @@ export default function PayrollView({
                         <div>
                           <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Amount (RM)</label>
                           <input 
+                            data-testid="payroll-aws-amount"
                             type="number" 
                             value={awsAmt} 
                             onChange={(e) => setAwsAmt(Number(e.target.value))} 
@@ -1093,8 +1107,9 @@ export default function PayrollView({
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Description</label>
+                          <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Payslip Description</label>
                           <input 
+                            data-testid="payslip-description-aws"
                             type="text" 
                             placeholder="e.g. Year-End AWS" 
                             value={awsDesc} 
@@ -1112,6 +1127,7 @@ export default function PayrollView({
                         <div>
                           <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Amount (RM)</label>
                           <input 
+                            data-testid="payroll-compensation-amount"
                             type="number" 
                             value={compensationAmt} 
                             onChange={(e) => setCompensationAmt(Number(e.target.value))} 
@@ -1119,8 +1135,9 @@ export default function PayrollView({
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Description</label>
+                          <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Payslip Description</label>
                           <input 
+                            data-testid="payslip-description-compensation"
                             type="text" 
                             placeholder="e.g. Redundancy package" 
                             value={compensationDesc} 
@@ -1135,6 +1152,7 @@ export default function PayrollView({
                         <div>
                           <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Amount (RM)</label>
                           <input 
+                            data-testid="payroll-reimbursement-amount"
                             type="number" 
                             value={reimbursementAmt} 
                             onChange={(e) => setReimbursementAmt(Number(e.target.value))} 
@@ -1142,8 +1160,9 @@ export default function PayrollView({
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Description</label>
+                          <label className="block text-[10px] font-semibold text-on-surface-variant uppercase">Payslip Description</label>
                           <input 
+                            data-testid="payslip-description-reimbursement"
                             type="text" 
                             placeholder="e.g. Dental claim, Medical claim" 
                             value={reimbursementDesc} 
@@ -1260,6 +1279,7 @@ export default function PayrollView({
                       <div>
                         <label className="block text-[9px] font-semibold text-on-surface-variant uppercase">Amount (RM)</label>
                         <input 
+                          data-testid="payroll-other-deduction-amount"
                           type="number" 
                           value={deductionOthers} 
                           onChange={(e) => setDeductionOthers(Number(e.target.value))} 
@@ -1267,8 +1287,9 @@ export default function PayrollView({
                         />
                       </div>
                       <div>
-                        <label className="block text-[9px] font-semibold text-on-surface-variant uppercase">Description</label>
+                        <label className="block text-[9px] font-semibold text-on-surface-variant uppercase">Payslip Description</label>
                         <input 
+                          data-testid="payslip-description-other-deduction"
                           type="text" 
                           placeholder="e.g. Loan Repayment" 
                           value={deductionOthersDesc} 
@@ -1393,46 +1414,31 @@ export default function PayrollView({
                     {/* Supplemental Payments breakdown */}
                     {((activeEmployee.bonusAmount !== undefined ? activeEmployee.bonusAmount : activeEmployee.performanceBonus) || 0) > 0 && (
                       <div className="flex justify-between items-start">
-                        <div>
-                          <span>Performance Bonus</span>
-                          {activeEmployee.bonusDesc && <p className="text-[10px] text-on-surface-variant italic leading-none">{activeEmployee.bonusDesc}</p>}
-                        </div>
+                        <span>{activeEmployee.bonusDesc || 'Performance Bonus'}</span>
                         <span className="font-mono">RM {Number(activeEmployee.bonusAmount !== undefined ? activeEmployee.bonusAmount : activeEmployee.performanceBonus).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                       </div>
                     )}
                     {(activeEmployee.commissionAmount || 0) > 0 && (
                       <div className="flex justify-between items-start">
-                        <div>
-                          <span>Commissions</span>
-                          {activeEmployee.commissionDesc && <p className="text-[10px] text-on-surface-variant italic leading-none">{activeEmployee.commissionDesc}</p>}
-                        </div>
+                        <span>{activeEmployee.commissionDesc || 'Commissions'}</span>
                         <span className="font-mono">RM {(activeEmployee.commissionAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                       </div>
                     )}
                     {(activeEmployee.backPayAmount || 0) > 0 && (
                       <div className="flex justify-between items-start">
-                        <div>
-                          <span>BackPay / Arrears</span>
-                          {activeEmployee.backPayDesc && <p className="text-[10px] text-on-surface-variant italic leading-none">{activeEmployee.backPayDesc}</p>}
-                        </div>
+                        <span>{activeEmployee.backPayDesc || 'BackPay / Arrears'}</span>
                         <span className="font-mono">RM {(activeEmployee.backPayAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                       </div>
                     )}
                     {(activeEmployee.awsAmount || 0) > 0 && (
                       <div className="flex justify-between items-start">
-                        <div>
-                          <span>AWS (13th Month)</span>
-                          {activeEmployee.awsDesc && <p className="text-[10px] text-on-surface-variant italic leading-none">{activeEmployee.awsDesc}</p>}
-                        </div>
+                        <span>{activeEmployee.awsDesc || 'AWS (13th Month)'}</span>
                         <span className="font-mono">RM {(activeEmployee.awsAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                       </div>
                     )}
                     {(activeEmployee.compensationAmount || 0) > 0 && (
                       <div className="flex justify-between items-start">
-                        <div>
-                          <span>Compensation / Severance</span>
-                          {activeEmployee.compensationDesc && <p className="text-[10px] text-on-surface-variant italic leading-none">{activeEmployee.compensationDesc}</p>}
-                        </div>
+                        <span>{activeEmployee.compensationDesc || 'Compensation / Severance'}</span>
                         <span className="font-mono">RM {(activeEmployee.compensationAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                       </div>
                     )}
@@ -1440,10 +1446,7 @@ export default function PayrollView({
                     {/* Reimbursements */}
                     {(activeEmployee.reimbursementAmount || 0) > 0 && (
                       <div className="flex justify-between items-start bg-neutral-100 p-1.5 rounded">
-                        <div>
-                          <span className="font-semibold text-secondary-container">Reimbursements (Tax-Free)</span>
-                          {activeEmployee.reimbursementDesc && <p className="text-[10px] text-on-surface-variant italic leading-none">{activeEmployee.reimbursementDesc}</p>}
-                        </div>
+                        <span className="font-semibold text-secondary-container">{activeEmployee.reimbursementDesc || 'Reimbursements (Tax-Free)'}</span>
                         <span className="font-mono font-semibold text-secondary-container">RM {(activeEmployee.reimbursementAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                       </div>
                     )}
@@ -1489,10 +1492,7 @@ export default function PayrollView({
                     {/* Custom Others */}
                     {(activeEmployee.deductionOthers || 0) > 0 && (
                       <div className="flex justify-between items-start">
-                        <div>
-                          <span>Other Deductions</span>
-                          {activeEmployee.deductionOthersDesc && <p className="text-[10px] text-on-surface-variant italic leading-none">{activeEmployee.deductionOthersDesc}</p>}
-                        </div>
+                        <span>{activeEmployee.deductionOthersDesc || 'Other Deductions'}</span>
                         <span className="font-mono">RM {(activeEmployee.deductionOthers || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                       </div>
                     )}

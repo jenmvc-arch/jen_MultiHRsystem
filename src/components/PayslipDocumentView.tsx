@@ -469,56 +469,31 @@ export default function PayslipDocumentView({
                   {/* Supplemental Payments */}
                   {((activeEmployee.bonusAmount !== undefined ? activeEmployee.bonusAmount : activeEmployee.performanceBonus) || 0) > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left">
-                        <div className="text-left">
-                          <span className="font-medium">Performance Bonus</span>
-                          {activeEmployee.bonusDesc && <p className="text-[10px] text-[#6B6B6B] italic leading-tight">{activeEmployee.bonusDesc}</p>}
-                        </div>
-                      </td>
+                      <td className="py-2 text-left font-medium">{activeEmployee.bonusDesc || 'Performance Bonus'}</td>
                       <td className="py-2 text-right font-mono font-bold">{Number(activeEmployee.bonusAmount !== undefined ? activeEmployee.bonusAmount : activeEmployee.performanceBonus).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.commissionAmount || 0) > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left">
-                        <div className="text-left">
-                          <span className="font-medium">Commissions</span>
-                          {activeEmployee.commissionDesc && <p className="text-[10px] text-[#6B6B6B] italic leading-tight">{activeEmployee.commissionDesc}</p>}
-                        </div>
-                      </td>
+                      <td className="py-2 text-left font-medium">{activeEmployee.commissionDesc || 'Commissions'}</td>
                       <td className="py-2 text-right font-mono font-bold">{(activeEmployee.commissionAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.backPayAmount || 0) > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left">
-                        <div className="text-left">
-                          <span className="font-medium">BackPay / Arrears</span>
-                          {activeEmployee.backPayDesc && <p className="text-[10px] text-[#6B6B6B] italic leading-tight">{activeEmployee.backPayDesc}</p>}
-                        </div>
-                      </td>
+                      <td className="py-2 text-left font-medium">{activeEmployee.backPayDesc || 'BackPay / Arrears'}</td>
                       <td className="py-2 text-right font-mono font-bold">{(activeEmployee.backPayAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.awsAmount || 0) > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left">
-                        <div className="text-left">
-                          <span className="font-medium">AWS (13th Month)</span>
-                          {activeEmployee.awsDesc && <p className="text-[10px] text-[#6B6B6B] italic leading-tight">{activeEmployee.awsDesc}</p>}
-                        </div>
-                      </td>
+                      <td className="py-2 text-left font-medium">{activeEmployee.awsDesc || 'AWS (13th Month)'}</td>
                       <td className="py-2 text-right font-mono font-bold">{(activeEmployee.awsAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.compensationAmount || 0) > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left">
-                        <div className="text-left">
-                          <span className="font-medium">Compensation / Severance</span>
-                          {activeEmployee.compensationDesc && <p className="text-[10px] text-[#6B6B6B] italic leading-tight">{activeEmployee.compensationDesc}</p>}
-                        </div>
-                      </td>
+                      <td className="py-2 text-left font-medium">{activeEmployee.compensationDesc || 'Compensation / Severance'}</td>
                       <td className="py-2 text-right font-mono font-bold">{(activeEmployee.compensationAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
@@ -526,12 +501,7 @@ export default function PayslipDocumentView({
                   {/* Reimbursements */}
                   {(activeEmployee.reimbursementAmount || 0) > 0 && (
                     <tr className="bg-neutral-50 hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left pl-1">
-                        <div className="text-left">
-                          <span className="font-semibold text-secondary-container">Reimbursements (Tax-Free)</span>
-                          {activeEmployee.reimbursementDesc && <p className="text-[10px] text-[#6B6B6B] italic leading-tight">{activeEmployee.reimbursementDesc}</p>}
-                        </div>
-                      </td>
+                      <td className="py-2 text-left pl-1 font-semibold text-secondary-container">{activeEmployee.reimbursementDesc || 'Reimbursements (Tax-Free)'}</td>
                       <td className="py-2 text-right font-mono font-bold text-secondary-container pr-1">{(activeEmployee.reimbursementAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
@@ -622,12 +592,7 @@ export default function PayslipDocumentView({
                   {/* Other Deductions */}
                   {(activeEmployee.deductionOthers || 0) > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left">
-                        <div className="text-left">
-                          <span className="font-medium">Other Deductions</span>
-                          {activeEmployee.deductionOthersDesc && <p className="text-[10px] text-[#6B6B6B] italic leading-tight">{activeEmployee.deductionOthersDesc}</p>}
-                        </div>
-                      </td>
+                      <td className="py-2 text-left font-medium">{activeEmployee.deductionOthersDesc || 'Other Deductions'}</td>
                       <td className="py-2 text-right font-mono font-bold">{(activeEmployee.deductionOthers || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}

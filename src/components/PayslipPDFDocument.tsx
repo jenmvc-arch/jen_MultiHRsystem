@@ -642,55 +642,37 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
 
             {bonusVal > 0 && (
               <View style={styles.tableRow}>
-                <View style={styles.itemDescriptionGroup}>
-                  <Text style={styles.itemName}>Performance Bonus</Text>
-                  {payslipEmployee.bonusDesc && <Text style={styles.itemDescription}>{payslipEmployee.bonusDesc}</Text>}
-                </View>
+                <Text style={styles.itemName}>{payslipEmployee.bonusDesc || 'Performance Bonus'}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(bonusVal)}</Text>
               </View>
             )}
             {commissionVal > 0 && (
               <View style={styles.tableRow}>
-                <View style={styles.itemDescriptionGroup}>
-                  <Text style={styles.itemName}>Commissions</Text>
-                  {payslipEmployee.commissionDesc && <Text style={styles.itemDescription}>{payslipEmployee.commissionDesc}</Text>}
-                </View>
+                <Text style={styles.itemName}>{payslipEmployee.commissionDesc || 'Commissions'}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(commissionVal)}</Text>
               </View>
             )}
             {backPayVal > 0 && (
               <View style={styles.tableRow}>
-                <View style={styles.itemDescriptionGroup}>
-                  <Text style={styles.itemName}>BackPay / Arrears</Text>
-                  {payslipEmployee.backPayDesc && <Text style={styles.itemDescription}>{payslipEmployee.backPayDesc}</Text>}
-                </View>
+                <Text style={styles.itemName}>{payslipEmployee.backPayDesc || 'BackPay / Arrears'}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(backPayVal)}</Text>
               </View>
             )}
             {awsVal > 0 && (
               <View style={styles.tableRow}>
-                <View style={styles.itemDescriptionGroup}>
-                  <Text style={styles.itemName}>AWS (13th Month)</Text>
-                  {payslipEmployee.awsDesc && <Text style={styles.itemDescription}>{payslipEmployee.awsDesc}</Text>}
-                </View>
+                <Text style={styles.itemName}>{payslipEmployee.awsDesc || 'AWS (13th Month)'}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(awsVal)}</Text>
               </View>
             )}
             {compensationVal > 0 && (
               <View style={styles.tableRow}>
-                <View style={styles.itemDescriptionGroup}>
-                  <Text style={styles.itemName}>Compensation / Severance</Text>
-                  {payslipEmployee.compensationDesc && <Text style={styles.itemDescription}>{payslipEmployee.compensationDesc}</Text>}
-                </View>
+                <Text style={styles.itemName}>{payslipEmployee.compensationDesc || 'Compensation / Severance'}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(compensationVal)}</Text>
               </View>
             )}
             {reimbursementVal > 0 && (
               <View style={[styles.tableRow, { backgroundColor: '#f9fafb' }]}>
-                <View style={styles.itemDescriptionGroup}>
-                  <Text style={[styles.itemName, { fontFamily: 'Helvetica-Bold' }]}>Reimbursements (Tax-Free)</Text>
-                  {payslipEmployee.reimbursementDesc && <Text style={styles.itemDescription}>{payslipEmployee.reimbursementDesc}</Text>}
-                </View>
+                <Text style={[styles.itemName, { fontFamily: 'Helvetica-Bold' }]}>{payslipEmployee.reimbursementDesc || 'Reimbursements (Tax-Free)'}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(reimbursementVal)}</Text>
               </View>
             )}
@@ -776,10 +758,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             )}
             {deductionOthersVal > 0 && (
               <View style={styles.tableRow}>
-                <View style={styles.itemDescriptionGroup}>
-                  <Text style={styles.itemName}>Other Deduction</Text>
-                  {payslipEmployee.deductionOthersDesc && <Text style={styles.itemDescription}>{payslipEmployee.deductionOthersDesc}</Text>}
-                </View>
+                <Text style={styles.itemName}>{payslipEmployee.deductionOthersDesc || 'Other Deduction'}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(deductionOthersVal)}</Text>
               </View>
             )}

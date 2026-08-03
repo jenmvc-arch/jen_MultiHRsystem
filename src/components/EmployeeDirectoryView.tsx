@@ -1927,19 +1927,13 @@ export default function EmployeeDirectoryView({
                           {/* Supplemental Payments */}
                           {((previewEmployee.bonusAmount !== undefined ? previewEmployee.bonusAmount : previewEmployee.performanceBonus) || 0) > 0 && (
                             <tr className="border-b border-outline-variant/30">
-                              <td className="py-2 text-on-surface text-left">
-                                Performance Bonus
-                                {modalEmployee.bonusDesc && <p className="text-[10px] text-on-surface-variant italic">{modalEmployee.bonusDesc}</p>}
-                              </td>
+                              <td className="py-2 text-on-surface text-left">{previewEmployee.bonusDesc || 'Performance Bonus'}</td>
                               <td className="py-2 text-right text-on-surface font-mono">RM {Number(previewEmployee.bonusAmount !== undefined ? previewEmployee.bonusAmount : previewEmployee.performanceBonus).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                             </tr>
                           )}
                           {(previewEmployee.commissionAmount || 0) > 0 && (
                             <tr className="border-b border-outline-variant/30">
-                              <td className="py-2 text-on-surface text-left">
-                                Commissions
-                                {modalEmployee.commissionDesc && <p className="text-[10px] text-on-surface-variant italic">{modalEmployee.commissionDesc}</p>}
-                              </td>
+                              <td className="py-2 text-on-surface text-left">{previewEmployee.commissionDesc || 'Commissions'}</td>
                               <td className="py-2 text-right text-on-surface">RM {(previewEmployee.commissionAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                             </tr>
                           )}
