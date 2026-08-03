@@ -110,13 +110,7 @@ export default function PayslipDocumentView({
   const socsoEmployerInvalidity = breakdown.socsoEmployerVal - socsoEmployerInjury;
 
   const salaryProration = getSalaryProration(activeEmployee, payMonth, payYear);
-  const baseSalaryBeforeProration = salaryProration.fullPeriodSalary;
   const actualBasic = getPayrollBasicSalary(rawActiveEmployee, payMonth, payYear);
-
-  let prorationDetails = '';
-  if (salaryProration.isProrated) {
-    prorationDetails = `Section 18A: RM ${baseSalaryBeforeProration.toFixed(2)} × ${salaryProration.eligibleDays}/${salaryProration.calendarDays} eligible calendar days.`;
-  }
 
   const monthNameForPeriod = new Date(payYear, payMonth - 1).toLocaleDateString('en-US', { month: 'long' });
   const lastDayForPeriod = new Date(payYear, payMonth, 0).getDate();
@@ -416,7 +410,6 @@ export default function PayslipDocumentView({
                   <tr className="hover:bg-[#F2E8D8]/20">
                     <td className="py-2 text-left font-medium">
                       {salaryProration.isProrated ? `Prorated ${getPayslipLabel(activeEmployee.employmentType)}` : getPayslipLabel(activeEmployee.employmentType)}
-                      {prorationDetails && <p className="text-[10px] text-[#6B6B6B] font-medium mt-0.5 leading-tight">{prorationDetails}</p>}
                     </td>
                     <td className="py-2 text-right font-mono font-bold">{actualBasic.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>

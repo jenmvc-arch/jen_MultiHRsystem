@@ -1657,13 +1657,7 @@ export default function EmployeeDirectoryView({
           const modalBreakdown = calculatePayslip(previewEmployee, monthIndexVal, yearVal);
 
           const modalSalaryProration = getSalaryProration(previewEmployee, monthIndexVal, yearVal);
-          const modalBaseSalaryBeforeProration = modalSalaryProration.fullPeriodSalary;
           const modalActualBasic = getPayrollBasicSalary(previewEmployee, monthIndexVal, yearVal);
-
-          let modalProrationDetails = '';
-          if (modalSalaryProration.isProrated) {
-            modalProrationDetails = `Section 18A: RM ${modalBaseSalaryBeforeProration.toFixed(2)} × ${modalSalaryProration.eligibleDays}/${modalSalaryProration.calendarDays} eligible calendar days.`;
-          }
 
           return (
             <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto backdrop-blur-xs animate-in fade-in duration-150 text-left">
@@ -1874,7 +1868,6 @@ export default function EmployeeDirectoryView({
                           <tr className="border-b border-outline-variant/30">
                             <td className="py-2 text-on-surface text-left">
                               {modalSalaryProration.isProrated ? `Prorated ${getPayslipLabel(previewEmployee.employmentType)}` : getPayslipLabel(previewEmployee.employmentType)}
-                              {modalProrationDetails && <p className="text-[10px] text-on-surface-variant font-medium mt-0.5 leading-tight">{modalProrationDetails}</p>}
                             </td>
                             <td className="py-2 text-right text-on-surface font-mono">RM {modalActualBasic.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                           </tr>

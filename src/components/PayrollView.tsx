@@ -178,15 +178,9 @@ export default function PayrollView({
   } : undefined);
 
   const salaryProration = getSalaryProration(activeEmployee, payMonthIndex, payYear);
-  const baseSalaryBeforeProration = salaryProration.fullPeriodSalary;
   const actualBasic = isEditing
     ? tempBasic
     : getPayrollBasicSalary(rawActiveEmployee, payMonthIndex, payYear);
-
-  let prorationDetails = '';
-  if (salaryProration.isProrated) {
-    prorationDetails = `Section 18A: RM ${baseSalaryBeforeProration.toFixed(2)} × ${salaryProration.eligibleDays}/${salaryProration.calendarDays} eligible calendar days.`;
-  }
 
   const isEligible = 
     activeEmployee.employmentType === 'Probation' || 
@@ -933,7 +927,7 @@ export default function PayrollView({
                         type="button"
                         onClick={() => setTempBasic(salaryProration.payableSalary)}
                         className="mt-1 inline-flex items-center gap-1 text-[10px] text-primary font-bold hover:underline"
-                        title="Restore the salary calculated from the employee contract and eligible calendar days"
+                        title="Restore the calculated salary"
                       >
                         <RotateCcw className="w-3 h-3" />
                         Use calculated: RM {salaryProration.payableSalary.toFixed(2)}
@@ -941,11 +935,6 @@ export default function PayrollView({
                       <span className="text-[10px] text-on-surface-variant mt-1 block font-medium">
                         This changes {selectedPayPeriod} only. The employee's contractual monthly salary remains unchanged.
                       </span>
-                      {salaryProration.isProrated && (
-                        <span className="text-[10px] text-primary font-bold mt-1 block">
-                          Section 18A prorated salary: {salaryProration.eligibleDays}/{salaryProration.calendarDays} eligible calendar days.
-                        </span>
-                      )}
                     </div>
                     {hasAllowances && (
                       <>
@@ -1382,7 +1371,6 @@ export default function PayrollView({
                     <div className="flex justify-between">
                       <div>
                         <span>{salaryProration.isProrated ? `Prorated ${getPayslipLabel(activeEmployee.employmentType)}` : getPayslipLabel(activeEmployee.employmentType)}</span>
-                        {prorationDetails && <p className="text-[10px] text-on-surface-variant font-medium mt-0.5 leading-tight">{prorationDetails}</p>}
                       </div>
                       <span className="font-mono">RM {actualBasic.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                     </div>
