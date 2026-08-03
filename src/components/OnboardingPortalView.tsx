@@ -500,16 +500,6 @@ function OnboardingPortalContent({
       {/* ========================================================================= */}
       <div className="flex flex-col gap-4 border-b border-neutral-border pb-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] font-black uppercase tracking-wider text-primary">
-              Hire & Onboarding
-            </span>
-            <span className="text-neutral-300">•</span>
-            <span className="text-[10px] font-bold text-on-surface-variant">
-              {viewRole === 'employee' ? 'Employee Onboarding Experience' : 'HR Administrative Portal & Audit'}
-            </span>
-          </div>
-
           <h2 className="text-2xl font-black text-on-background">Onboarding Portal</h2>
           <p className="mt-1 max-w-2xl text-xs sm:text-sm text-on-surface-variant">
             {viewRole === 'employee'
