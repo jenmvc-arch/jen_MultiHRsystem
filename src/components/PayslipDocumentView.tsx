@@ -103,6 +103,11 @@ export default function PayslipDocumentView({
     payrollPeriod: `${payYear}-${String(payMonth).padStart(2, '0')}`,
     payrollItems: payrollItemsForSocso
   });
+  const socsoEmployerScale = socsoRes.employerSocsoTotal > 0
+    ? breakdown.socsoEmployerVal / socsoRes.employerSocsoTotal
+    : 0;
+  const socsoEmployerInjury = socsoRes.employerEmploymentInjury * socsoEmployerScale;
+  const socsoEmployerInvalidity = breakdown.socsoEmployerVal - socsoEmployerInjury;
 
   const salaryProration = getSalaryProration(activeEmployee, payMonth, payYear);
   const baseSalaryBeforeProration = salaryProration.fullPeriodSalary;
@@ -116,21 +121,6 @@ export default function PayslipDocumentView({
   const monthNameForPeriod = new Date(payYear, payMonth - 1).toLocaleDateString('en-US', { month: 'long' });
   const lastDayForPeriod = new Date(payYear, payMonth, 0).getDate();
   const payPeriodString = `01 ${monthNameForPeriod} ${payYear} – ${lastDayForPeriod} ${monthNameForPeriod} ${payYear}`;
-
-  const isEligible = 
-    activeEmployee.employmentType === 'Probation' || 
-    activeEmployee.employmentType === 'Probationary' || 
-    activeEmployee.employmentType === 'Permanent' || 
-    activeEmployee.employmentType === 'Confirmation' || 
-    activeEmployee.employmentType === 'Fixed Term Contract' ||
-    activeEmployee.employmentType === 'Part Time' ||
-    (activeEmployee.employmentType === 'Independent Contractor' && activeEmployee.eligibleForStatutory === 'Yes') ||
-    (activeEmployee.employmentType === 'Independent Contractor / Freelance' && activeEmployee.eligibleForStatutory === 'Yes');
-
-  const isLindung24Enabled = activeEmployee.enableLindung24 === true;
-
-  const skbbkEmployeeVal = activeEmployee.skbbkEmployee !== undefined ? activeEmployee.skbbkEmployee : (isEligible && isLindung24Enabled ? parseFloat(((activeEmployee.socsoEmployee || 0) * 0.25).toFixed(2)) : 0);
-  const skbbkEmployerVal = activeEmployee.skbbkEmployer !== undefined ? activeEmployee.skbbkEmployer : (isEligible && isLindung24Enabled ? parseFloat(((activeEmployee.socsoEmployer || 0) * 0.25).toFixed(2)) : 0);
 
   const handleZoomIn = () => {
     if (zoom < 150) setZoom(prev => prev + 10);
@@ -712,7 +702,7 @@ export default function PayslipDocumentView({
               {/* SOCSO Injury */}
               <div className="flex-1 min-w-[80px] text-center flex flex-col justify-center items-center">
                 <p className="text-[9px] text-[#6B6B6B] uppercase font-bold mb-1">SOCSO - Injury</p>
-                <p className="font-mono font-bold">RM {socsoRes.employerEmploymentInjury.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+                <p className="font-mono font-bold">RM {socsoEmployerInjury.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
               </div>
 
               <div className="hidden md:block w-[2px] h-7 bg-[#D8CFC4]" />
@@ -720,7 +710,7 @@ export default function PayslipDocumentView({
               {/* SOCSO Invalidity */}
               <div className="flex-1 min-w-[80px] text-center flex flex-col justify-center items-center">
                 <p className="text-[9px] text-[#6B6B6B] uppercase font-bold mb-1">SOCSO - Invalidity</p>
-                <p className="font-mono font-bold">RM {socsoRes.employerInvalidity.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+                <p className="font-mono font-bold">RM {socsoEmployerInvalidity.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
               </div>
 
               <div className="hidden md:block w-[2px] h-7 bg-[#D8CFC4]" />
@@ -728,7 +718,7 @@ export default function PayslipDocumentView({
               {/* SOCSO Total */}
               <div className="flex-1 min-w-[80px] bg-white/20 py-1 px-2 rounded text-center flex flex-col justify-center items-center">
                 <p className="text-[9px] text-[#A32626] uppercase font-black mb-1">SOCSO Employer Total</p>
-                <p className="font-mono font-black text-[#A32626]">RM {socsoRes.employerSocsoTotal.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+                <p className="font-mono font-black text-[#A32626]">RM {breakdown.socsoEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
               </div>
 
               <div className="hidden md:block w-[2px] h-7 bg-[#D8CFC4]" />
@@ -737,6 +727,13 @@ export default function PayslipDocumentView({
               <div className="flex-1 min-w-[80px] text-center flex flex-col justify-center items-center">
                 <p className="text-[9px] text-[#6B6B6B] uppercase font-bold mb-1">EIS</p>
                 <p className="font-mono font-bold">RM {breakdown.eisEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+              </div>
+
+              <div className="hidden md:block w-[2px] h-7 bg-[#D8CFC4]" />
+
+              <div className="flex-1 min-w-[80px] text-center flex flex-col justify-center items-center">
+                <p className="text-[9px] text-[#6B6B6B] uppercase font-bold mb-1">HRD Corp</p>
+                <p className="font-mono font-bold">RM {breakdown.hrdCorpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
               </div>
             </div>
           </div>

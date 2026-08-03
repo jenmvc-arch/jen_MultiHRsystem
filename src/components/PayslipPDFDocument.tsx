@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import { Employee, CorporateEntity } from '../types';
-import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getPayrollBasicSalary, getSalaryProration, calculateSocsoContribution } from '../data';
+import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getPayrollBasicSalary, getSalaryProration, calculateSocsoContribution, getEmployeeForMonth } from '../data';
 import { formatToDDMMMYYYY } from '../lib/dateUtils';
 
 // Create styles for React PDF
@@ -252,6 +252,15 @@ const styles = StyleSheet.create({
     fontSize: 7,
     color: '#333333',
   },
+  itemDescriptionGroup: {
+    flex: 1,
+    paddingRight: 4,
+  },
+  itemDescription: {
+    fontSize: 6,
+    color: '#6b7280',
+    marginTop: 1,
+  },
   itemVal: {
     fontSize: 7,
     fontFamily: 'Helvetica-Bold',
@@ -398,20 +407,11 @@ interface PayslipPDFDocumentProps {
 
 export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }: PayslipPDFDocumentProps) => {
   const breakdown = calculatePayslip(employee, month, year);
+  const payslipEmployee = getEmployeeForMonth(employee, month, year);
 
   const formatCurrency = (val: number) => {
     return `RM ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
-
-  const isEligible = 
-    employee.employmentType === 'Probation' || 
-    employee.employmentType === 'Probationary' || 
-    employee.employmentType === 'Permanent' || 
-    employee.employmentType === 'Confirmation' || 
-    employee.employmentType === 'Fixed Term Contract' ||
-    employee.employmentType === 'Part Time' ||
-    (employee.employmentType === 'Independent Contractor' && employee.eligibleForStatutory === 'Yes') ||
-    (employee.employmentType === 'Independent Contractor / Freelance' && employee.eligibleForStatutory === 'Yes');
 
   // Complete allowances list matching the HTML Payslip preview
   const allowanceGen = employee.allowanceGeneral || 0;
@@ -452,14 +452,17 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
     payrollPeriod: `${year}-${String(month).padStart(2, '0')}`,
     payrollItems: payrollItemsForSocso
   });
-
-  const isLindung24Enabled = employee?.enableLindung24 === true;
-  const skbbkEmployeeVal = isEligible && isLindung24Enabled ? socsoRes.employeeLindung24 : 0;
+  const socsoEmployerScale = socsoRes.employerSocsoTotal > 0
+    ? breakdown.socsoEmployerVal / socsoRes.employerSocsoTotal
+    : 0;
+  const socsoEmployerInjury = socsoRes.employerEmploymentInjury * socsoEmployerScale;
+  const socsoEmployerInvalidity = breakdown.socsoEmployerVal - socsoEmployerInjury;
+  const skbbkEmployeeVal = breakdown.skbbkEmpVal;
 
   // Deductions breakdown
   const epfRateEmp = employee.epfRateEmployee || 11;
   const epfEmployeeValue = breakdown.epfEmployeeValue;
-  const socsoEmployeeVal = isEligible ? socsoRes.employeeInvalidity : 0;
+  const socsoEmployeeVal = breakdown.socsoEmployeeVal;
   const eisEmployeeVal = breakdown.eisEmployeeVal;
   const taxPcbVal = breakdown.taxPcbVal;
   const deductionInLieuVal = employee.deductionInLieu || 0;
@@ -639,37 +642,55 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
 
             {bonusVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Performance Bonus</Text>
+                <View style={styles.itemDescriptionGroup}>
+                  <Text style={styles.itemName}>Performance Bonus</Text>
+                  {payslipEmployee.bonusDesc && <Text style={styles.itemDescription}>{payslipEmployee.bonusDesc}</Text>}
+                </View>
                 <Text style={styles.itemVal}>{formatCurrency(bonusVal)}</Text>
               </View>
             )}
             {commissionVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Commissions</Text>
+                <View style={styles.itemDescriptionGroup}>
+                  <Text style={styles.itemName}>Commissions</Text>
+                  {payslipEmployee.commissionDesc && <Text style={styles.itemDescription}>{payslipEmployee.commissionDesc}</Text>}
+                </View>
                 <Text style={styles.itemVal}>{formatCurrency(commissionVal)}</Text>
               </View>
             )}
             {backPayVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>BackPay / Arrears</Text>
+                <View style={styles.itemDescriptionGroup}>
+                  <Text style={styles.itemName}>BackPay / Arrears</Text>
+                  {payslipEmployee.backPayDesc && <Text style={styles.itemDescription}>{payslipEmployee.backPayDesc}</Text>}
+                </View>
                 <Text style={styles.itemVal}>{formatCurrency(backPayVal)}</Text>
               </View>
             )}
             {awsVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>AWS (13th Month)</Text>
+                <View style={styles.itemDescriptionGroup}>
+                  <Text style={styles.itemName}>AWS (13th Month)</Text>
+                  {payslipEmployee.awsDesc && <Text style={styles.itemDescription}>{payslipEmployee.awsDesc}</Text>}
+                </View>
                 <Text style={styles.itemVal}>{formatCurrency(awsVal)}</Text>
               </View>
             )}
             {compensationVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Compensation / Severance</Text>
+                <View style={styles.itemDescriptionGroup}>
+                  <Text style={styles.itemName}>Compensation / Severance</Text>
+                  {payslipEmployee.compensationDesc && <Text style={styles.itemDescription}>{payslipEmployee.compensationDesc}</Text>}
+                </View>
                 <Text style={styles.itemVal}>{formatCurrency(compensationVal)}</Text>
               </View>
             )}
             {reimbursementVal > 0 && (
               <View style={[styles.tableRow, { backgroundColor: '#f9fafb' }]}>
-                <Text style={[styles.itemName, { fontFamily: 'Helvetica-Bold' }]}>Reimbursements (Tax-Free)</Text>
+                <View style={styles.itemDescriptionGroup}>
+                  <Text style={[styles.itemName, { fontFamily: 'Helvetica-Bold' }]}>Reimbursements (Tax-Free)</Text>
+                  {payslipEmployee.reimbursementDesc && <Text style={styles.itemDescription}>{payslipEmployee.reimbursementDesc}</Text>}
+                </View>
                 <Text style={styles.itemVal}>{formatCurrency(reimbursementVal)}</Text>
               </View>
             )}
@@ -755,7 +776,10 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             )}
             {deductionOthersVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{employee.deductionOthersDesc || 'Other Deduction'}</Text>
+                <View style={styles.itemDescriptionGroup}>
+                  <Text style={styles.itemName}>Other Deduction</Text>
+                  {payslipEmployee.deductionOthersDesc && <Text style={styles.itemDescription}>{payslipEmployee.deductionOthersDesc}</Text>}
+                </View>
                 <Text style={styles.itemVal}>{formatCurrency(deductionOthersVal)}</Text>
               </View>
             )}
@@ -807,7 +831,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             {/* SOCSO Injury */}
             <View style={styles.contributionCol}>
               <Text style={[styles.detailLabel, { color: '#6b7280' }]}>SOCSO - Injury</Text>
-              <Text style={[styles.detailValue, { color: '#333333' }]}>{formatCurrency(socsoRes.employerEmploymentInjury)}</Text>
+              <Text style={[styles.detailValue, { color: '#333333' }]}>{formatCurrency(socsoEmployerInjury)}</Text>
             </View>
 
             <View style={styles.contributionDivider} />
@@ -815,7 +839,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             {/* SOCSO Invalidity */}
             <View style={styles.contributionCol}>
               <Text style={[styles.detailLabel, { color: '#6b7280' }]}>SOCSO - Invalidity</Text>
-              <Text style={[styles.detailValue, { color: '#333333' }]}>{formatCurrency(socsoRes.employerInvalidity)}</Text>
+              <Text style={[styles.detailValue, { color: '#333333' }]}>{formatCurrency(socsoEmployerInvalidity)}</Text>
             </View>
 
             <View style={styles.contributionDivider} />
@@ -823,7 +847,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             {/* SOCSO Employer Total */}
             <View style={styles.contributionCol}>
               <Text style={[styles.detailLabel, { color: '#A32626' }]}>SOCSO Employer Total</Text>
-              <Text style={[styles.detailValue, { color: '#A32626' }]}>{formatCurrency(socsoRes.employerSocsoTotal)}</Text>
+              <Text style={[styles.detailValue, { color: '#A32626' }]}>{formatCurrency(breakdown.socsoEmployerVal)}</Text>
             </View>
 
             <View style={styles.contributionDivider} />
@@ -832,6 +856,13 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             <View style={styles.contributionCol}>
               <Text style={[styles.detailLabel, { color: '#6b7280' }]}>EIS</Text>
               <Text style={[styles.detailValue, { color: '#333333' }]}>{formatCurrency(breakdown.eisEmployerVal)}</Text>
+            </View>
+
+            <View style={styles.contributionDivider} />
+
+            <View style={styles.contributionCol}>
+              <Text style={[styles.detailLabel, { color: '#6b7280' }]}>HRD Corp</Text>
+              <Text style={[styles.detailValue, { color: '#333333' }]}>{formatCurrency(breakdown.hrdCorpVal)}</Text>
             </View>
           </View>
         </View>

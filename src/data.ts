@@ -103,11 +103,30 @@ export interface PayslipBreakdown {
   taxPcbVal: number;
   skbbkEmpVal: number;
   skbbkEmplyrVal: number;
+  hrdCorpVal: number;
   totalDeductions: number;
   totalEmployerContributions: number;
   netPay: number;
   allowancesSum: number;
   reimbursementsSum: number;
+}
+
+export interface PayslipStatutoryOverrides {
+  epfEmployee?: number;
+  epfEmployer?: number;
+  socsoEmployee?: number;
+  socsoEmployer?: number;
+  lindung24Employee?: number;
+  eisEmployee?: number;
+  eisEmployer?: number;
+  taxPcb?: number;
+  hrdCorp?: number;
+}
+
+export interface PayslipCalculationOptions {
+  basicSalaryOverride?: number;
+  statutoryOverrides?: PayslipStatutoryOverrides;
+  ignoreSavedStatutory?: boolean;
 }
 
 export function getPayslipLabel(employmentType: string): string {
@@ -1919,19 +1938,20 @@ export function getAdjustedBasicSalary(employee: Employee, month: number, year: 
   return getSalaryProration(employee, month, year).payableSalary;
 }
 
-export function getPayrollBasicSalary(employee: Employee, month: number, year: number): number {
-  const savedRecord = (employee.historicalPayrollRecords || []).find(record => (
+function getHistoricalPayrollRecord(employee: Employee, month: number, year?: number): HistoricalPayrollRecord | undefined {
+  return (employee.historicalPayrollRecords || []).find(record => (
     record.payrollMonth === month &&
-    (record.payrollYear === undefined || record.payrollYear === year)
+    (year === undefined || record.payrollYear === undefined || record.payrollYear === year)
   ));
+}
+
+export function getPayrollBasicSalary(employee: Employee, month: number, year: number): number {
+  const savedRecord = getHistoricalPayrollRecord(employee, month, year);
   return savedRecord?.basicSalary ?? getAdjustedBasicSalary(employee, month, year);
 }
 
 export function getEmployeeForMonth(employee: Employee, month: number, year?: number): Employee {
-  const histRecord = (employee.historicalPayrollRecords || []).find(r => (
-    r.payrollMonth === month &&
-    (year === undefined || r.payrollYear === undefined || r.payrollYear === year)
-  ));
+  const histRecord = getHistoricalPayrollRecord(employee, month, year);
   if (!histRecord) {
     return employee;
   }
@@ -1946,23 +1966,45 @@ export function getEmployeeForMonth(employee: Employee, month: number, year?: nu
     allowancePhone: histRecord.allowancePhone !== undefined ? histRecord.allowancePhone : employee.allowancePhone,
     overtime: histRecord.overtime !== undefined ? histRecord.overtime : employee.overtime,
     bonusAmount: histRecord.bonusAmount !== undefined ? histRecord.bonusAmount : (histRecord.performanceBonus !== undefined ? histRecord.performanceBonus : employee.bonusAmount),
+    bonusDesc: histRecord.bonusDesc !== undefined ? histRecord.bonusDesc : employee.bonusDesc,
     commissionAmount: histRecord.commissionAmount !== undefined ? histRecord.commissionAmount : employee.commissionAmount,
+    commissionDesc: histRecord.commissionDesc !== undefined ? histRecord.commissionDesc : employee.commissionDesc,
     backPayAmount: histRecord.backPayAmount !== undefined ? histRecord.backPayAmount : employee.backPayAmount,
+    backPayDesc: histRecord.backPayDesc !== undefined ? histRecord.backPayDesc : employee.backPayDesc,
     awsAmount: histRecord.awsAmount !== undefined ? histRecord.awsAmount : employee.awsAmount,
+    awsDesc: histRecord.awsDesc !== undefined ? histRecord.awsDesc : employee.awsDesc,
     compensationAmount: histRecord.compensationAmount !== undefined ? histRecord.compensationAmount : employee.compensationAmount,
+    compensationDesc: histRecord.compensationDesc !== undefined ? histRecord.compensationDesc : employee.compensationDesc,
     reimbursementAmount: histRecord.reimbursementAmount !== undefined ? histRecord.reimbursementAmount : employee.reimbursementAmount,
+    reimbursementDesc: histRecord.reimbursementDesc !== undefined ? histRecord.reimbursementDesc : employee.reimbursementDesc,
     unpaidLeave: histRecord.unpaidLeave !== undefined ? histRecord.unpaidLeave : employee.unpaidLeave,
     deductionInLieu: histRecord.deductionInLieu !== undefined ? histRecord.deductionInLieu : employee.deductionInLieu,
     deductionCp38: histRecord.deductionCp38 !== undefined ? histRecord.deductionCp38 : (histRecord.cp38 !== undefined ? histRecord.cp38 : employee.deductionCp38),
     deductionOthers: histRecord.deductionOthers !== undefined ? histRecord.deductionOthers : employee.deductionOthers,
+    deductionOthersDesc: histRecord.deductionOthersDesc !== undefined ? histRecord.deductionOthersDesc : employee.deductionOthersDesc,
     taxPcb: histRecord.actualPCBDeducted !== undefined ? histRecord.actualPCBDeducted : employee.taxPcb
   };
 }
 
-export function calculatePayslip(employee: Employee, month?: number, year?: number, basicSalaryOverride?: number): PayslipBreakdown {
+export function calculatePayslip(employee: Employee, month?: number, year?: number, options: PayslipCalculationOptions = {}): PayslipBreakdown {
   const mergedEmployee = month !== undefined ? getEmployeeForMonth(employee, month, year) : employee;
-  const basicSalary = basicSalaryOverride !== undefined
-    ? basicSalaryOverride
+  const savedRecord = month !== undefined && !options.ignoreSavedStatutory
+    ? getHistoricalPayrollRecord(employee, month, year)
+    : undefined;
+  const savedStatutory: PayslipStatutoryOverrides = savedRecord ? {
+    epfEmployee: savedRecord.epfEmployee,
+    epfEmployer: savedRecord.epfEmployer,
+    socsoEmployee: savedRecord.socsoEmployee,
+    socsoEmployer: savedRecord.socsoEmployer,
+    lindung24Employee: savedRecord.lindung24Employee,
+    eisEmployee: savedRecord.eisEmployee,
+    eisEmployer: savedRecord.eisEmployer,
+    taxPcb: savedRecord.actualPCBDeducted,
+    hrdCorp: savedRecord.hrdCorp
+  } : {};
+  const statutoryOverrides = { ...savedStatutory, ...options.statutoryOverrides };
+  const basicSalary = options.basicSalaryOverride !== undefined
+    ? options.basicSalaryOverride
     : (month !== undefined && year !== undefined)
       ? getPayrollBasicSalary(employee, month, year)
       : (mergedEmployee.basicSalary || 0);
@@ -2018,8 +2060,10 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
   const epfRateEmployerCalculated = basicSalary <= 5000 ? 13 : 12;
   const epfRateEmployer = mergedEmployee.epfRateEmployer || epfRateEmployerCalculated;
 
-  const epfEmployeeValue = (isEligible && optInEpf) ? Math.round((basicSalary * epfRateEmp) / 100) : 0;
-  const epfEmployerValue = (isEligible && optInEpf) ? Math.round((basicSalary * epfRateEmployer) / 100) : 0;
+  const autoEpfEmployeeValue = (isEligible && optInEpf) ? Math.round((basicSalary * epfRateEmp) / 100) : 0;
+  const autoEpfEmployerValue = (isEligible && optInEpf) ? Math.round((basicSalary * epfRateEmployer) / 100) : 0;
+  const epfEmployeeValue = statutoryOverrides.epfEmployee ?? autoEpfEmployeeValue;
+  const epfEmployerValue = statutoryOverrides.epfEmployer ?? autoEpfEmployerValue;
 
   // Custom Deductions
   const unpaidLeaveVal = mergedEmployee.unpaidLeave || 0;
@@ -2056,22 +2100,29 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
     payrollItems
   });
 
-  const socsoEmployeeVal = (isEligible && optInSocso) ? socsoRes.employeeInvalidity : 0;
-  const socsoEmployerVal = (isEligible && optInSocso) ? socsoRes.employerSocsoTotal : 0;
+  const autoSocsoEmployeeVal = (isEligible && optInSocso) ? socsoRes.employeeInvalidity : 0;
+  const autoSocsoEmployerVal = (isEligible && optInSocso) ? socsoRes.employerSocsoTotal : 0;
   const isLindung24OptedIn = optInSocso && (mergedEmployee.enableLindung24 === true);
-  const skbbkEmpVal = (isEligible && isLindung24OptedIn) ? socsoRes.employeeLindung24 : 0;
+  const autoSkbbkEmpVal = (isEligible && isLindung24OptedIn) ? socsoRes.employeeLindung24 : 0;
+  const socsoEmployeeVal = statutoryOverrides.socsoEmployee ?? autoSocsoEmployeeVal;
+  const socsoEmployerVal = statutoryOverrides.socsoEmployer ?? autoSocsoEmployerVal;
+  const skbbkEmpVal = statutoryOverrides.lindung24Employee ?? autoSkbbkEmpVal;
   const skbbkEmplyrVal = 0; // LINDUNG 24 is employee-borne
-  const eisEmployeeVal = (isEligible && optInEis) ? stat2026.eisEmployee : 0;
-  const eisEmployerVal = (isEligible && optInEis) ? stat2026.eisEmployer : 0;
+  const autoEisEmployeeVal = (isEligible && optInEis) ? stat2026.eisEmployee : 0;
+  const autoEisEmployerVal = (isEligible && optInEis) ? stat2026.eisEmployer : 0;
+  const eisEmployeeVal = statutoryOverrides.eisEmployee ?? autoEisEmployeeVal;
+  const eisEmployerVal = statutoryOverrides.eisEmployer ?? autoEisEmployerVal;
 
   // Dynamic 2026 PCB calculation if basicSalary changed from original or if taxPcb is missing
   const baseEmp = INITIAL_EMPLOYEES.find(e => e.id === mergedEmployee.id);
   const isSalaryChanged = baseEmp ? baseEmp.basicSalary !== basicSalary : false;
-  const taxPcbVal = (isEligible && optInPcb) 
+  const autoTaxPcbVal = (isEligible && optInPcb)
     ? (isSalaryChanged || mergedEmployee.taxPcb === undefined
-       ? calculatePcb2026(basicSalary, mergedEmployee.maritalStatus || 'Single', mergedEmployee.spouseIsWorking || 'No', mergedEmployee.dependants?.length || 0, epfEmployeeValue, actMonth)
+       ? calculatePcb2026(basicSalary, mergedEmployee.maritalStatus || 'Single', mergedEmployee.spouseIsWorking || 'No', mergedEmployee.dependants?.length || 0, autoEpfEmployeeValue, actMonth)
        : mergedEmployee.taxPcb)
     : 0;
+  const taxPcbVal = statutoryOverrides.taxPcb ?? autoTaxPcbVal;
+  const hrdCorpVal = statutoryOverrides.hrdCorp ?? (mergedEmployee.hrdCorp || 0);
 
   // Total Deductions
   const totalDeductions =
@@ -2090,7 +2141,7 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
     socsoEmployerVal +
     eisEmployerVal +
     skbbkEmplyrVal +
-    (employee.hrdCorp || 0);
+    hrdCorpVal;
 
   // Net Pay = Gross Earnings + Reimbursements - Total Deductions
   const netPay = grossEarnings + reimbursementsSum - totalDeductions;
@@ -2106,6 +2157,7 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
     taxPcbVal,
     skbbkEmpVal,
     skbbkEmplyrVal,
+    hrdCorpVal,
     totalDeductions,
     totalEmployerContributions,
     netPay,

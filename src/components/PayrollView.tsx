@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { CreditCard, Search, Plus, Printer, Download, Image, Mail, Share2, Eye, CheckCircle, TrendingUp, Sliders, DollarSign, Briefcase, FileText, Globe, Building2, Clock, RotateCcw } from 'lucide-react';
 import { Employee, CorporateEntity, HistoricalPayrollRecord, PayrollRecord2026 } from '../types';
-import { calculatePayslip, getPayslipLabel, calculateYtd, calculatePcb2026, recalculatePCBFromMonth, getPayrollBasicSalary, getSalaryProration, getStatutoryDeductions2026, calculateSocsoContribution, getEmployeeForMonth } from '../data';
+import { calculatePayslip, getPayslipLabel, calculateYtd, calculatePcb2026, recalculatePCBFromMonth, getPayrollBasicSalary, getSalaryProration, getEmployeeForMonth } from '../data';
 import PayslipDocumentView from './PayslipDocumentView';
 import SocsoCalculatorCard from './SocsoCalculatorCard';
 
@@ -53,6 +53,14 @@ export default function PayrollView({
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [tempBasic, setTempBasic] = useState(0);
   const [tempTax, setTempTax] = useState(0);
+  const [tempEpfEmployee, setTempEpfEmployee] = useState(0);
+  const [tempEpfEmployer, setTempEpfEmployer] = useState(0);
+  const [tempSocsoEmployee, setTempSocsoEmployee] = useState(0);
+  const [tempSocsoEmployer, setTempSocsoEmployer] = useState(0);
+  const [tempLindung24Employee, setTempLindung24Employee] = useState(0);
+  const [tempEisEmployee, setTempEisEmployee] = useState(0);
+  const [tempEisEmployer, setTempEisEmployer] = useState(0);
+  const [tempHrdCorp, setTempHrdCorp] = useState(0);
   const [hasAllowances, setHasAllowances] = useState(false);
 
   // Extended state variables for dynamic editing
@@ -130,11 +138,17 @@ export default function PayrollView({
     allowancePhone: hasAllowances ? allowancePh : 0,
     overtime: dbActiveEmployee.overtime || 0,
     bonusAmount: bonusAmt,
+    bonusDesc,
     commissionAmount: commissionAmt,
+    commissionDesc,
     backPayAmount: backPayAmt,
+    backPayDesc,
     awsAmount: awsAmt,
+    awsDesc,
     compensationAmount: compensationAmt,
+    compensationDesc,
     reimbursementAmount: reimbursementAmt,
+    reimbursementDesc,
     unpaidLeave: unpaidLeave,
     deductionInLieu: deductionInLieu,
     deductionCp38: deductionCp38,
@@ -143,12 +157,25 @@ export default function PayrollView({
     taxPcb: tempTax
   } : dbActiveEmployee;
 
-  const payrollBreakdown = calculatePayslip(
-    activeEmployee,
-    payMonthIndex,
-    payYear,
-    isEditing ? tempBasic : undefined
-  );
+  const autoStatutoryBreakdown = calculatePayslip(activeEmployee, payMonthIndex, payYear, {
+    basicSalaryOverride: tempBasic,
+    ignoreSavedStatutory: true
+  });
+
+  const payrollBreakdown = calculatePayslip(activeEmployee, payMonthIndex, payYear, isEditing ? {
+    basicSalaryOverride: tempBasic,
+    statutoryOverrides: {
+      epfEmployee: tempEpfEmployee,
+      epfEmployer: tempEpfEmployer,
+      socsoEmployee: tempSocsoEmployee,
+      socsoEmployer: tempSocsoEmployer,
+      lindung24Employee: tempLindung24Employee,
+      eisEmployee: tempEisEmployee,
+      eisEmployer: tempEisEmployer,
+      taxPcb: tempTax,
+      hrdCorp: tempHrdCorp
+    }
+  } : undefined);
 
   const salaryProration = getSalaryProration(activeEmployee, payMonthIndex, payYear);
   const baseSalaryBeforeProration = salaryProration.fullPeriodSalary;
@@ -171,14 +198,13 @@ export default function PayrollView({
     (activeEmployee.employmentType === 'Independent Contractor' && activeEmployee.eligibleForStatutory === 'Yes') ||
     (activeEmployee.employmentType === 'Independent Contractor / Freelance' && activeEmployee.eligibleForStatutory === 'Yes');
 
-  const epfEmployee = isEligible ? Math.round((tempBasic * (activeEmployee.epfRateEmployee || 11)) / 100) : 0;
   const computedAutoPcb = isEligible 
     ? calculatePcb2026(
         tempBasic, 
         activeEmployee.maritalStatus || 'Single', 
         activeEmployee.spouseIsWorking || 'No', 
         activeEmployee.dependants?.length || 0,
-        epfEmployee,
+        autoStatutoryBreakdown.epfEmployeeValue,
         payMonthIndex
       )
     : 0;
@@ -226,8 +252,28 @@ export default function PayrollView({
     setDeductionOthers(activeEmployee.deductionOthers || 0);
     setDeductionOthersDesc(activeEmployee.deductionOthersDesc || '');
 
-    setTempTax(activeEmployee.taxPcb || 0);
+    setTempEpfEmployee(payrollBreakdown.epfEmployeeValue);
+    setTempEpfEmployer(payrollBreakdown.epfEmployerValue);
+    setTempSocsoEmployee(payrollBreakdown.socsoEmployeeVal);
+    setTempSocsoEmployer(payrollBreakdown.socsoEmployerVal);
+    setTempLindung24Employee(payrollBreakdown.skbbkEmpVal);
+    setTempEisEmployee(payrollBreakdown.eisEmployeeVal);
+    setTempEisEmployer(payrollBreakdown.eisEmployerVal);
+    setTempTax(payrollBreakdown.taxPcbVal);
+    setTempHrdCorp(payrollBreakdown.hrdCorpVal);
     setIsEditing(true);
+  };
+
+  const applyAllAutoStatutory = () => {
+    setTempEpfEmployee(autoStatutoryBreakdown.epfEmployeeValue);
+    setTempEpfEmployer(autoStatutoryBreakdown.epfEmployerValue);
+    setTempSocsoEmployee(autoStatutoryBreakdown.socsoEmployeeVal);
+    setTempSocsoEmployer(autoStatutoryBreakdown.socsoEmployerVal);
+    setTempLindung24Employee(autoStatutoryBreakdown.skbbkEmpVal);
+    setTempEisEmployee(autoStatutoryBreakdown.eisEmployeeVal);
+    setTempEisEmployer(autoStatutoryBreakdown.eisEmployerVal);
+    setTempTax(computedAutoPcb);
+    setTempHrdCorp(autoStatutoryBreakdown.hrdCorpVal);
   };
 
   const saveEdit = async () => {
@@ -236,49 +282,25 @@ export default function PayrollView({
       return;
     }
 
-    setIsSavingEdit(true);
-    try {
-    const epfRateEmp = activeEmployee.epfRateEmployee || 11;
-    const epfRateEmployerCalculated = tempBasic <= 5000 ? 13 : 12;
-    const epfRateEmployer = activeEmployee.epfRateEmployer || epfRateEmployerCalculated;
-
-    const optInEpf = activeEmployee.optInEpf !== false;
-    const optInSocso = activeEmployee.optInSocso !== false;
-    const optInEis = activeEmployee.optInEis !== false;
-    const optInPcb = activeEmployee.optInPcb !== false;
-
-    const epfEmployeeVal = (isEligible && optInEpf) ? Math.round((tempBasic * epfRateEmp) / 100) : 0;
-    const epfEmployerVal = (isEligible && optInEpf) ? Math.round((tempBasic * epfRateEmployer) / 100) : 0;
-
-    const payrollItemsForSocso = [
-      { code: 'basic_salary', amount: tempBasic },
-      { code: 'overtime', amount: activeEmployee.overtime || 0 },
-      { code: 'commission', amount: commissionAmt },
-      { code: 'allowance_general', amount: hasAllowances ? allowanceGen : 0 },
-      { code: 'allowance_transport', amount: hasAllowances ? allowanceTrans : 0 },
-      { code: 'allowance_parking', amount: hasAllowances ? allowancePark : 0 },
-      { code: 'allowance_meal', amount: hasAllowances ? allowanceMl : 0 },
-      { code: 'allowance_accommodation', amount: hasAllowances ? allowanceAccom : 0 },
-      { code: 'allowance_phone', amount: hasAllowances ? allowancePh : 0 },
-      { code: 'backpay', amount: backPayAmt }
-    ];
-    if (unpaidLeave > 0) {
-      payrollItemsForSocso.push({ code: 'unpaid_leave', amount: unpaidLeave });
+    const statutoryAmounts = [
+      ['EPF employee', tempEpfEmployee],
+      ['EPF employer', tempEpfEmployer],
+      ['SOCSO employee', tempSocsoEmployee],
+      ['SOCSO employer', tempSocsoEmployer],
+      ['LINDUNG 24 employee', tempLindung24Employee],
+      ['EIS employee', tempEisEmployee],
+      ['EIS employer', tempEisEmployer],
+      ['PCB', tempTax],
+      ['HRD Corp', tempHrdCorp]
+    ] as const;
+    const invalidStatutory = statutoryAmounts.find(([, amount]) => !Number.isFinite(amount) || amount < 0);
+    if (invalidStatutory) {
+      onShowNotification('Invalid Statutory Amount', `${invalidStatutory[0]} must be RM 0 or more.`);
+      return;
     }
 
-    const socsoRes = calculateSocsoContribution({
-      employee: activeEmployee,
-      payrollPeriod: `${payYear}-${String(payMonthIndex).padStart(2, '0')}`,
-      payrollItems: payrollItemsForSocso
-    });
-
-    const stat2026 = getStatutoryDeductions2026(tempBasic);
-    const isLindung24Enabled = optInSocso && (activeEmployee.enableLindung24 === true);
-    const socsoEmployee = (isEligible && optInSocso) ? socsoRes.employeeSocsoTotal : 0;
-    const socsoEmployer = (isEligible && optInSocso) ? socsoRes.employerSocsoTotal : 0;
-    const eisEmployee = (isEligible && optInEis) ? stat2026.eisEmployee : 0;
-    const eisEmployer = (isEligible && optInEis) ? stat2026.eisEmployer : 0;
-
+    setIsSavingEdit(true);
+    try {
     const totalAllowances = (hasAllowances ? allowanceGen : 0) + 
                             (hasAllowances ? allowanceTrans : 0) + 
                             (hasAllowances ? allowancePark : 0) + 
@@ -286,7 +308,7 @@ export default function PayrollView({
                             (hasAllowances ? allowanceAccom : 0) + 
                             (hasAllowances ? allowancePh : 0);
     const totalEarnings = tempBasic + totalAllowances + (activeEmployee.overtime || 0) + bonusAmt + commissionAmt + backPayAmt + awsAmt + compensationAmt + reimbursementAmt;
-    const totalDeductions = epfEmployeeVal + socsoEmployee + eisEmployee + tempTax + unpaidLeave + deductionInLieu + deductionCp38 + deductionOthers;
+    const totalDeductions = tempEpfEmployee + tempSocsoEmployee + tempLindung24Employee + tempEisEmployee + tempTax + unpaidLeave + deductionInLieu + deductionCp38 + deductionOthers;
     const netPay = parseFloat((totalEarnings - totalDeductions).toFixed(2));
 
     const record2026: PayrollRecord2026 = {
@@ -303,23 +325,31 @@ export default function PayrollView({
       allowancePhone: hasAllowances ? allowancePh : 0,
       overtime: activeEmployee.overtime || 0,
       bonusAmount: bonusAmt,
+      bonusDesc,
       commissionAmount: commissionAmt,
+      commissionDesc,
       backPayAmount: backPayAmt,
+      backPayDesc,
       awsAmount: awsAmt,
+      awsDesc,
       compensationAmount: compensationAmt,
+      compensationDesc,
       reimbursementAmount: reimbursementAmt,
+      reimbursementDesc,
       unpaidLeave: unpaidLeave,
       deductionInLieu: deductionInLieu,
       deductionCp38: deductionCp38,
       deductionOthers: deductionOthers,
+      deductionOthersDesc,
       actualPCBDeducted: tempTax,
-      epfEmployee: epfEmployeeVal,
-      epfEmployer: epfEmployerVal,
-      socsoEmployee,
-      socsoEmployer,
-      lindung24Employee: isEligible && isLindung24Enabled ? socsoRes.employeeLindung24 : 0,
-      eisEmployee,
-      eisEmployer,
+      epfEmployee: tempEpfEmployee,
+      epfEmployer: tempEpfEmployer,
+      socsoEmployee: tempSocsoEmployee,
+      socsoEmployer: tempSocsoEmployer,
+      lindung24Employee: tempLindung24Employee,
+      eisEmployee: tempEisEmployee,
+      eisEmployer: tempEisEmployer,
+      hrdCorp: tempHrdCorp,
       netPay,
       createdAt: new Date().toISOString()
     };
@@ -333,11 +363,38 @@ export default function PayrollView({
       payrollYear: payYear,
       basicSalary: tempBasic,
       allowanceGeneral: hasAllowances ? allowanceGen : 0,
+      allowanceTransport: hasAllowances ? allowanceTrans : 0,
+      allowanceParking: hasAllowances ? allowancePark : 0,
+      allowanceMeal: hasAllowances ? allowanceMl : 0,
+      allowanceAccommodation: hasAllowances ? allowanceAccom : 0,
+      allowancePhone: hasAllowances ? allowancePh : 0,
       overtime: activeEmployee.overtime || 0,
       bonusAmount: bonusAmt,
+      bonusDesc,
       commissionAmount: commissionAmt,
+      commissionDesc,
+      backPayAmount: backPayAmt,
+      backPayDesc,
+      awsAmount: awsAmt,
+      awsDesc,
+      compensationAmount: compensationAmt,
+      compensationDesc,
+      reimbursementAmount: reimbursementAmt,
+      reimbursementDesc,
+      unpaidLeave,
+      deductionInLieu,
+      deductionCp38,
+      deductionOthers,
+      deductionOthersDesc,
       actualPCBDeducted: tempTax,
-      epfEmployee: epfEmployeeVal,
+      epfEmployee: tempEpfEmployee,
+      epfEmployer: tempEpfEmployer,
+      socsoEmployee: tempSocsoEmployee,
+      socsoEmployer: tempSocsoEmployer,
+      lindung24Employee: tempLindung24Employee,
+      eisEmployee: tempEisEmployee,
+      eisEmployer: tempEisEmployer,
+      hrdCorp: tempHrdCorp,
       zakat: 0,
       cp38: deductionCp38
     };
@@ -365,31 +422,23 @@ export default function PayrollView({
       allowancePhone: hasAllowances ? allowancePh : 0,
       
       reimbursementAmount: reimbursementAmt,
-      reimbursementDesc: reimbursementDesc,
       
       bonusAmount: bonusAmt,
-      bonusDesc: bonusDesc,
       performanceBonus: bonusAmt,
 
       commissionAmount: commissionAmt,
-      commissionDesc: commissionDesc,
 
       backPayAmount: backPayAmt,
-      backPayDesc: backPayDesc,
 
       awsAmount: awsAmt,
-      awsDesc: awsDesc,
 
       compensationAmount: compensationAmt,
-      compensationDesc: compensationDesc,
 
       unpaidLeave: unpaidLeave,
       deductionInLieu: deductionInLieu,
       deductionCp38: deductionCp38,
       deductionOthers: deductionOthers,
-      deductionOthersDesc: deductionOthersDesc,
 
-      taxPcb: tempTax,
       historicalPayrollRecords: updatedRecords,
       historicalPcbResults: recalculated
     });
@@ -447,6 +496,18 @@ export default function PayrollView({
     '--color-error': '#222222',
     color: '#222222'
   } as React.CSSProperties : {};
+
+  const statutoryFields = [
+    { id: 'epf-employee', label: 'EPF Employee', value: tempEpfEmployee, setValue: setTempEpfEmployee, auto: autoStatutoryBreakdown.epfEmployeeValue },
+    { id: 'epf-employer', label: 'EPF Employer', value: tempEpfEmployer, setValue: setTempEpfEmployer, auto: autoStatutoryBreakdown.epfEmployerValue },
+    { id: 'socso-employee', label: 'SOCSO Employee', value: tempSocsoEmployee, setValue: setTempSocsoEmployee, auto: autoStatutoryBreakdown.socsoEmployeeVal },
+    { id: 'socso-employer', label: 'SOCSO Employer', value: tempSocsoEmployer, setValue: setTempSocsoEmployer, auto: autoStatutoryBreakdown.socsoEmployerVal },
+    { id: 'lindung24-employee', label: 'LINDUNG 24 Employee', value: tempLindung24Employee, setValue: setTempLindung24Employee, auto: autoStatutoryBreakdown.skbbkEmpVal },
+    { id: 'eis-employee', label: 'EIS Employee', value: tempEisEmployee, setValue: setTempEisEmployee, auto: autoStatutoryBreakdown.eisEmployeeVal },
+    { id: 'eis-employer', label: 'EIS Employer', value: tempEisEmployer, setValue: setTempEisEmployer, auto: autoStatutoryBreakdown.eisEmployerVal },
+    { id: 'pcb', label: 'Monthly Income Tax (PCB)', value: tempTax, setValue: setTempTax, auto: computedAutoPcb },
+    { id: 'hrd-corp', label: 'HRD Corp Employer Levy', value: tempHrdCorp, setValue: setTempHrdCorp, auto: autoStatutoryBreakdown.hrdCorpVal }
+  ];
 
   return (
     <div 
@@ -1119,10 +1180,52 @@ export default function PayrollView({
                   }}
                 />
 
-                {/* 3. Deductions Panel */}
+                <div className="bg-white p-4 rounded border border-neutral-border/60 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1">
+                      <Sliders className="w-4 h-4" /> 3. Statutory Amounts
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={applyAllAutoStatutory}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-neutral-border rounded text-[10px] font-bold text-primary hover:bg-neutral-50"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      Use All Calculated
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {statutoryFields.map(field => (
+                      <div key={field.label}>
+                        <label className="flex items-center justify-between gap-2 text-xs font-semibold text-on-surface-variant mb-1">
+                          <span>{field.label} (RM)</span>
+                          <button
+                            type="button"
+                            onClick={() => field.setValue(field.auto)}
+                            className="shrink-0 text-[10px] text-primary hover:underline font-bold"
+                            title={`Use calculated ${field.label}`}
+                          >
+                            Use RM {field.auto.toFixed(2)}
+                          </button>
+                        </label>
+                        <input
+                          data-testid={`statutory-${field.id}`}
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={field.value}
+                          onChange={(event) => field.setValue(Number(event.target.value))}
+                          className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 4. Deductions Panel */}
                 <div className="bg-white p-4 rounded border border-neutral-border/60 space-y-3">
                   <h3 className="font-bold text-xs text-error uppercase tracking-wider flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-error" /> 3. Deductions & Custom Taxes
+                    <span className="w-2 h-2 rounded-full bg-error" /> 4. Other Deductions
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div>
@@ -1149,25 +1252,6 @@ export default function PayrollView({
                         type="number" 
                         value={deductionCp38} 
                         onChange={(e) => setDeductionCp38(Number(e.target.value))} 
-                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-on-surface-variant mb-1 flex justify-between">
-                        <span>Monthly Income Tax (PCB) (RM)</span>
-                        <button
-                          type="button"
-                          onClick={() => setTempTax(computedAutoPcb)}
-                          className="text-[10px] text-primary hover:underline font-bold"
-                          title="Apply Auto Calculated PCB"
-                        >
-                          Use Auto: RM {computedAutoPcb.toFixed(2)}
-                        </button>
-                      </label>
-                      <input 
-                        type="number" 
-                        value={tempTax} 
-                        onChange={(e) => setTempTax(Number(e.target.value))} 
                         className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs"
                       />
                     </div>
@@ -1445,6 +1529,10 @@ export default function PayrollView({
                   <div>
                     <span className="text-on-surface-variant block font-sans font-semibold">EIS</span>
                     <span className="font-bold text-on-surface">RM {payrollBreakdown.eisEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                  </div>
+                  <div>
+                    <span className="text-on-surface-variant block font-sans font-semibold">HRD Corp</span>
+                    <span className="font-bold text-on-surface">RM {payrollBreakdown.hrdCorpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                   </div>
                 </div>
               </div>

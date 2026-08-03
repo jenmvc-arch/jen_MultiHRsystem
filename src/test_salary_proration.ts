@@ -45,6 +45,7 @@ const createEmployee = (updates: Partial<Employee> = {}): Employee => ({
   deductionInLieu: 0,
   deductionCp38: 0,
   deductionOthers: 0,
+  hrdCorp: 0,
   ...updates
 });
 
@@ -131,8 +132,70 @@ assert.equal(getEmployeeForMonth(savedPayrollEmployee, 1, 2026).basicSalary, 310
 assert.equal(getPayrollBasicSalary(savedPayrollEmployee, 1, 2026), 1600);
 assert.equal(calculatePayslip(savedPayrollEmployee, 1, 2026).grossEarnings, 1600);
 
-const manualPayPeriodSalary = calculatePayslip(savedPayrollEmployee, 1, 2026, 1850);
+const manualPayPeriodSalary = calculatePayslip(savedPayrollEmployee, 1, 2026, { basicSalaryOverride: 1850 });
 assert.equal(manualPayPeriodSalary.grossEarnings, 1850);
 assert.equal(savedPayrollEmployee.basicSalary, 3100);
+
+const manualStatutory = calculatePayslip(createEmployee(), 1, 2026, {
+  statutoryOverrides: {
+    epfEmployee: 101,
+    epfEmployer: 202,
+    socsoEmployee: 3,
+    socsoEmployer: 4,
+    lindung24Employee: 5,
+    eisEmployee: 6,
+    eisEmployer: 7,
+    taxPcb: 8,
+    hrdCorp: 9
+  }
+});
+assert.equal(manualStatutory.totalDeductions, 123);
+assert.equal(manualStatutory.totalEmployerContributions, 222);
+assert.equal(manualStatutory.netPay, 2977);
+
+const persistedStatutoryEmployee = createEmployee({
+  historicalPayrollRecords: [{
+    payrollMonth: 8,
+    payrollYear: 2026,
+    basicSalary: 3100,
+    actualPCBDeducted: 18,
+    epfEmployee: 111,
+    epfEmployer: 211,
+    socsoEmployee: 13,
+    socsoEmployer: 14,
+    lindung24Employee: 15,
+    eisEmployee: 16,
+    eisEmployer: 17,
+    hrdCorp: 19,
+    bonusDesc: 'August delivery milestone',
+    commissionDesc: 'Enterprise account commission',
+    backPayDesc: 'July salary correction',
+    awsDesc: 'Annual wage supplement',
+    compensationDesc: 'Contract completion payment',
+    reimbursementDesc: 'Approved medical claim',
+    deductionOthersDesc: 'Staff loan repayment'
+  }]
+});
+const persistedStatutory = calculatePayslip(persistedStatutoryEmployee, 8, 2026);
+assert.equal(persistedStatutory.epfEmployeeValue, 111);
+assert.equal(persistedStatutory.epfEmployerValue, 211);
+assert.equal(persistedStatutory.socsoEmployeeVal, 13);
+assert.equal(persistedStatutory.socsoEmployerVal, 14);
+assert.equal(persistedStatutory.skbbkEmpVal, 15);
+assert.equal(persistedStatutory.eisEmployeeVal, 16);
+assert.equal(persistedStatutory.eisEmployerVal, 17);
+assert.equal(persistedStatutory.taxPcbVal, 18);
+assert.equal(persistedStatutory.hrdCorpVal, 19);
+const persistedDescriptions = getEmployeeForMonth(persistedStatutoryEmployee, 8, 2026);
+assert.equal(persistedDescriptions.bonusDesc, 'August delivery milestone');
+assert.equal(persistedDescriptions.commissionDesc, 'Enterprise account commission');
+assert.equal(persistedDescriptions.backPayDesc, 'July salary correction');
+assert.equal(persistedDescriptions.awsDesc, 'Annual wage supplement');
+assert.equal(persistedDescriptions.compensationDesc, 'Contract completion payment');
+assert.equal(persistedDescriptions.reimbursementDesc, 'Approved medical claim');
+assert.equal(persistedDescriptions.deductionOthersDesc, 'Staff loan repayment');
+
+const recalculatedStatutory = calculatePayslip(persistedStatutoryEmployee, 8, 2026, { ignoreSavedStatutory: true });
+assert.notEqual(recalculatedStatutory.epfEmployeeValue, 111);
 
 console.log('Salary proration tests passed.');

@@ -54,7 +54,7 @@ import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
 import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css';
 
 registerPlugin(FilePondPluginImagePreview);
-import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getAdjustedBasicSalary, getPayrollBasicSalary, getSalaryProration } from '../data';
+import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getAdjustedBasicSalary, getPayrollBasicSalary, getSalaryProration, getEmployeeForMonth } from '../data';
 
 interface EmployeeDirectoryViewProps {
   employees: Employee[];
@@ -1653,7 +1653,7 @@ export default function EmployeeDirectoryView({
             'July', 'August', 'September', 'October', 'November', 'December'
           ];
           const monthIndexVal = monthsList.indexOf(monthName) + 1;
-          
+          const modalEmployee = getEmployeeForMonth(previewEmployee, monthIndexVal, yearVal);
           const modalBreakdown = calculatePayslip(previewEmployee, monthIndexVal, yearVal);
 
           const modalSalaryProration = getSalaryProration(previewEmployee, monthIndexVal, yearVal);
@@ -1927,13 +1927,19 @@ export default function EmployeeDirectoryView({
                           {/* Supplemental Payments */}
                           {((previewEmployee.bonusAmount !== undefined ? previewEmployee.bonusAmount : previewEmployee.performanceBonus) || 0) > 0 && (
                             <tr className="border-b border-outline-variant/30">
-                              <td className="py-2 text-on-surface text-left">Performance Bonus</td>
+                              <td className="py-2 text-on-surface text-left">
+                                Performance Bonus
+                                {modalEmployee.bonusDesc && <p className="text-[10px] text-on-surface-variant italic">{modalEmployee.bonusDesc}</p>}
+                              </td>
                               <td className="py-2 text-right text-on-surface font-mono">RM {Number(previewEmployee.bonusAmount !== undefined ? previewEmployee.bonusAmount : previewEmployee.performanceBonus).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                             </tr>
                           )}
                           {(previewEmployee.commissionAmount || 0) > 0 && (
                             <tr className="border-b border-outline-variant/30">
-                              <td className="py-2 text-on-surface text-left font-mono">Commissions</td>
+                              <td className="py-2 text-on-surface text-left">
+                                Commissions
+                                {modalEmployee.commissionDesc && <p className="text-[10px] text-on-surface-variant italic">{modalEmployee.commissionDesc}</p>}
+                              </td>
                               <td className="py-2 text-right text-on-surface">RM {(previewEmployee.commissionAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                             </tr>
                           )}
@@ -2008,6 +2014,10 @@ export default function EmployeeDirectoryView({
                       <div>
                         <span className="text-on-surface-variant text-[10px] uppercase block mb-1">EIS</span>
                         <span>RM {modalBreakdown.eisEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                      </div>
+                      <div>
+                        <span className="text-on-surface-variant text-[10px] uppercase block mb-1">HRD Corp</span>
+                        <span>RM {modalBreakdown.hrdCorpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                       </div>
                     </div>
                   </div>

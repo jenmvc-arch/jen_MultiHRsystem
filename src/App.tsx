@@ -256,26 +256,63 @@ export default function App() {
   const employeesWithHistory = React.useMemo(() => {
     return employees.map(emp => {
       const records = (payrollRecords2026 || []).filter(r => r && r.employeeEmail && emp.email && r.employeeEmail.toLowerCase() === emp.email.toLowerCase());
-      const mapped = records.map(r => ({
-        payrollMonth: r.payrollMonth,
-        basicSalary: r.basicSalary,
-        allowanceGeneral: r.allowanceGeneral,
-        allowanceTransport: r.allowanceTransport,
-        allowanceParking: r.allowanceParking,
-        allowanceMeal: r.allowanceMeal,
-        allowanceAccommodation: r.allowanceAccommodation,
-        allowancePhone: r.allowancePhone,
-        overtime: r.overtime,
-        bonusAmount: r.bonusAmount,
-        commissionAmount: r.commissionAmount,
-        actualPCBDeducted: r.actualPCBDeducted,
-        epfEmployee: r.epfEmployee,
-        zakat: r.zakat,
-        cp38: r.deductionCp38
-      }));
+      const employeeRecords = emp.historicalPayrollRecords || [];
+      const mapped = records.map(r => {
+        const existing = employeeRecords.find(history => (
+          history.payrollMonth === r.payrollMonth &&
+          (history.payrollYear === undefined || history.payrollYear === r.payrollYear)
+        ));
+        return {
+          ...existing,
+          payrollMonth: r.payrollMonth,
+          payrollYear: r.payrollYear,
+          basicSalary: r.basicSalary,
+          allowanceGeneral: r.allowanceGeneral,
+          allowanceTransport: r.allowanceTransport,
+          allowanceParking: r.allowanceParking,
+          allowanceMeal: r.allowanceMeal,
+          allowanceAccommodation: r.allowanceAccommodation,
+          allowancePhone: r.allowancePhone,
+          overtime: r.overtime,
+          bonusAmount: r.bonusAmount,
+          bonusDesc: r.bonusDesc ?? existing?.bonusDesc,
+          commissionAmount: r.commissionAmount,
+          commissionDesc: r.commissionDesc ?? existing?.commissionDesc,
+          backPayAmount: r.backPayAmount,
+          backPayDesc: r.backPayDesc ?? existing?.backPayDesc,
+          awsAmount: r.awsAmount,
+          awsDesc: r.awsDesc ?? existing?.awsDesc,
+          compensationAmount: r.compensationAmount,
+          compensationDesc: r.compensationDesc ?? existing?.compensationDesc,
+          reimbursementAmount: r.reimbursementAmount,
+          reimbursementDesc: r.reimbursementDesc ?? existing?.reimbursementDesc,
+          unpaidLeave: r.unpaidLeave,
+          deductionInLieu: r.deductionInLieu,
+          deductionCp38: r.deductionCp38,
+          deductionOthers: r.deductionOthers,
+          deductionOthersDesc: r.deductionOthersDesc ?? existing?.deductionOthersDesc,
+          actualPCBDeducted: r.actualPCBDeducted,
+          epfEmployee: r.epfEmployee,
+          epfEmployer: r.epfEmployer,
+          socsoEmployee: r.socsoEmployee,
+          socsoEmployer: r.socsoEmployer,
+          lindung24Employee: r.lindung24Employee ?? existing?.lindung24Employee,
+          eisEmployee: r.eisEmployee,
+          eisEmployer: r.eisEmployer,
+          hrdCorp: r.hrdCorp ?? existing?.hrdCorp,
+          zakat: existing?.zakat || 0,
+          cp38: r.deductionCp38
+        };
+      });
+      const employeeOnlyRecords = employeeRecords.filter(record => !mapped.some(mappedRecord => (
+        mappedRecord.payrollMonth === record.payrollMonth &&
+        (record.payrollYear === undefined || mappedRecord.payrollYear === record.payrollYear)
+      )));
       return {
         ...emp,
-        historicalPayrollRecords: mapped.sort((a, b) => a.payrollMonth - b.payrollMonth)
+        historicalPayrollRecords: [...employeeOnlyRecords, ...mapped].sort((a, b) =>
+          ((a.payrollYear || 0) - (b.payrollYear || 0)) || (a.payrollMonth - b.payrollMonth)
+        )
       };
     });
   }, [employees, payrollRecords2026]);
@@ -896,22 +933,31 @@ export default function App() {
           allowancePhone: Number(r.allowancePhone || 0),
           overtime: Number(r.overtime || 0),
           bonusAmount: Number(r.bonusAmount || 0),
+          bonusDesc: r.bonusDesc === undefined ? undefined : String(r.bonusDesc || ''),
           commissionAmount: Number(r.commissionAmount || 0),
+          commissionDesc: r.commissionDesc === undefined ? undefined : String(r.commissionDesc || ''),
           backPayAmount: Number(r.backPayAmount || 0),
+          backPayDesc: r.backPayDesc === undefined ? undefined : String(r.backPayDesc || ''),
           awsAmount: Number(r.awsAmount || 0),
+          awsDesc: r.awsDesc === undefined ? undefined : String(r.awsDesc || ''),
           compensationAmount: Number(r.compensationAmount || 0),
+          compensationDesc: r.compensationDesc === undefined ? undefined : String(r.compensationDesc || ''),
           reimbursementAmount: Number(r.reimbursementAmount || 0),
+          reimbursementDesc: r.reimbursementDesc === undefined ? undefined : String(r.reimbursementDesc || ''),
           unpaidLeave: Number(r.unpaidLeave || 0),
           deductionInLieu: Number(r.deductionInLieu || 0),
           deductionCp38: Number(r.deductionCp38 || 0),
           deductionOthers: Number(r.deductionOthers || 0),
-          actualPCBDeducted: Number(r.actualPCBDeducted || 0),
+          deductionOthersDesc: r.deductionOthersDesc === undefined ? undefined : String(r.deductionOthersDesc || ''),
+          actualPCBDeducted: Number(r.actualPCBDeducted ?? r.taxPcb ?? 0),
           epfEmployee: Number(r.epfEmployee || 0),
           epfEmployer: Number(r.epfEmployer || 0),
           socsoEmployee: Number(r.socsoEmployee || 0),
           socsoEmployer: Number(r.socsoEmployer || 0),
+          lindung24Employee: r.lindung24Employee === undefined ? undefined : Number(r.lindung24Employee || 0),
           eisEmployee: Number(r.eisEmployee || 0),
           eisEmployer: Number(r.eisEmployer || 0),
+          hrdCorp: r.hrdCorp === undefined ? undefined : Number(r.hrdCorp || 0),
           netPay: Number(r.netPay || 0),
           createdAt: r.createdAt || ''
         })));
@@ -1564,7 +1610,11 @@ export default function App() {
   const handleSavePayrollRecord2026 = async (record: PayrollRecord2026) => {
     if (isSupabaseConfigured) {
       try {
-        await supabaseClient.upsert('payroll_records_2026', record);
+        await supabaseClient.upsert('payroll_records_2026', {
+          ...record,
+          taxPcb: record.actualPCBDeducted,
+          netSalary: record.netPay
+        });
         console.log('[Supabase] Saved payroll record successfully:', record.id);
       } catch (err: any) {
         console.error('[Supabase] Failed to save payroll record 2026:', err);

@@ -296,16 +296,30 @@ export interface HistoricalPayrollRecord {
   overtime?: number;
   performanceBonus?: number;
   bonusAmount?: number;
+  bonusDesc?: string;
   commissionAmount?: number;
+  commissionDesc?: string;
   backPayAmount?: number;
+  backPayDesc?: string;
   awsAmount?: number;
+  awsDesc?: string;
   compensationAmount?: number;
+  compensationDesc?: string;
   reimbursementAmount?: number;
+  reimbursementDesc?: string;
   unpaidLeave?: number;
   deductionInLieu?: number;
   deductionCp38?: number;
   deductionOthers?: number;
+  deductionOthersDesc?: string;
   epfEmployee?: number;
+  epfEmployer?: number;
+  socsoEmployee?: number;
+  socsoEmployer?: number;
+  lindung24Employee?: number;
+  eisEmployee?: number;
+  eisEmployer?: number;
+  hrdCorp?: number;
   zakat?: number;
   cp38?: number;
   actualPCBDeducted: number;
@@ -523,15 +537,22 @@ export interface PayrollRecord2026 {
   allowancePhone: number;
   overtime: number;
   bonusAmount: number;
+  bonusDesc?: string;
   commissionAmount: number;
+  commissionDesc?: string;
   backPayAmount: number;
+  backPayDesc?: string;
   awsAmount: number;
+  awsDesc?: string;
   compensationAmount: number;
+  compensationDesc?: string;
   reimbursementAmount: number;
+  reimbursementDesc?: string;
   unpaidLeave: number;
   deductionInLieu: number;
   deductionCp38: number;
   deductionOthers: number;
+  deductionOthersDesc?: string;
   actualPCBDeducted: number;
   epfEmployee: number;
   epfEmployer: number;
@@ -540,6 +561,7 @@ export interface PayrollRecord2026 {
   lindung24Employee?: number;
   eisEmployee: number;
   eisEmployer: number;
+  hrdCorp?: number;
   netPay: number;
   createdAt: string;
 }
@@ -773,4 +795,3 @@ export interface PCBConfiguration {
   activatedBy?: string;
   activatedAt?: string;
 }
-
