@@ -21,7 +21,7 @@ import {
 import { pdf } from '@react-pdf/renderer';
 import { PayslipPDFDocument } from './PayslipPDFDocument';
 import { Employee, CorporateEntity } from '../types';
-import { calculatePayslip, getPayslipLabel, getAdjustedBasicSalary, getDirectLogoUrl, calculateSocsoContribution, getEmployeeForMonth } from '../data';
+import { calculatePayslip, getPayslipLabel, getPayrollBasicSalary, getSalaryProration, getDirectLogoUrl, calculateSocsoContribution, getEmployeeForMonth } from '../data';
 import { formatToDDMMMYYYY } from '../lib/dateUtils';
 
 interface PayslipDocumentViewProps {
@@ -66,11 +66,11 @@ export default function PayslipDocumentView({
   const payMonth = propPayMonth !== undefined ? propPayMonth : (params.get('month') ? parseInt(params.get('month')!, 10) : 10);
   const payYear = propPayYear !== undefined ? propPayYear : (params.get('year') ? parseInt(params.get('year')!, 10) : 2026);
 
-  const activeEmployee = getEmployeeForMonth(rawActiveEmployee, payMonth);
-  const breakdown = calculatePayslip(activeEmployee, payMonth, payYear);
+  const activeEmployee = getEmployeeForMonth(rawActiveEmployee, payMonth, payYear);
+  const breakdown = calculatePayslip(rawActiveEmployee, payMonth, payYear);
   const employeeEntity = entities?.find(ent => ent.id === activeEmployee.entityId) || activeEntity;
 
-  const basicSalaryForSocso = getAdjustedBasicSalary(activeEmployee, payMonth, payYear);
+  const basicSalaryForSocso = getPayrollBasicSalary(rawActiveEmployee, payMonth, payYear);
   const overtimeForSocso = activeEmployee.overtime || 0;
   const commissionForSocso = activeEmployee.commissionAmount || 0;
   const allowanceGenForSocso = activeEmployee.allowanceGeneral || 0;
@@ -104,37 +104,13 @@ export default function PayslipDocumentView({
     payrollItems: payrollItemsForSocso
   });
 
-  let baseSalaryBeforeProration = activeEmployee.basicSalary;
-  if (activeEmployee.salaryAdjustments && activeEmployee.salaryAdjustments.length > 0) {
-    const activeAdjustments = activeEmployee.salaryAdjustments
-      .filter(adj => {
-        const effDate = new Date(adj.effectiveDate);
-        const effYear = effDate.getFullYear();
-        const effMonth = effDate.getMonth() + 1;
-        return (effYear < payYear) || (effYear === payYear && effMonth <= payMonth);
-      })
-      .sort((a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime());
-    if (activeAdjustments.length > 0) {
-      baseSalaryBeforeProration = activeAdjustments[0].adjustedSalary;
-    }
-  }
-
-  const actualBasic = getAdjustedBasicSalary(activeEmployee, payMonth, payYear);
-  const prorationDeduction = parseFloat((baseSalaryBeforeProration - actualBasic).toFixed(2));
+  const salaryProration = getSalaryProration(activeEmployee, payMonth, payYear);
+  const baseSalaryBeforeProration = salaryProration.fullPeriodSalary;
+  const actualBasic = getPayrollBasicSalary(rawActiveEmployee, payMonth, payYear);
 
   let prorationDetails = '';
-  if (prorationDeduction > 0 && activeEmployee.dateOfJoined) {
-    const joinDate = new Date(activeEmployee.dateOfJoined);
-    const joinYear = joinDate.getFullYear();
-    const joinMonth = joinDate.getMonth() + 1;
-    if (joinYear === payYear && joinMonth === payMonth) {
-      const joinDay = joinDate.getDate();
-      const calendarDays = new Date(payYear, payMonth, 0).getDate();
-      const unpaidDays = joinDay - 1;
-      prorationDetails = `Joined mid-month on ${formatToDDMMMYYYY(activeEmployee.dateOfJoined)}. Deducted ${unpaidDays}/${calendarDays} unpaid days.`;
-    } else {
-      prorationDetails = `Deduction for incomplete month of service.`;
-    }
+  if (salaryProration.isProrated) {
+    prorationDetails = `Section 18A: RM ${baseSalaryBeforeProration.toFixed(2)} × ${salaryProration.eligibleDays}/${salaryProration.calendarDays} eligible calendar days.`;
   }
 
   const monthNameForPeriod = new Date(payYear, payMonth - 1).toLocaleDateString('en-US', { month: 'long' });
@@ -448,8 +424,11 @@ export default function PayslipDocumentView({
                 </thead>
                 <tbody className="divide-y divide-[#E5DED5]/40">
                   <tr className="hover:bg-[#F2E8D8]/20">
-                    <td className="py-2 text-left font-medium">{getPayslipLabel(activeEmployee.employmentType)}</td>
-                    <td className="py-2 text-right font-mono font-bold">{baseSalaryBeforeProration.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                    <td className="py-2 text-left font-medium">
+                      {salaryProration.isProrated ? `Prorated ${getPayslipLabel(activeEmployee.employmentType)}` : getPayslipLabel(activeEmployee.employmentType)}
+                      {prorationDetails && <p className="text-[10px] text-[#6B6B6B] font-medium mt-0.5 leading-tight">{prorationDetails}</p>}
+                    </td>
+                    <td className="py-2 text-right font-mono font-bold">{actualBasic.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
 
                   {/* Allowances */}
@@ -572,7 +551,7 @@ export default function PayslipDocumentView({
               {/* Total Row */}
               <div className="flex justify-between items-center border-t border-b border-[#A32626] py-3 mt-4 text-[#A32626] font-black text-xs uppercase tracking-wider">
                 <span>Total Earnings & Additions</span>
-                <span className="font-mono">RM {(breakdown.grossEarnings + prorationDeduction + breakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                <span className="font-mono">RM {(breakdown.grossEarnings + breakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
               </div>
             </div>
 
@@ -589,18 +568,6 @@ export default function PayslipDocumentView({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E5DED5]/40">
-                  {prorationDeduction > 0 && (
-                    <tr className="bg-red-50/40 hover:bg-[#F2E8D8]/20 text-[#A32626]">
-                      <td className="py-2 text-left pl-1">
-                        <div className="text-left">
-                          <span className="font-semibold">Prorated Basic Salary Deduction</span>
-                          <p className="text-[10px] opacity-80 font-medium mt-0.5 leading-tight">{prorationDetails}</p>
-                        </div>
-                      </td>
-                      <td className="py-2 text-right font-mono font-bold pr-1">{prorationDeduction.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
-                    </tr>
-                  )}
-                  
                   <tr className="hover:bg-[#F2E8D8]/20">
                     <td className="py-2 text-left font-medium">EPF (Employee {activeEmployee.epfRateEmployee}%)</td>
                     <td className="py-2 text-right font-mono font-bold">{breakdown.epfEmployeeValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
@@ -680,7 +647,7 @@ export default function PayslipDocumentView({
               {/* Total Row */}
               <div className="flex justify-between items-center border-t border-b border-[#A32626] py-3 mt-4 text-[#A32626] font-black text-xs uppercase tracking-wider">
                 <span>Total Deductions</span>
-                <span className="font-mono">RM {(breakdown.totalDeductions + prorationDeduction).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                <span className="font-mono">RM {breakdown.totalDeductions.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
               </div>
             </div>
           </div>
@@ -695,7 +662,7 @@ export default function PayslipDocumentView({
               <div>
                 <p className="text-[10px] text-[#6B6B6B] font-black uppercase tracking-wider">Gross Pay</p>
                 <p className="text-lg font-black text-[#333333] font-mono mt-0.5">
-                  RM {(breakdown.grossEarnings + prorationDeduction + breakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}
+                  RM {(breakdown.grossEarnings + breakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}
                 </p>
               </div>
             </div>
@@ -708,7 +675,7 @@ export default function PayslipDocumentView({
               <div>
                 <p className="text-[10px] text-[#6B6B6B] font-black uppercase tracking-wider">Total Deductions</p>
                 <p className="text-lg font-black text-[#333333] font-mono mt-0.5">
-                  RM {(breakdown.totalDeductions + prorationDeduction).toLocaleString('en-US', {minimumFractionDigits: 2})}
+                  RM {breakdown.totalDeductions.toLocaleString('en-US', {minimumFractionDigits: 2})}
                 </p>
               </div>
             </div>

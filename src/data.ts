@@ -1788,78 +1788,156 @@ export function calculatePcb2026(
   return result.finalPCB;
 }
 
+interface PayrollDateParts {
+  year: number;
+  month: number;
+  day: number;
+}
+
+export interface SalaryProrationResult {
+  fullPeriodSalary: number;
+  payableSalary: number;
+  prorationDeduction: number;
+  calendarDays: number;
+  eligibleDays: number;
+  excludedDays: number;
+  eligibleStartDay: number | null;
+  eligibleEndDay: number | null;
+  joinDate?: string;
+  terminationDate?: string;
+  isProrated: boolean;
+}
+
+const parsePayrollDate = (value?: string): PayrollDateParts | null => {
+  if (!value) return null;
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const maxDay = new Date(year, month, 0).getDate();
+  if (month < 1 || month > 12 || day < 1 || day > maxDay) return null;
+  return { year, month, day };
+};
+
+const comparePayrollMonth = (date: PayrollDateParts, month: number, year: number) => (
+  (date.year * 12 + date.month) - (year * 12 + month)
+);
+
+const getEmployeeTerminationDate = (employee: Employee): string | undefined => {
+  const directDate = (employee as Employee & { dateOfTermination?: string }).dateOfTermination;
+  if (parsePayrollDate(directDate)) return directDate;
+
+  return [...(employee.effectiveDatedProfiles || [])]
+    .sort((left, right) => right.effectiveDate.localeCompare(left.effectiveDate))
+    .map(profile => profile.dateOfTermination)
+    .find(date => parsePayrollDate(date) !== null);
+};
+
+export function getSalaryProration(employee: Employee, month: number, year: number): SalaryProrationResult {
+  const calendarDays = new Date(year, month, 0).getDate();
+  const joinDate = parsePayrollDate(employee.dateOfJoined);
+  const terminationDateValue = getEmployeeTerminationDate(employee);
+  const terminationDate = parsePayrollDate(terminationDateValue);
+
+  const periodBeforeEmployment = !!joinDate && comparePayrollMonth(joinDate, month, year) > 0;
+  const periodAfterEmployment = !!terminationDate && comparePayrollMonth(terminationDate, month, year) < 0;
+  if (periodBeforeEmployment || periodAfterEmployment) {
+    return {
+      fullPeriodSalary: 0,
+      payableSalary: 0,
+      prorationDeduction: 0,
+      calendarDays,
+      eligibleDays: 0,
+      excludedDays: calendarDays,
+      eligibleStartDay: null,
+      eligibleEndDay: null,
+      joinDate: employee.dateOfJoined,
+      terminationDate: terminationDateValue,
+      isProrated: false
+    };
+  }
+
+  const eligibleStartDay = joinDate && comparePayrollMonth(joinDate, month, year) === 0
+    ? joinDate.day
+    : 1;
+  const eligibleEndDay = terminationDate && comparePayrollMonth(terminationDate, month, year) === 0
+    ? terminationDate.day
+    : calendarDays;
+  const eligibleDays = Math.max(0, eligibleEndDay - eligibleStartDay + 1);
+
+  const salaryAdjustments = (employee.salaryAdjustments || [])
+    .map(adjustment => ({ adjustment, date: parsePayrollDate(adjustment.effectiveDate) }))
+    .filter((entry): entry is { adjustment: typeof entry.adjustment; date: PayrollDateParts } => (
+      entry.date !== null && Number(entry.adjustment.adjustedSalary) >= 0
+    ))
+    .sort((left, right) => (
+      left.date.year - right.date.year ||
+      left.date.month - right.date.month ||
+      left.date.day - right.date.day
+    ));
+
+  let fullPeriodSalary = 0;
+  let payableSalary = 0;
+  for (let day = 1; day <= calendarDays; day++) {
+    let monthlyRate = Number(employee.basicSalary || 0);
+    for (const entry of salaryAdjustments) {
+      const effectiveKey = entry.date.year * 10000 + entry.date.month * 100 + entry.date.day;
+      const payrollDayKey = year * 10000 + month * 100 + day;
+      if (effectiveKey <= payrollDayKey) monthlyRate = Number(entry.adjustment.adjustedSalary || 0);
+    }
+
+    const dailyRate = monthlyRate / calendarDays;
+    fullPeriodSalary += dailyRate;
+    if (day >= eligibleStartDay && day <= eligibleEndDay) payableSalary += dailyRate;
+  }
+
+  const roundedFullPeriodSalary = Number(fullPeriodSalary.toFixed(2));
+  const roundedPayableSalary = Number(payableSalary.toFixed(2));
+  const prorationDeduction = Number(Math.max(0, roundedFullPeriodSalary - roundedPayableSalary).toFixed(2));
+
+  return {
+    fullPeriodSalary: roundedFullPeriodSalary,
+    payableSalary: roundedPayableSalary,
+    prorationDeduction,
+    calendarDays,
+    eligibleDays,
+    excludedDays: calendarDays - eligibleDays,
+    eligibleStartDay,
+    eligibleEndDay,
+    joinDate: employee.dateOfJoined,
+    terminationDate: terminationDateValue,
+    isProrated: eligibleDays < calendarDays
+  };
+}
+
 export function getProratedBasicSalary(employee: Employee, month: number, year: number): number {
-  if (!employee.dateOfJoined) return employee.basicSalary;
-  
-  const joinDate = new Date(employee.dateOfJoined);
-  if (isNaN(joinDate.getTime())) return employee.basicSalary;
-  
-  const joinYear = joinDate.getFullYear();
-  const joinMonth = joinDate.getMonth() + 1;
-  const joinDay = joinDate.getDate();
-
-  // If the pay period is before join year/month: salary is 0
-  if (year < joinYear || (year === joinYear && month < joinMonth)) {
-    return 0;
-  }
-
-  // If the pay period is the join year/month: proration occurs
-  if (year === joinYear && month === joinMonth) {
-    const calendarDays = new Date(year, month, 0).getDate(); // days in that month
-    const activeDays = calendarDays - joinDay + 1;
-    if (activeDays <= 0) return 0;
-    return parseFloat(((employee.basicSalary / calendarDays) * activeDays).toFixed(2));
-  }
-
-  // If the pay period is after join year/month: full salary
-  return employee.basicSalary;
+  return getSalaryProration({ ...employee, salaryAdjustments: [] }, month, year).payableSalary;
 }
 
 export function getAdjustedBasicSalary(employee: Employee, month: number, year: number): number {
-  const baseline = getProratedBasicSalary(employee, month, year);
-  if (baseline === 0) return 0;
-  
-  if (!employee.salaryAdjustments || employee.salaryAdjustments.length === 0) {
-    return baseline;
-  }
-  
-  const activeAdjustments = employee.salaryAdjustments
-    .filter(adj => {
-      const effDate = new Date(adj.effectiveDate);
-      const effYear = effDate.getFullYear();
-      const effMonth = effDate.getMonth() + 1;
-      return (effYear < year) || (effYear === year && effMonth <= month);
-    })
-    .sort((a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime());
-    
-  if (activeAdjustments.length > 0) {
-    const joinDate = new Date(employee.dateOfJoined);
-    if (!isNaN(joinDate.getTime())) {
-      const joinYear = joinDate.getFullYear();
-      const joinMonth = joinDate.getMonth() + 1;
-      if (year === joinYear && month === joinMonth) {
-        const joinDay = joinDate.getDate();
-        const calendarDays = new Date(year, month, 0).getDate();
-        const activeDays = calendarDays - joinDay + 1;
-        if (activeDays <= 0) return 0;
-        return parseFloat(((activeAdjustments[0].adjustedSalary / calendarDays) * activeDays).toFixed(2));
-      }
-    }
-    return activeAdjustments[0].adjustedSalary;
-  }
-  
-  return baseline;
+  return getSalaryProration(employee, month, year).payableSalary;
 }
 
-export function getEmployeeForMonth(employee: Employee, month: number): Employee {
-  const histRecord = (employee.historicalPayrollRecords || []).find(r => r.payrollMonth === month);
+export function getPayrollBasicSalary(employee: Employee, month: number, year: number): number {
+  const savedRecord = (employee.historicalPayrollRecords || []).find(record => (
+    record.payrollMonth === month &&
+    (record.payrollYear === undefined || record.payrollYear === year)
+  ));
+  return savedRecord?.basicSalary ?? getAdjustedBasicSalary(employee, month, year);
+}
+
+export function getEmployeeForMonth(employee: Employee, month: number, year?: number): Employee {
+  const histRecord = (employee.historicalPayrollRecords || []).find(r => (
+    r.payrollMonth === month &&
+    (year === undefined || r.payrollYear === undefined || r.payrollYear === year)
+  ));
   if (!histRecord) {
     return employee;
   }
   
   return {
     ...employee,
-    basicSalary: histRecord.basicSalary !== undefined ? histRecord.basicSalary : employee.basicSalary,
     allowanceGeneral: histRecord.allowanceGeneral !== undefined ? histRecord.allowanceGeneral : employee.allowanceGeneral,
     allowanceTransport: histRecord.allowanceTransport !== undefined ? histRecord.allowanceTransport : employee.allowanceTransport,
     allowanceParking: histRecord.allowanceParking !== undefined ? histRecord.allowanceParking : employee.allowanceParking,
@@ -1881,11 +1959,13 @@ export function getEmployeeForMonth(employee: Employee, month: number): Employee
   };
 }
 
-export function calculatePayslip(employee: Employee, month?: number, year?: number): PayslipBreakdown {
-  const mergedEmployee = month !== undefined ? getEmployeeForMonth(employee, month) : employee;
-  const basicSalary = (month !== undefined && year !== undefined)
-    ? getAdjustedBasicSalary(mergedEmployee, month, year)
-    : (mergedEmployee.basicSalary || 0);
+export function calculatePayslip(employee: Employee, month?: number, year?: number, basicSalaryOverride?: number): PayslipBreakdown {
+  const mergedEmployee = month !== undefined ? getEmployeeForMonth(employee, month, year) : employee;
+  const basicSalary = basicSalaryOverride !== undefined
+    ? basicSalaryOverride
+    : (month !== undefined && year !== undefined)
+      ? getPayrollBasicSalary(employee, month, year)
+      : (mergedEmployee.basicSalary || 0);
 
   // Compute individual allowances, falling back to old ones for backwards compatibility
   const allowanceGen = mergedEmployee.allowanceGeneral || 0;

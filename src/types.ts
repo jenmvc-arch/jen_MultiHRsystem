@@ -285,6 +285,7 @@ export interface EmployeeTaxProfile {
 
 export interface HistoricalPayrollRecord {
   payrollMonth: number; // 1 to 12
+  payrollYear?: number;
   basicSalary: number;
   allowanceGeneral?: number;
   allowanceTransport?: number;
@@ -772,5 +773,4 @@ export interface PCBConfiguration {
   activatedBy?: string;
   activatedAt?: string;
 }
-
 

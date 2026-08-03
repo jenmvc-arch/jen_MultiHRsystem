@@ -39,6 +39,7 @@ import {
 } from './data';
 import { getGmt8Timestamp, getGmt8DateString } from './lib/dateUtils';
 import { formatNricOrPassport } from './lib/employeeInput';
+import { getAppTabFromPath, getPathForAppTab } from './lib/appRoutes';
 
 import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
@@ -101,8 +102,12 @@ export default function App() {
   const [isSwitchingEntity, setIsSwitchingEntity] = useState<boolean>(false);
   const [switchingToEntityName, setSwitchingToEntityName] = useState<string>('');
 
-  const [currentTab, setCurrentTab] = useState<AppTab>('dashboard');
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('EMP-84729'); // Sarah Jenkins by default
+  const [currentTab, setCurrentTab] = useState<AppTab>(() => (
+    getAppTabFromPath(window.location.pathname) || 'dashboard'
+  ));
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(() => (
+    new URLSearchParams(window.location.search).get('employeeId') || 'EMP-84729'
+  )); // Sarah Jenkins by default
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   const [globalError, setGlobalError] = useState<{ message: string; stack?: string } | null>(null);
@@ -949,12 +954,38 @@ export default function App() {
     }
   };
 
-  const handleTabChange = (tab: AppTab) => {
+  const handleTabChange = (tab: AppTab, options?: { replace?: boolean; search?: string }) => {
     setCurrentTab(tab);
     if (activeEntityId) {
       localStorage.setItem(`active_tab_${activeEntityId}`, tab);
     }
+
+    const search = options?.search
+      ? (options.search.startsWith('?') ? options.search : `?${options.search}`)
+      : '';
+    const nextUrl = `${getPathForAppTab(tab)}${search}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+
+    if (nextUrl !== currentUrl) {
+      window.history[options?.replace ? 'replaceState' : 'pushState']({ tab }, '', nextUrl);
+    }
   };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const routeTab = getAppTabFromPath(window.location.pathname);
+      if (!routeTab) return;
+
+      setCurrentTab(routeTab);
+      const employeeId = new URLSearchParams(window.location.search).get('employeeId');
+      if (routeTab === 'payslip-viewer' && employeeId) {
+        setSelectedEmployeeId(employeeId);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Dynamic Theme style provider
   const getThemeStyles = (themeName?: 'theme1' | 'theme2' | 'theme3') => {
@@ -1004,6 +1035,12 @@ export default function App() {
   // Global Interactive Settings (State-driven for extra precision)
   const [companyName, setCompanyName] = useState('Acme Global Enterprise');
   const [currencySymbol, setCurrencySymbol] = useState('RM');
+  const [companyAddress, setCompanyAddress] = useState('');
+  const [companyRegistrationNumber, setCompanyRegistrationNumber] = useState('');
+  const [companyTaxReferenceNo, setCompanyTaxReferenceNo] = useState('');
+  const [companyEpfReferenceNo, setCompanyEpfReferenceNo] = useState('');
+  const [companySocsoReferenceNo, setCompanySocsoReferenceNo] = useState('');
+  const [isSavingCompanySettings, setIsSavingCompanySettings] = useState(false);
 
   const [taxRate, setTaxRate] = useState(() => {
     const saved = localStorage.getItem('company_tax_rate');
@@ -1015,6 +1052,11 @@ export default function App() {
     if (activeEntity) {
       setCompanyName(activeEntity.name);
       setCurrencySymbol(activeEntity.currency);
+      setCompanyAddress(activeEntity.address || '');
+      setCompanyRegistrationNumber(activeEntity.registrationNumber || '');
+      setCompanyTaxReferenceNo(activeEntity.taxReferenceNo || '');
+      setCompanyEpfReferenceNo(activeEntity.epfReferenceNo || '');
+      setCompanySocsoReferenceNo(activeEntity.socsoReferenceNo || '');
 
     }
   }, [activeEntityId, activeEntity]);
@@ -1022,11 +1064,21 @@ export default function App() {
   // Restore persisted tab per-entity on entity switch
   useEffect(() => {
     if (activeEntityId) {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('form') || params.has('print')) return;
+
+      const routeTab = getAppTabFromPath(window.location.pathname);
+      if (routeTab) {
+        setCurrentTab(routeTab);
+        localStorage.setItem(`active_tab_${activeEntityId}`, routeTab);
+        return;
+      }
+
       const persistedTab = localStorage.getItem(`active_tab_${activeEntityId}`);
       if (persistedTab) {
-        setCurrentTab(persistedTab as AppTab);
+        handleTabChange(persistedTab as AppTab, { replace: true });
       } else {
-        setCurrentTab('dashboard');
+        handleTabChange('dashboard', { replace: true });
       }
     }
   }, [activeEntityId]);
@@ -1630,20 +1682,12 @@ export default function App() {
     const existingEntity = entities.find(ent => ent.id === id);
     const lookupName = existingEntity ? existingEntity.name : id;
 
-    setEntities(prev => prev.map(ent => {
-      if (ent.id === id) {
-        const updated = { ...ent, ...updates };
-        return updated;
-      }
-      return ent;
-    }));
-
     if (isSupabaseConfigured) {
       try {
         await supabaseClient.update('corporate_entities', id, updates, 'id');
       } catch (err: any) {
         console.error('[Supabase Entity Update] Failed:', err);
-        triggerNotification('Sync Failed', `Could not update entity in Supabase: ${err.message || err}`, 'info');
+        throw new Error(`Could not update company details in Supabase: ${err.message || err}`);
       }
     } else if (isGoogleConfigured) {
       try {
@@ -1663,15 +1707,21 @@ export default function App() {
         await googleSheetsClient.update('corporate_entities', lookupName, payloadUpdates, 'name');
       } catch (err: any) {
         console.error('[Google Sheets Entity Update] Failed:', err);
-        triggerNotification('Sync Failed', `Could not update entity: ${err.message || err}`, 'info');
+        throw new Error(`Could not update company details: ${err.message || err}`);
       }
     }
+
+    setEntities(prev => prev.map(ent => (
+      ent.id === id ? { ...ent, ...updates } : ent
+    )));
   };
 
   // Navigate to document utility
   const handleNavigateToDocument = (employeeId: string) => {
     setSelectedEmployeeId(employeeId);
-    setCurrentTab('payslip-viewer');
+    handleTabChange('payslip-viewer', {
+      search: new URLSearchParams({ employeeId }).toString()
+    });
   };
 
   // New request submission
@@ -1989,9 +2039,9 @@ export default function App() {
               reviewCycles={reviewCycles}
               performances={filteredPerformances}
               payrollRecords2026={filteredPayrollRecords2026}
-              onNavigate={setCurrentTab}
+              onNavigate={handleTabChange}
               onOpenNewEmployeeModal={() => {
-                setCurrentTab('directory');
+                handleTabChange('directory');
                 triggerNotification('Directory Navigated', 'Click Add New Employee to register custom personnel.', 'info');
               }}
               onOpenRequestModal={() => setIsRequestModalOpen(true)}
@@ -2017,7 +2067,7 @@ export default function App() {
             <PayslipDocumentView 
               employees={filteredEmployeesWithHistory}
               selectedEmployeeId={selectedEmployeeId}
-              onBack={() => setCurrentTab('payroll')}
+              onBack={() => handleTabChange('payroll')}
               onShowNotification={triggerNotification}
               activeEntity={activeEntity}
               userRole={currentUserRole || 'Global Administrator'}
@@ -2133,6 +2183,62 @@ export default function App() {
                     />
                   </div>
 
+                  <div className="pt-2 border-t border-neutral-border space-y-4">
+                    <div>
+                      <h3 className="text-xs font-bold text-primary uppercase">Company Registration Details</h3>
+                      <p className="text-[11px] text-on-surface-variant mt-1">Details shown on statutory records, payroll documents and company reports.</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Company Address</label>
+                      <textarea
+                        value={companyAddress}
+                        onChange={(e) => setCompanyAddress(e.target.value)}
+                        rows={3}
+                        className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none resize-y"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">SSM Registration Number</label>
+                        <input
+                          type="text"
+                          value={companyRegistrationNumber}
+                          onChange={(e) => setCompanyRegistrationNumber(e.target.value)}
+                          className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Tax Reference (Employer Number)</label>
+                        <input
+                          type="text"
+                          value={companyTaxReferenceNo}
+                          onChange={(e) => setCompanyTaxReferenceNo(e.target.value)}
+                          className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">EPF Reference Number</label>
+                        <input
+                          type="text"
+                          value={companyEpfReferenceNo}
+                          onChange={(e) => setCompanyEpfReferenceNo(e.target.value)}
+                          className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">SOCSO Reference Number</label>
+                        <input
+                          type="text"
+                          value={companySocsoReferenceNo}
+                          onChange={(e) => setCompanySocsoReferenceNo(e.target.value)}
+                          className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -2189,21 +2295,39 @@ export default function App() {
                 <div className="pt-6 border-t border-neutral-border flex justify-end">
                   <button 
                     onClick={async () => {
-                      localStorage.setItem('company_tax_rate', String(taxRate));
-                      if (activeEntity) {
-                        await handleUpdateEntity(activeEntity.id, {
-                          name: companyName,
-                          currency: currencySymbol
-                        });
-                        triggerNotification('Settings Saved', 'Company settings and global variables synchronized successfully.');
-                      } else {
-                        triggerNotification('Settings Saved', 'Global override variables recalculated successfully.');
+                      if (isSavingCompanySettings) return;
+                      if (!companyName.trim()) {
+                        triggerNotification('Validation Error', 'Company legal entity name is required.', 'info');
+                        return;
                       }
-                      setCurrentTab('dashboard');
+                      setIsSavingCompanySettings(true);
+                      try {
+                        localStorage.setItem('company_tax_rate', String(taxRate));
+                        if (activeEntity) {
+                          await handleUpdateEntity(activeEntity.id, {
+                            name: companyName.trim(),
+                            address: companyAddress.trim(),
+                            registrationNumber: companyRegistrationNumber.trim(),
+                            taxReferenceNo: companyTaxReferenceNo.trim(),
+                            epfReferenceNo: companyEpfReferenceNo.trim(),
+                            socsoReferenceNo: companySocsoReferenceNo.trim(),
+                            currency: currencySymbol
+                          });
+                          triggerNotification('Settings Saved', 'Company profile and global settings synchronized successfully.');
+                        } else {
+                          triggerNotification('Settings Saved', 'Global override variables recalculated successfully.');
+                        }
+                        handleTabChange('dashboard');
+                      } catch (err: any) {
+                        triggerNotification('Save Failed', err.message || 'Company settings could not be saved.', 'info');
+                      } finally {
+                        setIsSavingCompanySettings(false);
+                      }
                     }}
-                    className="bg-primary text-white text-xs font-semibold py-2 px-6 rounded hover:bg-primary-container"
+                    disabled={isSavingCompanySettings}
+                    className="bg-primary text-white text-xs font-semibold py-2 px-6 rounded hover:bg-primary-container disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Apply System Changes
+                    {isSavingCompanySettings ? 'Saving...' : 'Apply System Changes'}
                   </button>
                 </div>
               </div>

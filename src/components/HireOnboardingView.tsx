@@ -30,6 +30,11 @@ import JobApplicationForm from './JobApplicationForm';
 import OnboardingForm from './OnboardingForm';
 import { getGmt8DateString } from '../lib/dateUtils';
 import { getCandidateNameFromApplication } from '../lib/employeeInput';
+import {
+  getHireOnboardingSectionFromPath,
+  getPathForHireOnboardingSection,
+  HireOnboardingSection
+} from '../lib/appRoutes';
 
 const OnboardingPortalView = React.lazy(() => import('./OnboardingPortalView'));
 
@@ -76,9 +81,25 @@ export default function HireOnboardingView({
 }: HireOnboardingViewProps) {
   const [tasks, setTasks] = useState<OnboardingTask[]>(INITIAL_ONBOARDING_TASKS);
   const [selectedCandidateId, setSelectedCandidateId] = useState('CAN-01');
-  const [activeTab, setActiveTab] = useState<
-    'pipeline' | 'application-form' | 'onboarding-form' | 'onboarding-portal'
-  >('pipeline');
+  const [activeTab, setActiveTab] = useState<HireOnboardingSection>(() => (
+    getHireOnboardingSectionFromPath(window.location.pathname)
+  ));
+
+  const navigateToSection = (section: HireOnboardingSection, replace = false) => {
+    setActiveTab(section);
+    const nextPath = getPathForHireOnboardingSection(section);
+    if (window.location.pathname !== nextPath || window.location.search) {
+      window.history[replace ? 'replaceState' : 'pushState']({ section }, '', nextPath);
+    }
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveTab(getHireOnboardingSectionFromPath(window.location.pathname));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Load departments and roles dynamically
   const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
@@ -118,7 +139,7 @@ export default function HireOnboardingView({
 
     await onAddCandidate(newCandidate);
     setSelectedCandidateId(newCandidate.id);
-    setActiveTab('pipeline');
+    navigateToSection('pipeline');
     onShowNotification(
       'Applicant Registered', 
       `Direct application for ${newCandidate.name} has been added to the hiring pipeline.`
@@ -128,7 +149,7 @@ export default function HireOnboardingView({
   const handleOnboardingComplete = async (newEmployee: Employee) => {
     if (!onAddEmployee) throw new Error('Employee enrollment is unavailable.');
     await onAddEmployee(newEmployee);
-    setActiveTab('pipeline');
+    navigateToSection('pipeline');
   };
 
   const handleOnboardingStageAdvance = async (candidateId: string, stage: 'Applied' | 'Interviewing' | 'Offered' | 'Onboarding') => {
@@ -279,7 +300,7 @@ export default function HireOnboardingView({
         <div className="flex flex-wrap items-center gap-2 shrink-0 self-start md:self-auto">
           <div className="flex flex-wrap gap-1 border border-neutral-border rounded-lg p-1 bg-white">
             <button
-              onClick={() => setActiveTab('pipeline')}
+              onClick={() => navigateToSection('pipeline')}
               className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${
                 activeTab === 'pipeline'
                   ? 'bg-primary text-white shadow-sm'
@@ -290,7 +311,7 @@ export default function HireOnboardingView({
               Hiring Pipeline
             </button>
             <button
-              onClick={() => setActiveTab('application-form')}
+              onClick={() => navigateToSection('application-form')}
               className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${
                 activeTab === 'application-form'
                   ? 'bg-primary text-white shadow-sm'
@@ -301,7 +322,7 @@ export default function HireOnboardingView({
               Job Application Form
             </button>
             <button
-              onClick={() => setActiveTab('onboarding-form')}
+              onClick={() => navigateToSection('onboarding-form')}
               className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${
                 activeTab === 'onboarding-form'
                   ? 'bg-primary text-white shadow-sm'
@@ -312,7 +333,7 @@ export default function HireOnboardingView({
               Onboarding Form
             </button>
             <button
-              onClick={() => setActiveTab('onboarding-portal')}
+              onClick={() => navigateToSection('onboarding-portal')}
               className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${
                 activeTab === 'onboarding-portal'
                   ? 'bg-primary text-white shadow-sm'

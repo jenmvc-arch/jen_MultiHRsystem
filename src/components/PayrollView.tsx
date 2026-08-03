@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { CreditCard, Search, Plus, Printer, Download, Image, Mail, Share2, Eye, CheckCircle, TrendingUp, Sliders, DollarSign, Briefcase, FileText, Globe, Building2, Clock } from 'lucide-react';
 import { Employee, CorporateEntity, HistoricalPayrollRecord, PayrollRecord2026 } from '../types';
-import { calculatePayslip, getPayslipLabel, calculateYtd, calculatePcb2026, recalculatePCBFromMonth, getProratedBasicSalary, getAdjustedBasicSalary, getStatutoryDeductions2026, calculateSocsoContribution, getEmployeeForMonth } from '../data';
+import { calculatePayslip, getPayslipLabel, calculateYtd, calculatePcb2026, recalculatePCBFromMonth, getPayrollBasicSalary, getSalaryProration, getStatutoryDeductions2026, calculateSocsoContribution, getEmployeeForMonth } from '../data';
 import PayslipDocumentView from './PayslipDocumentView';
 import SocsoCalculatorCard from './SocsoCalculatorCard';
 
@@ -114,11 +114,10 @@ export default function PayrollView({
   const payYear = Number(parts[1]) || 2026;
   const payMonthIndex = MONTHS_LIST.indexOf(monthName) + 1;
 
-  const dbActiveEmployee = getEmployeeForMonth(rawActiveEmployee, payMonthIndex);
+  const dbActiveEmployee = getEmployeeForMonth(rawActiveEmployee, payMonthIndex, payYear);
 
   const activeEmployee = isEditing ? {
     ...dbActiveEmployee,
-    basicSalary: tempBasic,
     allowanceGeneral: hasAllowances ? allowanceGen : 0,
     allowanceTransport: hasAllowances ? allowanceTrans : 0,
     allowanceParking: hasAllowances ? allowancePark : 0,
@@ -140,39 +139,22 @@ export default function PayrollView({
     taxPcb: tempTax
   } : dbActiveEmployee;
 
-  const payrollBreakdown = calculatePayslip(activeEmployee, payMonthIndex, payYear);
+  const payrollBreakdown = calculatePayslip(
+    activeEmployee,
+    payMonthIndex,
+    payYear,
+    isEditing ? tempBasic : undefined
+  );
 
-  let baseSalaryBeforeProration = activeEmployee.basicSalary;
-  if (activeEmployee.salaryAdjustments && activeEmployee.salaryAdjustments.length > 0) {
-    const activeAdjustments = activeEmployee.salaryAdjustments
-      .filter(adj => {
-        const effDate = new Date(adj.effectiveDate);
-        const effYear = effDate.getFullYear();
-        const effMonth = effDate.getMonth() + 1;
-        return (effYear < payYear) || (effYear === payYear && effMonth <= payMonthIndex);
-      })
-      .sort((a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime());
-    if (activeAdjustments.length > 0) {
-      baseSalaryBeforeProration = activeAdjustments[0].adjustedSalary;
-    }
-  }
-
-  const actualBasic = getAdjustedBasicSalary(activeEmployee, payMonthIndex, payYear);
-  const prorationDeduction = parseFloat((baseSalaryBeforeProration - actualBasic).toFixed(2));
+  const salaryProration = getSalaryProration(activeEmployee, payMonthIndex, payYear);
+  const baseSalaryBeforeProration = salaryProration.fullPeriodSalary;
+  const actualBasic = isEditing
+    ? tempBasic
+    : getPayrollBasicSalary(rawActiveEmployee, payMonthIndex, payYear);
 
   let prorationDetails = '';
-  if (prorationDeduction > 0 && activeEmployee.dateOfJoined) {
-    const joinDate = new Date(activeEmployee.dateOfJoined);
-    const joinYear = joinDate.getFullYear();
-    const joinMonth = joinDate.getMonth() + 1;
-    if (joinYear === payYear && joinMonth === payMonthIndex) {
-      const joinDay = joinDate.getDate();
-      const calendarDays = new Date(payYear, payMonthIndex, 0).getDate();
-      const unpaidDays = joinDay - 1;
-      prorationDetails = `Joined mid-month on ${joinDate.toLocaleDateString('en-MY', {day: 'numeric', month: 'short', year: 'numeric'})}. Deducted ${unpaidDays}/${calendarDays} unpaid days.`;
-    } else {
-      prorationDetails = `Deduction for incomplete month of service.`;
-    }
+  if (salaryProration.isProrated) {
+    prorationDetails = `Section 18A: RM ${baseSalaryBeforeProration.toFixed(2)} × ${salaryProration.eligibleDays}/${salaryProration.calendarDays} eligible calendar days.`;
   }
 
   const isEligible = 
@@ -198,8 +180,7 @@ export default function PayrollView({
     : 0;
 
   const startEdit = () => {
-    const proratedBasic = getAdjustedBasicSalary(activeEmployee, payMonthIndex, payYear);
-    setTempBasic(proratedBasic);
+    setTempBasic(getPayrollBasicSalary(rawActiveEmployee, payMonthIndex, payYear));
     const hasAnyAllowance = (
       (activeEmployee.allowanceGeneral || 0) > 0 ||
       (activeEmployee.allowanceTransport !== undefined ? activeEmployee.allowanceTransport : activeEmployee.transportAllowance || 0) > 0 ||
@@ -340,6 +321,7 @@ export default function PayrollView({
 
     const newRecord: HistoricalPayrollRecord = {
       payrollMonth: payMonthIndex,
+      payrollYear: payYear,
       basicSalary: tempBasic,
       allowanceGeneral: hasAllowances ? allowanceGen : 0,
       overtime: activeEmployee.overtime || 0,
@@ -352,7 +334,10 @@ export default function PayrollView({
     };
 
     const currentRecords = activeEmployee.historicalPayrollRecords || [];
-    const filtered = currentRecords.filter(r => r.payrollMonth !== payMonthIndex);
+    const filtered = currentRecords.filter(record => !(
+      record.payrollMonth === payMonthIndex &&
+      (record.payrollYear === undefined || record.payrollYear === payYear)
+    ));
     const updatedRecords = [...filtered, newRecord].sort((a, b) => a.payrollMonth - b.payrollMonth);
 
     const recalculated = recalculatePCBFromMonth({
@@ -363,7 +348,6 @@ export default function PayrollView({
     });
 
     await onUpdateEmployeeSalary(activeEmployee.id, {
-      basicSalary: tempBasic,
       allowanceGeneral: hasAllowances ? allowanceGen : 0,
       allowanceTransport: hasAllowances ? allowanceTrans : 0,
       allowanceParking: hasAllowances ? allowancePark : 0,
@@ -864,23 +848,11 @@ export default function PayrollView({
                       <span className="text-[10px] text-on-surface-variant mt-1 block font-medium">
                         Salary is managed strictly through Employee Management & Adjustments.
                       </span>
-                      {activeEmployee.dateOfJoined && (() => {
-                        const joinDate = new Date(activeEmployee.dateOfJoined);
-                        if (isNaN(joinDate.getTime())) return null;
-                        const joinYear = joinDate.getFullYear();
-                        const joinMonth = joinDate.getMonth() + 1;
-                        const joinDay = joinDate.getDate();
-                        if (joinYear === payYear && joinMonth === payMonthIndex) {
-                          const calendarDays = new Date(payYear, payMonthIndex, 0).getDate();
-                          const activeDays = calendarDays - joinDay + 1;
-                          return (
-                            <span className="text-[10px] text-primary font-bold mt-1 block">
-                              Joined {joinDate.toLocaleDateString('en-MY', {day: 'numeric', month: 'short', year: 'numeric'})}. Prorated: {activeDays}/{calendarDays} days.
-                            </span>
-                          );
-                        }
-                        return null;
-                      })()}
+                      {salaryProration.isProrated && (
+                        <span className="text-[10px] text-primary font-bold mt-1 block">
+                          Section 18A prorated salary: {salaryProration.eligibleDays}/{salaryProration.calendarDays} eligible calendar days.
+                        </span>
+                      )}
                     </div>
                     {hasAllowances && (
                       <>
@@ -1277,7 +1249,13 @@ export default function PayrollView({
                     <span className="w-2 h-2 rounded-full bg-green-600" /> Earnings & Additions
                   </h4>
                   <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between"><span>{getPayslipLabel(activeEmployee.employmentType)}</span><span className="font-mono">RM {baseSalaryBeforeProration.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                    <div className="flex justify-between">
+                      <div>
+                        <span>{salaryProration.isProrated ? `Prorated ${getPayslipLabel(activeEmployee.employmentType)}` : getPayslipLabel(activeEmployee.employmentType)}</span>
+                        {prorationDetails && <p className="text-[10px] text-on-surface-variant font-medium mt-0.5 leading-tight">{prorationDetails}</p>}
+                      </div>
+                      <span className="font-mono">RM {actualBasic.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                    </div>
                     
                     {/* Allowances breakdown */}
                     {(activeEmployee.allowanceGeneral || 0) > 0 && (
@@ -1363,7 +1341,7 @@ export default function PayrollView({
 
                     <div className="flex justify-between border-t border-neutral-border/30 pt-1.5 font-bold text-primary">
                       <span>Total Earnings & Reimbursements</span>
-                      <span className="font-mono">RM {(payrollBreakdown.grossEarnings + prorationDeduction + payrollBreakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                      <span className="font-mono">RM {(payrollBreakdown.grossEarnings + payrollBreakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                     </div>
                   </div>
                 </div>
@@ -1374,15 +1352,6 @@ export default function PayrollView({
                     <span className="w-2 h-2 rounded-full bg-error" /> Deductions
                   </h4>
                   <div className="space-y-1.5 text-xs">
-                    {prorationDeduction > 0 && (
-                      <div className="flex justify-between bg-red-50 p-1.5 rounded">
-                        <div>
-                          <span className="font-semibold text-error text-[11px]">Prorated Basic Salary Deduction</span>
-                          {prorationDetails && <p className="text-[10px] text-on-surface-variant font-medium mt-0.5 leading-tight">{prorationDetails}</p>}
-                        </div>
-                        <span className="font-mono text-error font-semibold">RM {prorationDeduction.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
-                      </div>
-                    )}
                     <div className="flex justify-between"><span>EPF (Employee {activeEmployee.epfRateEmployee}%)</span><span className="font-mono">RM {payrollBreakdown.epfEmployeeValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     {payrollBreakdown.socsoEmployeeVal > 0 && (
                       <div className="flex justify-between"><span>SOCSO (Invalidity)</span><span className="font-mono">RM {payrollBreakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
@@ -1421,7 +1390,7 @@ export default function PayrollView({
 
                     <div className="flex justify-between border-t border-neutral-border/30 pt-1.5 font-bold text-error">
                       <span>Total Deductions</span>
-                      <span className="font-mono">RM {(payrollBreakdown.totalDeductions + prorationDeduction).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                      <span className="font-mono">RM {payrollBreakdown.totalDeductions.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                     </div>
                   </div>
                 </div>

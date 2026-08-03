@@ -17,6 +17,7 @@ async function main() {
   const id = `codex-save-test-${token}`;
   const email = `${id}@example.invalid`;
   const candidateId = `CAN-${token}`;
+  const entityId = `ENTITY-SAVE-TEST-${token}`;
 
   try {
     await supabaseClient.insert('employees', {
@@ -116,6 +117,43 @@ async function main() {
 
     await supabaseClient.delete('candidates', candidateId);
 
+    await supabaseClient.insert('corporate_entities', {
+      id: entityId,
+      name: 'Company Settings Persistence Test',
+      registrationNumber: 'TEST-SSM-001',
+      address: 'Initial test address',
+      taxReferenceNo: 'TEST-TAX-001',
+      epfReferenceNo: 'TEST-EPF-001',
+      socsoReferenceNo: 'TEST-SOCSO-001',
+      currency: 'RM',
+      isActive: true,
+    });
+    await supabaseClient.update('corporate_entities', entityId, {
+      address: 'Updated company address, Kuala Lumpur',
+      registrationNumber: 'TEST-SSM-002',
+      taxReferenceNo: 'TEST-TAX-002',
+      epfReferenceNo: 'TEST-EPF-002',
+      socsoReferenceNo: 'TEST-SOCSO-002',
+    });
+
+    const { data: company, error: companyReadError } = await raw
+      .from('corporate_entities')
+      .select('address,registration_number,tax_reference_no,epf_reference_no,socso_reference_no')
+      .eq('id', entityId)
+      .single();
+    if (companyReadError) throw companyReadError;
+    if (
+      company.address !== 'Updated company address, Kuala Lumpur' ||
+      company.registration_number !== 'TEST-SSM-002' ||
+      company.tax_reference_no !== 'TEST-TAX-002' ||
+      company.epf_reference_no !== 'TEST-EPF-002' ||
+      company.socso_reference_no !== 'TEST-SOCSO-002'
+    ) {
+      throw new Error('Company registration settings did not persist.');
+    }
+
+    await supabaseClient.delete('corporate_entities', entityId);
+
     await supabaseClient.delete('employees', email, 'email');
     const { data: remaining, error: verifyError } = await raw
       .from('employees')
@@ -126,10 +164,11 @@ async function main() {
       throw new Error('Temporary employee deletion did not persist.');
     }
 
-    console.log('Employee Supabase persistence test passed.');
+    console.log('Employee, candidate, and company settings Supabase persistence test passed.');
   } finally {
     await raw.from('candidates').delete().eq('id', candidateId);
     await raw.from('employees').delete().eq('email', email);
+    await raw.from('corporate_entities').delete().eq('id', entityId);
   }
 }
 

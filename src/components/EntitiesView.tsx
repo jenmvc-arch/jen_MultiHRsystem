@@ -32,7 +32,7 @@ interface EntitiesViewProps {
   entities: CorporateEntity[];
   employees: Employee[];
   onAddEntity: (entity: CorporateEntity) => void;
-  onUpdateEntity: (id: string, updates: Partial<CorporateEntity>) => void;
+  onUpdateEntity: (id: string, updates: Partial<CorporateEntity>) => Promise<void>;
   onShowNotification: (title: string, message: string) => void;
 }
 
@@ -130,7 +130,7 @@ export default function EntitiesView({
     onShowNotification('Subsidiary Added', `"${newEntity.name}" has been registered with customized logo & branding.`);
   };
 
-  const handleEditEntitySubmit = (e: React.FormEvent) => {
+  const handleEditEntitySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingEntity) return;
 
@@ -155,10 +155,14 @@ export default function EntitiesView({
       googleScriptUrl: formGoogleScriptUrl
     };
 
-    onUpdateEntity(editingEntity.id, updates);
-    setIsEditModalOpen(false);
-    setEditingEntity(null);
-    onShowNotification('Subsidiary Updated', `Corporate details & branding for ${nameStr} have been updated.`);
+    try {
+      await onUpdateEntity(editingEntity.id, updates);
+      setIsEditModalOpen(false);
+      setEditingEntity(null);
+      onShowNotification('Subsidiary Updated', `Corporate details & branding for ${nameStr} have been updated.`);
+    } catch (err: any) {
+      onShowNotification('Update Failed', err.message || `Corporate details for ${nameStr} could not be saved.`);
+    }
   };
 
   const activeEntityEmployees = employees.filter(emp => emp.entityId === selectedEntityId);

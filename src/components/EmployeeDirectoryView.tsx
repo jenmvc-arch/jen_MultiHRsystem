@@ -54,7 +54,7 @@ import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
 import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css';
 
 registerPlugin(FilePondPluginImagePreview);
-import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getAdjustedBasicSalary } from '../data';
+import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getAdjustedBasicSalary, getPayrollBasicSalary, getSalaryProration } from '../data';
 
 interface EmployeeDirectoryViewProps {
   employees: Employee[];
@@ -1656,37 +1656,13 @@ export default function EmployeeDirectoryView({
           
           const modalBreakdown = calculatePayslip(previewEmployee, monthIndexVal, yearVal);
 
-          let modalBaseSalaryBeforeProration = previewEmployee.basicSalary;
-          if (previewEmployee.salaryAdjustments && previewEmployee.salaryAdjustments.length > 0) {
-            const activeAdjustments = previewEmployee.salaryAdjustments
-              .filter(adj => {
-                const effDate = new Date(adj.effectiveDate);
-                const effYear = effDate.getFullYear();
-                const effMonth = effDate.getMonth() + 1;
-                return (effYear < yearVal) || (effYear === yearVal && effMonth <= monthIndexVal);
-              })
-              .sort((a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime());
-            if (activeAdjustments.length > 0) {
-              modalBaseSalaryBeforeProration = activeAdjustments[0].adjustedSalary;
-            }
-          }
-
-          const modalActualBasic = getAdjustedBasicSalary(previewEmployee, monthIndexVal, yearVal);
-          const modalProrationDeduction = parseFloat((modalBaseSalaryBeforeProration - modalActualBasic).toFixed(2));
+          const modalSalaryProration = getSalaryProration(previewEmployee, monthIndexVal, yearVal);
+          const modalBaseSalaryBeforeProration = modalSalaryProration.fullPeriodSalary;
+          const modalActualBasic = getPayrollBasicSalary(previewEmployee, monthIndexVal, yearVal);
 
           let modalProrationDetails = '';
-          if (modalProrationDeduction > 0 && previewEmployee.dateOfJoined) {
-            const joinDate = new Date(previewEmployee.dateOfJoined);
-            const joinYear = joinDate.getFullYear();
-            const joinMonth = joinDate.getMonth() + 1;
-            if (joinYear === yearVal && joinMonth === monthIndexVal) {
-              const joinDay = joinDate.getDate();
-              const calendarDays = new Date(yearVal, monthIndexVal, 0).getDate();
-              const unpaidDays = joinDay - 1;
-              modalProrationDetails = `Joined mid-month on ${formatToDDMMMYYYY(previewEmployee.dateOfJoined)}. Deducted ${unpaidDays}/${calendarDays} unpaid days.`;
-            } else {
-              modalProrationDetails = `Deduction for incomplete month of service.`;
-            }
+          if (modalSalaryProration.isProrated) {
+            modalProrationDetails = `Section 18A: RM ${modalBaseSalaryBeforeProration.toFixed(2)} × ${modalSalaryProration.eligibleDays}/${modalSalaryProration.calendarDays} eligible calendar days.`;
           }
 
           return (
@@ -1896,8 +1872,11 @@ export default function EmployeeDirectoryView({
                       <table className="w-full text-sm">
                         <tbody>
                           <tr className="border-b border-outline-variant/30">
-                            <td className="py-2 text-on-surface text-left">{getPayslipLabel(previewEmployee.employmentType)}</td>
-                            <td className="py-2 text-right text-on-surface font-mono">RM {modalBaseSalaryBeforeProration.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                            <td className="py-2 text-on-surface text-left">
+                              {modalSalaryProration.isProrated ? `Prorated ${getPayslipLabel(previewEmployee.employmentType)}` : getPayslipLabel(previewEmployee.employmentType)}
+                              {modalProrationDetails && <p className="text-[10px] text-on-surface-variant font-medium mt-0.5 leading-tight">{modalProrationDetails}</p>}
+                            </td>
+                            <td className="py-2 text-right text-on-surface font-mono">RM {modalActualBasic.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                           </tr>
 
                           {/* Allowances */}
@@ -1961,7 +1940,7 @@ export default function EmployeeDirectoryView({
 
                           <tr className="font-bold text-primary">
                             <td className="py-3 text-on-surface text-left font-bold">Total Earnings & Additions</td>
-                            <td className="py-3 text-right font-mono">RM {(modalBreakdown.grossEarnings + modalProrationDeduction + modalBreakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                            <td className="py-3 text-right font-mono">RM {(modalBreakdown.grossEarnings + modalBreakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                           </tr>
                         </tbody>
                       </table>
@@ -1974,17 +1953,6 @@ export default function EmployeeDirectoryView({
                       </h3>
                       <table className="w-full text-sm">
                         <tbody>
-                          {modalProrationDeduction > 0 && (
-                            <tr className="border-b border-outline-variant/30 bg-red-50/40">
-                              <td className="py-2 text-on-surface text-left pl-1">
-                                <div>
-                                  <span className="font-semibold text-error">Prorated Basic Salary Deduction</span>
-                                  <p className="text-[10px] text-on-surface-variant font-medium mt-0.5 leading-tight">{modalProrationDetails}</p>
-                                </div>
-                              </td>
-                              <td className="py-2 text-right text-error font-mono pr-1">RM {modalProrationDeduction.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
-                            </tr>
-                          )}
                           <tr className="border-b border-outline-variant/30">
                             <td className="py-2 text-on-surface text-left">EPF (Employee {previewEmployee.epfRateEmployee}%)</td>
                             <td className="py-2 text-right text-error font-mono">RM {modalBreakdown.epfEmployeeValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
@@ -2010,7 +1978,7 @@ export default function EmployeeDirectoryView({
 
                           <tr className="font-bold text-error">
                             <td className="py-3 text-on-surface text-left font-bold">Total Deductions</td>
-                            <td className="py-3 text-right font-mono">RM {(modalBreakdown.totalDeductions + modalProrationDeduction).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                            <td className="py-3 text-right font-mono">RM {modalBreakdown.totalDeductions.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                           </tr>
                         </tbody>
                       </table>

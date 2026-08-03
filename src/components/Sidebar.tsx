@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { AppTab, CorporateEntity } from '../types';
 import { getDirectLogoUrl } from '../data';
+import { getPathForAppTab } from '../lib/appRoutes';
 
 interface SidebarProps {
   currentTab: AppTab;
@@ -105,9 +106,12 @@ export default function Sidebar({
               const Icon = item.icon;
               const isActive = currentTab === item.id;
               return (
-                <button
+                <a
                   key={item.id}
-                  onClick={() => {
+                  href={getPathForAppTab(item.id)}
+                  onClick={(event) => {
+                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                    event.preventDefault();
                     onTabChange(item.id);
                     onMobileClose();
                   }}
@@ -120,7 +124,7 @@ export default function Sidebar({
                 >
                   <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-[#f7f0e0]' : 'text-[#f7f0e0]/75'}`} />
                   {item.label}
-                </button>
+                </a>
               );
             })}
           </div>
@@ -136,9 +140,12 @@ export default function Sidebar({
               const Icon = item.icon;
               const isActive = currentTab === item.id;
               return (
-                <button
+                <a
                   key={item.id}
-                  onClick={() => {
+                  href={getPathForAppTab(item.id)}
+                  onClick={(event) => {
+                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                    event.preventDefault();
                     onTabChange(item.id);
                     onMobileClose();
                   }}
@@ -151,7 +158,7 @@ export default function Sidebar({
                 >
                   <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-[#f7f0e0]' : 'text-[#f7f0e0]/75'}`} />
                   {item.label}
-                </button>
+                </a>
               );
             })}
           </div>
@@ -164,9 +171,12 @@ export default function Sidebar({
           const Icon = item.icon;
           const isActive = currentTab === item.id;
           return (
-            <button
+            <a
               key={item.id}
-              onClick={() => {
+              href={getPathForAppTab(item.id)}
+              onClick={(event) => {
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
                 onTabChange(item.id);
                 onMobileClose();
               }}
@@ -179,7 +189,7 @@ export default function Sidebar({
             >
               <Icon className="w-4 h-4" />
               {item.label}
-            </button>
+            </a>
           );
         })}
       </div>

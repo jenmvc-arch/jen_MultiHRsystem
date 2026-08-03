@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import { Employee, CorporateEntity } from '../types';
-import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getAdjustedBasicSalary, calculateSocsoContribution } from '../data';
+import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getPayrollBasicSalary, getSalaryProration, calculateSocsoContribution } from '../data';
 import { formatToDDMMMYYYY } from '../lib/dateUtils';
 
 // Create styles for React PDF
@@ -430,7 +430,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
   const reimbursementVal = employee.reimbursementAmount || 0;
   const unpaidLeaveVal = employee.unpaidLeave || 0;
 
-  const basicSalaryForSocso = getAdjustedBasicSalary(employee, month, year);
+  const basicSalaryForSocso = getPayrollBasicSalary(employee, month, year);
   const payrollItemsForSocso = [
     { code: 'basic_salary', amount: basicSalaryForSocso },
     { code: 'overtime', amount: overtimeVal },
@@ -471,23 +471,8 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
   const epfEmployerValue = breakdown.epfEmployerValue;
 
   // Proration Deduction details
-  let baseSalaryBeforeProration = employee.basicSalary;
-  if (employee.salaryAdjustments && employee.salaryAdjustments.length > 0) {
-    const activeAdjustments = employee.salaryAdjustments
-      .filter(adj => {
-        const effDate = new Date(adj.effectiveDate);
-        const effYear = effDate.getFullYear();
-        const effMonth = effDate.getMonth() + 1;
-        return (effYear < year) || (effYear === year && effMonth <= month);
-      })
-      .sort((a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime());
-    if (activeAdjustments.length > 0) {
-      baseSalaryBeforeProration = activeAdjustments[0].adjustedSalary;
-    }
-  }
-
-  const actualBasic = getAdjustedBasicSalary(employee, month, year);
-  const prorationDeduction = parseFloat((baseSalaryBeforeProration - actualBasic).toFixed(2));
+  const salaryProration = getSalaryProration(employee, month, year);
+  const actualBasic = getPayrollBasicSalary(employee, month, year);
 
   // Calendar dates
   const monthsList = [
@@ -604,8 +589,8 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             </View>
 
             <View style={styles.tableRow}>
-              <Text style={styles.itemName}>{getPayslipLabel(employee.employmentType)}</Text>
-              <Text style={styles.itemVal}>{formatCurrency(baseSalaryBeforeProration)}</Text>
+              <Text style={styles.itemName}>{salaryProration.isProrated ? `Prorated ${getPayslipLabel(employee.employmentType)}` : getPayslipLabel(employee.employmentType)}</Text>
+              <Text style={styles.itemVal}>{formatCurrency(actualBasic)}</Text>
             </View>
 
             {allowanceGen > 0 && (
@@ -691,7 +676,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
 
             <View style={styles.tableTotalRow}>
               <Text style={styles.tableTotalText}>Total Earnings & Additions</Text>
-              <Text style={styles.tableTotalText}>{formatCurrency(breakdown.grossEarnings + prorationDeduction + breakdown.reimbursementsSum)}</Text>
+              <Text style={styles.tableTotalText}>{formatCurrency(breakdown.grossEarnings + breakdown.reimbursementsSum)}</Text>
             </View>
           </View>
 
@@ -704,13 +689,6 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
               <Text style={styles.tableThText}>Description</Text>
               <Text style={styles.tableThText}>Amount (RM)</Text>
             </View>
-
-            {prorationDeduction > 0 && (
-              <View style={[styles.tableRow, { backgroundColor: '#fef2f2' }]}>
-                <Text style={[styles.itemName, { color: '#A32626', fontFamily: 'Helvetica-Bold' }]}>Prorated Salary Deduction</Text>
-                <Text style={[styles.itemVal, { color: '#A32626' }]}>{formatCurrency(prorationDeduction)}</Text>
-              </View>
-            )}
 
             {epfEmployeeValue > 0 && (
               <View style={styles.tableRow}>
@@ -784,7 +762,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
 
             <View style={styles.tableTotalRow}>
               <Text style={styles.tableTotalText}>Total Deductions</Text>
-              <Text style={styles.tableTotalText}>{formatCurrency(breakdown.totalDeductions + prorationDeduction)}</Text>
+              <Text style={styles.tableTotalText}>{formatCurrency(breakdown.totalDeductions)}</Text>
             </View>
           </View>
         </View>
@@ -795,7 +773,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Gross Pay</Text>
             <Text style={styles.summaryValue}>
-              {formatCurrency(breakdown.grossEarnings + prorationDeduction + breakdown.reimbursementsSum)}
+              {formatCurrency(breakdown.grossEarnings + breakdown.reimbursementsSum)}
             </Text>
           </View>
 
@@ -803,7 +781,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Total Deductions</Text>
             <Text style={styles.summaryValue}>
-              {formatCurrency(breakdown.totalDeductions + prorationDeduction)}
+              {formatCurrency(breakdown.totalDeductions)}
             </Text>
           </View>
 
