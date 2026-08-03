@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { RotateCcw, PenTool, CheckCircle, Type, Sparkles } from 'lucide-react';
+import { RotateCcw, PenTool, CheckCircle } from 'lucide-react';
 
 interface HandwritingCanvasProps {
   label?: string;
@@ -23,12 +23,8 @@ export const HandwritingCanvas: React.FC<HandwritingCanvasProps> = ({
   onSaveSignature,
   onClear,
   disabled = false,
-  signerName,
-  defaultInitialText,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [activeTab, setActiveTab] = useState<'draw' | 'type'>('draw');
-  const [typedText, setTypedText] = useState<string>(defaultInitialText || '');
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasStrokes, setHasStrokes] = useState(Boolean(existingDataUrl));
   const [lastPoint, setLastPoint] = useState<{ x: number; y: number } | null>(null);
@@ -224,59 +220,6 @@ export const HandwritingCanvas: React.FC<HandwritingCanvasProps> = ({
     if (onClear) onClear();
   };
 
-  // Generate stylized typed initial/signature
-  const generateTypedSignature = (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    ctx.save();
-    ctx.fillStyle = '#810912';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    const isInitial = trimmed.length <= 4;
-    const fontSize = isInitial ? 48 : 34;
-    ctx.font = `italic bold ${fontSize}px "Caveat", "Brush Script MT", "Segoe Script", "Apple Chancery", cursive`;
-
-    ctx.fillText(trimmed, canvas.width / 2, canvas.height / 2 - 4);
-
-    // Subtle signature underline
-    ctx.beginPath();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#810912';
-    const textWidth = ctx.measureText(trimmed).width;
-    const lineStartX = Math.max(20, (canvas.width - textWidth) / 2 - 10);
-    const lineEndX = Math.min(canvas.width - 20, (canvas.width + textWidth) / 2 + 10);
-    ctx.moveTo(lineStartX, canvas.height / 2 + (isInitial ? 24 : 18));
-    ctx.lineTo(lineEndX, canvas.height / 2 + (isInitial ? 24 : 18));
-    ctx.stroke();
-
-    ctx.restore();
-
-    setHasStrokes(true);
-    const drawing = exportCroppedDrawing(canvas);
-    if (drawing) {
-      onSaveSignature(drawing);
-    }
-  };
-
-  const quickInitial = signerName
-    ? signerName
-        .split(' ')
-        .filter(Boolean)
-        .map((n) => n[0])
-        .join('')
-        .substring(0, 3)
-        .toUpperCase()
-    : 'SL';
-
   return (
     <div className="w-full flex flex-col gap-2.5">
       {/* Header with Title & Action Controls */}
@@ -291,36 +234,6 @@ export const HandwritingCanvas: React.FC<HandwritingCanvasProps> = ({
         </div>
 
         <div className="flex items-center gap-2 self-end sm:self-auto">
-          {/* Mode Switcher */}
-          <div className="flex items-center bg-[#f0eded] p-0.5 rounded-lg border border-[#e0bfbc]/40 text-[11px]">
-            <button
-              type="button"
-              onClick={() => setActiveTab('draw')}
-              disabled={disabled}
-              className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                activeTab === 'draw'
-                  ? 'bg-white text-[#810912] shadow-xs'
-                  : 'text-[#59413f] hover:text-[#1b1c1c]'
-              }`}
-            >
-              <PenTool className="w-3 h-3" />
-              <span>Draw</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('type')}
-              disabled={disabled}
-              className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                activeTab === 'type'
-                  ? 'bg-white text-[#810912] shadow-xs'
-                  : 'text-[#59413f] hover:text-[#1b1c1c]'
-              }`}
-            >
-              <Type className="w-3 h-3" />
-              <span>Type</span>
-            </button>
-          </div>
-
           <button
             type="button"
             onClick={handleClear}
@@ -332,41 +245,6 @@ export const HandwritingCanvas: React.FC<HandwritingCanvasProps> = ({
           </button>
         </div>
       </div>
-
-      {/* Quick Initial Helper Bar for Type Mode */}
-      {activeTab === 'type' && (
-        <div className="flex items-center gap-2 p-2 bg-[#FAF6EF] border border-[#e0bfbc] rounded-lg animate-in fade-in duration-150">
-          <input
-            type="text"
-            value={typedText}
-            onChange={(e) => setTypedText(e.target.value)}
-            placeholder={`Type initials (e.g. ${quickInitial})`}
-            disabled={disabled}
-            className="flex-1 px-3 py-1.5 text-xs bg-white border border-[#e0bfbc] rounded-md font-medium text-[#1b1c1c] focus:outline-hidden focus:border-[#810912] focus:ring-1 focus:ring-[#810912]"
-          />
-          <button
-            type="button"
-            onClick={() => generateTypedSignature(typedText || quickInitial)}
-            disabled={disabled || (!typedText && !quickInitial)}
-            className="px-3 py-1.5 bg-[#810912] hover:bg-[#a32626] text-white text-xs font-bold rounded-md shadow-xs transition-all cursor-pointer flex items-center gap-1 shrink-0"
-          >
-            <Sparkles className="w-3 h-3 text-[#D4AF37]" />
-            <span>Generate Mark</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setTypedText(quickInitial);
-              generateTypedSignature(quickInitial);
-            }}
-            disabled={disabled}
-            className="px-2.5 py-1.5 bg-white border border-[#810912]/30 hover:bg-[#810912]/10 text-[#810912] text-xs font-bold rounded-md transition-all cursor-pointer shrink-0"
-            title={`Quickly insert ${quickInitial}`}
-          >
-            ⚡ {quickInitial}
-          </button>
-        </div>
-      )}
 
       {/* Canvas Drawing Surface */}
       <div className="relative w-full rounded-xl border-2 border-dashed border-[#810912]/30 bg-[#FAF6EF] overflow-hidden group touch-none select-none">
@@ -389,14 +267,10 @@ export const HandwritingCanvas: React.FC<HandwritingCanvasProps> = ({
           <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center text-[#810912]/50 gap-1 p-3 text-center">
             <PenTool className="w-5 h-5 animate-pulse text-[#810912]" />
             <span className="text-xs font-extrabold uppercase tracking-wider text-[#810912]">
-              {activeTab === 'draw'
-                ? 'Handwrite Signature / Initial Here'
-                : 'Click "Generate Mark" or draw with pen above'}
+              Handwrite Signature / Initial Here
             </span>
             <span className="text-[10px] text-[#59413f]">
-              {activeTab === 'draw'
-                ? 'Use mouse, touchpad, stylus, or touchscreen'
-                : `Type initials (e.g. ${quickInitial}) above to generate signature`}
+              Use mouse, touchpad, stylus, or touchscreen
             </span>
           </div>
         )}

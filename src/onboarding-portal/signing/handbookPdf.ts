@@ -141,7 +141,7 @@ function validatePlacementBounds(page: PDFPage, placement: HandbookStampPlacemen
   }
 }
 
-function formatMalaysiaDate(isoDate: string): string {
+function formatMalaysiaTimestamp(isoDate: string): string {
   const date = new Date(isoDate);
   if (Number.isNaN(date.getTime())) {
     throw new Error(`Invalid signature timestamp: ${isoDate}.`);
@@ -151,6 +151,9 @@ function formatMalaysiaDate(isoDate: string): string {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
   }).format(date);
 }
 
@@ -185,12 +188,159 @@ function stampMark(
     height: fitted.height,
   });
 
-  page.drawText(formatMalaysiaDate(capturedAt), {
+  page.drawText(formatMalaysiaTimestamp(capturedAt), {
     x: placement.date.x,
     y: topLeftY(page, placement.date.y, placement.date.fontSize ?? 8),
     size: placement.date.fontSize ?? 8,
     font,
     color: DARK,
+  });
+}
+
+function prependQuizResultSummary(
+  pdf: PDFDocument,
+  audit: HandbookAuditData,
+  font: PDFFont,
+  boldFont: PDFFont
+) {
+  const page = pdf.insertPage(0, [A4_WIDTH, A4_HEIGHT]);
+  drawAuditHeader(page, 'SIGNED EMPLOYEE HANDBOOK', font, boldFont);
+
+  page.drawText('QUIZ RESULT SUMMARY', {
+    x: PAGE_MARGIN,
+    y: A4_HEIGHT - 112,
+    size: 20,
+    font: boldFont,
+    color: RED,
+  });
+  page.drawText(
+    'This summary is followed by the complete employee handbook with the employee\'s handwritten marks and timestamps.',
+    {
+      x: PAGE_MARGIN,
+      y: A4_HEIGHT - 134,
+      size: 8.5,
+      font,
+      color: MUTED,
+      maxWidth: A4_WIDTH - PAGE_MARGIN * 2,
+    }
+  );
+
+  page.drawRectangle({
+    x: PAGE_MARGIN,
+    y: A4_HEIGHT - 285,
+    width: A4_WIDTH - PAGE_MARGIN * 2,
+    height: 120,
+    color: LIGHT,
+    borderColor: RED,
+    borderWidth: 0.75,
+  });
+  page.drawText(`${audit.quizScorePercent}%`, {
+    x: PAGE_MARGIN + 22,
+    y: A4_HEIGHT - 232,
+    size: 34,
+    font: boldFont,
+    color: RED,
+  });
+  page.drawText('FINAL SCORE', {
+    x: PAGE_MARGIN + 24,
+    y: A4_HEIGHT - 253,
+    size: 8,
+    font: boldFont,
+    color: MUTED,
+  });
+  page.drawText(audit.quizGrade, {
+    x: PAGE_MARGIN + 165,
+    y: A4_HEIGHT - 224,
+    size: 15,
+    font: boldFont,
+    color: DARK,
+    maxWidth: A4_WIDTH - PAGE_MARGIN * 2 - 185,
+  });
+  page.drawText('ASSESSMENT GRADE', {
+    x: PAGE_MARGIN + 165,
+    y: A4_HEIGHT - 247,
+    size: 8,
+    font: boldFont,
+    color: MUTED,
+  });
+
+  page.drawText('EMPLOYEE', {
+    x: PAGE_MARGIN,
+    y: A4_HEIGHT - 335,
+    size: 11,
+    font: boldFont,
+    color: RED,
+  });
+  let y = A4_HEIGHT - 365;
+  y = drawLabelValue(page, 'Name', audit.employeeName, PAGE_MARGIN, y, 225, font, boldFont);
+  y = drawLabelValue(page, 'Employee ID', audit.employeeId, PAGE_MARGIN, y, 225, font, boldFont);
+  y = drawLabelValue(page, 'Email', audit.employeeEmail, PAGE_MARGIN, y, 225, font, boldFont);
+  y = drawLabelValue(page, 'Department', audit.department, PAGE_MARGIN, y, 225, font, boldFont);
+  drawLabelValue(page, 'Position', audit.position, PAGE_MARGIN, y, 225, font, boldFont);
+
+  page.drawText('SIGNING RECORD', {
+    x: A4_WIDTH / 2 + 12,
+    y: A4_HEIGHT - 335,
+    size: 11,
+    font: boldFont,
+    color: RED,
+  });
+  y = A4_HEIGHT - 365;
+  const rightX = A4_WIDTH / 2 + 12;
+  y = drawLabelValue(page, 'Record ID', audit.recordId, rightX, y, 225, font, boldFont);
+  y = drawLabelValue(
+    page,
+    'Template / Revision',
+    `${audit.templateVersion} / Revision ${audit.revision}`,
+    rightX,
+    y,
+    225,
+    font,
+    boldFont
+  );
+  y = drawLabelValue(
+    page,
+    'Completed (Malaysia time)',
+    new Date(audit.finalizedAt).toLocaleString('en-MY', {
+      timeZone: 'Asia/Kuala_Lumpur',
+      hourCycle: 'h23',
+    }),
+    rightX,
+    y,
+    225,
+    font,
+    boldFont
+  );
+  drawLabelValue(page, 'Template SHA-256', audit.templateSha256, rightX, y, 225, font, boldFont);
+
+  page.drawRectangle({
+    x: PAGE_MARGIN,
+    y: 120,
+    width: A4_WIDTH - PAGE_MARGIN * 2,
+    height: 92,
+    color: LIGHT,
+  });
+  page.drawText('COMPLETE SIGNED HANDBOOK', {
+    x: PAGE_MARGIN + 14,
+    y: 182,
+    size: 11,
+    font: boldFont,
+    color: RED,
+  });
+  const noteLines = wrapText(
+    'The pages that follow preserve the original handbook page order. Parts 1-14 include the employee handwritten initial and Malaysia timestamp; Part 15 includes the final handwritten signature and timestamp.',
+    font,
+    9,
+    A4_WIDTH - PAGE_MARGIN * 2 - 28
+  );
+  noteLines.forEach((line, index) => {
+    page.drawText(line, {
+      x: PAGE_MARGIN + 14,
+      y: 159 - index * 13,
+      size: 9,
+      font,
+      color: DARK,
+    });
   });
 }
 
@@ -658,14 +808,7 @@ export async function stampHandbookTemplate(input: {
   if (!finalSignatureImage) {
     throw new Error('The final signature image could not be embedded.');
   }
-  appendAuditAppendix(
-    pdf,
-    input.audit,
-    input.marks,
-    finalSignatureImage,
-    font,
-    boldFont
-  );
+  prependQuizResultSummary(pdf, input.audit, font, boldFont);
   pdf.setTitle(`RedPoint Employee Handbook - ${input.audit.employeeName}`);
   pdf.setSubject(`Signed handbook record ${input.audit.recordId}`);
   pdf.setAuthor('RedPoint Sdn. Bhd.');

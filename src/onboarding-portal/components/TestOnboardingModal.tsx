@@ -67,7 +67,6 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
   const [testInitials, setTestInitials] = useState<Record<number, string>>({});
   const [covenants, setCovenants] = useState<boolean[]>([true, true, true, true, true]);
   const [testFinalSignature, setTestFinalSignature] = useState<string | null>(null);
-  const [isAutomatingHandbook, setIsAutomatingHandbook] = useState<boolean>(false);
 
   // Canvas ref for drawing initial/signature
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -114,22 +113,6 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
     ]);
   };
 
-  // Helper to generate styled SVG initial data URL
-  const generateInitialDataUrl = (name: string, partId: number) => {
-    const initials = name
-      .split(' ')
-      .filter(Boolean)
-      .map((n) => n[0])
-      .join('')
-      .substring(0, 3)
-      .toUpperCase() || 'SL';
-    return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="70"><rect width="100%" height="100%" fill="%23FAF6EF" rx="6"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-family="cursive, serif" font-size="28" font-style="italic" font-weight="bold" fill="%23810912">${initials} (P${partId})</text><line x1="20" y1="52" x2="140" y2="52" stroke="%23810912" stroke-width="1.5" stroke-dasharray="3,2"/></svg>`;
-  };
-
-  const generateSignatureDataUrl = (name: string) => {
-    return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="280" height="80"><rect width="100%" height="100%" fill="%23FAF6EF" rx="8"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-family="cursive, serif" font-size="26" font-style="italic" font-weight="bold" fill="%23810912">${name}</text><line x1="20" y1="62" x2="260" y2="62" stroke="%23810912" stroke-width="2"/></svg>`;
-  };
-
   // Handbook progress helpers
   const completedHandbookCount = Object.keys(testInitials).length;
   const isHandbook14Initialed = completedHandbookCount >= 14;
@@ -163,7 +146,7 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
     }
   };
 
-  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleCanvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     setIsDrawing(true);
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -174,7 +157,7 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
     ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
   };
 
-  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleCanvasPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -186,7 +169,7 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
     setHasCanvasDrawn(true);
   };
 
-  const handleCanvasMouseUp = () => {
+  const handleCanvasPointerUp = () => {
     setIsDrawing(false);
   };
 
@@ -205,12 +188,16 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
 
   // STEP 2 ACTIONS: Sequential Initialing of Parts 1..14 & Part 15
   const handleInitialCurrentPart = () => {
-    let mark = '';
-    if (hasCanvasDrawn && canvasRef.current) {
-      mark = canvasRef.current.toDataURL('image/png');
-    } else {
-      mark = generateInitialDataUrl(testName, activeHandbookPart);
+    if (!hasCanvasDrawn || !canvasRef.current) {
+      onShowNotification(
+        'Handwritten Mark Required',
+        activeHandbookPart === 15
+          ? 'Draw the employee signature before completing Part 15.'
+          : `Draw the employee initial before completing Part ${activeHandbookPart}.`
+      );
+      return;
     }
+    const mark = canvasRef.current.toDataURL('image/png');
 
     if (activeHandbookPart <= 14) {
       setTestInitials((prev) => ({
@@ -231,10 +218,7 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
       }
     } else if (activeHandbookPart === 15) {
       // Part 15 Final Signature
-      const finalMark = hasCanvasDrawn && canvasRef.current
-        ? canvasRef.current.toDataURL('image/png')
-        : generateSignatureDataUrl(testName);
-      setTestFinalSignature(finalMark);
+      setTestFinalSignature(mark);
       addLog(
         'Part 15 Final Signature Executed',
         'Handbook',
@@ -243,30 +227,6 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
       );
       onShowNotification('Handbook Completed', 'All 15 handbook parts initialed & signed!');
     }
-  };
-
-  // Automated step-through simulation for Handbook
-  const handleRunSequentialHandbookWalkthrough = () => {
-    setIsAutomatingHandbook(true);
-    addLog('Sequential Walkthrough Started', 'Handbook', 'Commencing automated step-by-step handbook signing flow (Parts 1–15).', 'info');
-
-    let current = 1;
-    const interval = setInterval(() => {
-      if (current <= 14) {
-        const mark = generateInitialDataUrl(testName, current);
-        setTestInitials((prev) => ({ ...prev, [current]: mark }));
-        addLog(`Part ${current} Initialed`, 'Handbook', `Recorded initial stamp for Part ${current}.`, 'success');
-        setActiveHandbookPart(current + 1);
-        current++;
-      } else if (current === 15) {
-        const finalMark = generateSignatureDataUrl(testName);
-        setTestFinalSignature(finalMark);
-        addLog('Part 15 Final Digital Signature Recorded', 'Handbook', 'All 15 parts completed.', 'success');
-        setIsAutomatingHandbook(false);
-        clearInterval(interval);
-        onShowNotification('Handbook Walkthrough Complete', 'All 14 parts initialed and Part 15 signed.');
-      }
-    }, 350);
   };
 
   // STEP 3 ACTIONS: Sequential Quiz Answering
@@ -350,24 +310,17 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
 
   // STEP 4 ACTIONS: Export PDF & Audit Trail
   const handleDownloadSignedHandbookPdf = () => {
-    const finalAnswers = { ...quizAnswers };
-    QUIZ_QUESTIONS.forEach((q, idx) => {
-      if (finalAnswers[idx] === undefined) {
-        finalAnswers[idx] = q.correctOptionIndex ?? 0;
-      }
-    });
-
     exportFullSignedHandbookPdf({
       employeeName: testName,
       employeeId: 'TEST-AUDIT-001',
       department: testDept,
       position: testPosition,
       signedDate: new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' }),
-      signatureTextOrImage: testFinalSignature || testName,
+      signatureTextOrImage: testFinalSignature || '',
       quizScorePercent: quizScore ?? 100,
       quizGrade: quizGrade ?? 'Grade S (PASSED)',
       quizQuestions: QUIZ_QUESTIONS,
-      userAnswers: finalAnswers,
+      userAnswers: quizAnswers,
       initialSignatures: testInitials,
     });
 
@@ -698,7 +651,7 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
           {/* ========================================================================= */}
           {activeStep === 'handbook' && (
             <div className="space-y-6 animate-fade-in">
-              {/* Progress Summary & Automated Walkthrough trigger */}
+              {/* Progress Summary */}
               <div className="bg-[#FAF6EF] p-4 rounded-xl border border-[#e0bfbc] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                   <div className="flex items-center gap-2">
@@ -713,19 +666,6 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
                     Every part must be thoroughly reviewed and stamped with a handwritten initial before unlocking the next section.
                   </p>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleRunSequentialHandbookWalkthrough}
-                    disabled={isAutomatingHandbook}
-                    className="px-3.5 py-2 bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-xs"
-                    title="Simulate all 15 parts sequentially step-by-step"
-                  >
-                    <PlayCircle className="w-3.5 h-3.5 text-purple-200" />
-                    <span>{isAutomatingHandbook ? 'Simulating Parts...' : '▶ Step-Through All 15 Parts'}</span>
-                  </button>
-                </div>
               </div>
 
               {/* 15-Part Stepper Chips */}
@@ -739,7 +679,10 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
                     <button
                       key={mod.id}
                       type="button"
-                      onClick={() => setActiveHandbookPart(mod.id)}
+                      onClick={() => {
+                        if (!isLocked) setActiveHandbookPart(mod.id);
+                      }}
+                      disabled={isLocked}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold shrink-0 transition-all flex items-center gap-1.5 cursor-pointer ${
                         isCurrent
                           ? 'bg-[#810912] text-white shadow-xs ring-2 ring-[#D4AF37]'
@@ -818,24 +761,26 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
                         ref={canvasRef}
                         width={240}
                         height={75}
-                        onMouseDown={handleCanvasMouseDown}
-                        onMouseMove={handleCanvasMouseMove}
-                        onMouseUp={handleCanvasMouseUp}
-                        onMouseLeave={handleCanvasMouseUp}
-                        className="w-[240px] h-[75px] bg-white border-2 border-dashed border-[#810912]/40 rounded-lg cursor-crosshair shadow-inner"
+                        onPointerDown={handleCanvasPointerDown}
+                        onPointerMove={handleCanvasPointerMove}
+                        onPointerUp={handleCanvasPointerUp}
+                        onPointerCancel={handleCanvasPointerUp}
+                        onPointerLeave={handleCanvasPointerUp}
+                        className="w-[240px] h-[75px] touch-none bg-white border-2 border-dashed border-[#810912]/40 rounded-lg cursor-crosshair shadow-inner"
                         title="Draw your initial signature"
                       />
 
                       <div className="text-left space-y-2 flex-1">
                         <p className="text-xs text-[#59413f]">
-                          Draw your initial with your mouse/touch, or click the button below to record the official timestamped initial for <strong>Part {activeHandbookPart}</strong>.
+                          Draw your initial with your mouse or touch input before recording the official timestamped initial for <strong>Part {activeHandbookPart}</strong>.
                         </p>
 
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
                             onClick={handleInitialCurrentPart}
-                            className="px-4 py-2 bg-[#810912] hover:bg-[#a32626] text-white text-xs font-extrabold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                            disabled={!hasCanvasDrawn}
+                            className="px-4 py-2 bg-[#810912] hover:bg-[#a32626] disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed text-white text-xs font-extrabold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
                           >
                             <PenTool className="w-3.5 h-3.5 text-[#D4AF37]" />
                             <span>Stamp Initial & Advance to Part {activeHandbookPart + 1}</span>
@@ -919,11 +864,12 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
                         ref={canvasRef}
                         width={280}
                         height={80}
-                        onMouseDown={handleCanvasMouseDown}
-                        onMouseMove={handleCanvasMouseMove}
-                        onMouseUp={handleCanvasMouseUp}
-                        onMouseLeave={handleCanvasMouseUp}
-                        className="w-[280px] h-[80px] bg-white border-2 border-dashed border-[#810912]/40 rounded-lg cursor-crosshair shadow-inner"
+                        onPointerDown={handleCanvasPointerDown}
+                        onPointerMove={handleCanvasPointerMove}
+                        onPointerUp={handleCanvasPointerUp}
+                        onPointerCancel={handleCanvasPointerUp}
+                        onPointerLeave={handleCanvasPointerUp}
+                        className="w-[280px] h-[80px] touch-none bg-white border-2 border-dashed border-[#810912]/40 rounded-lg cursor-crosshair shadow-inner"
                         title="Draw your full signature"
                       />
 
@@ -931,7 +877,8 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
                         <button
                           type="button"
                           onClick={handleInitialCurrentPart}
-                          className="px-5 py-2.5 bg-[#810912] hover:bg-[#a32626] text-white text-xs font-extrabold rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-md"
+                          disabled={!hasCanvasDrawn}
+                          className="px-5 py-2.5 bg-[#810912] hover:bg-[#a32626] disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed text-white text-xs font-extrabold rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-md"
                         >
                           <ShieldCheck className="w-4 h-4 text-[#D4AF37]" />
                           <span>SIGN & EXECUTE PART 15</span>
@@ -1142,7 +1089,8 @@ export const TestOnboardingModal: React.FC<TestOnboardingModalProps> = ({
                 <button
                   type="button"
                   onClick={handleDownloadSignedHandbookPdf}
-                  className="px-5 py-2.5 bg-[#810912] hover:bg-[#a32626] text-white text-xs font-extrabold rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-md shrink-0 hover:-translate-y-0.5"
+                  disabled={!isHandbookFullyCompleted || !isQuizSubmitted}
+                  className="px-5 py-2.5 bg-[#810912] hover:bg-[#a32626] disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed text-white text-xs font-extrabold rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-md shrink-0 hover:-translate-y-0.5"
                 >
                   <Download className="w-4 h-4 text-[#D4AF37]" />
                   <span>Download Signed PDF (With All Part Initials)</span>

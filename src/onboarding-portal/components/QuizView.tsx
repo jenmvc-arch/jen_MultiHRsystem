@@ -36,6 +36,7 @@ interface QuizViewProps {
   position?: string;
   partInitials?: Record<number, string>;
   finalSignatureDataUrl?: string | null;
+  onDownloadSignedHandbook?: () => void;
   onShowNotification?: (title: string, message: string) => void;
 }
 
@@ -86,6 +87,7 @@ export const QuizView: React.FC<QuizViewProps> = ({
   position = 'Staff Member',
   partInitials,
   finalSignatureDataUrl,
+  onDownloadSignedHandbook,
   onShowNotification,
 }) => {
   const { t } = useLanguage();
@@ -174,6 +176,10 @@ export const QuizView: React.FC<QuizViewProps> = ({
   };
 
   const activeQuestion = questions[currentQuestionIndex] || questions[0];
+  const hasCompleteHandbook =
+    Array.from({ length: 14 }, (_, index) => index + 1).every(
+      (partNumber) => Boolean(partInitials?.[partNumber])
+    ) && Boolean(finalSignatureDataUrl);
 
   // Helper to check if a question is answered correctly
   const isQuestionCorrect = (qIdx: number): boolean => {
@@ -807,13 +813,17 @@ export const QuizView: React.FC<QuizViewProps> = ({
                   <button
                     type="button"
                     onClick={() => {
+                      if (onDownloadSignedHandbook) {
+                        onDownloadSignedHandbook();
+                        return;
+                      }
                       exportFullSignedHandbookPdf({
                         employeeName,
                         employeeId,
                         department,
                         position,
                         signedDate: new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' }),
-                        signatureTextOrImage: finalSignatureDataUrl || employeeName,
+                        signatureTextOrImage: finalSignatureDataUrl || '',
                         quizScorePercent: finalScore,
                         quizGrade: finalGrade,
                         quizQuestions: questions,
@@ -821,7 +831,8 @@ export const QuizView: React.FC<QuizViewProps> = ({
                         initialSignatures: partInitials,
                       });
                     }}
-                    className="w-full sm:w-auto py-2.5 px-5 rounded-lg bg-[#810912] text-white font-extrabold text-xs hover:bg-[#a32626] transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer hover:-translate-y-0.5"
+                    disabled={!onDownloadSignedHandbook && !hasCompleteHandbook}
+                    className="w-full sm:w-auto py-2.5 px-5 rounded-lg bg-[#810912] text-white font-extrabold text-xs hover:bg-[#a32626] disabled:bg-gray-200 disabled:text-gray-500 disabled:cursor-not-allowed transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer hover:-translate-y-0.5"
                   >
                     <Download className="w-4 h-4 text-[#D4AF37]" />
                     <span>Download Signed PDF & Quiz Record</span>

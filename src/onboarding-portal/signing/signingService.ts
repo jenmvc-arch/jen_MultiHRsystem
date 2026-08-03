@@ -8,6 +8,7 @@ import {
   HandbookSigningSession,
 } from './types';
 import { exportFullSignedHandbookPdf } from '../utils/pdfExport';
+import { OFFICIAL_HANDBOOK } from '../data/handbookDocument';
 
 const LOCAL_SESSION_KEY_PREFIX = 'redpoint_handbook_session_';
 const LOCAL_MARKS_KEY_PREFIX = 'redpoint_handbook_marks_';
@@ -336,7 +337,8 @@ export async function saveSigningQuizResult(
 export async function finalizeSignedHandbook(
   session: HandbookSigningSession,
   marks?: Record<number, string>,
-  employeeInfo?: { name: string; department: string; position: string; id: string }
+  employeeInfo?: { name: string; department: string; position: string; id: string },
+  markTimestamps?: Record<number, string>
 ): Promise<FinalizeHandbookResponse> {
   // If Supabase authenticated session exists
   if (isSupabaseConfigured && supabase && !session.id.startsWith('local-session-')) {
@@ -369,11 +371,13 @@ export async function finalizeSignedHandbook(
     employeeId: employeeInfo?.id || session.subjectId,
     department: employeeInfo?.department || 'Marketing & Communications',
     position: employeeInfo?.position || 'Digital Content Specialist',
-    signedDate: new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' }),
-    partInitials: marks || {},
-    finalSignatureDataUrl: marks?.[FINAL_SIGNATURE_PART_NUMBER] || null,
-    quizScore: session.quizScorePercent ?? 90,
+    signedDate: markTimestamps?.[FINAL_SIGNATURE_PART_NUMBER] || new Date().toISOString(),
+    initialSignatures: marks || {},
+    initialsTimestamp: markTimestamps || {},
+    signatureTextOrImage: marks?.[FINAL_SIGNATURE_PART_NUMBER] || '',
+    quizScorePercent: session.quizScorePercent ?? 0,
     quizGrade: session.quizGrade || 'Grade S (PASSED)',
+    download: false,
   });
 
   const pdfBlob = doc.output('blob');
@@ -394,11 +398,10 @@ export async function finalizeSignedHandbook(
   }
 
   return {
+    recordId: `local-${session.id}`,
     downloadUrl: blobUrl,
     sha256: 'sha256-verified-client-audit-record',
     revision: session.revision || 1,
-    status: 'finalized',
-    finalizedAt: new Date().toISOString(),
   };
 }
 
@@ -428,10 +431,11 @@ export async function getOfficialHandbookTemplate(
   }
 
   return {
-    templateId: session.templateId || 'tmpl-default-1',
+    downloadUrl: '/employee-handbook.pdf',
     version: session.templateVersion || '1.0',
-    publicUrl: '/employee-handbook.pdf',
-    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+    pageCount: OFFICIAL_HANDBOOK.pageCount,
+    sha256: OFFICIAL_HANDBOOK.sha256,
+    expiresIn: 3600,
   };
 }
 

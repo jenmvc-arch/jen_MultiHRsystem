@@ -101,14 +101,19 @@ async function run() {
   }
   assert.equal(
     signedPdf.getPageCount(),
-    17,
-    'The original 15 pages plus two audit appendix pages are required.'
+    16,
+    'The quiz result summary must be followed by all 15 original handbook pages.'
   );
   assert.ok(output.length > templateBytes.length, 'The signed PDF should contain added overlays.');
   assert.deepEqual(
-    signedPdf.getPage(0).getSize(),
+    signedPdf.getPage(1).getSize(),
     { width: 612, height: 792 },
-    'The original page dimensions must remain unchanged.'
+    'The first original handbook page dimensions must remain unchanged.'
+  );
+  assert.deepEqual(
+    signedPdf.getPage(0).getSize(),
+    { width: 595.28, height: 841.89 },
+    'The quiz result summary must be the first A4 page.'
   );
 
   await expectReject(

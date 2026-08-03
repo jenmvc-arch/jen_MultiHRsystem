@@ -69,6 +69,7 @@ interface SavedBriefingSession {
   deadlineAt: number | null;
   lastSavedAt: number | null;
   selectedModuleId: number;
+  subsectionProgress?: Record<number, number>;
 }
 
 const BRIEFING_STORAGE_KEY = 'redpoint_handbook_briefing_v1';
@@ -131,6 +132,9 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   const [selectedModuleId, setSelectedModuleId] = useState<number>(() => {
     return savedBriefing?.selectedModuleId || 1;
   });
+  const [subsectionProgress, setSubsectionProgress] = useState<Record<number, number>>(
+    () => savedBriefing?.subsectionProgress || {}
+  );
 
   const [contentType, setContentType] = useState<'full' | 'summary'>('full');
   const [isPlayingVideo, setIsPlayingVideo] = useState<boolean>(false);
@@ -183,12 +187,13 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
         deadlineAt,
         lastSavedAt,
         selectedModuleId,
+        subsectionProgress,
       };
       localStorage.setItem(BRIEFING_STORAGE_KEY, JSON.stringify(data));
     } catch (err) {
       console.error('Failed to save briefing state:', err);
     }
-  }, [briefingStatus, startedAt, deadlineAt, lastSavedAt, selectedModuleId]);
+  }, [briefingStatus, startedAt, deadlineAt, lastSavedAt, selectedModuleId, subsectionProgress]);
 
   // 7-day Countdown Timer Calculation
   useEffect(() => {
@@ -285,6 +290,14 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   const officialPdfUrl = officialHandbookUrl && activePageRange
     ? `${officialHandbookUrl}#page=${activePageRange.start}&view=FitH&toolbar=1&navpanes=0`
     : null;
+  const activeSubsections = activeModule.content.subsections || [];
+  const savedSubsectionIndex = subsectionProgress[activeModule.id] || 0;
+  const activeSubsectionIndex = partInitials[activeModule.id]
+    ? Math.max(0, activeSubsections.length - 1)
+    : Math.min(savedSubsectionIndex, Math.max(0, activeSubsections.length - 1));
+  const activeSubsection = activeSubsections[activeSubsectionIndex];
+  const isActiveModuleReviewComplete =
+    activeSubsections.length === 0 || activeSubsectionIndex >= activeSubsections.length - 1;
 
   useEffect(() => {
     const getScrollParent = (node: HTMLElement | null): HTMLElement | Window => {
@@ -360,15 +373,33 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
     };
   }, [selectedModuleId]);
 
-  const handleSelectModule = (id: number) => {
-    setSelectedModuleId(id);
-    const scrollParent = contentCardRef.current
-      ? (contentCardRef.current.closest('main') || contentCardRef.current.parentElement)
+  const scrollModuleToTop = () => {
+    const contentCard = contentCardRef.current;
+    const scrollParent = contentCard
+      ? (contentCard.closest('main') || contentCard.parentElement)
       : null;
     if (scrollParent) {
-      scrollParent.scrollTo({ top: 0, behavior: 'smooth' });
+      scrollParent.scrollTo({ top: 0, behavior: 'auto' });
     }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    requestAnimationFrame(() => {
+      contentCardRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' });
+    });
+  };
+
+  const handleSelectModule = (id: number) => {
+    setSelectedModuleId(id);
+    setContentType('full');
+    scrollModuleToTop();
+  };
+
+  const handleContinueSubsection = () => {
+    if (isActiveModuleReviewComplete) return;
+    setSubsectionProgress((current) => ({
+      ...current,
+      [activeModule.id]: activeSubsectionIndex + 1,
+    }));
+    scrollModuleToTop();
   };
 
   // START BRIEFING SESSION HANDLER
@@ -428,6 +459,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
     if (!confirmed) return;
 
     setSelectedModuleId(1);
+    setSubsectionProgress({});
     setBriefingStatus('in_progress');
     setLastSavedAt(Date.now());
 
@@ -837,7 +869,10 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                     Section {activeModule.id}
                   </span>
                   <span className="text-xs text-[#59413f]">
-                    {activeModule.completedSections}/{activeModule.sectionsCount} {t.sectionsLabel}
+                    {activeSubsections.length > 0
+                      ? `${activeSubsectionIndex + 1}/${activeSubsections.length}`
+                      : `${activeModule.completedSections}/${activeModule.sectionsCount}`}{' '}
+                    {t.sectionsLabel}
                   </span>
                 </div>
 
@@ -858,9 +893,17 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setContentType('summary')}
+                    disabled={!isActiveModuleReviewComplete}
+                    title={
+                      isActiveModuleReviewComplete
+                        ? 'View executive summary'
+                        : 'Complete each handbook section first'
+                    }
                     className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer ${
                       contentType === 'summary'
                         ? 'bg-[#810912] text-white shadow-xs'
+                        : !isActiveModuleReviewComplete
+                        ? 'cursor-not-allowed text-[#59413f]/40 opacity-60'
                         : 'text-[#59413f] hover:text-[#1b1c1c] hover:bg-white/60'
                     }`}
                   >
@@ -915,23 +958,23 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                     </p>
                   ))}
 
-                  {/* Subsections rendering */}
-                  {activeModule.content.subsections?.map((subsection, subIdx) => (
-                    <div key={subIdx} className="pt-4 space-y-3 border-t border-[#F2E8D8]">
-                      {subsection.title && (
+                  {/* One subsection is shown at a time so review remains sequential. */}
+                  {activeSubsection && (
+                    <div key={activeSubsectionIndex} className="pt-4 space-y-3 border-t border-[#F2E8D8]">
+                      {activeSubsection.title && (
                         <h3 className="text-base sm:text-lg font-bold text-[#1b1c1c]">
-                          {subsection.title}
+                          {activeSubsection.title}
                         </h3>
                       )}
-                      {subsection.paragraphs?.map((p, pIdx) => (
+                      {activeSubsection.paragraphs?.map((p, pIdx) => (
                         <p key={pIdx} className="text-xs sm:text-sm text-[#59413f] leading-relaxed">
                           {p}
                         </p>
                       ))}
 
-                      {subsection.bulletPoints && subsection.bulletPoints.length > 0 && (
+                      {activeSubsection.bulletPoints && activeSubsection.bulletPoints.length > 0 && (
                         <ul className="list-disc list-inside space-y-1.5 pl-2 text-xs sm:text-sm text-[#59413f]">
-                          {subsection.bulletPoints.map((point, bpIdx) => (
+                          {activeSubsection.bulletPoints.map((point, bpIdx) => (
                             <li key={bpIdx} className="leading-relaxed">
                               {point}
                             </li>
@@ -940,12 +983,12 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                       )}
 
                       {/* Sub-tables if present */}
-                      {subsection.table && (
+                      {activeSubsection.table && (
                         <div className="overflow-x-auto my-3">
                           <table className="w-full text-xs text-left border-collapse border border-[#e0bfbc] rounded-lg">
                             <thead className="bg-[#810912] text-white font-bold">
                               <tr>
-                                {subsection.table.headers.map((header, hIdx) => (
+                                {activeSubsection.table.headers.map((header, hIdx) => (
                                   <th key={hIdx} className="p-2.5 border border-[#810912]">
                                     {header}
                                   </th>
@@ -953,7 +996,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-[#e0bfbc]">
-                              {subsection.table.rows.map((row, rIdx) => (
+                              {activeSubsection.table.rows.map((row, rIdx) => (
                                 <tr key={rIdx} className="hover:bg-[#FAF6EF]/50">
                                   {row.map((cell, cIdx) => (
                                     <td key={cIdx} className="p-2.5 border border-[#e0bfbc] text-[#1b1c1c]">
@@ -967,7 +1010,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                         </div>
                       )}
                     </div>
-                  ))}
+                  )}
                 </div>
               ) : (
                 /* EXECUTIVE SUMMARY VIEW MODE */
@@ -984,13 +1027,34 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                   </div>
                 </div>
               )}
+
+              {activeSubsections.length > 0 && (
+                <div className="mt-6 flex flex-col gap-3 border-t border-[#F2E8D8] pt-5 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs font-semibold text-[#59413f]">
+                    Section {activeSubsectionIndex + 1} of {activeSubsections.length}
+                    {isActiveModuleReviewComplete
+                      ? ' reviewed. You may now complete this Part.'
+                      : ' must be completed before the next section is shown.'}
+                  </p>
+                  {!isActiveModuleReviewComplete && (
+                    <button
+                      type="button"
+                      onClick={handleContinueSubsection}
+                      className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#810912] px-5 text-xs font-extrabold text-white shadow-sm transition-colors hover:bg-[#a32626]"
+                    >
+                      <span>Continue</span>
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
           {/* ========================================================================= */}
           {/* SIGNATURE / INITIAL CARD PER PART */}
           {/* ========================================================================= */}
-          {activeModule.id === 15 ? (
+          {!isActiveModuleReviewComplete ? null : activeModule.id === 15 ? (
             /* FINAL COVENANTS & COMPREHENSIVE SIGN-OFF CARD FOR PART 15 */
             <div className="bg-white rounded-xl shadow-md border-2 border-[#810912] p-6 sm:p-8 space-y-6">
               <div className="border-b border-[#F2E8D8] pb-4">

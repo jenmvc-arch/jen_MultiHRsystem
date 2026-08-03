@@ -443,15 +443,21 @@ function OnboardingPortalContent({
 
     setIsFinalizing(true);
     try {
+      const markEntries = Object.entries(signatureMarks) as Array<
+        [string, HandbookSignatureMark]
+      >;
       const marksDataUrls = Object.fromEntries(
-        Object.entries(signatureMarks).map(([k, v]) => [k, v.imageDataUrl || ''])
+        markEntries.map(([k, v]) => [k, v.imageDataUrl || ''])
+      );
+      const markTimestamps = Object.fromEntries(
+        markEntries.map(([k, v]) => [k, v.capturedAt])
       );
       const result = await finalizeSignedHandbook(currentSession, marksDataUrls, {
         name: journeyName,
         department: journeyDepartment,
         position: journeyPosition,
         id: journeyId,
-      });
+      }, markTimestamps);
       downloadFinalizedHandbook(result.downloadUrl, journeyName, result.revision);
       setSigningSession((prev) =>
         prev
@@ -868,6 +874,9 @@ function OnboardingPortalContent({
             position={journeyPosition}
             partInitials={partInitialDataUrls}
             finalSignatureDataUrl={finalSignatureDataUrl}
+            onDownloadSignedHandbook={() => {
+              void handleDownloadCompletionRecord();
+            }}
           />
         )}
 

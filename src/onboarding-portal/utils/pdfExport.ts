@@ -678,14 +678,15 @@ export interface FullSignedHandbookPdfData {
   quizScorePercent?: number;
   quizGrade?: string;
   quizQuestions?: QuizQuestion[];
-  userAnswers?: Record<number, number>;
+  userAnswers?: Record<number, number | number[]>;
   covenants?: string[];
   modules?: HandbookModule[];
   initialSignatures?: Record<number, string>;
   initialsTimestamp?: Record<number, string>;
+  download?: boolean;
 }
 
-export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): void {
+export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): jsPDF {
   const doc = new jsPDF({
     orientation: 'p',
     unit: 'mm',
@@ -697,6 +698,19 @@ export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): vo
   const marginLeft = 15;
   const marginRight = 195;
   const contentWidth = marginRight - marginLeft;
+  const formatMalaysiaTimestamp = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleString('en-GB', {
+      timeZone: 'Asia/Kuala_Lumpur',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    });
+  };
 
   let currentY = 0;
 
@@ -735,20 +749,20 @@ export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): vo
   };
 
   // -------------------------------------------------------------
-  // COVER & COMPLIANCE CERTIFICATE SUMMARY
+  // PART 1: QUIZ RESULT SUMMARY
   // -------------------------------------------------------------
-  drawPageHeader('OFFICIAL HANDBOOK & KNOWLEDGE ACKNOWLEDGEMENT COMPLIANCE CERTIFICATE');
+  drawPageHeader('QUIZ RESULT SUMMARY');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
   doc.setTextColor(129, 9, 18);
-  doc.text('COMPLETE EMPLOYEE HANDBOOK & ASSESSMENT RECORD', marginLeft, currentY);
+  doc.text('QUIZ RESULT SUMMARY', marginLeft, currentY);
   currentY += 6;
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(80, 80, 80);
-  doc.text('Verbatim record of handbook provisions, knowledge assessment choices, and digital sign-off.', marginLeft, currentY);
+  doc.text('Employee assessment result and recorded answer summary.', marginLeft, currentY);
   currentY += 8;
 
   // Employee & Audit Summary Box
@@ -759,7 +773,7 @@ export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): vo
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(129, 9, 18);
-  doc.text('1. EMPLOYEE & COMPLIANCE PARTICULARS', marginLeft + 5, currentY + 7);
+  doc.text('EMPLOYEE & ASSESSMENT PARTICULARS', marginLeft + 5, currentY + 7);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
@@ -794,13 +808,13 @@ export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): vo
   currentY += 56;
 
   // -------------------------------------------------------------
-  // SECTION I: QUIZ KNOWLEDGE CHECK RECORD
+  // QUIZ KNOWLEDGE CHECK RECORD
   // -------------------------------------------------------------
   checkPageBreak(30);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(129, 9, 18);
-  doc.text('SECTION I: COMPLIANCE KNOWLEDGE CHECK (QUIZ RESULTS COPY)', marginLeft, currentY);
+  doc.text('QUIZ KNOWLEDGE CHECK RESULTS', marginLeft, currentY);
   currentY += 5;
 
   doc.setFont('helvetica', 'normal');
@@ -810,13 +824,25 @@ export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): vo
   currentY += 8;
 
   const questionsList = data.quizQuestions || QUIZ_QUESTIONS;
-  const userAnsMap = data.userAnswers || { 0: 0, 1: 2, 2: 2, 3: 3, 4: 1, 5: 1, 6: 2, 7: 2, 8: 1, 9: 3, 10: 1, 11: 1, 12: 0, 13: 2, 14: 1 };
+  const userAnsMap = data.userAnswers || {};
 
   questionsList.forEach((q, idx) => {
     checkPageBreak(28);
 
-    const userSelected = userAnsMap[idx] !== undefined ? userAnsMap[idx] : q.correctOptionIndex;
-    const isCorrect = userSelected === q.correctOptionIndex;
+    const userSelected = userAnsMap[idx];
+    const selectedIndexes = Array.isArray(userSelected)
+      ? [...userSelected].sort((a, b) => a - b)
+      : userSelected === undefined
+      ? []
+      : [userSelected];
+    const correctIndexes = q.correctOptionIndices
+      ? [...q.correctOptionIndices].sort((a, b) => a - b)
+      : q.correctOptionIndex === undefined
+      ? []
+      : [q.correctOptionIndex];
+    const isCorrect =
+      selectedIndexes.length === correctIndexes.length &&
+      selectedIndexes.every((answer, answerIndex) => answer === correctIndexes[answerIndex]);
 
     doc.setFillColor(isCorrect ? 245 : 255, isCorrect ? 248 : 240, isCorrect ? 245 : 240);
     doc.setDrawColor(isCorrect ? 200 : 220, isCorrect ? 220 : 180, isCorrect ? 200 : 180);
@@ -846,8 +872,8 @@ export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): vo
     doc.setFontSize(7.5);
     doc.setTextColor(60, 60, 60);
 
-    const selectedTxt = `Employee Selected: ${q.options[userSelected] || 'N/A'}`;
-    const correctTxt = `Official Policy Answer: ${q.options[q.correctOptionIndex]}`;
+    const selectedTxt = `Employee Selected: ${selectedIndexes.map((answer) => q.options[answer]).filter(Boolean).join('; ') || 'N/A'}`;
+    const correctTxt = `Official Policy Answer: ${correctIndexes.map((answer) => q.options[answer]).filter(Boolean).join('; ') || 'N/A'}`;
     doc.text(selectedTxt, marginLeft + 3, currentY + 12);
     doc.text(correctTxt, marginLeft + 3, currentY + 16);
 
@@ -861,13 +887,14 @@ export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): vo
   });
 
   // -------------------------------------------------------------
-  // SECTION II: COMPLETE 15-PART HANDBOOK CONTENT
+  // PART 2: COMPLETE 15-PART HANDBOOK CONTENT
   // -------------------------------------------------------------
-  checkPageBreak(35);
+  doc.addPage();
+  drawPageHeader('COMPLETE SIGNED EMPLOYEE HANDBOOK');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(129, 9, 18);
-  doc.text('SECTION II: OFFICIAL EMPLOYEE HANDBOOK (FULL 15 PARTS)', marginLeft, currentY);
+  doc.text('COMPLETE EMPLOYEE HANDBOOK (FULL 15 PARTS)', marginLeft, currentY);
   currentY += 6;
 
   doc.setFont('helvetica', 'normal');
@@ -876,65 +903,7 @@ export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): vo
   doc.text('Verbatim text of all 15 handbook modules as acknowledged by the employee.', marginLeft, currentY);
   currentY += 8;
 
-  // 14-Part Initial Ledger Matrix
-  checkPageBreak(50);
-  doc.setFillColor(250, 246, 239);
-  doc.setDrawColor(129, 9, 18);
-  doc.roundedRect(marginLeft, currentY, contentWidth, 8, 1, 1, 'FD');
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(129, 9, 18);
-  doc.text('SUMMARY OF 14-PART HANDBOOK INITIALS & COMPLIANCE VERIFICATION', marginLeft + 4, currentY + 5.5);
-  currentY += 10;
-
   const modulesList = data.modules || OFFICIAL_HANDBOOK_MODULES;
-
-  // Render 2-column matrix of all 14 parts' initial marks
-  const colW = (contentWidth - 4) / 2;
-  const initialEntries = modulesList.slice(0, 14);
-
-  for (let i = 0; i < initialEntries.length; i += 2) {
-    checkPageBreak(12);
-    const m1 = initialEntries[i];
-    const m2 = initialEntries[i + 1];
-
-    [m1, m2].forEach((m, colIdx) => {
-      if (!m) return;
-      const xPos = marginLeft + (colIdx === 0 ? 0 : colW + 4);
-
-      doc.setFillColor(255, 255, 255);
-      doc.setDrawColor(220, 200, 200);
-      doc.roundedRect(xPos, currentY, colW, 9.5, 1, 1, 'FD');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      doc.setTextColor(129, 9, 18);
-      doc.text(`Part ${m.id}:`, xPos + 2.5, currentY + 4);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6.5);
-      doc.setTextColor(50, 50, 50);
-      const titleTrunc = m.title.length > 24 ? m.title.substring(0, 22) + '...' : m.title;
-      doc.text(titleTrunc, xPos + 14, currentY + 4);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.setTextColor(19, 115, 51);
-      doc.text('[✓ Initialed]', xPos + 2.5, currentY + 8);
-
-      const mark = data.initialSignatures?.[m.id] || data.signatureTextOrImage || data.employeeName;
-      const initText = mark && !mark.startsWith('data:image/') ? mark : data.employeeName.split(' ').map((n: string) => n[0]).join('');
-      doc.setFont('times', 'bolditalic');
-      doc.setFontSize(7.5);
-      doc.setTextColor(129, 9, 18);
-      doc.text(`Init: ${initText}`, xPos + colW - 3, currentY + 8, { align: 'right' });
-    });
-
-    currentY += 11.5;
-  }
-
-  currentY += 6;
 
   modulesList.forEach((mod) => {
     checkPageBreak(30);
@@ -1078,7 +1047,10 @@ export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): vo
       doc.setFontSize(7.2);
       doc.setTextColor(60, 60, 60);
       doc.text(`I hereby confirm that I have reviewed, understood, and agreed to abide by Part ${mod.id} (${mod.title}).`, marginLeft + 4, currentY + 10.5);
-      doc.text(`Signer: ${data.employeeName} | Date: ${data.signedDate} | Status: Verified & Initialed`, marginLeft + 4, currentY + 15.5);
+      const markTimestamp = formatMalaysiaTimestamp(
+        data.initialsTimestamp?.[mod.id] || data.signedDate
+      );
+      doc.text(`Signer: ${data.employeeName} | Timestamp: ${markTimestamp} | Status: Verified & Initialed`, marginLeft + 4, currentY + 15.5);
 
       // Right initial stamp box
       doc.setFillColor(255, 255, 255);
@@ -1090,22 +1062,21 @@ export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): vo
       doc.setTextColor(129, 9, 18);
       doc.text('EMPLOYEE INITIAL', marginRight - 24.5, currentY + 5.5, { align: 'center' });
 
-      const mark = data.initialSignatures?.[mod.id] || data.signatureTextOrImage || data.employeeName;
+      const mark = data.initialSignatures?.[mod.id];
       if (mark && mark.startsWith('data:image/')) {
         try {
           doc.addImage(mark, 'PNG', marginRight - 42, currentY + 6.5, 35, 9.5);
         } catch {
-          doc.setFont('times', 'bolditalic');
-          doc.setFontSize(9);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(7);
           doc.setTextColor(129, 9, 18);
-          doc.text(`[${data.employeeName.split(' ').map((n: string) => n[0]).join('')}]`, marginRight - 24.5, currentY + 12, { align: 'center' });
+          doc.text('IMAGE ERROR', marginRight - 24.5, currentY + 12, { align: 'center' });
         }
       } else {
-        doc.setFont('times', 'bolditalic');
-        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
         doc.setTextColor(129, 9, 18);
-        const initialLetters = mark ? mark : data.employeeName.split(' ').map((n: string) => n[0]).join('');
-        doc.text(initialLetters, marginRight - 24.5, currentY + 12, { align: 'center' });
+        doc.text('NOT RECORDED', marginRight - 24.5, currentY + 12, { align: 'center' });
       }
 
       currentY += 25;
@@ -1115,14 +1086,14 @@ export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): vo
   });
 
   // -------------------------------------------------------------
-  // SECTION III: FINAL PROVISIONS & SIGNATURE BLOCK
+  // PART 15 FINAL PROVISIONS & SIGNATURE BLOCK
   // -------------------------------------------------------------
   checkPageBreak(65);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(129, 9, 18);
-  doc.text('SECTION III: FINAL PROVISIONS & SIGNED COVENANTS', marginLeft, currentY);
+  doc.text('PART 15: FINAL PROVISIONS & SIGNED COVENANTS', marginLeft, currentY);
   currentY += 6;
 
   const covenantsList = data.covenants && data.covenants.length > 0 ? data.covenants : [
@@ -1172,16 +1143,16 @@ export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): vo
     try {
       doc.addImage(data.signatureTextOrImage, 'PNG', marginLeft + 6, currentY + 8, 65, 14);
     } catch {
-      doc.setFont('times', 'italic');
-      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
       doc.setTextColor(129, 9, 18);
-      doc.text(data.employeeName, marginLeft + 6, currentY + 20);
+      doc.text('SIGNATURE IMAGE ERROR', marginLeft + 6, currentY + 20);
     }
   } else {
-    doc.setFont('times', 'italic');
-    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
     doc.setTextColor(129, 9, 18);
-    doc.text(data.signatureTextOrImage || data.employeeName, marginLeft + 6, currentY + 20);
+    doc.text('SIGNATURE NOT RECORDED', marginLeft + 6, currentY + 20);
   }
 
   doc.setDrawColor(180, 180, 180);
@@ -1190,7 +1161,7 @@ export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): vo
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 100, 100);
-  doc.text(`Signed by ${data.employeeName} on ${data.signedDate}`, marginLeft + 4, currentY + 28);
+  doc.text(`Signed by ${data.employeeName} on ${formatMalaysiaTimestamp(data.signedDate)}`, marginLeft + 4, currentY + 28);
   doc.text('System Certified SHA-256 Digital Fingerprint', marginLeft + 4, currentY + 32);
 
   // Right Side: Corporate Seal
@@ -1236,5 +1207,8 @@ export function exportFullSignedHandbookPdf(data: FullSignedHandbookPdfData): vo
     doc.text(`Page ${i} of ${totalPages}`, marginRight, 289, { align: 'right' });
   }
 
-  doc.save(`RedPoint_Signed_Handbook_And_Quiz_${data.employeeName.replace(/\s+/g, '_')}.pdf`);
+  if (data.download !== false) {
+    doc.save(`RedPoint_Signed_Handbook_And_Quiz_${data.employeeName.replace(/\s+/g, '_')}.pdf`);
+  }
+  return doc;
 }
