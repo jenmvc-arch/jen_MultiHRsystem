@@ -131,4 +131,8 @@ assert.equal(getEmployeeForMonth(savedPayrollEmployee, 1, 2026).basicSalary, 310
 assert.equal(getPayrollBasicSalary(savedPayrollEmployee, 1, 2026), 1600);
 assert.equal(calculatePayslip(savedPayrollEmployee, 1, 2026).grossEarnings, 1600);
 
+const manualPayPeriodSalary = calculatePayslip(savedPayrollEmployee, 1, 2026, 1850);
+assert.equal(manualPayPeriodSalary.grossEarnings, 1850);
+assert.equal(savedPayrollEmployee.basicSalary, 3100);
+
 console.log('Salary proration tests passed.');

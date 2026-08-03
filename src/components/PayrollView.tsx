@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { CreditCard, Search, Plus, Printer, Download, Image, Mail, Share2, Eye, CheckCircle, TrendingUp, Sliders, DollarSign, Briefcase, FileText, Globe, Building2, Clock } from 'lucide-react';
+import { CreditCard, Search, Plus, Printer, Download, Image, Mail, Share2, Eye, CheckCircle, TrendingUp, Sliders, DollarSign, Briefcase, FileText, Globe, Building2, Clock, RotateCcw } from 'lucide-react';
 import { Employee, CorporateEntity, HistoricalPayrollRecord, PayrollRecord2026 } from '../types';
 import { calculatePayslip, getPayslipLabel, calculateYtd, calculatePcb2026, recalculatePCBFromMonth, getPayrollBasicSalary, getSalaryProration, getStatutoryDeductions2026, calculateSocsoContribution, getEmployeeForMonth } from '../data';
 import PayslipDocumentView from './PayslipDocumentView';
@@ -86,6 +86,10 @@ export default function PayrollView({
   const [deductionCp38, setDeductionCp38] = useState(0);
   const [deductionOthers, setDeductionOthers] = useState(0);
   const [deductionOthersDesc, setDeductionOthersDesc] = useState('');
+
+  React.useEffect(() => {
+    setIsEditing(false);
+  }, [selectedEmployeeId, selectedPayPeriod]);
 
   // Filter employees for the left list
   const filteredEmployees = employees.filter(e => {
@@ -227,6 +231,11 @@ export default function PayrollView({
   };
 
   const saveEdit = async () => {
+    if (!Number.isFinite(tempBasic) || tempBasic < 0) {
+      onShowNotification('Invalid Salary', 'Pay period basic salary must be RM 0 or more.');
+      return;
+    }
+
     setIsSavingEdit(true);
     try {
     const epfRateEmp = activeEmployee.epfRateEmployee || 11;
@@ -391,6 +400,10 @@ export default function PayrollView({
     );
     } catch (error) {
       console.error('[Payroll Save] Failed:', error);
+      onShowNotification(
+        'Save Failed',
+        error instanceof Error ? error.message : 'The payroll adjustment could not be saved.'
+      );
     } finally {
       setIsSavingEdit(false);
     }
@@ -840,13 +853,25 @@ export default function PayrollView({
                         {getPayslipLabel(activeEmployee.employmentType)} (RM)
                       </label>
                       <input 
+                        data-testid="pay-period-basic-salary"
                         type="number" 
-                        value={tempBasic} 
-                        disabled
-                        className="w-full bg-neutral-100 border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs text-on-surface-variant cursor-not-allowed font-bold"
+                        min="0"
+                        step="0.01"
+                        value={tempBasic}
+                        onChange={(e) => setTempBasic(Number(e.target.value))}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none font-mono text-xs text-on-surface font-bold"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setTempBasic(salaryProration.payableSalary)}
+                        className="mt-1 inline-flex items-center gap-1 text-[10px] text-primary font-bold hover:underline"
+                        title="Restore the salary calculated from the employee contract and eligible calendar days"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        Use calculated: RM {salaryProration.payableSalary.toFixed(2)}
+                      </button>
                       <span className="text-[10px] text-on-surface-variant mt-1 block font-medium">
-                        Salary is managed strictly through Employee Management & Adjustments.
+                        This changes {selectedPayPeriod} only. The employee's contractual monthly salary remains unchanged.
                       </span>
                       {salaryProration.isProrated && (
                         <span className="text-[10px] text-primary font-bold mt-1 block">
