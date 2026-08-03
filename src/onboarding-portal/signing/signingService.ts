@@ -431,7 +431,9 @@ export async function getOfficialHandbookTemplate(
   }
 
   return {
-    downloadUrl: '/employee-handbook.pdf',
+    // Do not point the iframe at a missing asset: Vite/Vercel would serve the
+    // app shell there and render a recursive copy of the HRMS inside the portal.
+    downloadUrl: null,
     version: session.templateVersion || '1.0',
     pageCount: OFFICIAL_HANDBOOK.pageCount,
     sha256: OFFICIAL_HANDBOOK.sha256,

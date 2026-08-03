@@ -108,7 +108,7 @@ export interface FinalizeHandbookResponse {
 }
 
 export interface HandbookTemplateAccessResponse {
-  downloadUrl: string;
+  downloadUrl: string | null;
   version: string;
   pageCount: number;
   sha256: string;
