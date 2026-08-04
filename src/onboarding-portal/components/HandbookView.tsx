@@ -959,10 +959,10 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
         {/* Center/Main Column: Policy Content & Section Video */}
         <div
           ref={handbookColumnRef}
-          className="lg:w-2/3 flex flex-col gap-6 lg:pr-2"
+          className="lg:w-2/3 flex flex-col gap-6 lg:sticky lg:top-36 lg:h-[calc(100vh-13rem)] lg:max-h-[calc(100vh-13rem)] lg:overflow-hidden lg:pr-2"
         >
-          {/* Sticky Video Card */}
-          <div className="sticky top-28 z-20 self-stretch">
+          {/* Reserved video slot: the video stays fixed without covering the handbook. */}
+          <div className="shrink-0 self-stretch">
             {/* Each handbook Part has an independent video slot and source. */}
             <div className="relative w-full h-64 sm:h-72 rounded-xl border border-[#F2E8D8] bg-[#403f3a] shadow-[0_4px_12px_rgba(51,51,51,0.12)] overflow-hidden">
               {handbookVideo.sourceUrl ? (
@@ -1018,13 +1018,15 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
             </div>
           </div>
 
-          {/* Only the handbook content scrolls; the video remains pinned above it. */}
+          {/* Only handbook content and signing cards scroll; the video remains pinned above. */}
           <div
             ref={contentCardRef}
-            className="bg-white rounded-xl shadow-[0_4px_6px_-1px_rgba(51,51,51,0.05),0_10px_15px_-3px_rgba(51,51,51,0.1)] border border-[#F2E8D8] overflow-y-auto flex flex-col max-h-[calc(100vh-17rem)]"
+            className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain pr-1"
           >
-            {/* Text Content */}
-            <div className="p-6 sm:p-8 flex-1">
+            {/* Handbook Content Card */}
+            <div className="bg-white rounded-xl shadow-[0_4px_6px_-1px_rgba(51,51,51,0.05),0_10px_15px_-3px_rgba(51,51,51,0.1)] border border-[#F2E8D8] overflow-hidden flex flex-col">
+              {/* Text Content */}
+              <div className="p-6 sm:p-8 flex-1">
               {/* View Mode Switcher Header Bar */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 pb-4 border-b border-[#F2E8D8]">
                 <div className="flex items-center gap-2">
@@ -1194,30 +1196,30 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                 </div>
               )}
 
-              {activeSubsections.length > 0 && (
-                <div className="mt-6 flex flex-col gap-3 border-t border-[#F2E8D8] pt-5 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs font-semibold text-[#59413f]">
-                    {activeSectionLabel} of {activeSubsections.length}
-                    {isActiveModuleReviewComplete
-                      ? ' reviewed. You may now complete this Part.'
-                      : ' must be completed before the next section is shown.'}
-                  </p>
-                  {!isActiveModuleReviewComplete && isAtContentEnd && (
-                    <button
-                      type="button"
-                      onClick={handleContinueSubsection}
-                      className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#810912] px-5 text-xs font-extrabold text-white shadow-sm transition-colors hover:bg-[#a32626]"
-                    >
-                      <span>
-                        Continue to {getPartSectionLabel(activeModule.id, activeSubsectionIndex + 2)}
-                      </span>
-                      <ArrowRight className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              )}
+                {activeSubsections.length > 0 && (
+                  <div className="mt-6 flex flex-col gap-3 border-t border-[#F2E8D8] pt-5 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs font-semibold text-[#59413f]">
+                      {activeSectionLabel} of {activeSubsections.length}
+                      {isActiveModuleReviewComplete
+                        ? ' reviewed. You may now complete this Part.'
+                        : ' must be completed before the next section is shown.'}
+                    </p>
+                    {!isActiveModuleReviewComplete && isAtContentEnd && (
+                      <button
+                        type="button"
+                        onClick={handleContinueSubsection}
+                        className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#810912] px-5 text-xs font-extrabold text-white shadow-sm transition-colors hover:bg-[#a32626]"
+                      >
+                        <span>
+                          Continue to {getPartSectionLabel(activeModule.id, activeSubsectionIndex + 2)}
+                        </span>
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
 
           {/* ========================================================================= */}
           {/* SIGNATURE / INITIAL CARD PER PART */}
@@ -1457,6 +1459,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
               </div>
             </div>
           )}
+          </div>
         </div>
 
         {/* Preview Document Modal */}
