@@ -818,6 +818,7 @@ export default function App() {
             emergencyContactPhone: e.emergencyContactPhone || '',
             dateOfJoined: e.dateOfJoined || '',
             dateOfConfirmation: e.dateOfConfirmation || '',
+            dateOfTermination: e.dateOfTermination || '',
             careerHistory,
             dependants,
             allowanceGeneral: Number(e.allowanceGeneral || 0),
@@ -1346,6 +1347,7 @@ export default function App() {
           emergencyContactPhone: newEmployee.emergencyContactPhone,
           dateOfJoined: newEmployee.dateOfJoined,
           dateOfConfirmation: newEmployee.dateOfConfirmation || '',
+          dateOfTermination: newEmployee.dateOfTermination || '',
           allowanceGeneral: newEmployee.allowanceGeneral || 0,
           allowanceTransport: newEmployee.allowanceTransport !== undefined ? newEmployee.allowanceTransport : newEmployee.transportAllowance || 0,
           allowanceParking: newEmployee.allowanceParking || 0,
@@ -1526,6 +1528,7 @@ export default function App() {
         if (updates.emergencyContactPhone !== undefined) payloadUpdates.emergencyContactPhone = updates.emergencyContactPhone;
         if (updates.dateOfJoined !== undefined) payloadUpdates.dateOfJoined = updates.dateOfJoined;
         if (updates.dateOfConfirmation !== undefined) payloadUpdates.dateOfConfirmation = updates.dateOfConfirmation;
+        if (updates.dateOfTermination !== undefined) payloadUpdates.dateOfTermination = updates.dateOfTermination;
         if (updates.housingAllowance !== undefined) payloadUpdates.housingAllowance = updates.housingAllowance;
         if (updates.transportAllowance !== undefined) payloadUpdates.transportAllowance = updates.transportAllowance;
         if (updates.overtime !== undefined) payloadUpdates.overtime = updates.overtime;

@@ -46,7 +46,7 @@ import {
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { Employee, CareerHistoryEntry, Dependant, CorporateEntity } from '../types';
+import { Employee, EmployeeTaxProfile, CareerHistoryEntry, Dependant, CorporateEntity } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
 import { FilePond, registerPlugin } from 'react-filepond';
 import 'filepond/dist/filepond.min.css';
@@ -54,7 +54,56 @@ import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
 import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css';
 
 registerPlugin(FilePondPluginImagePreview);
-import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getPayrollBasicSalary, getSalaryProration, getEmployeeForMonth } from '../data';
+import {
+  calculatePayslip,
+  getPayslipLabel,
+  getDirectLogoUrl,
+  getPayrollBasicSalary,
+  getSalaryProration,
+  getEmployeeForMonth,
+  getEffectiveEmploymentStatusForDate,
+  getEffectiveProfileForDate
+} from '../data';
+
+const EMPLOYEE_STATUS_OPTIONS: Exclude<Employee['status'], 'On Leave'>[] = [
+  'Active',
+  'Resigned',
+  'Terminated',
+  'Suspended'
+];
+
+const isSeparationStatus = (status: Employee['status']) =>
+  status === 'Resigned' || status === 'Terminated';
+
+const getEmployeeStatusClasses = (status: Employee['status']) => {
+  switch (status) {
+    case 'Active':
+      return {
+        badge: 'bg-green-100 text-green-700',
+        dot: 'bg-green-600'
+      };
+    case 'Resigned':
+      return {
+        badge: 'bg-amber-100 text-amber-700',
+        dot: 'bg-amber-500'
+      };
+    case 'Suspended':
+      return {
+        badge: 'bg-zinc-100 text-zinc-600',
+        dot: 'bg-zinc-400'
+      };
+    case 'On Leave':
+      return {
+        badge: 'bg-orange-100 text-orange-700',
+        dot: 'bg-orange-500'
+      };
+    default:
+      return {
+        badge: 'bg-red-100 text-red-700',
+        dot: 'bg-red-600'
+      };
+  }
+};
 
 interface EmployeeDirectoryViewProps {
   employees: Employee[];
@@ -78,6 +127,7 @@ export default function EmployeeDirectoryView({
   const [searchQuery, setSearchQuery] = useState('');
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
+  const todayIsoDate = getGmt8DateString();
   const getDisplayedMonthlyBasicSalary = (employee: Employee) =>
     getSalaryProration(employee, currentMonth, currentYear).fullPeriodSalary;
   const formatCurrencyAmount = (amount: number) =>
@@ -160,7 +210,7 @@ export default function EmployeeDirectoryView({
   const [formEmail, setFormEmail] = useState('');
   const [formDesignation, setFormDesignation] = useState('');
   const [formDepartment, setFormDepartment] = useState('Engineering');
-  const [formStatus, setFormStatus] = useState<'Active' | 'On Leave' | 'Terminated' | 'Suspended'>('Active');
+  const [formStatus, setFormStatus] = useState<Employee['status']>('Active');
   const [formBank, setFormBank] = useState('Maybank Berhad');
   const [formAccount, setFormAccount] = useState('');
   const [formSalary, setFormSalary] = useState(5000);
@@ -215,7 +265,7 @@ export default function EmployeeDirectoryView({
   const [editEmail, setEditEmail] = useState('');
   const [editDesignation, setEditDesignation] = useState('');
   const [editDepartment, setEditDepartment] = useState('');
-  const [editStatus, setEditStatus] = useState<'Active' | 'On Leave' | 'Terminated' | 'Suspended'>('Active');
+  const [editStatus, setEditStatus] = useState<Employee['status']>('Active');
   const [editBankName, setEditBankName] = useState('');
   const [editAccountNo, setEditAccountNo] = useState('');
   const [editBasicSalary, setEditBasicSalary] = useState(0);
@@ -245,7 +295,8 @@ export default function EmployeeDirectoryView({
     setEditEmail(selectedEmployee.email || '');
     setEditDesignation(selectedEmployee.designation);
     setEditDepartment(selectedEmployee.department);
-    setEditStatus(selectedEmployee.status);
+    const currentStatus = getEffectiveEmploymentStatusForDate(selectedEmployee, todayIsoDate);
+    setEditStatus(currentStatus === 'On Leave' ? 'Active' : currentStatus);
     setEditBankName(selectedEmployee.bankName || '');
     setEditAccountNo(selectedEmployee.accountNo || '');
     setEditBasicSalary(selectedEmployee.basicSalary);
@@ -273,7 +324,34 @@ export default function EmployeeDirectoryView({
 
   const handleSaveGeneralInfoUpdates = async () => {
     if (!selectedEmployee) return;
-    
+    const currentProfile = getEffectiveProfileForDate(selectedEmployee, todayIsoDate);
+    const statusProfile: EmployeeTaxProfile = {
+      ...currentProfile,
+      effectiveDate: todayIsoDate,
+      basicSalary: Number(editBasicSalary),
+      employmentStatus: editStatus,
+      housingAllowance: Number(editHousingAllowance),
+      transportAllowance: Number(editTransportAllowance),
+      allowanceAccommodation: Number(editHousingAllowance),
+      allowanceTransport: Number(editTransportAllowance),
+      allowanceGeneral: Number(editAllowanceGeneral),
+      allowanceParking: Number(editAllowanceParking),
+      allowanceMeal: Number(editAllowanceMeal),
+      allowancePhone: Number(editAllowancePhone),
+      epfRateEmployee: Number(editEpfRateEmployee),
+      epfRateEmployer: Number(editEpfRateEmployer),
+      dateOfJoined: editDateOfJoined,
+      dateOfTermination: isSeparationStatus(editStatus) ? todayIsoDate : undefined,
+      approvedAt: getGmt8Timestamp(),
+      assistReconciliationRequired: false
+    };
+    const effectiveDatedProfiles = [
+      ...(selectedEmployee.effectiveDatedProfiles || []).filter(
+        profile => profile.effectiveDate !== todayIsoDate
+      ),
+      statusProfile
+    ].sort((left, right) => left.effectiveDate.localeCompare(right.effectiveDate));
+
     const updates: Partial<Employee> = {
       name: editName,
       email: editEmail,
@@ -303,7 +381,9 @@ export default function EmployeeDirectoryView({
       emergencyContactName: editEmergencyContactName,
       emergencyContactRelation: editEmergencyContactRelation,
       emergencyContactPhone: editEmergencyContactPhone,
-      entityId: editEntityId
+      entityId: editEntityId,
+      effectiveDatedProfiles,
+      dateOfTermination: isSeparationStatus(editStatus) ? todayIsoDate : ''
     };
 
     setSavingAction('general');
@@ -443,11 +523,12 @@ export default function EmployeeDirectoryView({
   const [localCareerHistory, setLocalCareerHistory] = useState<any[]>([]);
   const [localDesignation, setLocalDesignation] = useState('');
   const [localDepartment, setLocalDepartment] = useState('');
-  const [localStatus, setLocalStatus] = useState<any>('Active');
-  const [localEmploymentType, setLocalEmploymentType] = useState<any>('Confirmation');
+  const [localStatus, setLocalStatus] = useState<Employee['status']>('Active');
+  const [localEmploymentType, setLocalEmploymentType] = useState<Employee['employmentType']>('Confirmation');
   const [localBasicSalary, setLocalBasicSalary] = useState(0);
   const [localTaxPcb, setLocalTaxPcb] = useState(0);
   const [localEntityId, setLocalEntityId] = useState('');
+  const [localEffectiveDatedProfiles, setLocalEffectiveDatedProfiles] = useState<EmployeeTaxProfile[]>([]);
 
   // Sync with selectedEmployee changes
   useEffect(() => {
@@ -456,13 +537,43 @@ export default function EmployeeDirectoryView({
       setLocalCareerHistory(selectedEmployee.careerHistory || []);
       setLocalDesignation(selectedEmployee.designation);
       setLocalDepartment(selectedEmployee.department);
-      setLocalStatus(selectedEmployee.status);
+      setLocalStatus(
+        getEffectiveEmploymentStatusForDate(selectedEmployee, todayIsoDate)
+      );
       setLocalEmploymentType(selectedEmployee.employmentType);
       setLocalBasicSalary(selectedEmployee.basicSalary);
       setLocalTaxPcb(selectedEmployee.taxPcb || 0);
       setLocalEntityId(selectedEmployee.entityId);
+      setLocalEffectiveDatedProfiles(selectedEmployee.effectiveDatedProfiles || []);
     }
   }, [selectedEmployeeId, selectedEmployee]);
+
+  const buildCurrentEffectiveProfile = (
+    employee: Employee,
+    status: Employee['status'],
+    overrides: Partial<EmployeeTaxProfile> = {}
+  ): EmployeeTaxProfile => {
+    const currentProfile = getEffectiveProfileForDate(employee, todayIsoDate);
+    return {
+      ...currentProfile,
+      ...overrides,
+      effectiveDate: todayIsoDate,
+      employmentStatus: status,
+      dateOfTermination: isSeparationStatus(status)
+        ? currentProfile.dateOfTermination || todayIsoDate
+        : undefined,
+      approvedAt: getGmt8Timestamp(),
+      assistReconciliationRequired: false
+    };
+  };
+
+  const upsertEffectiveProfile = (
+    profiles: EmployeeTaxProfile[],
+    profile: EmployeeTaxProfile
+  ) => [
+    ...profiles.filter(existing => existing.effectiveDate !== profile.effectiveDate),
+    profile
+  ].sort((left, right) => left.effectiveDate.localeCompare(right.effectiveDate));
 
   const handleSalaryAdjustmentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -508,18 +619,37 @@ export default function EmployeeDirectoryView({
 
   const handleSaveCareerChanges = async () => {
     if (!selectedEmployee) return;
+    const stagedEmployee: Employee = {
+      ...selectedEmployee,
+      effectiveDatedProfiles: localEffectiveDatedProfiles
+    };
+    const currentStatus = getEffectiveEmploymentStatusForDate(stagedEmployee, todayIsoDate);
+    const currentProfile = getEffectiveProfileForDate(stagedEmployee, todayIsoDate);
+    const savedEffectiveDatedProfiles = upsertEffectiveProfile(
+      localEffectiveDatedProfiles,
+      buildCurrentEffectiveProfile(stagedEmployee, currentStatus, {
+        basicSalary: localBasicSalary
+      })
+    );
+
+    setLocalStatus(currentStatus);
+    setLocalEffectiveDatedProfiles(savedEffectiveDatedProfiles);
     setSavingAction('career');
     try {
       await onUpdateEmployee(selectedEmployee.id, {
         designation: localDesignation,
         department: localDepartment,
-        status: localStatus,
+        status: currentStatus,
         employmentType: localEmploymentType,
         basicSalary: localBasicSalary,
         taxPcb: localTaxPcb,
         entityId: localEntityId,
         salaryAdjustments: localSalaryAdjustments,
-        careerHistory: localCareerHistory
+        careerHistory: localCareerHistory,
+        effectiveDatedProfiles: savedEffectiveDatedProfiles,
+        dateOfTermination: isSeparationStatus(currentStatus)
+          ? currentProfile.dateOfTermination || todayIsoDate
+          : ''
       });
       onShowNotification(
         'Database Synced',
@@ -535,13 +665,17 @@ export default function EmployeeDirectoryView({
   // Filter list
   const filteredEmployees = employees.filter(emp => {
     const matchesDept = deptFilter === 'All Departments' || emp.department === deptFilter;
-    const matchesStatus = statusFilter === 'All Statuses' || emp.status === statusFilter;
+    const displayedStatus = getEffectiveEmploymentStatusForDate(emp, todayIsoDate);
+    const matchesStatus = statusFilter === 'All Statuses' || displayedStatus === statusFilter;
     const matchesEntity = entityFilter === 'All Subsidiaries' || emp.entityId === entityFilter;
     const matchesSearch = emp.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           emp.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           emp.email.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesDept && matchesStatus && matchesEntity && matchesSearch;
   });
+  const selectedEmployeeStatus = selectedEmployee
+    ? getEffectiveEmploymentStatusForDate(selectedEmployee, todayIsoDate)
+    : null;
 
   const handleOpenAddModal = () => {
     setFormEntityId(activeEntityId || entities[0]?.id || 'ENT-92');
@@ -901,8 +1035,46 @@ export default function EmployeeDirectoryView({
 
     switch (progressionType) {
       case 'Status Change':
-        previousVal = localStatus;
-        setLocalStatus(progressionValue as any);
+        if (!EMPLOYEE_STATUS_OPTIONS.some(status => status === progressionValue)) {
+          onShowNotification('Progression Error', 'Please choose a supported employee status.');
+          return;
+        }
+
+        const nextStatus = progressionValue as Employee['status'];
+        const stagedBeforeStatusChange: Employee = {
+          ...selectedEmployee,
+          effectiveDatedProfiles: localEffectiveDatedProfiles
+        };
+        previousVal = getEffectiveEmploymentStatusForDate(
+          stagedBeforeStatusChange,
+          progressionDate
+        );
+
+        const profileAtEffectiveDate = getEffectiveProfileForDate(
+          stagedBeforeStatusChange,
+          progressionDate
+        );
+        const statusProfile: EmployeeTaxProfile = {
+          ...profileAtEffectiveDate,
+          effectiveDate: progressionDate,
+          employmentStatus: nextStatus,
+          dateOfTermination: isSeparationStatus(nextStatus) ? progressionDate : undefined,
+          approvedAt: getGmt8Timestamp(),
+          assistReconciliationRequired: false
+        };
+        const updatedEffectiveDatedProfiles = upsertEffectiveProfile(
+          localEffectiveDatedProfiles,
+          statusProfile
+        );
+        const stagedAfterStatusChange: Employee = {
+          ...selectedEmployee,
+          effectiveDatedProfiles: updatedEffectiveDatedProfiles
+        };
+
+        setLocalEffectiveDatedProfiles(updatedEffectiveDatedProfiles);
+        setLocalStatus(
+          getEffectiveEmploymentStatusForDate(stagedAfterStatusChange, todayIsoDate)
+        );
         break;
       case 'Promotion':
         previousVal = localDesignation;
@@ -2179,7 +2351,7 @@ export default function EmployeeDirectoryView({
                 >
                   <option>All Statuses</option>
                   <option>Active</option>
-                  <option>On Leave</option>
+                  <option>Resigned</option>
                   <option>Terminated</option>
                   <option>Suspended</option>
                 </select>
@@ -2207,9 +2379,8 @@ export default function EmployeeDirectoryView({
                 </thead>
                 <tbody className="divide-y divide-neutral-border/50">
                   {filteredEmployees.map((emp) => {
-                    const isActive = emp.status === 'Active';
-                    const isOnLeave = emp.status === 'On Leave';
-                    const isSuspended = emp.status === 'Suspended';
+                    const displayedStatus = getEffectiveEmploymentStatusForDate(emp, todayIsoDate);
+                    const statusClasses = getEmployeeStatusClasses(displayedStatus);
                     const displayedBasicSalary = getDisplayedMonthlyBasicSalary(emp);
                     
                     return (
@@ -2268,19 +2439,9 @@ export default function EmployeeDirectoryView({
 
                         {/* Column 7: Status */}
                         <td className="p-4">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
-                            isActive 
-                              ? 'bg-green-100 text-green-700' 
-                              : isOnLeave 
-                              ? 'bg-amber-100 text-amber-700' 
-                              : isSuspended 
-                              ? 'bg-zinc-100 text-zinc-600'
-                              : 'bg-red-100 text-red-700'
-                          }`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${
-                              isActive ? 'bg-green-600' : isOnLeave ? 'bg-amber-500' : isSuspended ? 'bg-zinc-400' : 'bg-red-600'
-                            }`} />
-                            {emp.status}
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${statusClasses.badge}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${statusClasses.dot}`} />
+                            {displayedStatus}
                           </span>
                         </td>
 
@@ -2485,15 +2646,9 @@ export default function EmployeeDirectoryView({
                         <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Payroll Registry Status</div>
                         <div className="mt-0.5">
                           <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
-                            selectedEmployee.status === 'Active' 
-                              ? 'bg-green-100 text-green-700' 
-                              : selectedEmployee.status === 'On Leave'
-                              ? 'bg-amber-100 text-amber-700'
-                              : selectedEmployee.status === 'Suspended'
-                              ? 'bg-zinc-100 text-zinc-600'
-                              : 'bg-red-100 text-red-700'
+                            getEmployeeStatusClasses(selectedEmployeeStatus || selectedEmployee.status).badge
                           }`}>
-                            {selectedEmployee.status}
+                            {selectedEmployeeStatus || selectedEmployee.status}
                           </span>
                         </div>
                       </div>
@@ -2648,10 +2803,9 @@ export default function EmployeeDirectoryView({
                             onChange={(e) => setEditStatus(e.target.value as any)}
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           >
-                            <option value="Active">Active</option>
-                            <option value="On Leave">On Leave</option>
-                            <option value="Terminated">Terminated</option>
-                            <option value="Suspended">Suspended</option>
+                            {EMPLOYEE_STATUS_OPTIONS.map(status => (
+                              <option key={status} value={status}>{status}</option>
+                            ))}
                           </select>
                         </div>
                         <div>
@@ -3606,10 +3760,9 @@ export default function EmployeeDirectoryView({
                           required
                         >
                           <option value="">-- Choose Status --</option>
-                          <option value="Active">Active</option>
-                          <option value="On Leave">On Leave</option>
-                          <option value="Terminated">Terminated</option>
-                          <option value="Suspended">Suspended</option>
+                          {EMPLOYEE_STATUS_OPTIONS.map(status => (
+                            <option key={status} value={status}>{status}</option>
+                          ))}
                         </select>
                       )}
 
@@ -4179,9 +4332,9 @@ export default function EmployeeDirectoryView({
                       value={formStatus} onChange={(e) => setFormStatus(e.target.value as any)}
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
                     >
-                      <option value="Active">Active</option>
-                      <option value="On Leave">On Leave</option>
-                      <option value="Suspended">Suspended</option>
+                      {EMPLOYEE_STATUS_OPTIONS.map(status => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
                     </select>
                   </div>
                 </div>

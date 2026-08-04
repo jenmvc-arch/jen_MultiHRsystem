@@ -1843,13 +1843,54 @@ const comparePayrollMonth = (date: PayrollDateParts, month: number, year: number
   (date.year * 12 + date.month) - (year * 12 + month)
 );
 
+const isEmployeeSeparationStatus = (status?: Employee['status']) =>
+  status === 'Resigned' || status === 'Terminated';
+
+const getSortedEffectiveProfiles = (employee: Employee) =>
+  [...(employee.effectiveDatedProfiles || [])]
+    .filter(profile => Boolean(parsePayrollDate(profile.effectiveDate)))
+    .sort((left, right) => left.effectiveDate.localeCompare(right.effectiveDate));
+
+const getFallbackEffectiveProfile = (employee: Employee): EmployeeTaxProfile => ({
+  effectiveDate: employee.dateOfJoined || '2026-01-01',
+  basicSalary: employee.basicSalary,
+  employmentStatus: employee.status,
+  housingAllowance: employee.housingAllowance || 0,
+  transportAllowance: employee.transportAllowance || 0,
+  allowanceGeneral: employee.allowanceGeneral || 0,
+  allowanceTransport: employee.allowanceTransport || 0,
+  allowanceParking: employee.allowanceParking || 0,
+  allowanceMeal: employee.allowanceMeal || 0,
+  allowanceAccommodation: employee.allowanceAccommodation || 0,
+  allowancePhone: employee.allowancePhone || 0,
+  commissionAmount: employee.commissionAmount || 0,
+  maritalStatus: employee.maritalStatus || 'Single',
+  spouseIsWorking: employee.spouseIsWorking || 'No',
+  spouseNric: employee.spouseNric || '',
+  spouseName: employee.spouseName || '',
+  hasDependants: employee.hasDependants || 'No',
+  dependantsCount: employee.dependants?.length || 0,
+  eligibleForStatutory: employee.eligibleForStatutory || 'Yes',
+  epfRateEmployee: employee.epfRateEmployee || 11,
+  epfRateEmployer: employee.epfRateEmployer || 13,
+  taxNumber: employee.taxNumber || '',
+  nricPassport: employee.nricPassport || '',
+  dateOfJoined: employee.dateOfJoined || '',
+  dateOfTermination: employee.dateOfTermination,
+  approvedAt: getGmt8DateString(),
+  assistReconciliationRequired: false,
+});
+
 const getEmployeeTerminationDate = (employee: Employee): string | undefined => {
-  const directDate = (employee as Employee & { dateOfTermination?: string }).dateOfTermination;
+  const directDate = employee.dateOfTermination;
   if (parsePayrollDate(directDate)) return directDate;
 
-  return [...(employee.effectiveDatedProfiles || [])]
-    .sort((left, right) => right.effectiveDate.localeCompare(left.effectiveDate))
-    .map(profile => profile.dateOfTermination)
+  return getSortedEffectiveProfiles(employee)
+    .reverse()
+    .map(profile => (
+      profile.dateOfTermination ||
+      (isEmployeeSeparationStatus(profile.employmentStatus) ? profile.effectiveDate : undefined)
+    ))
     .find(date => parsePayrollDate(date) !== null);
 };
 
@@ -1951,38 +1992,205 @@ export function getPayrollBasicSalary(employee: Employee, month: number, year: n
 }
 
 export function getEmployeeForMonth(employee: Employee, month: number, year?: number): Employee {
+  const resolvedYear = year ?? new Date().getFullYear();
+  const effectiveProfile = getEffectiveProfileForMonth(employee, month, resolvedYear);
+  const effectiveStatus = getEffectiveEmploymentStatus(employee, month, resolvedYear);
+  const monthEndDay = new Date(resolvedYear, month, 0).getDate();
+  const monthEndDate = `${resolvedYear}-${String(month).padStart(2, '0')}-${String(monthEndDay).padStart(2, '0')}`;
+  const monthEndProfile = getEffectiveProfileForDate(employee, monthEndDate);
+  const effectiveEmployee: Employee = {
+    ...employee,
+    status: effectiveStatus,
+    basicSalary: effectiveProfile.basicSalary,
+    housingAllowance:
+      effectiveProfile.housingAllowance !== undefined
+        ? effectiveProfile.housingAllowance
+        : employee.housingAllowance,
+    transportAllowance:
+      effectiveProfile.transportAllowance !== undefined
+        ? effectiveProfile.transportAllowance
+        : employee.transportAllowance,
+    allowanceGeneral:
+      effectiveProfile.allowanceGeneral !== undefined
+        ? effectiveProfile.allowanceGeneral
+        : employee.allowanceGeneral,
+    allowanceTransport:
+      effectiveProfile.allowanceTransport !== undefined
+        ? effectiveProfile.allowanceTransport
+        : employee.allowanceTransport,
+    allowanceParking:
+      effectiveProfile.allowanceParking !== undefined
+        ? effectiveProfile.allowanceParking
+        : employee.allowanceParking,
+    allowanceMeal:
+      effectiveProfile.allowanceMeal !== undefined
+        ? effectiveProfile.allowanceMeal
+        : employee.allowanceMeal,
+    allowanceAccommodation:
+      effectiveProfile.allowanceAccommodation !== undefined
+        ? effectiveProfile.allowanceAccommodation
+        : employee.allowanceAccommodation,
+    allowancePhone:
+      effectiveProfile.allowancePhone !== undefined
+        ? effectiveProfile.allowancePhone
+        : employee.allowancePhone,
+    commissionAmount:
+      effectiveProfile.commissionAmount !== undefined
+        ? effectiveProfile.commissionAmount
+        : employee.commissionAmount,
+    maritalStatus: effectiveProfile.maritalStatus || employee.maritalStatus,
+    spouseIsWorking:
+      effectiveProfile.spouseIsWorking !== undefined
+        ? effectiveProfile.spouseIsWorking
+        : employee.spouseIsWorking,
+    spouseNric:
+      effectiveProfile.spouseNric !== undefined
+        ? effectiveProfile.spouseNric
+        : employee.spouseNric,
+    spouseName:
+      effectiveProfile.spouseName !== undefined
+        ? effectiveProfile.spouseName
+        : employee.spouseName,
+    hasDependants:
+      effectiveProfile.hasDependants !== undefined
+        ? effectiveProfile.hasDependants
+        : employee.hasDependants,
+    eligibleForStatutory:
+      effectiveProfile.eligibleForStatutory !== undefined
+        ? effectiveProfile.eligibleForStatutory
+        : employee.eligibleForStatutory,
+    epfRateEmployee:
+      effectiveProfile.epfRateEmployee !== undefined
+        ? effectiveProfile.epfRateEmployee
+        : employee.epfRateEmployee,
+    epfRateEmployer:
+      effectiveProfile.epfRateEmployer !== undefined
+        ? effectiveProfile.epfRateEmployer
+        : employee.epfRateEmployer,
+    taxNumber:
+      effectiveProfile.taxNumber !== undefined
+        ? effectiveProfile.taxNumber
+        : employee.taxNumber,
+    nricPassport:
+      effectiveProfile.nricPassport !== undefined
+        ? effectiveProfile.nricPassport
+        : employee.nricPassport,
+    dateOfJoined:
+      effectiveProfile.dateOfJoined !== undefined
+        ? effectiveProfile.dateOfJoined
+        : employee.dateOfJoined,
+    dateOfTermination:
+      monthEndProfile.dateOfTermination ||
+      effectiveProfile.dateOfTermination ||
+      employee.dateOfTermination,
+  };
+
   const histRecord = getHistoricalPayrollRecord(employee, month, year);
   if (!histRecord) {
-    return employee;
+    return effectiveEmployee;
   }
   
   return {
-    ...employee,
-    allowanceGeneral: histRecord.allowanceGeneral !== undefined ? histRecord.allowanceGeneral : employee.allowanceGeneral,
-    allowanceTransport: histRecord.allowanceTransport !== undefined ? histRecord.allowanceTransport : employee.allowanceTransport,
-    allowanceParking: histRecord.allowanceParking !== undefined ? histRecord.allowanceParking : employee.allowanceParking,
-    allowanceMeal: histRecord.allowanceMeal !== undefined ? histRecord.allowanceMeal : employee.allowanceMeal,
-    allowanceAccommodation: histRecord.allowanceAccommodation !== undefined ? histRecord.allowanceAccommodation : employee.allowanceAccommodation,
-    allowancePhone: histRecord.allowancePhone !== undefined ? histRecord.allowancePhone : employee.allowancePhone,
-    overtime: histRecord.overtime !== undefined ? histRecord.overtime : employee.overtime,
-    bonusAmount: histRecord.bonusAmount !== undefined ? histRecord.bonusAmount : (histRecord.performanceBonus !== undefined ? histRecord.performanceBonus : employee.bonusAmount),
-    bonusDesc: histRecord.bonusDesc !== undefined ? histRecord.bonusDesc : employee.bonusDesc,
-    commissionAmount: histRecord.commissionAmount !== undefined ? histRecord.commissionAmount : employee.commissionAmount,
-    commissionDesc: histRecord.commissionDesc !== undefined ? histRecord.commissionDesc : employee.commissionDesc,
-    backPayAmount: histRecord.backPayAmount !== undefined ? histRecord.backPayAmount : employee.backPayAmount,
-    backPayDesc: histRecord.backPayDesc !== undefined ? histRecord.backPayDesc : employee.backPayDesc,
-    awsAmount: histRecord.awsAmount !== undefined ? histRecord.awsAmount : employee.awsAmount,
-    awsDesc: histRecord.awsDesc !== undefined ? histRecord.awsDesc : employee.awsDesc,
-    compensationAmount: histRecord.compensationAmount !== undefined ? histRecord.compensationAmount : employee.compensationAmount,
-    compensationDesc: histRecord.compensationDesc !== undefined ? histRecord.compensationDesc : employee.compensationDesc,
-    reimbursementAmount: histRecord.reimbursementAmount !== undefined ? histRecord.reimbursementAmount : employee.reimbursementAmount,
-    reimbursementDesc: histRecord.reimbursementDesc !== undefined ? histRecord.reimbursementDesc : employee.reimbursementDesc,
-    unpaidLeave: histRecord.unpaidLeave !== undefined ? histRecord.unpaidLeave : employee.unpaidLeave,
-    deductionInLieu: histRecord.deductionInLieu !== undefined ? histRecord.deductionInLieu : employee.deductionInLieu,
-    deductionCp38: histRecord.deductionCp38 !== undefined ? histRecord.deductionCp38 : (histRecord.cp38 !== undefined ? histRecord.cp38 : employee.deductionCp38),
-    deductionOthers: histRecord.deductionOthers !== undefined ? histRecord.deductionOthers : employee.deductionOthers,
-    deductionOthersDesc: histRecord.deductionOthersDesc !== undefined ? histRecord.deductionOthersDesc : employee.deductionOthersDesc,
-    taxPcb: histRecord.actualPCBDeducted !== undefined ? histRecord.actualPCBDeducted : employee.taxPcb
+    ...effectiveEmployee,
+    allowanceGeneral:
+      histRecord.allowanceGeneral !== undefined
+        ? histRecord.allowanceGeneral
+        : effectiveEmployee.allowanceGeneral,
+    allowanceTransport:
+      histRecord.allowanceTransport !== undefined
+        ? histRecord.allowanceTransport
+        : effectiveEmployee.allowanceTransport,
+    allowanceParking:
+      histRecord.allowanceParking !== undefined
+        ? histRecord.allowanceParking
+        : effectiveEmployee.allowanceParking,
+    allowanceMeal:
+      histRecord.allowanceMeal !== undefined
+        ? histRecord.allowanceMeal
+        : effectiveEmployee.allowanceMeal,
+    allowanceAccommodation:
+      histRecord.allowanceAccommodation !== undefined
+        ? histRecord.allowanceAccommodation
+        : effectiveEmployee.allowanceAccommodation,
+    allowancePhone:
+      histRecord.allowancePhone !== undefined
+        ? histRecord.allowancePhone
+        : effectiveEmployee.allowancePhone,
+    overtime: histRecord.overtime !== undefined ? histRecord.overtime : effectiveEmployee.overtime,
+    bonusAmount:
+      histRecord.bonusAmount !== undefined
+        ? histRecord.bonusAmount
+        : (histRecord.performanceBonus !== undefined
+            ? histRecord.performanceBonus
+            : effectiveEmployee.bonusAmount),
+    bonusDesc:
+      histRecord.bonusDesc !== undefined
+        ? histRecord.bonusDesc
+        : effectiveEmployee.bonusDesc,
+    commissionAmount:
+      histRecord.commissionAmount !== undefined
+        ? histRecord.commissionAmount
+        : effectiveEmployee.commissionAmount,
+    commissionDesc:
+      histRecord.commissionDesc !== undefined
+        ? histRecord.commissionDesc
+        : effectiveEmployee.commissionDesc,
+    backPayAmount:
+      histRecord.backPayAmount !== undefined
+        ? histRecord.backPayAmount
+        : effectiveEmployee.backPayAmount,
+    backPayDesc:
+      histRecord.backPayDesc !== undefined
+        ? histRecord.backPayDesc
+        : effectiveEmployee.backPayDesc,
+    awsAmount:
+      histRecord.awsAmount !== undefined
+        ? histRecord.awsAmount
+        : effectiveEmployee.awsAmount,
+    awsDesc:
+      histRecord.awsDesc !== undefined
+        ? histRecord.awsDesc
+        : effectiveEmployee.awsDesc,
+    compensationAmount:
+      histRecord.compensationAmount !== undefined
+        ? histRecord.compensationAmount
+        : effectiveEmployee.compensationAmount,
+    compensationDesc:
+      histRecord.compensationDesc !== undefined
+        ? histRecord.compensationDesc
+        : effectiveEmployee.compensationDesc,
+    reimbursementAmount:
+      histRecord.reimbursementAmount !== undefined
+        ? histRecord.reimbursementAmount
+        : effectiveEmployee.reimbursementAmount,
+    reimbursementDesc:
+      histRecord.reimbursementDesc !== undefined
+        ? histRecord.reimbursementDesc
+        : effectiveEmployee.reimbursementDesc,
+    unpaidLeave:
+      histRecord.unpaidLeave !== undefined
+        ? histRecord.unpaidLeave
+        : effectiveEmployee.unpaidLeave,
+    deductionInLieu:
+      histRecord.deductionInLieu !== undefined
+        ? histRecord.deductionInLieu
+        : effectiveEmployee.deductionInLieu,
+    deductionCp38:
+      histRecord.deductionCp38 !== undefined
+        ? histRecord.deductionCp38
+        : (histRecord.cp38 !== undefined ? histRecord.cp38 : effectiveEmployee.deductionCp38),
+    deductionOthers:
+      histRecord.deductionOthers !== undefined
+        ? histRecord.deductionOthers
+        : effectiveEmployee.deductionOthers,
+    deductionOthersDesc:
+      histRecord.deductionOthersDesc !== undefined
+        ? histRecord.deductionOthersDesc
+        : effectiveEmployee.deductionOthersDesc,
+    taxPcb:
+      histRecord.actualPCBDeducted !== undefined
+        ? histRecord.actualPCBDeducted
+        : effectiveEmployee.taxPcb
   };
 }
 
@@ -2757,61 +2965,69 @@ export const SEED_REVIEW_CYCLES: ReviewCycle[] = [
   }
 ];
 
-export function getEffectiveProfileForMonth(employee: Employee, month: number, year: number): EmployeeTaxProfile {
-  const targetDateStr = `${year}-${String(month).padStart(2, '0')}-01`;
-  if (!employee.effectiveDatedProfiles || employee.effectiveDatedProfiles.length === 0) {
-    // Fallback to active current profile
-    return {
-      effectiveDate: employee.dateOfJoined || '2026-01-01',
-      basicSalary: employee.basicSalary,
-      housingAllowance: employee.housingAllowance || 0,
-      transportAllowance: employee.transportAllowance || 0,
-      allowanceGeneral: employee.allowanceGeneral || 0,
-      allowanceTransport: employee.allowanceTransport || 0,
-      allowanceParking: employee.allowanceParking || 0,
-      allowanceMeal: employee.allowanceMeal || 0,
-      allowanceAccommodation: employee.allowanceAccommodation || 0,
-      allowancePhone: employee.allowancePhone || 0,
-      commissionAmount: employee.commissionAmount || 0,
-      maritalStatus: employee.maritalStatus || 'Single',
-      spouseIsWorking: employee.spouseIsWorking || 'No',
-      spouseNric: employee.spouseNric || '',
-      spouseName: employee.spouseName || '',
-      hasDependants: employee.hasDependants || 'No',
-      dependantsCount: employee.dependants?.length || 0,
-      eligibleForStatutory: employee.eligibleForStatutory || 'Yes',
-      epfRateEmployee: employee.epfRateEmployee || 11,
-      epfRateEmployer: employee.epfRateEmployer || 13,
-      taxNumber: employee.taxNumber || '',
-      nricPassport: employee.nricPassport || '',
-      dateOfJoined: employee.dateOfJoined || '',
-    };
-  }
+export function getEffectiveProfileForDate(employee: Employee, targetDateStr: string): EmployeeTaxProfile {
+  const fallback = getFallbackEffectiveProfile(employee);
+  let matched = fallback;
 
-  // Sort ascending and find the latest one that is <= targetDateStr
-  const sorted = [...employee.effectiveDatedProfiles].sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate));
-  let matched = sorted[0];
-  for (const prof of sorted) {
-    if (prof.effectiveDate <= targetDateStr) {
-      matched = prof;
+  for (const profile of getSortedEffectiveProfiles(employee)) {
+    if (profile.effectiveDate > targetDateStr) continue;
+
+    matched = {
+      ...matched,
+      ...profile,
+      employmentStatus: profile.employmentStatus || matched.employmentStatus || employee.status,
+    };
+
+    if (profile.employmentStatus) {
+      matched.dateOfTermination = isEmployeeSeparationStatus(profile.employmentStatus)
+        ? profile.dateOfTermination || profile.effectiveDate
+        : profile.dateOfTermination;
     }
   }
+
   return matched;
 }
 
-export function getPayrollRecordForMonth(employee: Employee, month: number): HistoricalPayrollRecord {
-  const record = employee.historicalPayrollRecords?.find(r => r.payrollMonth === month);
+export function getEffectiveEmploymentStatusForDate(
+  employee: Employee,
+  targetDateStr: string
+): Employee['status'] {
+  return getEffectiveProfileForDate(employee, targetDateStr).employmentStatus || employee.status;
+}
+
+export function getEffectiveEmploymentStatus(
+  employee: Employee,
+  month: number,
+  year: number
+): Employee['status'] {
+  const lastDay = new Date(year, month, 0).getDate();
+  const targetDateStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  return getEffectiveEmploymentStatusForDate(employee, targetDateStr);
+}
+
+export function getEffectiveProfileForMonth(employee: Employee, month: number, year: number): EmployeeTaxProfile {
+  const targetDateStr = `${year}-${String(month).padStart(2, '0')}-01`;
+  return getEffectiveProfileForDate(employee, targetDateStr);
+}
+
+export function getPayrollRecordForMonth(
+  employee: Employee,
+  month: number,
+  year = 2026
+): HistoricalPayrollRecord {
+  const record = getHistoricalPayrollRecord(employee, month, year);
   if (record) return record;
   
-  // Build a default from the effective profile
-  const profile = getEffectiveProfileForMonth(employee, month, 2026);
+  // Build a default from the effective profile and current payroll eligibility.
+  const profile = getEffectiveProfileForMonth(employee, month, year);
   const isEligible = profile.eligibleForStatutory !== 'No';
   const epfEmpRate = profile.epfRateEmployee || 11;
   const epfVal = isEligible ? Math.round((profile.basicSalary * epfEmpRate) / 100) : 0;
+  const effectiveEmployee = getEmployeeForMonth(employee, month, year);
 
   return {
     payrollMonth: month,
-    basicSalary: profile.basicSalary,
+    basicSalary: getAdjustedBasicSalary(effectiveEmployee, month, year),
     allowanceGeneral: profile.allowanceGeneral || 0,
     allowanceTransport: profile.allowanceTransport || 0,
     allowanceParking: profile.allowanceParking || 0,
@@ -3299,7 +3515,7 @@ export function recalculatePCBForward(params: {
     if (m < joinMonth) continue;
 
     const profile = getEffectiveProfileForMonth(employee, m, assessmentYear);
-    const payroll = getPayrollRecordForMonth(employee, m);
+    const payroll = getPayrollRecordForMonth(employee, m, assessmentYear);
 
     const isLocked = lockedMonths.has(m);
     if (m < start || isLocked) {
@@ -3463,7 +3679,7 @@ export function reconstructPCBHistory(params: {
     }
 
     const profile = getEffectiveProfileForMonth(params.employee, m, params.taxYear);
-    const payroll = getPayrollRecordForMonth(params.employee, m);
+    const payroll = getPayrollRecordForMonth(params.employee, m, params.taxYear);
     
     const context = buildPCBContext({
       employee: params.employee,
@@ -3499,7 +3715,7 @@ export function recalculatePCBFromMonth(params: {
     if (m < joinMonth) continue;
     
     const profile = getEffectiveProfileForMonth(params.employee, m, params.taxYear);
-    const payroll = getPayrollRecordForMonth(params.employee, m);
+    const payroll = getPayrollRecordForMonth(params.employee, m, params.taxYear);
     
     const context = buildPCBContext({
       employee: params.employee,

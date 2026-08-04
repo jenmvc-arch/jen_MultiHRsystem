@@ -383,8 +383,10 @@ export default function EntitiesView({
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[10px] ${
                           emp.status === 'Active' 
                             ? 'bg-green-100 text-green-700' 
-                            : emp.status === 'On Leave' 
+                            : emp.status === 'Resigned'
                             ? 'bg-amber-100 text-amber-700' 
+                            : emp.status === 'Suspended'
+                            ? 'bg-zinc-100 text-zinc-600'
                             : 'bg-red-100 text-red-700'
                         }`}>
                           {emp.status}

@@ -68,7 +68,7 @@ export default function DashboardView({
   // 3. Compute dynamic stats
   const totalEmployees = filteredEmployees.length;
   const activeEmployees = filteredEmployees.filter(e => e.status === 'Active').length;
-  const onLeaveEmployees = filteredEmployees.filter(e => e.status === 'On Leave').length;
+  const resignedEmployees = filteredEmployees.filter(e => e.status === 'Resigned').length;
   
   // Find actual processed payroll records matching the selected month and year
   const matchingRecords = (payrollRecords2026 || []).filter(
@@ -346,7 +346,7 @@ export default function DashboardView({
           <div className="mt-4">
             <div className="text-3xl font-bold text-on-background">{totalEmployees}</div>
             <div className="text-xs text-on-surface-variant mt-1">
-              <span className="text-green-600 font-semibold">{activeEmployees} Active</span> · {onLeaveEmployees} On Leave
+              <span className="text-green-600 font-semibold">{activeEmployees} Active</span> · {resignedEmployees} Resigned
             </div>
           </div>
           <div className="mt-4 flex items-center text-xs text-primary font-semibold group-hover:underline">

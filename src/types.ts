@@ -62,7 +62,7 @@ export interface Employee {
   email: string;
   designation: string;
   department: string;
-  status: 'Active' | 'On Leave' | 'Terminated' | 'Suspended';
+  status: 'Active' | 'On Leave' | 'Resigned' | 'Terminated' | 'Suspended';
   bankName: string;
   accountNo: string;
   basicSalary: number;
@@ -145,6 +145,7 @@ export interface Employee {
   emergencyContactPhone: string;
   dateOfJoined: string;
   dateOfConfirmation?: string;
+  dateOfTermination?: string;
   
   // Spouse Details
   spouseName?: string;
@@ -251,6 +252,7 @@ export type HistoricalPCBStatus =
 export interface EmployeeTaxProfile {
   effectiveDate: string; // YYYY-MM-DD
   basicSalary: number;
+  employmentStatus?: Employee['status'];
   housingAllowance?: number;
   transportAllowance?: number;
   allowanceGeneral?: number;
@@ -281,6 +283,8 @@ export interface EmployeeTaxProfile {
   specialProgrammeApprovalReference?: string;
   specialProgrammeEffectiveFrom?: string;
   specialProgrammeEffectiveTo?: string;
+  approvedAt?: string;
+  assistReconciliationRequired?: boolean;
 }
 
 export interface HistoricalPayrollRecord {
