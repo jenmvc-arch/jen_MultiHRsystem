@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Sparkles,
   ChevronRight,
+  ChevronDown,
   Bot,
   BookOpen,
   Download,
@@ -72,6 +73,7 @@ interface SavedBriefingSession {
   lastSavedAt: number | null;
   selectedModuleId: number;
   subsectionProgress?: Record<number, number>;
+  selectedSubsectionByPart?: Record<number, number>;
 }
 
 const BRIEFING_STORAGE_KEY = 'redpoint_handbook_briefing_v1';
@@ -86,6 +88,9 @@ const loadSavedBriefing = (): SavedBriefingSession | null => {
     return null;
   }
 };
+
+const getPartSectionLabel = (partNumber: number, sectionNumber: number) =>
+  `Part ${partNumber} - Section ${sectionNumber}`;
 
 export const HandbookView: React.FC<HandbookViewProps> = ({
   modules,
@@ -137,6 +142,12 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   const [subsectionProgress, setSubsectionProgress] = useState<Record<number, number>>(
     () => savedBriefing?.subsectionProgress || {}
   );
+  const [selectedSubsectionByPart, setSelectedSubsectionByPart] = useState<Record<number, number>>(
+    () => savedBriefing?.selectedSubsectionByPart || {}
+  );
+  const [expandedPartIds, setExpandedPartIds] = useState<Record<number, boolean>>(() => ({
+    [savedBriefing?.selectedModuleId || 1]: true,
+  }));
 
   const [contentType, setContentType] = useState<'full' | 'summary'>('full');
   const [isPreviewOpen, setIsPreviewOpen] = useState<boolean>(false);
@@ -189,12 +200,21 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
         lastSavedAt,
         selectedModuleId,
         subsectionProgress,
+        selectedSubsectionByPart,
       };
       localStorage.setItem(BRIEFING_STORAGE_KEY, JSON.stringify(data));
     } catch (err) {
       console.error('Failed to save briefing state:', err);
     }
-  }, [briefingStatus, startedAt, deadlineAt, lastSavedAt, selectedModuleId, subsectionProgress]);
+  }, [
+    briefingStatus,
+    startedAt,
+    deadlineAt,
+    lastSavedAt,
+    selectedModuleId,
+    subsectionProgress,
+    selectedSubsectionByPart,
+  ]);
 
   // 7-day Countdown Timer Calculation
   useEffect(() => {
@@ -296,10 +316,19 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
     : null;
   const activeSubsections = activeModule.content.subsections || [];
   const savedSubsectionIndex = subsectionProgress[activeModule.id] || 0;
-  const activeSubsectionIndex = partInitials[activeModule.id]
+  const defaultSubsectionIndex = partInitials[activeModule.id] || activeModule.status === 'completed'
     ? Math.max(0, activeSubsections.length - 1)
     : Math.min(savedSubsectionIndex, Math.max(0, activeSubsections.length - 1));
+  const activeSubsectionIndex = activeSubsections.length > 0
+    ? Math.min(
+        selectedSubsectionByPart[activeModule.id] ?? defaultSubsectionIndex,
+        partInitials[activeModule.id] || activeModule.status === 'completed'
+          ? activeSubsections.length - 1
+          : savedSubsectionIndex
+      )
+    : 0;
   const activeSubsection = activeSubsections[activeSubsectionIndex];
+  const activeSectionLabel = getPartSectionLabel(activeModule.id, activeSubsectionIndex + 1);
   const isActiveModuleReviewComplete =
     activeSubsections.length === 0 || activeSubsectionIndex >= activeSubsections.length - 1;
 
@@ -392,14 +421,72 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   };
 
   const handleSelectModule = (id: number) => {
+    const targetModule = modules.find((module) => module.id === id);
+    const targetSectionCount = targetModule?.content.subsections?.length || 0;
+    if (targetModule && targetSectionCount > 0) {
+      const lastAvailableSection = targetModule.status === 'locked' && !partInitials[targetModule.id]
+        ? -1
+        : targetModule.status === 'completed' || partInitials[targetModule.id]
+        ? targetSectionCount - 1
+        : subsectionProgress[targetModule.id] || 0;
+      setSelectedSubsectionByPart((current) => ({
+        ...current,
+        [id]: Math.min(current[id] ?? 0, lastAvailableSection),
+      }));
+    }
     setSelectedModuleId(id);
+    setExpandedPartIds((current) => ({ ...current, [id]: true }));
     setContentType('full');
     scrollModuleToTop();
+  };
+
+  const handleSelectSubsection = (module: HandbookModule, subsectionIndex: number) => {
+    const sectionCount = module.content.subsections?.length || 0;
+    const lastAvailableSection = module.status === 'locked' && !partInitials[module.id]
+      ? -1
+      : module.status === 'completed' || partInitials[module.id]
+      ? Math.max(0, sectionCount - 1)
+      : subsectionProgress[module.id] || 0;
+
+    if (subsectionIndex > lastAvailableSection) {
+      alert(
+        module.status === 'locked' && !partInitials[module.id]
+          ? `Part ${module.id} is locked. Please complete Part ${module.id - 1} first.`
+          : `${getPartSectionLabel(module.id, subsectionIndex + 1)} is locked. Please complete ${
+              getPartSectionLabel(module.id, lastAvailableSection + 1)
+            } first.`
+      );
+      return;
+    }
+
+    if (briefingStatus === 'not_started') {
+      handleStartBriefing();
+    }
+
+    setSelectedModuleId(module.id);
+    setExpandedPartIds((current) => ({ ...current, [module.id]: true }));
+    setSelectedSubsectionByPart((current) => ({
+      ...current,
+      [module.id]: subsectionIndex,
+    }));
+    setContentType('full');
+    scrollModuleToTop();
+  };
+
+  const togglePartExpansion = (partId: number) => {
+    setExpandedPartIds((current) => ({
+      ...current,
+      [partId]: !current[partId],
+    }));
   };
 
   const handleContinueSubsection = () => {
     if (isActiveModuleReviewComplete) return;
     setSubsectionProgress((current) => ({
+      ...current,
+      [activeModule.id]: activeSubsectionIndex + 1,
+    }));
+    setSelectedSubsectionByPart((current) => ({
       ...current,
       [activeModule.id]: activeSubsectionIndex + 1,
     }));
@@ -421,7 +508,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
     if (onShowNotification) {
       onShowNotification(
         'Briefing Session Started',
-        'Your 7-day onboarding period is now active. You have 7 days to complete all 15 handbook sections.'
+        'Your 7-day onboarding period is now active. You have 7 days to complete all 15 Parts and their sections.'
       );
     }
   };
@@ -439,7 +526,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
     if (onShowNotification) {
       onShowNotification(
         'Progress Saved for Later',
-        `Your onboarding progress (Part ${selectedModuleId}) has been safely saved. You can resume anytime before ${dueFormatted}.`
+        `Your onboarding progress (${activeSectionLabel}) has been safely saved. You can resume anytime before ${dueFormatted}.`
       );
     }
   };
@@ -450,7 +537,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
     if (onShowNotification) {
       onShowNotification(
         'Briefing Resumed',
-        `Welcome back! Continuing Part ${selectedModuleId} of the Employee Handbook.`
+        `Welcome back! Continuing ${activeSectionLabel} of the Employee Handbook.`
       );
     }
   };
@@ -464,6 +551,8 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
 
     setSelectedModuleId(1);
     setSubsectionProgress({});
+    setSelectedSubsectionByPart({});
+    setExpandedPartIds({ 1: true });
     setBriefingStatus('in_progress');
     setLastSavedAt(Date.now());
 
@@ -517,7 +606,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
               {briefingStatus === 'in_progress' && (
                 <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
                   <PlayCircle className="w-3 h-3 text-emerald-700" />
-                  In Progress (Part {selectedModuleId}/15)
+                  In Progress ({activeSectionLabel})
                 </span>
               )}
               {briefingStatus === 'saved_for_later' && (
@@ -538,7 +627,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
               Employee Handbook & Policy Briefing
             </h2>
             <p className="text-xs sm:text-sm text-[#59413f] mt-1">
-              Employees have a mandatory 7-day period to review all 15 handbook sections, acknowledge SOPs, and complete digital sign-off.
+              Employees have a mandatory 7-day period to review all 15 Parts and their sections, acknowledge SOPs, and complete digital sign-off.
             </p>
           </div>
 
@@ -637,7 +726,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="bg-[#810912] text-white text-[10px] font-extrabold px-2.5 py-1 rounded-md uppercase tracking-wider shrink-0 shadow-xs flex items-center gap-1">
             <BookOpen className="w-3 h-3" />
-            <span>Section {activeModule.id}</span>
+            <span>{activeSectionLabel}</span>
           </span>
           <div className="min-w-0">
             <h2 className="text-xs sm:text-sm font-extrabold text-[#1b1c1c] truncate">
@@ -720,7 +809,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
               </div>
               {searchQuery.trim() && (
                 <div className="mt-1.5 flex items-center justify-between text-[11px] text-[#59413f] px-1">
-                  <span>Found {filteredModules.length} {filteredModules.length === 1 ? 'module' : 'modules'}</span>
+                  <span>Found {filteredModules.length} {filteredModules.length === 1 ? 'Part' : 'Parts'}</span>
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
@@ -732,13 +821,13 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
               )}
             </div>
 
-            {/* Index List */}
+            {/* Parts and Sections Index */}
             {filteredModules.length === 0 ? (
               <div className="p-5 text-center bg-[#FAF6EF] rounded-lg border border-dashed border-[#e0bfbc] space-y-2">
                 <Search className="w-6 h-6 text-[#810912]/40 mx-auto" />
                 <p className="text-xs font-bold text-[#1b1c1c]">No modules found</p>
                 <p className="text-[11px] text-[#59413f]">
-                  No handbook section matches &ldquo;{searchQuery}&rdquo;. Try another title or keyword.
+                  No handbook Part or section matches &ldquo;{searchQuery}&rdquo;. Try another title or keyword.
                 </p>
                 <button
                   type="button"
@@ -754,37 +843,46 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                   const isSelected = m.id === selectedModuleId;
                   const isCompleted = m.status === 'completed' || !!partInitials[m.id];
                   const isLocked = m.status === 'locked' && !isCompleted;
+                  const sections = m.content.subsections || [];
+                  const isExpanded = expandedPartIds[m.id] || isSelected;
+                  const availableSectionIndex = isLocked
+                    ? -1
+                    : isCompleted
+                    ? Math.max(0, sections.length - 1)
+                    : Math.min(subsectionProgress[m.id] || 0, Math.max(0, sections.length - 1));
 
                   return (
-                    <li key={m.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (briefingStatus === 'not_started') {
-                            handleStartBriefing();
-                          }
-                          if (isLocked && m.id > 1) {
-                            const prevUncompleted = modules.find(
-                              (prev) => prev.id < m.id && prev.status !== 'completed' && !partInitials[prev.id]
-                            );
-                            alert(
-                              `Part ${m.id} is locked. Please initial and complete Part ${
-                                prevUncompleted ? prevUncompleted.id : m.id - 1
-                              } first.`
-                            );
-                            return;
-                          }
-                          handleSelectModule(m.id);
-                        }}
-                        className={`w-full flex items-center justify-between p-3 rounded-lg text-left transition-all cursor-pointer ${
+                    <li key={m.id} className="space-y-1">
+                      <div
+                        className={`flex items-center gap-2 rounded-lg border transition-all ${
                           isSelected
-                            ? 'bg-[#810912]/10 border border-[#810912]/30 text-[#810912]'
+                            ? 'border-[#810912]/30 bg-[#810912]/10 text-[#810912]'
                             : isLocked
-                            ? 'opacity-60 text-gray-400'
-                            : 'hover:bg-[#f6f3f2] text-[#1b1c1c]'
+                            ? 'border-transparent opacity-60 text-gray-400'
+                            : 'border-transparent hover:bg-[#f6f3f2] text-[#1b1c1c]'
                         }`}
                       >
-                        <div className="flex items-center gap-3 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (briefingStatus === 'not_started') {
+                              handleStartBriefing();
+                            }
+                            if (isLocked && m.id > 1) {
+                              const prevUncompleted = modules.find(
+                                (prev) => prev.id < m.id && prev.status !== 'completed' && !partInitials[prev.id]
+                              );
+                              alert(
+                                `Part ${m.id} is locked. Please initial and complete Part ${
+                                  prevUncompleted ? prevUncompleted.id : m.id - 1
+                                } first.`
+                              );
+                              return;
+                            }
+                            handleSelectModule(m.id);
+                          }}
+                          className="flex min-w-0 flex-1 items-center gap-3 p-3 text-left"
+                        >
                           {isCompleted ? (
                             <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                           ) : isLocked ? (
@@ -792,16 +890,78 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                           ) : (
                             <Circle className="w-4 h-4 text-[#810912] shrink-0" />
                           )}
-                          <span
-                            className={`text-xs sm:text-sm font-medium truncate ${
-                              isCompleted ? 'text-[#1b1c1c]' : ''
-                            } ${isSelected ? 'font-bold text-[#810912]' : ''}`}
-                          >
-                            {m.title}
+                          <span className="min-w-0">
+                            <span
+                              className={`block text-xs font-black uppercase tracking-wide ${
+                                isSelected ? 'text-[#810912]' : 'text-[#1b1c1c]'
+                              }`}
+                            >
+                              Part {m.id}
+                            </span>
+                            <span className="mt-0.5 block truncate text-[11px] font-medium text-[#59413f]">
+                              {m.title.replace(/^Part \d+\s*[–-]\s*/, '')}
+                            </span>
                           </span>
-                        </div>
-                        {isSelected && <ChevronRight className="w-4 h-4 text-[#810912] shrink-0" />}
-                      </button>
+                        </button>
+                        {sections.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => togglePartExpansion(m.id)}
+                            aria-label={`${isExpanded ? 'Collapse' : 'Expand'} Part ${m.id} sections`}
+                            className="mr-2 rounded-md p-1.5 text-[#810912] transition-colors hover:bg-white"
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </button>
+                        )}
+                      </div>
+
+                      {isExpanded && sections.length > 0 && (
+                        <ul className="ml-4 space-y-1 border-l border-[#e0bfbc] pl-3">
+                          {sections.map((section, sectionIndex) => {
+                            const isSectionSelected = isSelected && activeSubsectionIndex === sectionIndex;
+                            const isSectionCompleted =
+                              isCompleted || sectionIndex < availableSectionIndex;
+                            const isSectionLocked = sectionIndex > availableSectionIndex;
+                            return (
+                              <li key={`${m.id}-${sectionIndex}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectSubsection(m, sectionIndex)}
+                                  className={`flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors ${
+                                    isSectionSelected
+                                      ? 'bg-[#810912] text-white shadow-sm'
+                                      : isSectionLocked
+                                      ? 'cursor-not-allowed text-[#59413f]/45 hover:bg-[#FAF6EF]'
+                                      : 'text-[#59413f] hover:bg-[#FAF6EF]'
+                                  }`}
+                                >
+                                  {isSectionCompleted ? (
+                                    <CheckCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                  ) : isSectionLocked ? (
+                                    <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                  ) : (
+                                    <Circle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                  )}
+                                  <span className="min-w-0">
+                                    <span className="block text-[10px] font-black uppercase tracking-wide">
+                                      {getPartSectionLabel(m.id, sectionIndex + 1)}
+                                    </span>
+                                    <span className={`mt-0.5 block text-[10px] leading-snug ${
+                                      isSectionSelected ? 'text-white/80' : 'text-[#59413f]/75'
+                                    }`}>
+                                      {section.title || `Section ${sectionIndex + 1}`}
+                                    </span>
+                                  </span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
                     </li>
                   );
                 })}
@@ -864,7 +1024,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                 </>
               )}
               <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-black/65 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-white">
-                Part {handbookVideo.partNumber} Video Briefing
+                {activeSectionLabel} Video Briefing
               </div>
             </div>
 
@@ -874,7 +1034,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 pb-4 border-b border-[#F2E8D8]">
                 <div className="flex items-center gap-2">
                   <span className="bg-[#810912]/10 text-[#810912] px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider">
-                    Section {activeModule.id}
+                    {activeSectionLabel}
                   </span>
                   <span className="text-xs text-[#59413f]">
                     {activeSubsections.length > 0
@@ -924,6 +1084,9 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
               <h1 className="text-2xl sm:text-3xl font-bold text-[#1b1c1c] mb-6">
                 {activeModule.content.sectionTitle}
               </h1>
+              <p className="-mt-4 mb-6 text-xs font-bold uppercase tracking-wider text-[#810912]">
+                {activeSectionLabel}
+              </p>
 
               {/* FULL DETAIL VIEW MODE */}
               {contentType === 'full' ? (
@@ -1039,7 +1202,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
               {activeSubsections.length > 0 && (
                 <div className="mt-6 flex flex-col gap-3 border-t border-[#F2E8D8] pt-5 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-xs font-semibold text-[#59413f]">
-                    Section {activeSubsectionIndex + 1} of {activeSubsections.length}
+                    {activeSectionLabel} of {activeSubsections.length}
                     {isActiveModuleReviewComplete
                       ? ' reviewed. You may now complete this Part.'
                       : ' must be completed before the next section is shown.'}
@@ -1050,7 +1213,9 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                       onClick={handleContinueSubsection}
                       className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#810912] px-5 text-xs font-extrabold text-white shadow-sm transition-colors hover:bg-[#a32626]"
                     >
-                      <span>Continue</span>
+                      <span>
+                        Continue to {getPartSectionLabel(activeModule.id, activeSubsectionIndex + 2)}
+                      </span>
                       <ArrowRight className="h-4 w-4" />
                     </button>
                   )}
@@ -1258,7 +1423,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                   {partInitials[activeModule.id] || activeModule.status === 'completed' ? (
                     <span className="text-[#137333] font-bold flex items-center gap-1.5">
                       <CheckCircle className="w-4 h-4 text-emerald-600" />
-                      Part {activeModule.id} initialed and verified. You may proceed to the next section.
+                      Part {activeModule.id} initialed and verified. You may proceed to the next Part.
                     </span>
                   ) : (
                     <span className="text-[#810912] font-semibold flex items-center gap-1.5">
