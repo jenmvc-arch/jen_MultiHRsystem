@@ -14,6 +14,14 @@ Duplicate standalone dashboard, document-upload, and HR analytics views were rem
 Recruitment administration remains in the parent Hire & Onboarding workflow; this portal
 contains only the employee journey, handbook, compliance quiz, and completion record.
 
+## Section video integration
+
+Each handbook Part has its own video slot. Configure a shared media directory with
+`VITE_HANDBOOK_VIDEO_BASE_URL` and the portal will resolve `part-01.mp4` through
+`part-15.mp4` for Parts 1 through 15. A specific Part can override the shared path with
+`VITE_HANDBOOK_VIDEO_PART_1` through `VITE_HANDBOOK_VIDEO_PART_15`. Direct MP4 URLs use
+the native video player; YouTube and Vimeo URLs are rendered as embedded players.
+
 ## Signed handbook archive
 
 The visible handbook workflow is unchanged. Parts 1 through 14 save cropped initial

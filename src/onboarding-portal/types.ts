@@ -34,7 +34,7 @@ export interface HandbookModule {
   title: string;
   subtitle: string;
   status: 'completed' | 'in-progress' | 'locked';
-  videoUrl?: string;
+  videoPosterUrl?: string;
   videoDuration?: string;
   sectionsCount: number;
   completedSections: number;

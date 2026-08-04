@@ -7,6 +7,7 @@ import {
   Circle,
   Lock,
   Play,
+  Video,
   PenTool,
   ArrowRight,
   RotateCcw,
@@ -37,6 +38,7 @@ import {
 import { useLanguage } from '../i18n/LanguageContext';
 import { exportAcknowledgementPdf } from '../utils/pdfExport';
 import { OFFICIAL_HANDBOOK } from '../data/handbookDocument';
+import { getHandbookVideoSection } from '../data/handbookVideos';
 
 interface HandbookViewProps {
   modules: HandbookModule[];
@@ -137,7 +139,6 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   );
 
   const [contentType, setContentType] = useState<'full' | 'summary'>('full');
-  const [isPlayingVideo, setIsPlayingVideo] = useState<boolean>(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [timeRemainingText, setTimeRemainingText] = useState<string>('7 Days Remaining');
@@ -285,6 +286,9 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
       keyTakeaway: 'Compliance and integrity are core to Red Point operations.',
     },
   };
+  const handbookVideo = getHandbookVideoSection(activeModule.id);
+  const videoPosterUrl = activeModule.videoPosterUrl || handbookVideo.posterUrl;
+  const videoDuration = activeModule.videoDuration || handbookVideo.duration;
 
   const activePageRange = OFFICIAL_HANDBOOK.partPages[activeModule.id] || { start: 1, end: 5 };
   const officialPdfUrl = officialHandbookUrl && activePageRange
@@ -806,58 +810,62 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
           </div>
         </div>
 
-        {/* Center/Main Column: Policy Content & Video */}
+        {/* Center/Main Column: Policy Content & Section Video */}
         <div ref={contentCardRef} className="lg:w-2/3 flex flex-col gap-6">
           {/* Content Card */}
           <div className="bg-white rounded-xl shadow-[0_4px_6px_-1px_rgba(51,51,51,0.05),0_10px_15px_-3px_rgba(51,51,51,0.1)] border border-[#F2E8D8] overflow-hidden flex flex-col">
-            {/* Video Mockup Frame */}
-            <div className="relative w-full h-64 sm:h-72 bg-[#403f3a] overflow-hidden group">
-              <img
-                src={
-                  activeModule.videoUrl ||
-                  'https://lh3.googleusercontent.com/aida-public/AB6AXuCYBshVaRzF-d4q2MwqtPNHups0sJL4vP55I_Cld2Ys0CmWVkjoyFfvsee30o-jAgKjdFFO0nEK_BYfwjNEwNgQlifa8TRPDMbduG4kb-QZEc2mIJ3muKpq6TNpB_1lsvNGRmaJe2vcZy9z4kFdpJlYm2tOQnGuwnieXjThuelP5v-m9M5vtssch_hXqjBriqL1njDnb35r3XZYuwduFVEcwIo6jSTlxQqVsAmoAZ3bqbqVJ4-ftEkJgJqY_W2B5bqBarfwJ_u7uoY'
-                }
-                alt="Training Video Preview"
-                className="w-full h-full object-cover opacity-80 mix-blend-overlay group-hover:scale-105 transition-transform duration-500"
-              />
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (briefingStatus === 'not_started') handleStartBriefing();
-                    setIsPlayingVideo(!isPlayingVideo);
-                  }}
-                  className="w-16 h-16 bg-[#a32626] text-white rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform cursor-pointer"
-                >
-                  <Play className="w-8 h-8 fill-current ml-1" />
-                </button>
-                <span className="mt-4 text-xs font-semibold text-white bg-black/60 px-3 py-1 rounded-full backdrop-blur-xs">
-                  {activeModule.title} ({activeModule.videoDuration || '3:45'})
-                </span>
-              </div>
-
-              {isPlayingVideo && (
-                <div className="absolute inset-0 bg-black/90 p-4 flex flex-col justify-between z-20 text-white">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-[#ffbbb5]">Video Briefing Player</span>
-                    <button
-                      type="button"
-                      onClick={() => setIsPlayingVideo(false)}
-                      className="text-xs text-white hover:underline cursor-pointer"
-                    >
-                      Close Video ✕
-                    </button>
-                  </div>
-                  <div className="text-center my-auto px-6">
-                    <p className="text-sm font-semibold mb-2">
-                      [Playing] Executive Introduction to Red Point Integrity Guidelines
-                    </p>
-                    <div className="w-full bg-white/20 rounded-full h-1.5 overflow-hidden max-w-md mx-auto">
-                      <div className="bg-[#a32626] h-full w-2/3 animate-pulse"></div>
+            {/* Each handbook Part has an independent video slot and source. */}
+            <div className="relative w-full h-64 sm:h-72 bg-[#403f3a] overflow-hidden">
+              {handbookVideo.sourceUrl ? (
+                handbookVideo.kind === 'embed' ? (
+                  <iframe
+                    key={handbookVideo.sourceUrl}
+                    src={handbookVideo.sourceUrl}
+                    title={`${handbookVideo.title} video`}
+                    className="h-full w-full bg-black"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                ) : (
+                  <video
+                    key={handbookVideo.sourceUrl}
+                    controls
+                    preload="metadata"
+                    poster={videoPosterUrl}
+                    onPlay={() => {
+                      if (briefingStatus === 'not_started') handleStartBriefing();
+                    }}
+                    className="h-full w-full bg-black object-cover"
+                  >
+                    <source src={handbookVideo.sourceUrl} type="video/mp4" />
+                    Your browser does not support the handbook video.
+                  </video>
+                )
+              ) : (
+                <>
+                  <img
+                    src={videoPosterUrl}
+                    alt={`${handbookVideo.title} video placeholder`}
+                    className="h-full w-full object-cover opacity-70 mix-blend-overlay"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/45 p-6 text-center text-white">
+                    <div className="max-w-md">
+                      <Video className="mx-auto h-9 w-9 text-[#ffbbb5]" />
+                      <p className="mt-3 text-sm font-extrabold">{handbookVideo.title}</p>
+                      <p className="mt-1 text-xs text-white/80">
+                        Part {handbookVideo.partNumber} video · {videoDuration}
+                      </p>
+                      <p className="mt-3 text-[11px] text-white/70">
+                        This section video is not configured yet. Add its video URL to the
+                        handbook video settings to enable playback.
+                      </p>
                     </div>
                   </div>
-                </div>
+                </>
               )}
+              <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-black/65 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-white">
+                Part {handbookVideo.partNumber} Video Briefing
+              </div>
             </div>
 
             {/* Text Content */}
