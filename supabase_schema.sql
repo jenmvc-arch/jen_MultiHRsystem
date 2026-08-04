@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS public.employees (
     emergency_contact_phone TEXT,
     date_of_joined DATE,
     date_of_confirmation DATE,
+    date_of_termination DATE,
     allowance_general NUMERIC(12, 2) DEFAULT 0,
     allowance_transport NUMERIC(12, 2) DEFAULT 0,
     allowance_parking NUMERIC(12, 2) DEFAULT 0,

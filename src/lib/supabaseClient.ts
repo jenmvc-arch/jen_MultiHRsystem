@@ -142,14 +142,31 @@ export const supabaseClient = {
     console.log('[Supabase Client] Updating record in:', table, { idColumn, idValue, data });
     const snakeColumn = idColumn.replace(/([A-Z])/g, '_$1').toLowerCase();
     let snakeData = toSnakeCase(data);
+    let updated: any = null;
+    let error: any = null;
+    let retries = 0;
+    const maxRetries = Object.keys(snakeData).length + 1;
 
-    const updateResult = await supabase
-      .from(table)
-      .update(snakeData)
-      .eq(snakeColumn, idValue)
-      .select();
-    let updated = updateResult.data;
-    let error = updateResult.error;
+    while (retries < maxRetries) {
+      const updateResult = await supabase
+        .from(table)
+        .update(snakeData)
+        .eq(snakeColumn, idValue)
+        .select();
+      updated = updateResult.data;
+      error = updateResult.error;
+
+      if (error) {
+        const missingCol = extractMissingColumn(error.message || '');
+        if (missingCol && snakeData[missingCol] !== undefined) {
+          console.warn(`[Supabase Client] Removing missing column '${missingCol}' and retrying update...`);
+          delete snakeData[missingCol];
+          retries++;
+          continue;
+        }
+      }
+      break;
+    }
 
     // Fallback: If 0 rows were updated by primary idColumn on 'employees', attempt matching by email if available
     if (!error && (!updated || updated.length === 0) && table === 'employees') {

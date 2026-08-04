@@ -56,14 +56,23 @@ async function main() {
       dependants: [],
     });
 
-    await supabaseClient.update(
-      'employees',
-      email,
-      {
-        basicSalary: 4321.09,
-        optInEpf: false,
-        optInSocso: false,
-        optInEis: true,
+      await supabaseClient.update(
+        'employees',
+        email,
+        {
+          basicSalary: 4321.09,
+          status: 'Resigned',
+          dateOfTermination: '2026-08-04',
+          effectiveDatedProfiles: [{
+            effectiveDate: '2026-08-04',
+            basicSalary: 4321.09,
+            maritalStatus: 'Single',
+            employmentStatus: 'Resigned',
+            dateOfTermination: '2026-08-04',
+          }],
+          optInEpf: false,
+          optInSocso: false,
+          optInEis: true,
         optInPcb: false,
         enableLindung24: true,
       },
@@ -73,13 +82,16 @@ async function main() {
     const { data: saved, error: readError } = await raw
       .from('employees')
       .select(
-        'basic_salary,opt_in_epf,opt_in_socso,opt_in_eis,opt_in_pcb,enable_lindung24,bank_name,nric_passport'
+        'basic_salary,status,effective_dated_profiles,opt_in_epf,opt_in_socso,opt_in_eis,opt_in_pcb,enable_lindung24,bank_name,nric_passport'
       )
       .eq('email', email)
       .single();
     if (readError) throw readError;
     if (
       Number(saved.basic_salary) !== 4321.09 ||
+      saved.status !== 'Resigned' ||
+      !Array.isArray(saved.effective_dated_profiles) ||
+      saved.effective_dated_profiles[0]?.employmentStatus !== 'Resigned' ||
       saved.opt_in_epf !== false ||
       saved.opt_in_socso !== false ||
       saved.opt_in_eis !== true ||
