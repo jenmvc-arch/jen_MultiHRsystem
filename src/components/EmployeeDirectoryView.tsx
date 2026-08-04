@@ -60,9 +60,11 @@ import {
   getDirectLogoUrl,
   getPayrollBasicSalary,
   getSalaryProration,
+  getMonthlyBaseSalary,
   getEmployeeForMonth,
   getEffectiveEmploymentStatusForDate,
-  getEffectiveProfileForDate
+  getEffectiveProfileForDate,
+  getEffectiveTerminationDateForDate
 } from '../data';
 
 const EMPLOYEE_STATUS_OPTIONS: Exclude<Employee['status'], 'On Leave'>[] = [
@@ -129,7 +131,7 @@ export default function EmployeeDirectoryView({
   const currentYear = new Date().getFullYear();
   const todayIsoDate = getGmt8DateString();
   const getDisplayedMonthlyBasicSalary = (employee: Employee) =>
-    getSalaryProration(employee, currentMonth, currentYear).fullPeriodSalary;
+    getMonthlyBaseSalary(employee, currentMonth, currentYear);
   const formatCurrencyAmount = (amount: number) =>
     amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const [deptFilter, setDeptFilter] = useState('All Departments');
@@ -324,6 +326,7 @@ export default function EmployeeDirectoryView({
 
   const handleSaveGeneralInfoUpdates = async () => {
     if (!selectedEmployee) return;
+    const currentEffectiveStatus = getEffectiveEmploymentStatusForDate(selectedEmployee, todayIsoDate);
     const currentProfile = getEffectiveProfileForDate(selectedEmployee, todayIsoDate);
     const statusProfile: EmployeeTaxProfile = {
       ...currentProfile,
@@ -351,6 +354,16 @@ export default function EmployeeDirectoryView({
       ),
       statusProfile
     ].sort((left, right) => left.effectiveDate.localeCompare(right.effectiveDate));
+    const updatedCareerHistory = editStatus !== currentEffectiveStatus
+      ? [{
+          id: `prog-${Date.now()}`,
+          date: todayIsoDate,
+          type: 'Status Change' as const,
+          previousValue: currentEffectiveStatus,
+          newValue: editStatus,
+          notes: 'Status updated from employee general information.'
+        }, ...(selectedEmployee.careerHistory || [])]
+      : (selectedEmployee.careerHistory || []);
 
     const updates: Partial<Employee> = {
       name: editName,
@@ -382,6 +395,7 @@ export default function EmployeeDirectoryView({
       emergencyContactRelation: editEmergencyContactRelation,
       emergencyContactPhone: editEmergencyContactPhone,
       entityId: editEntityId,
+      careerHistory: updatedCareerHistory,
       effectiveDatedProfiles,
       dateOfTermination: isSeparationStatus(editStatus) ? todayIsoDate : ''
     };
@@ -548,25 +562,6 @@ export default function EmployeeDirectoryView({
     }
   }, [selectedEmployeeId, selectedEmployee]);
 
-  const buildCurrentEffectiveProfile = (
-    employee: Employee,
-    status: Employee['status'],
-    overrides: Partial<EmployeeTaxProfile> = {}
-  ): EmployeeTaxProfile => {
-    const currentProfile = getEffectiveProfileForDate(employee, todayIsoDate);
-    return {
-      ...currentProfile,
-      ...overrides,
-      effectiveDate: todayIsoDate,
-      employmentStatus: status,
-      dateOfTermination: isSeparationStatus(status)
-        ? currentProfile.dateOfTermination || todayIsoDate
-        : undefined,
-      approvedAt: getGmt8Timestamp(),
-      assistReconciliationRequired: false
-    };
-  };
-
   const upsertEffectiveProfile = (
     profiles: EmployeeTaxProfile[],
     profile: EmployeeTaxProfile
@@ -621,19 +616,11 @@ export default function EmployeeDirectoryView({
     if (!selectedEmployee) return;
     const stagedEmployee: Employee = {
       ...selectedEmployee,
+      careerHistory: localCareerHistory,
       effectiveDatedProfiles: localEffectiveDatedProfiles
     };
     const currentStatus = getEffectiveEmploymentStatusForDate(stagedEmployee, todayIsoDate);
-    const currentProfile = getEffectiveProfileForDate(stagedEmployee, todayIsoDate);
-    const savedEffectiveDatedProfiles = upsertEffectiveProfile(
-      localEffectiveDatedProfiles,
-      buildCurrentEffectiveProfile(stagedEmployee, currentStatus, {
-        basicSalary: localBasicSalary
-      })
-    );
-
     setLocalStatus(currentStatus);
-    setLocalEffectiveDatedProfiles(savedEffectiveDatedProfiles);
     setSavingAction('career');
     try {
       await onUpdateEmployee(selectedEmployee.id, {
@@ -646,10 +633,8 @@ export default function EmployeeDirectoryView({
         entityId: localEntityId,
         salaryAdjustments: localSalaryAdjustments,
         careerHistory: localCareerHistory,
-        effectiveDatedProfiles: savedEffectiveDatedProfiles,
-        dateOfTermination: isSeparationStatus(currentStatus)
-          ? currentProfile.dateOfTermination || todayIsoDate
-          : ''
+        effectiveDatedProfiles: localEffectiveDatedProfiles,
+        dateOfTermination: getEffectiveTerminationDateForDate(stagedEmployee, todayIsoDate) || ''
       });
       onShowNotification(
         'Database Synced',
@@ -1032,6 +1017,7 @@ export default function EmployeeDirectoryView({
 
     let previousVal = '';
     let newVal = progressionValue;
+    let nextEffectiveDatedProfiles = localEffectiveDatedProfiles;
 
     switch (progressionType) {
       case 'Status Change':
@@ -1043,6 +1029,7 @@ export default function EmployeeDirectoryView({
         const nextStatus = progressionValue as Employee['status'];
         const stagedBeforeStatusChange: Employee = {
           ...selectedEmployee,
+          careerHistory: localCareerHistory,
           effectiveDatedProfiles: localEffectiveDatedProfiles
         };
         previousVal = getEffectiveEmploymentStatusForDate(
@@ -1066,15 +1053,8 @@ export default function EmployeeDirectoryView({
           localEffectiveDatedProfiles,
           statusProfile
         );
-        const stagedAfterStatusChange: Employee = {
-          ...selectedEmployee,
-          effectiveDatedProfiles: updatedEffectiveDatedProfiles
-        };
-
+        nextEffectiveDatedProfiles = updatedEffectiveDatedProfiles;
         setLocalEffectiveDatedProfiles(updatedEffectiveDatedProfiles);
-        setLocalStatus(
-          getEffectiveEmploymentStatusForDate(stagedAfterStatusChange, todayIsoDate)
-        );
         break;
       case 'Promotion':
         previousVal = localDesignation;
@@ -1115,7 +1095,18 @@ export default function EmployeeDirectoryView({
       notes: progressionNotes || 'No notes provided by Administrator.'
     };
 
-    setLocalCareerHistory([newHistoryEntry, ...localCareerHistory]);
+    const updatedCareerHistory = [newHistoryEntry, ...localCareerHistory];
+    setLocalCareerHistory(updatedCareerHistory);
+    if (progressionType === 'Status Change') {
+      const stagedEmployeeAfterHistory: Employee = {
+        ...selectedEmployee,
+        careerHistory: updatedCareerHistory,
+        effectiveDatedProfiles: nextEffectiveDatedProfiles
+      };
+      setLocalStatus(
+        getEffectiveEmploymentStatusForDate(stagedEmployeeAfterHistory, todayIsoDate)
+      );
+    }
     onShowNotification(
       'Progression Staged',
       `Progression event staged successfully. Remember to click the Save button at the bottom to write changes to database.`

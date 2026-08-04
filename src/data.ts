@@ -8,6 +8,7 @@ import rawScheduleData from './data/perkeso_lindung24_phase1_2026.json';
 import { 
   CorporateEntity, 
   Employee, 
+  CareerHistoryEntry,
   ReviewCycle, 
   EmployeePerformance, 
   Candidate,
@@ -1851,6 +1852,42 @@ const getSortedEffectiveProfiles = (employee: Employee) =>
     .filter(profile => Boolean(parsePayrollDate(profile.effectiveDate)))
     .sort((left, right) => left.effectiveDate.localeCompare(right.effectiveDate));
 
+const getCareerHistoryStatus = (value?: string): Employee['status'] | null => {
+  switch (value) {
+    case 'Active':
+    case 'On Leave':
+    case 'Resigned':
+    case 'Terminated':
+    case 'Suspended':
+      return value;
+    default:
+      return null;
+  }
+};
+
+const getSortedStatusChangeHistory = (employee: Employee): CareerHistoryEntry[] =>
+  [...(employee.careerHistory || [])]
+    .filter(entry => (
+      entry.type === 'Status Change' &&
+      Boolean(parsePayrollDate(entry.date)) &&
+      Boolean(getCareerHistoryStatus(entry.newValue))
+    ))
+    .sort((left, right) => left.date.localeCompare(right.date));
+
+const getStatusChangeEntryForDate = (
+  employee: Employee,
+  targetDateStr: string
+): CareerHistoryEntry | undefined => {
+  let matched: CareerHistoryEntry | undefined;
+
+  for (const entry of getSortedStatusChangeHistory(employee)) {
+    if (entry.date > targetDateStr) continue;
+    matched = entry;
+  }
+
+  return matched;
+};
+
 const getFallbackEffectiveProfile = (employee: Employee): EmployeeTaxProfile => ({
   effectiveDate: employee.dateOfJoined || '2026-01-01',
   basicSalary: employee.basicSalary,
@@ -1881,23 +1918,45 @@ const getFallbackEffectiveProfile = (employee: Employee): EmployeeTaxProfile => 
   assistReconciliationRequired: false,
 });
 
-const getEmployeeTerminationDate = (employee: Employee): string | undefined => {
-  const directDate = employee.dateOfTermination;
-  if (parsePayrollDate(directDate)) return directDate;
+export function getEffectiveTerminationDateForDate(
+  employee: Employee,
+  targetDateStr: string
+): string | undefined {
+  const directDate = parsePayrollDate(employee.dateOfTermination)
+    ? employee.dateOfTermination
+    : undefined;
+  const profile = getEffectiveProfileForDate(employee, targetDateStr);
+  const historyEntry = getStatusChangeEntryForDate(employee, targetDateStr);
+  const historyStatus = getCareerHistoryStatus(historyEntry?.newValue);
 
-  return getSortedEffectiveProfiles(employee)
-    .reverse()
-    .map(profile => (
-      profile.dateOfTermination ||
-      (isEmployeeSeparationStatus(profile.employmentStatus) ? profile.effectiveDate : undefined)
-    ))
-    .find(date => parsePayrollDate(date) !== null);
-};
+  if (historyStatus) {
+    if (isEmployeeSeparationStatus(historyStatus)) {
+      return profile.dateOfTermination || directDate || historyEntry?.date;
+    }
+    return undefined;
+  }
+
+  const profileStatus = profile.employmentStatus || employee.status;
+  if (profile.dateOfTermination && profile.dateOfTermination <= targetDateStr) {
+    return profile.dateOfTermination;
+  }
+  if (isEmployeeSeparationStatus(profileStatus)) {
+    return profile.dateOfTermination || directDate || profile.effectiveDate;
+  }
+
+  return directDate && directDate <= targetDateStr ? directDate : undefined;
+}
+
+const getEmployeeTerminationDate = (
+  employee: Employee,
+  targetDateStr = getGmt8DateString()
+): string | undefined => getEffectiveTerminationDateForDate(employee, targetDateStr);
 
 export function getSalaryProration(employee: Employee, month: number, year: number): SalaryProrationResult {
   const calendarDays = new Date(year, month, 0).getDate();
+  const targetDateStr = `${year}-${String(month).padStart(2, '0')}-${String(calendarDays).padStart(2, '0')}`;
   const joinDate = parsePayrollDate(employee.dateOfJoined);
-  const terminationDateValue = getEmployeeTerminationDate(employee);
+  const terminationDateValue = getEmployeeTerminationDate(employee, targetDateStr);
   const terminationDate = parsePayrollDate(terminationDateValue);
 
   const periodBeforeEmployment = !!joinDate && comparePayrollMonth(joinDate, month, year) > 0;
@@ -1979,6 +2038,41 @@ export function getAdjustedBasicSalary(employee: Employee, month: number, year: 
   return getSalaryProration(employee, month, year).payableSalary;
 }
 
+export function getMonthlyBaseSalary(employee: Employee, month: number, year: number): number {
+  const resolvedEmployee = getEmployeeForMonth(employee, month, year);
+  const calendarDays = new Date(year, month, 0).getDate();
+  const joinDate = parsePayrollDate(resolvedEmployee.dateOfJoined);
+  const periodBeforeEmployment = !!joinDate && comparePayrollMonth(joinDate, month, year) > 0;
+  if (periodBeforeEmployment) {
+    return 0;
+  }
+
+  const salaryAdjustments = (resolvedEmployee.salaryAdjustments || [])
+    .map(adjustment => ({ adjustment, date: parsePayrollDate(adjustment.effectiveDate) }))
+    .filter((entry): entry is { adjustment: typeof entry.adjustment; date: PayrollDateParts } => (
+      entry.date !== null && Number(entry.adjustment.adjustedSalary) >= 0
+    ))
+    .sort((left, right) => (
+      left.date.year - right.date.year ||
+      left.date.month - right.date.month ||
+      left.date.day - right.date.day
+    ));
+
+  let fullPeriodSalary = 0;
+  for (let day = 1; day <= calendarDays; day++) {
+    let monthlyRate = Number(resolvedEmployee.basicSalary || 0);
+    for (const entry of salaryAdjustments) {
+      const effectiveKey = entry.date.year * 10000 + entry.date.month * 100 + entry.date.day;
+      const payrollDayKey = year * 10000 + month * 100 + day;
+      if (effectiveKey <= payrollDayKey) monthlyRate = Number(entry.adjustment.adjustedSalary || 0);
+    }
+
+    fullPeriodSalary += monthlyRate / calendarDays;
+  }
+
+  return Number(fullPeriodSalary.toFixed(2));
+}
+
 function getHistoricalPayrollRecord(employee: Employee, month: number, year?: number): HistoricalPayrollRecord | undefined {
   return (employee.historicalPayrollRecords || []).find(record => (
     record.payrollMonth === month &&
@@ -1997,7 +2091,6 @@ export function getEmployeeForMonth(employee: Employee, month: number, year?: nu
   const effectiveStatus = getEffectiveEmploymentStatus(employee, month, resolvedYear);
   const monthEndDay = new Date(resolvedYear, month, 0).getDate();
   const monthEndDate = `${resolvedYear}-${String(month).padStart(2, '0')}-${String(monthEndDay).padStart(2, '0')}`;
-  const monthEndProfile = getEffectiveProfileForDate(employee, monthEndDate);
   const effectiveEmployee: Employee = {
     ...employee,
     status: effectiveStatus,
@@ -2079,10 +2172,7 @@ export function getEmployeeForMonth(employee: Employee, month: number, year?: nu
       effectiveProfile.dateOfJoined !== undefined
         ? effectiveProfile.dateOfJoined
         : employee.dateOfJoined,
-    dateOfTermination:
-      monthEndProfile.dateOfTermination ||
-      effectiveProfile.dateOfTermination ||
-      employee.dateOfTermination,
+    dateOfTermination: getEffectiveTerminationDateForDate(employee, monthEndDate),
   };
 
   const histRecord = getHistoricalPayrollRecord(employee, month, year);
@@ -2992,6 +3082,13 @@ export function getEffectiveEmploymentStatusForDate(
   employee: Employee,
   targetDateStr: string
 ): Employee['status'] {
+  const historyStatus = getCareerHistoryStatus(
+    getStatusChangeEntryForDate(employee, targetDateStr)?.newValue
+  );
+  if (historyStatus) {
+    return historyStatus;
+  }
+
   return getEffectiveProfileForDate(employee, targetDateStr).employmentStatus || employee.status;
 }
 
