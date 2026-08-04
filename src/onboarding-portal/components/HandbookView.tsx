@@ -278,6 +278,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   const handbookColumnRef = useRef<HTMLDivElement | null>(null);
   const contentCardRef = useRef<HTMLDivElement | null>(null);
   const [scrollProgress, setScrollProgress] = useState<number>(0);
+  const [isAtContentEnd, setIsAtContentEnd] = useState<boolean>(false);
 
   // Filter modules based on search query
   const filteredModules = modules.filter((m) => {
@@ -338,6 +339,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   const activeSectionLabel = getPartSectionLabel(activeModule.id, activeSubsectionIndex + 1);
   const isActiveModuleReviewComplete =
     activeSubsections.length === 0 || activeSubsectionIndex >= activeSubsections.length - 1;
+  const visibleModules = filteredModules.filter((module) => module.id === activeModule.id);
 
   const totalSectionCount = modules.reduce((total, module) => total + getSectionCount(module), 0);
   const completedSectionsAcrossHandbook = modules
@@ -368,95 +370,40 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   );
 
   useEffect(() => {
-    const getScrollParent = (node: HTMLElement | null): HTMLElement | Window => {
-      if (!node) return window;
-      let current: HTMLElement | null = node.parentElement;
-      while (current) {
-        const style = window.getComputedStyle(current);
-        if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
-          return current;
-        }
-        current = current.parentElement;
-      }
-      return window;
-    };
+    const scrollContainer = contentCardRef.current;
 
     const calculateScrollProgress = () => {
-      if (!contentCardRef.current) return;
-      const element = contentCardRef.current;
-      const scrollParent = getScrollParent(element);
+      if (!scrollContainer || !contentCardRef.current) return;
 
-      let containerRectTop = 0;
-      let containerHeight = window.innerHeight;
+      const maxScrollTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+      const atEnd = maxScrollTop <= 1 || scrollContainer.scrollTop >= maxScrollTop - 8;
+      const percentage = maxScrollTop <= 1
+        ? 100
+        : Math.min(100, Math.max(0, Math.round((scrollContainer.scrollTop / maxScrollTop) * 100)));
 
-      if (scrollParent instanceof HTMLElement) {
-        const parentRect = scrollParent.getBoundingClientRect();
-        containerRectTop = parentRect.top;
-        containerHeight = parentRect.height;
-      }
-
-      const elementRect = element.getBoundingClientRect();
-      const headerOffset = scrollParent instanceof HTMLElement ? 0 : 110;
-      const scrolledPx = containerRectTop + headerOffset - elementRect.top;
-      const totalScrollablePx = elementRect.height - (containerHeight - headerOffset);
-
-      if (totalScrollablePx <= 40) {
-        setScrollProgress(100);
-        return;
-      }
-
-      if (scrolledPx <= 0) {
-        setScrollProgress(0);
-      } else if (scrolledPx >= totalScrollablePx) {
-        setScrollProgress(100);
-      } else {
-        const percentage = Math.min(
-          100,
-          Math.max(0, Math.round((scrolledPx / totalScrollablePx) * 100))
-        );
-        setScrollProgress(percentage);
-      }
+      setScrollProgress(percentage);
+      setIsAtContentEnd(atEnd);
     };
 
     setScrollProgress(0);
-    const scrollTarget = getScrollParent(contentCardRef.current);
-
-    window.addEventListener('scroll', calculateScrollProgress, { capture: true, passive: true });
-    document.addEventListener('scroll', calculateScrollProgress, { capture: true, passive: true });
-    if (scrollTarget instanceof HTMLElement) {
-      scrollTarget.addEventListener('scroll', calculateScrollProgress, { passive: true });
-    }
+    setIsAtContentEnd(false);
+    scrollContainer?.addEventListener('scroll', calculateScrollProgress, { passive: true });
     window.addEventListener('resize', calculateScrollProgress, { passive: true });
 
-    calculateScrollProgress();
     const timeoutId = setTimeout(calculateScrollProgress, 120);
 
     return () => {
       clearTimeout(timeoutId);
-      window.removeEventListener('scroll', calculateScrollProgress, { capture: true });
-      document.removeEventListener('scroll', calculateScrollProgress, { capture: true });
-      if (scrollTarget instanceof HTMLElement) {
-        scrollTarget.removeEventListener('scroll', calculateScrollProgress);
-      }
+      scrollContainer?.removeEventListener('scroll', calculateScrollProgress);
       window.removeEventListener('resize', calculateScrollProgress);
     };
-  }, [activeSubsectionIndex, selectedModuleId]);
+  }, [activeSubsectionIndex, selectedModuleId, contentType]);
 
   const scrollModuleToTop = () => {
-    const handbookColumn = handbookColumnRef.current;
-    const hasInternalScroll = Boolean(
-      handbookColumn && handbookColumn.scrollHeight > handbookColumn.clientHeight
-    );
-    if (hasInternalScroll && handbookColumn) {
-      handbookColumn.scrollTo({ top: 0, behavior: 'auto' });
-    } else {
-      const contentCard = contentCardRef.current;
-      const scrollParent = contentCard
-        ? (contentCard.closest('main') || contentCard.parentElement)
-        : null;
-      scrollParent?.scrollTo({ top: 0, behavior: 'auto' });
-      window.scrollTo({ top: 0, behavior: 'auto' });
-    }
+    contentCardRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    handbookColumnRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    setScrollProgress(0);
+    setIsAtContentEnd(false);
   };
 
   const handleSelectModule = (id: number) => {
@@ -861,7 +808,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
             </div>
 
             {/* Parts and Sections Index */}
-            {filteredModules.length === 0 ? (
+            {visibleModules.length === 0 ? (
               <div className="p-5 text-center bg-[#FAF6EF] rounded-lg border border-dashed border-[#e0bfbc] space-y-2">
                 <Search className="w-6 h-6 text-[#810912]/40 mx-auto" />
                 <p className="text-xs font-bold text-[#1b1c1c]">No modules found</p>
@@ -877,8 +824,8 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                 </button>
               </div>
             ) : (
-              <ul className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
-                {filteredModules.map((m) => {
+              <ul className="space-y-2.5 pr-1">
+                {visibleModules.map((m) => {
                   const isSelected = m.id === selectedModuleId;
                   const isCompleted = m.status === 'completed' || !!partInitials[m.id];
                   const isLocked = m.status === 'locked' && !isCompleted;
@@ -1012,10 +959,10 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
         {/* Center/Main Column: Policy Content & Section Video */}
         <div
           ref={handbookColumnRef}
-          className="lg:w-2/3 flex flex-col gap-6 lg:max-h-[calc(100vh-11rem)] lg:overflow-y-auto lg:pr-2"
+          className="lg:w-2/3 flex flex-col gap-6 lg:pr-2"
         >
           {/* Sticky Video Card */}
-          <div className="lg:sticky lg:top-0 z-20 self-stretch">
+          <div className="sticky top-28 z-20 self-stretch">
             {/* Each handbook Part has an independent video slot and source. */}
             <div className="relative w-full h-64 sm:h-72 rounded-xl border border-[#F2E8D8] bg-[#403f3a] shadow-[0_4px_12px_rgba(51,51,51,0.12)] overflow-hidden">
               {handbookVideo.sourceUrl ? (
@@ -1071,8 +1018,11 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
             </div>
           </div>
 
-          {/* Handbook Content Card: the scroll-progress observer measures only this card. */}
-          <div ref={contentCardRef} className="bg-white rounded-xl shadow-[0_4px_6px_-1px_rgba(51,51,51,0.05),0_10px_15px_-3px_rgba(51,51,51,0.1)] border border-[#F2E8D8] overflow-hidden flex flex-col">
+          {/* Only the handbook content scrolls; the video remains pinned above it. */}
+          <div
+            ref={contentCardRef}
+            className="bg-white rounded-xl shadow-[0_4px_6px_-1px_rgba(51,51,51,0.05),0_10px_15px_-3px_rgba(51,51,51,0.1)] border border-[#F2E8D8] overflow-y-auto flex flex-col max-h-[calc(100vh-17rem)]"
+          >
             {/* Text Content */}
             <div className="p-6 sm:p-8 flex-1">
               {/* View Mode Switcher Header Bar */}
@@ -1252,7 +1202,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                       ? ' reviewed. You may now complete this Part.'
                       : ' must be completed before the next section is shown.'}
                   </p>
-                  {!isActiveModuleReviewComplete && (
+                  {!isActiveModuleReviewComplete && isAtContentEnd && (
                     <button
                       type="button"
                       onClick={handleContinueSubsection}
