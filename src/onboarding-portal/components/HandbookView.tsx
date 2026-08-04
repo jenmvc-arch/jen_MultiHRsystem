@@ -92,6 +92,12 @@ const loadSavedBriefing = (): SavedBriefingSession | null => {
 const getPartSectionLabel = (partNumber: number, sectionNumber: number) =>
   `Part ${partNumber} - Section ${sectionNumber}`;
 
+const getSectionCount = (module: HandbookModule) =>
+  Math.max(1, module.content.subsections?.length || module.sectionsCount || 1);
+
+const isPartComplete = (module: HandbookModule, partInitials: Record<number, string>) =>
+  module.status === 'completed' || Boolean(partInitials[module.id]);
+
 export const HandbookView: React.FC<HandbookViewProps> = ({
   modules,
   onAcknowledgeModule,
@@ -269,6 +275,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   };
 
   // Content card ref and scroll progress tracking
+  const handbookColumnRef = useRef<HTMLDivElement | null>(null);
   const contentCardRef = useRef<HTMLDivElement | null>(null);
   const [scrollProgress, setScrollProgress] = useState<number>(0);
 
@@ -332,6 +339,34 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   const isActiveModuleReviewComplete =
     activeSubsections.length === 0 || activeSubsectionIndex >= activeSubsections.length - 1;
 
+  const totalSectionCount = modules.reduce((total, module) => total + getSectionCount(module), 0);
+  const completedSectionsAcrossHandbook = modules
+    .filter((module) => isPartComplete(module, partInitials))
+    .reduce((total, module) => total + getSectionCount(module), 0);
+  const activePartSectionCount = getSectionCount(activeModule);
+  const activePartComplete = isPartComplete(activeModule, partInitials);
+  const furthestCompletedSection = Math.min(
+    subsectionProgress[activeModule.id] || 0,
+    activePartSectionCount
+  );
+  const isReadingCurrentSection =
+    !activePartComplete &&
+    activeSubsectionIndex === Math.min(furthestCompletedSection, activePartSectionCount - 1);
+  const proratedActiveSection = isReadingCurrentSection ? scrollProgress / 100 : 0;
+  const completedSectionsInCurrentPart = activePartComplete
+    ? activePartSectionCount
+    : furthestCompletedSection;
+  const handbookReadingProgress = Math.min(
+    100,
+    Math.round(
+      ((completedSectionsAcrossHandbook +
+        (activePartComplete ? 0 : completedSectionsInCurrentPart) +
+        proratedActiveSection) /
+        totalSectionCount) *
+        100
+    )
+  );
+
   useEffect(() => {
     const getScrollParent = (node: HTMLElement | null): HTMLElement | Window => {
       if (!node) return window;
@@ -361,7 +396,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
       }
 
       const elementRect = element.getBoundingClientRect();
-      const headerOffset = 110;
+      const headerOffset = scrollParent instanceof HTMLElement ? 0 : 110;
       const scrolledPx = containerRectTop + headerOffset - elementRect.top;
       const totalScrollablePx = elementRect.height - (containerHeight - headerOffset);
 
@@ -383,6 +418,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
       }
     };
 
+    setScrollProgress(0);
     const scrollTarget = getScrollParent(contentCardRef.current);
 
     window.addEventListener('scroll', calculateScrollProgress, { capture: true, passive: true });
@@ -404,20 +440,23 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
       }
       window.removeEventListener('resize', calculateScrollProgress);
     };
-  }, [selectedModuleId]);
+  }, [activeSubsectionIndex, selectedModuleId]);
 
   const scrollModuleToTop = () => {
-    const contentCard = contentCardRef.current;
-    const scrollParent = contentCard
-      ? (contentCard.closest('main') || contentCard.parentElement)
-      : null;
-    if (scrollParent) {
-      scrollParent.scrollTo({ top: 0, behavior: 'auto' });
+    const handbookColumn = handbookColumnRef.current;
+    const hasInternalScroll = Boolean(
+      handbookColumn && handbookColumn.scrollHeight > handbookColumn.clientHeight
+    );
+    if (hasInternalScroll && handbookColumn) {
+      handbookColumn.scrollTo({ top: 0, behavior: 'auto' });
+    } else {
+      const contentCard = contentCardRef.current;
+      const scrollParent = contentCard
+        ? (contentCard.closest('main') || contentCard.parentElement)
+        : null;
+      scrollParent?.scrollTo({ top: 0, behavior: 'auto' });
+      window.scrollTo({ top: 0, behavior: 'auto' });
     }
-    window.scrollTo({ top: 0, behavior: 'auto' });
-    requestAnimationFrame(() => {
-      contentCardRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' });
-    });
   };
 
   const handleSelectModule = (id: number) => {
@@ -742,13 +781,13 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
           <div className="text-right whitespace-nowrap">
             <span className="text-xs font-semibold text-[#59413f]">
               {t.readingProgress}:{' '}
-              <strong className="text-[#810912] font-black">{scrollProgress}%</strong>
+              <strong className="text-[#810912] font-black">{handbookReadingProgress}%</strong>
             </span>
           </div>
           <div className="flex-1 sm:w-44 h-2.5 bg-[#e0bfbc]/30 rounded-full overflow-hidden border border-[#e0bfbc]/60 shadow-inner">
             <div
               className="h-full bg-gradient-to-r from-[#a32626] to-[#810912] transition-all duration-150 ease-out rounded-full"
-              style={{ width: `${scrollProgress}%` }}
+              style={{ width: `${handbookReadingProgress}%` }}
             />
           </div>
         </div>
@@ -971,11 +1010,14 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
         </div>
 
         {/* Center/Main Column: Policy Content & Section Video */}
-        <div ref={contentCardRef} className="lg:w-2/3 flex flex-col gap-6">
-          {/* Content Card */}
-          <div className="bg-white rounded-xl shadow-[0_4px_6px_-1px_rgba(51,51,51,0.05),0_10px_15px_-3px_rgba(51,51,51,0.1)] border border-[#F2E8D8] overflow-hidden flex flex-col">
+        <div
+          ref={handbookColumnRef}
+          className="lg:w-2/3 flex flex-col gap-6 lg:max-h-[calc(100vh-11rem)] lg:overflow-y-auto lg:pr-2"
+        >
+          {/* Sticky Video Card */}
+          <div className="lg:sticky lg:top-0 z-20 self-stretch">
             {/* Each handbook Part has an independent video slot and source. */}
-            <div className="relative w-full h-64 sm:h-72 bg-[#403f3a] overflow-hidden">
+            <div className="relative w-full h-64 sm:h-72 rounded-xl border border-[#F2E8D8] bg-[#403f3a] shadow-[0_4px_12px_rgba(51,51,51,0.12)] overflow-hidden">
               {handbookVideo.sourceUrl ? (
                 handbookVideo.kind === 'embed' ? (
                   <iframe
@@ -1027,7 +1069,10 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                 {activeSectionLabel} Video Briefing
               </div>
             </div>
+          </div>
 
+          {/* Handbook Content Card: the scroll-progress observer measures only this card. */}
+          <div ref={contentCardRef} className="bg-white rounded-xl shadow-[0_4px_6px_-1px_rgba(51,51,51,0.05),0_10px_15px_-3px_rgba(51,51,51,0.1)] border border-[#F2E8D8] overflow-hidden flex flex-col">
             {/* Text Content */}
             <div className="p-6 sm:p-8 flex-1">
               {/* View Mode Switcher Header Bar */}
