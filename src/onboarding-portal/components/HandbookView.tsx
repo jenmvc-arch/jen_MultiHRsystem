@@ -74,9 +74,11 @@ interface SavedBriefingSession {
   selectedModuleId: number;
   subsectionProgress?: Record<number, number>;
   selectedSubsectionByPart?: Record<number, number>;
+  completedVideoSections?: Record<string, boolean>;
 }
 
 const BRIEFING_STORAGE_KEY = 'redpoint_handbook_briefing_v1';
+const SECTION_TITLE_NUMBER_PREFIX = /^\d+\.\s*/;
 
 const loadSavedBriefing = (): SavedBriefingSession | null => {
   try {
@@ -91,6 +93,12 @@ const loadSavedBriefing = (): SavedBriefingSession | null => {
 
 const getPartSectionLabel = (partNumber: number, sectionNumber: number) =>
   `Part ${partNumber} - Section ${sectionNumber}`;
+
+const getSectionVideoKey = (partNumber: number, sectionNumber: number) =>
+  `${partNumber}:${sectionNumber}`;
+
+const getPlainSectionTitle = (title?: string) =>
+  title?.replace(SECTION_TITLE_NUMBER_PREFIX, '').trim() || '';
 
 const getSectionCount = (module: HandbookModule) =>
   Math.max(1, module.content.subsections?.length || module.sectionsCount || 1);
@@ -151,6 +159,9 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   const [selectedSubsectionByPart, setSelectedSubsectionByPart] = useState<Record<number, number>>(
     () => savedBriefing?.selectedSubsectionByPart || {}
   );
+  const [completedVideoSections, setCompletedVideoSections] = useState<Record<string, boolean>>(
+    () => savedBriefing?.completedVideoSections || {}
+  );
   const [expandedPartIds, setExpandedPartIds] = useState<Record<number, boolean>>(() => ({
     [savedBriefing?.selectedModuleId || 1]: true,
   }));
@@ -207,6 +218,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
         selectedModuleId,
         subsectionProgress,
         selectedSubsectionByPart,
+        completedVideoSections,
       };
       localStorage.setItem(BRIEFING_STORAGE_KEY, JSON.stringify(data));
     } catch (err) {
@@ -220,6 +232,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
     selectedModuleId,
     subsectionProgress,
     selectedSubsectionByPart,
+    completedVideoSections,
   ]);
 
   // 7-day Countdown Timer Calculation
@@ -279,6 +292,9 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   const contentCardRef = useRef<HTMLDivElement | null>(null);
   const [scrollProgress, setScrollProgress] = useState<number>(0);
   const [isAtContentEnd, setIsAtContentEnd] = useState<boolean>(false);
+  const [activeVideoSourceMode, setActiveVideoSourceMode] = useState<
+    'section' | 'part' | 'unavailable'
+  >('section');
 
   // Filter modules based on search query
   const filteredModules = modules.filter((m) => {
@@ -314,14 +330,6 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
       keyTakeaway: 'Compliance and integrity are core to Red Point operations.',
     },
   };
-  const handbookVideo = getHandbookVideoSection(activeModule.id);
-  const videoPosterUrl = activeModule.videoPosterUrl || handbookVideo.posterUrl;
-  const videoDuration = activeModule.videoDuration || handbookVideo.duration;
-
-  const activePageRange = OFFICIAL_HANDBOOK.partPages[activeModule.id] || { start: 1, end: 5 };
-  const officialPdfUrl = officialHandbookUrl && activePageRange
-    ? `${officialHandbookUrl}#page=${activePageRange.start}&view=FitH&toolbar=1&navpanes=0`
-    : null;
   const activeSubsections = activeModule.content.subsections || [];
   const savedSubsectionIndex = subsectionProgress[activeModule.id] || 0;
   const defaultSubsectionIndex = partInitials[activeModule.id] || activeModule.status === 'completed'
@@ -336,7 +344,60 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
       )
     : 0;
   const activeSubsection = activeSubsections[activeSubsectionIndex];
-  const activeSectionLabel = getPartSectionLabel(activeModule.id, activeSubsectionIndex + 1);
+  const activeSectionNumber = activeSubsections.length > 0 ? activeSubsectionIndex + 1 : 1;
+  const activeSectionLabel = getPartSectionLabel(activeModule.id, activeSectionNumber);
+  const isOpeningSection = activeSubsectionIndex === 0;
+  const pageHeading = isOpeningSection
+    ? activeModule.content.sectionTitle
+    : activeSubsection?.title?.trim() || activeModule.content.sectionTitle;
+  const sectionVideoFallbackTitle = activeSubsection?.title
+    ? `${activeSectionLabel} - ${
+        getPlainSectionTitle(activeSubsection.title) || activeSubsection.title
+      }`
+    : `${activeSectionLabel} Briefing`;
+  const sectionHandbookVideo = getHandbookVideoSection(
+    activeModule.id,
+    activeSectionNumber,
+    sectionVideoFallbackTitle,
+    activeModule.videoDuration
+  );
+  const partHandbookVideo = getHandbookVideoSection(
+    activeModule.id,
+    undefined,
+    activeModule.content.sectionTitle,
+    activeModule.videoDuration
+  );
+  const canFallbackToPartVideo =
+    Boolean(partHandbookVideo.sourceUrl) &&
+    partHandbookVideo.sourceUrl !== sectionHandbookVideo.sourceUrl;
+  const resolvedVideoSourceMode =
+    activeVideoSourceMode === 'section' &&
+    !sectionHandbookVideo.sourceUrl &&
+    canFallbackToPartVideo
+      ? 'part'
+      : activeVideoSourceMode;
+  const handbookVideo =
+    resolvedVideoSourceMode === 'part'
+      ? {
+          ...partHandbookVideo,
+          sectionNumber: activeSectionNumber,
+          title: sectionHandbookVideo.title,
+          duration: sectionHandbookVideo.duration,
+        }
+      : resolvedVideoSourceMode === 'unavailable'
+      ? {
+          ...sectionHandbookVideo,
+          sourceUrl: null,
+          kind: 'file' as const,
+        }
+      : sectionHandbookVideo;
+  const videoPosterUrl = activeModule.videoPosterUrl || handbookVideo.posterUrl;
+  const videoDuration = handbookVideo.duration || activeModule.videoDuration;
+  const activeVideoKey = getSectionVideoKey(activeModule.id, activeSectionNumber);
+  const activePageRange = OFFICIAL_HANDBOOK.partPages[activeModule.id] || { start: 1, end: 5 };
+  const officialPdfUrl = officialHandbookUrl && activePageRange
+    ? `${officialHandbookUrl}#page=${activePageRange.start}&view=FitH&toolbar=1&navpanes=0`
+    : null;
   const isActiveModuleReviewComplete =
     activeSubsections.length === 0 || activeSubsectionIndex >= activeSubsections.length - 1;
   const visibleModules = filteredModules.filter((module) => module.id === activeModule.id);
@@ -351,6 +412,15 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
     subsectionProgress[activeModule.id] || 0,
     activePartSectionCount
   );
+  const isPreviouslyCompletedSection =
+    activePartComplete || activeSubsectionIndex < furthestCompletedSection;
+  const isTrackableSectionVideo = handbookVideo.kind === 'file' && Boolean(handbookVideo.sourceUrl);
+  const isVideoComplete =
+    isPreviouslyCompletedSection ||
+    Boolean(completedVideoSections[activeVideoKey]) ||
+    !isTrackableSectionVideo;
+  const canContinueToNextSection =
+    !isActiveModuleReviewComplete && isAtContentEnd && isVideoComplete;
   const isReadingCurrentSection =
     !activePartComplete &&
     activeSubsectionIndex === Math.min(furthestCompletedSection, activePartSectionCount - 1);
@@ -368,6 +438,10 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
         100
     )
   );
+
+  useEffect(() => {
+    setActiveVideoSourceMode('section');
+  }, [activeVideoKey]);
 
   useEffect(() => {
     const scrollContainer = contentCardRef.current;
@@ -466,8 +540,34 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
     }));
   };
 
+  const markSectionVideoComplete = (videoKey: string) => {
+    setCompletedVideoSections((current) => {
+      if (current[videoKey]) return current;
+      return {
+        ...current,
+        [videoKey]: true,
+      };
+    });
+  };
+
+  const handleSectionVideoEnded = () => {
+    if (briefingStatus === 'not_started') {
+      handleStartBriefing();
+    }
+    markSectionVideoComplete(activeVideoKey);
+  };
+
+  const handleSectionVideoError = () => {
+    setActiveVideoSourceMode((current) => {
+      if (current === 'section' && canFallbackToPartVideo) {
+        return 'part';
+      }
+      return 'unavailable';
+    });
+  };
+
   const handleContinueSubsection = () => {
-    if (isActiveModuleReviewComplete) return;
+    if (isActiveModuleReviewComplete || !isAtContentEnd || !isVideoComplete) return;
     setSubsectionProgress((current) => ({
       ...current,
       [activeModule.id]: activeSubsectionIndex + 1,
@@ -538,6 +638,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
     setSelectedModuleId(1);
     setSubsectionProgress({});
     setSelectedSubsectionByPart({});
+    setCompletedVideoSections({});
     setExpandedPartIds({ 1: true });
     setBriefingStatus('in_progress');
     setLastSavedAt(Date.now());
@@ -968,7 +1069,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
               {handbookVideo.sourceUrl ? (
                 handbookVideo.kind === 'embed' ? (
                   <iframe
-                    key={handbookVideo.sourceUrl}
+                    key={`${activeVideoKey}-${handbookVideo.sourceUrl}`}
                     src={handbookVideo.sourceUrl}
                     title={`${handbookVideo.title} video`}
                     className="h-full w-full bg-black"
@@ -977,10 +1078,12 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                   />
                 ) : (
                   <video
-                    key={handbookVideo.sourceUrl}
+                    key={`${activeVideoKey}-${handbookVideo.sourceUrl}`}
                     controls
                     preload="metadata"
                     poster={videoPosterUrl}
+                    onEnded={handleSectionVideoEnded}
+                    onError={handleSectionVideoError}
                     onPlay={() => {
                       if (briefingStatus === 'not_started') handleStartBriefing();
                     }}
@@ -1079,7 +1182,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
               </div>
 
               <h1 className="text-2xl sm:text-3xl font-bold text-[#1b1c1c] mb-6">
-                {activeModule.content.sectionTitle}
+                {pageHeading}
               </h1>
               <p className="-mt-4 mb-6 text-xs font-bold uppercase tracking-wider text-[#810912]">
                 {activeSectionLabel}
@@ -1120,16 +1223,17 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                     </section>
                   )}
 
-                  {activeModule.content.bodyParagraphs?.map((paragraph, index) => (
-                    <p key={index} className="text-sm sm:text-base leading-relaxed text-[#1b1c1c]">
-                      {paragraph}
-                    </p>
-                  ))}
+                  {isOpeningSection &&
+                    activeModule.content.bodyParagraphs?.map((paragraph, index) => (
+                      <p key={index} className="text-sm sm:text-base leading-relaxed text-[#1b1c1c]">
+                        {paragraph}
+                      </p>
+                    ))}
 
                   {/* One subsection is shown at a time so review remains sequential. */}
                   {activeSubsection && (
                     <div key={activeSubsectionIndex} className="pt-4 space-y-3 border-t border-[#F2E8D8]">
-                      {activeSubsection.title && (
+                      {activeSubsection.title && isOpeningSection && (
                         <h3 className="text-base sm:text-lg font-bold text-[#1b1c1c]">
                           {activeSubsection.title}
                         </h3>
@@ -1198,13 +1302,59 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
 
                 {activeSubsections.length > 0 && (
                   <div className="mt-6 flex flex-col gap-3 border-t border-[#F2E8D8] pt-5 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-xs font-semibold text-[#59413f]">
-                      {activeSectionLabel} of {activeSubsections.length}
-                      {isActiveModuleReviewComplete
-                        ? ' reviewed. You may now complete this Part.'
-                        : ' must be completed before the next section is shown.'}
-                    </p>
-                    {!isActiveModuleReviewComplete && isAtContentEnd && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-[#59413f]">
+                        {activeSectionLabel} of {activeSubsections.length}
+                        {isActiveModuleReviewComplete
+                          ? ' reviewed. You may now complete this Part.'
+                          : ' must be completed before the next section is shown.'}
+                      </p>
+                      {!isActiveModuleReviewComplete && (
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 ${
+                              isVideoComplete
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                : 'border-[#e0bfbc] bg-[#FAF6EF] text-[#59413f]'
+                            }`}
+                          >
+                            {isVideoComplete ? (
+                              <CheckSquare className="h-3.5 w-3.5" />
+                            ) : (
+                              <Square className="h-3.5 w-3.5" />
+                            )}
+                            <span>
+                              {isTrackableSectionVideo
+                                ? 'Watch the section video to the end'
+                                : handbookVideo.sourceUrl
+                                ? 'Section video is displayed'
+                                : 'Section video is not configured'}
+                            </span>
+                          </span>
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 ${
+                              isAtContentEnd
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                : 'border-[#e0bfbc] bg-[#FAF6EF] text-[#59413f]'
+                            }`}
+                          >
+                            {isAtContentEnd ? (
+                              <CheckSquare className="h-3.5 w-3.5" />
+                            ) : (
+                              <Square className="h-3.5 w-3.5" />
+                            )}
+                            <span>Scroll to the end of this section</span>
+                          </span>
+                          {resolvedVideoSourceMode === 'part' && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-800">
+                              <AlertCircle className="h-3.5 w-3.5" />
+                              <span>Using the Part-level fallback video for this section</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {canContinueToNextSection && (
                       <button
                         type="button"
                         onClick={handleContinueSubsection}

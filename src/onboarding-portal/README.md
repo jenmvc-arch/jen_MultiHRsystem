@@ -16,11 +16,14 @@ contains only the employee journey, handbook, compliance quiz, and completion re
 
 ## Section video integration
 
-Each handbook Part has its own video slot. Configure a shared media directory with
-`VITE_HANDBOOK_VIDEO_BASE_URL` and the portal will resolve `part-01.mp4` through
-`part-15.mp4` for Parts 1 through 15. A specific Part can override the shared path with
-`VITE_HANDBOOK_VIDEO_PART_1` through `VITE_HANDBOOK_VIDEO_PART_15`. Direct MP4 URLs use
-the native video player; YouTube and Vimeo URLs are rendered as embedded players.
+Each handbook section has its own video slot. Configure a shared media directory with
+`VITE_HANDBOOK_VIDEO_BASE_URL` and the portal will resolve paths such as
+`part-01-section-01.mp4` for section-level playback. When a section-specific file is not
+available, the UI can fall back to the matching Part-level source. A specific Part can
+override the shared path with `VITE_HANDBOOK_VIDEO_PART_1` through
+`VITE_HANDBOOK_VIDEO_PART_15`, and a specific section can override with keys such as
+`VITE_HANDBOOK_VIDEO_PART_1_SECTION_1`. Direct MP4 URLs use the native video player;
+YouTube and Vimeo URLs are rendered as embedded players.
 
 ## Signed handbook archive
 

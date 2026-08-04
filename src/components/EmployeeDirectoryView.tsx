@@ -54,7 +54,7 @@ import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
 import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css';
 
 registerPlugin(FilePondPluginImagePreview);
-import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getAdjustedBasicSalary, getPayrollBasicSalary, getSalaryProration, getEmployeeForMonth } from '../data';
+import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getPayrollBasicSalary, getSalaryProration, getEmployeeForMonth } from '../data';
 
 interface EmployeeDirectoryViewProps {
   employees: Employee[];
@@ -78,6 +78,10 @@ export default function EmployeeDirectoryView({
   const [searchQuery, setSearchQuery] = useState('');
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
+  const getDisplayedMonthlyBasicSalary = (employee: Employee) =>
+    getSalaryProration(employee, currentMonth, currentYear).fullPeriodSalary;
+  const formatCurrencyAmount = (amount: number) =>
+    amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const [deptFilter, setDeptFilter] = useState('All Departments');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [entityFilter, setEntityFilter] = useState(activeEntityId || 'All Subsidiaries');
@@ -1535,7 +1539,7 @@ export default function EmployeeDirectoryView({
               <div className="grid grid-cols-2 gap-4 text-xs">
                 <div>
                   <span className="text-outline text-[9px] font-bold uppercase block mb-0.5">Basic Monthly Salary</span>
-                  <span className="font-mono text-sm font-bold text-on-surface">RM {getAdjustedBasicSalary(previewEmployee, currentMonth, currentYear).toLocaleString()}</span>
+                  <span className="font-mono text-sm font-bold text-on-surface">RM {formatCurrencyAmount(getDisplayedMonthlyBasicSalary(previewEmployee))}</span>
                 </div>
                 <div>
                   <span className="text-outline text-[9px] font-bold uppercase block mb-0.5">Accommodation Allowance</span>
@@ -2195,7 +2199,7 @@ export default function EmployeeDirectoryView({
                     <th className="p-4">Subsidiary</th>
                     <th className="p-4">Type & NRIC/Passport</th>
                     <th className="p-4">Department & Designation</th>
-                    <th className="p-4">Salary Base (RM)</th>
+                    <th className="p-4 min-w-[140px]">Salary Base (RM)</th>
                     <th className="p-4">Date of Joined</th>
                     <th className="p-4">Status</th>
                     <th className="p-4 text-right">Administrative</th>
@@ -2206,6 +2210,7 @@ export default function EmployeeDirectoryView({
                     const isActive = emp.status === 'Active';
                     const isOnLeave = emp.status === 'On Leave';
                     const isSuspended = emp.status === 'Suspended';
+                    const displayedBasicSalary = getDisplayedMonthlyBasicSalary(emp);
                     
                     return (
                       <tr 
@@ -2252,8 +2257,8 @@ export default function EmployeeDirectoryView({
                         </td>
 
                         {/* Column 5: Base Salary */}
-                        <td className="p-4 font-mono font-semibold text-primary">
-                          RM {getAdjustedBasicSalary(emp, currentMonth, currentYear).toLocaleString()}
+                        <td className="p-4 min-w-[140px] whitespace-nowrap font-mono font-semibold text-primary">
+                          RM {formatCurrencyAmount(displayedBasicSalary)}
                         </td>
 
                         {/* Column 6: Date Joined */}

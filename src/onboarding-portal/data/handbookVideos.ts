@@ -2,6 +2,7 @@ export type HandbookVideoKind = 'file' | 'embed';
 
 export interface HandbookVideoSection {
   partNumber: number;
+  sectionNumber?: number;
   title: string;
   duration: string;
   posterUrl: string;
@@ -76,7 +77,25 @@ function normalizeEmbedUrl(url: string) {
   return url;
 }
 
-function getSourceUrl(partNumber: number): string | null {
+function getPartEnvPrefix(partNumber: number) {
+  return `VITE_HANDBOOK_VIDEO_PART_${partNumber}`;
+}
+
+function getSectionEnvPrefix(partNumber: number, sectionNumber: number) {
+  return `${getPartEnvPrefix(partNumber)}_SECTION_${sectionNumber}`;
+}
+
+function getSourceUrl(partNumber: number, sectionNumber?: number): string | null {
+  if (sectionNumber != null) {
+    const sectionPrefix = getSectionEnvPrefix(partNumber, sectionNumber);
+    const explicitSectionUrl = env[sectionPrefix]?.trim();
+    if (explicitSectionUrl) {
+      return isEmbedUrl(explicitSectionUrl) ? normalizeEmbedUrl(explicitSectionUrl) : explicitSectionUrl;
+    }
+    if (!baseUrl) return null;
+    return `${baseUrl}/part-${String(partNumber).padStart(2, '0')}-section-${String(sectionNumber).padStart(2, '0')}.mp4`;
+  }
+
   const explicitUrl = env[`VITE_HANDBOOK_VIDEO_PART_${partNumber}`]?.trim();
   if (explicitUrl) return isEmbedUrl(explicitUrl) ? normalizeEmbedUrl(explicitUrl) : explicitUrl;
   if (!baseUrl) return null;
@@ -99,12 +118,43 @@ export const HANDBOOK_VIDEO_SECTIONS: HandbookVideoSection[] = Array.from(
   }
 );
 
-export function getHandbookVideoSection(partNumber: number): HandbookVideoSection {
+export function getHandbookVideoSection(
+  partNumber: number,
+  sectionNumber?: number,
+  fallbackTitle?: string,
+  fallbackDuration?: string
+): HandbookVideoSection {
+  if (sectionNumber != null) {
+    const sectionPrefix = getSectionEnvPrefix(partNumber, sectionNumber);
+    const sourceUrl = getSourceUrl(partNumber, sectionNumber);
+    const title =
+      env[`${sectionPrefix}_TITLE`]?.trim() ||
+      fallbackTitle ||
+      `Part ${partNumber} - Section ${sectionNumber} Briefing`;
+    const duration =
+      env[`${sectionPrefix}_DURATION`]?.trim() ||
+      fallbackDuration ||
+      'Video';
+    const posterUrl =
+      env[`${sectionPrefix}_POSTER_URL`]?.trim() ||
+      DEFAULT_POSTER_URL;
+
+    return {
+      partNumber,
+      sectionNumber,
+      title,
+      duration,
+      posterUrl,
+      sourceUrl,
+      kind: sourceUrl && isEmbedUrl(sourceUrl) ? 'embed' : 'file',
+    };
+  }
+
   return (
     HANDBOOK_VIDEO_SECTIONS.find((section) => section.partNumber === partNumber) || {
       partNumber,
       title: `Part ${partNumber} briefing`,
-      duration: 'Video',
+      duration: fallbackDuration || 'Video',
       posterUrl: DEFAULT_POSTER_URL,
       sourceUrl: null,
       kind: 'file',
