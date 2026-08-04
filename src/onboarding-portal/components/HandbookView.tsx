@@ -708,7 +708,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
       </div>
 
       {/* Sticky Module Reading Progress Bar */}
-      <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md border border-[#F2E8D8] rounded-xl p-3 sm:p-4 shadow-[0_4px_12px_rgba(51,51,51,0.08)] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 transition-all">
+      <div className="sticky top-0 z-50 self-start bg-white border border-[#F2E8D8] rounded-xl p-3 sm:p-4 shadow-[0_4px_12px_rgba(51,51,51,0.08)] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 transition-all">
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="bg-[#810912] text-white text-[10px] font-extrabold px-2.5 py-1 rounded-md uppercase tracking-wider shrink-0 shadow-xs flex items-center gap-1">
             <BookOpen className="w-3 h-3" />
