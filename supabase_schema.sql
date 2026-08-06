@@ -187,6 +187,7 @@ CREATE TABLE IF NOT EXISTS public.payroll_records_2026 (
     deduction_cp38 NUMERIC(12, 2) DEFAULT 0,
     deduction_others NUMERIC(12, 2) DEFAULT 0,
     deduction_others_desc TEXT,
+    payslip_descriptions JSONB DEFAULT '{}'::jsonb,
     total_allowance NUMERIC(12, 2) DEFAULT 0,
     gross_salary NUMERIC(12, 2) DEFAULT 0,
     epf_employee NUMERIC(12, 2) DEFAULT 0,

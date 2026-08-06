@@ -266,6 +266,7 @@ export default function App() {
           ...existing,
           payrollMonth: r.payrollMonth,
           payrollYear: r.payrollYear,
+          paymentDate: r.paymentDate ?? existing?.paymentDate,
           basicSalary: r.basicSalary,
           allowanceGeneral: r.allowanceGeneral,
           allowanceTransport: r.allowanceTransport,
@@ -291,6 +292,7 @@ export default function App() {
           deductionCp38: r.deductionCp38,
           deductionOthers: r.deductionOthers,
           deductionOthersDesc: r.deductionOthersDesc ?? existing?.deductionOthersDesc,
+          payslipDescriptions: r.payslipDescriptions ?? existing?.payslipDescriptions,
           actualPCBDeducted: r.actualPCBDeducted,
           epfEmployee: r.epfEmployee,
           epfEmployer: r.epfEmployer,
@@ -950,6 +952,20 @@ export default function App() {
           deductionCp38: Number(r.deductionCp38 || 0),
           deductionOthers: Number(r.deductionOthers || 0),
           deductionOthersDesc: r.deductionOthersDesc === undefined ? undefined : String(r.deductionOthersDesc || ''),
+          paymentDate: r.paymentDate ? String(r.paymentDate) : undefined,
+          payslipDescriptions: (() => {
+            if (r.payslipDescriptions === undefined || r.payslipDescriptions === null || r.payslipDescriptions === '') {
+              return undefined;
+            }
+            if (typeof r.payslipDescriptions === 'string') {
+              try {
+                return JSON.parse(r.payslipDescriptions);
+              } catch (_error) {
+                return undefined;
+              }
+            }
+            return r.payslipDescriptions;
+          })(),
           actualPCBDeducted: Number(r.actualPCBDeducted ?? r.taxPcb ?? 0),
           epfEmployee: Number(r.epfEmployee || 0),
           epfEmployer: Number(r.epfEmployer || 0),
@@ -1628,12 +1644,16 @@ export default function App() {
       try {
         const emp = employees.find(e => e.email?.toLowerCase() === record.employeeEmail?.toLowerCase());
         const scriptUrl = getScriptUrlForEntity(emp?.entityId);
+        const sheetRecord = {
+          ...record,
+          payslipDescriptions: JSON.stringify(record.payslipDescriptions || {})
+        };
         try {
-          await googleSheetsClient.update('payroll_records_2026', record.id, record, 'id', scriptUrl);
+          await googleSheetsClient.update('payroll_records_2026', record.id, sheetRecord, 'id', scriptUrl);
           console.log('[Google Sheets] Updated payroll record successfully:', record.id);
         } catch (updateErr: any) {
           console.warn('[Google Sheets] Update failed or record not found, inserting:', updateErr);
-          await googleSheetsClient.insert('payroll_records_2026', record, scriptUrl);
+          await googleSheetsClient.insert('payroll_records_2026', sheetRecord, scriptUrl);
           console.log('[Google Sheets] Inserted payroll record successfully:', record.id);
         }
       } catch (err: any) {

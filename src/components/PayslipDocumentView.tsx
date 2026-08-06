@@ -21,7 +21,7 @@ import {
 import { pdf } from '@react-pdf/renderer';
 import { PayslipPDFDocument } from './PayslipPDFDocument';
 import { Employee, CorporateEntity } from '../types';
-import { calculatePayslip, getPayslipLabel, getPayrollBasicSalary, getSalaryProration, getDirectLogoUrl, calculateSocsoContribution, getEmployeeForMonth } from '../data';
+import { calculatePayslip, getPayslipLabel, getPayrollBasicSalary, getSalaryProration, getDirectLogoUrl, calculateSocsoContribution, getEmployeeForMonth, getEffectiveTerminationDateForDate } from '../data';
 import { formatToDDMMMYYYY } from '../lib/dateUtils';
 
 interface PayslipDocumentViewProps {
@@ -69,6 +69,12 @@ export default function PayslipDocumentView({
   const activeEmployee = getEmployeeForMonth(rawActiveEmployee, payMonth, payYear);
   const breakdown = calculatePayslip(rawActiveEmployee, payMonth, payYear);
   const employeeEntity = entities?.find(ent => ent.id === activeEmployee.entityId) || activeEntity;
+  const lastWorkingDay = getEffectiveTerminationDateForDate(
+    rawActiveEmployee,
+    `${payYear}-${String(payMonth).padStart(2, '0')}-${new Date(payYear, payMonth, 0).getDate()}`
+  );
+  const getDescription = (key: keyof NonNullable<Employee['payslipDescriptions']>, fallback: string) =>
+    activeEmployee.payslipDescriptions?.[key] || fallback;
 
   const basicSalaryForSocso = getPayrollBasicSalary(rawActiveEmployee, payMonth, payYear);
   const overtimeForSocso = activeEmployee.overtime || 0;
@@ -347,6 +353,12 @@ export default function PayslipDocumentView({
                   <span className="font-semibold text-[#6B6B6B]">Date Joined</span>
                   <span className="font-mono font-bold text-[#333333]">{formatToDDMMMYYYY(activeEmployee.dateOfJoined)}</span>
                 </div>
+                {lastWorkingDay && (
+                  <div className="grid grid-cols-[145px_1fr] gap-2 py-0.5 text-left">
+                    <span className="font-semibold text-[#6B6B6B]">Last Working Day</span>
+                    <span className="font-mono font-bold text-[#A32626]">{formatToDDMMMYYYY(lastWorkingDay)}</span>
+                  </div>
+                )}
                 <div className="grid grid-cols-[145px_1fr] gap-2 py-0.5 text-left">
                   <span className="font-semibold text-[#6B6B6B]">Employment Status</span>
                   <span className="font-bold text-[#333333]">{activeEmployee.employmentType || 'Confirmation'}</span>
@@ -368,6 +380,10 @@ export default function PayslipDocumentView({
                 <div className="grid grid-cols-[115px_1fr] gap-2 py-0.5 text-left">
                   <span className="font-semibold text-[#6B6B6B]">Designation</span>
                   <span className="font-bold text-[#333333]">{activeEmployee.designation}</span>
+                </div>
+                <div className="grid grid-cols-[115px_1fr] gap-2 py-0.5 text-left">
+                  <span className="font-semibold text-[#6B6B6B]">Payment Date</span>
+                  <span className="font-mono font-bold text-[#333333]">{formatToDDMMMYYYY(activeEmployee.paymentDate || `${payYear}-${String(payMonth).padStart(2, '0')}-28`)}</span>
                 </div>
               </div>
 
@@ -409,7 +425,7 @@ export default function PayslipDocumentView({
                 <tbody className="divide-y divide-[#E5DED5]/40">
                   <tr className="hover:bg-[#F2E8D8]/20">
                     <td className="py-2 text-left font-medium">
-                      {salaryProration.isProrated ? `Prorated ${getPayslipLabel(activeEmployee.employmentType)}` : getPayslipLabel(activeEmployee.employmentType)}
+                      {salaryProration.isProrated ? `Prorated ${getDescription('basicSalary', getPayslipLabel(activeEmployee.employmentType))}` : getDescription('basicSalary', getPayslipLabel(activeEmployee.employmentType))}
                     </td>
                     <td className="py-2 text-right font-mono font-bold">{actualBasic.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
@@ -417,44 +433,44 @@ export default function PayslipDocumentView({
                   {/* Allowances */}
                   {(activeEmployee.allowanceGeneral || 0) > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left font-medium">General Allowance</td>
+                      <td className="py-2 text-left font-medium">{getDescription('allowanceGeneral', 'General Allowance')}</td>
                       <td className="py-2 text-right font-mono font-bold">{(activeEmployee.allowanceGeneral || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.allowanceTransport !== undefined ? activeEmployee.allowanceTransport : activeEmployee.transportAllowance) > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left font-medium">Transport Allowance</td>
+                      <td className="py-2 text-left font-medium">{getDescription('allowanceTransport', 'Transport Allowance')}</td>
                       <td className="py-2 text-right font-mono font-bold">{Number(activeEmployee.allowanceTransport !== undefined ? activeEmployee.allowanceTransport : activeEmployee.transportAllowance).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.allowanceParking || 0) > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left font-medium">Parking Allowance</td>
+                      <td className="py-2 text-left font-medium">{getDescription('allowanceParking', 'Parking Allowance')}</td>
                       <td className="py-2 text-right font-mono font-bold">{(activeEmployee.allowanceParking || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.allowanceMeal || 0) > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left font-medium">Meal Allowance</td>
+                      <td className="py-2 text-left font-medium">{getDescription('allowanceMeal', 'Meal Allowance')}</td>
                       <td className="py-2 text-right font-mono font-bold">{(activeEmployee.allowanceMeal || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.allowanceAccommodation !== undefined ? activeEmployee.allowanceAccommodation : activeEmployee.housingAllowance) > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left font-medium">Accommodation Allowance</td>
+                      <td className="py-2 text-left font-medium">{getDescription('allowanceAccommodation', 'Accommodation Allowance')}</td>
                       <td className="py-2 text-right font-mono font-bold">{Number(activeEmployee.allowanceAccommodation !== undefined ? activeEmployee.allowanceAccommodation : activeEmployee.housingAllowance).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
                   {(activeEmployee.allowancePhone || 0) > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left font-medium">Phone Allowance</td>
+                      <td className="py-2 text-left font-medium">{getDescription('allowancePhone', 'Phone Allowance')}</td>
                       <td className="py-2 text-right font-mono font-bold">{(activeEmployee.allowancePhone || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
 
                   {activeEmployee.overtime > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left font-medium">Overtime</td>
+                      <td className="py-2 text-left font-medium">{getDescription('overtime', 'Overtime')}</td>
                       <td className="py-2 text-right font-mono font-bold">{activeEmployee.overtime.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
@@ -522,18 +538,18 @@ export default function PayslipDocumentView({
                 </thead>
                 <tbody className="divide-y divide-[#E5DED5]/40">
                   <tr className="hover:bg-[#F2E8D8]/20">
-                    <td className="py-2 text-left font-medium">EPF (Employee {activeEmployee.epfRateEmployee}%)</td>
+                    <td className="py-2 text-left font-medium">{getDescription('epfEmployee', `EPF (Employee ${activeEmployee.epfRateEmployee}%)`)}</td>
                     <td className="py-2 text-right font-mono font-bold">{breakdown.epfEmployeeValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
 
                   {breakdown.skbbkEmpVal > 0 ? (
                     <>
                       <tr className="hover:bg-[#F2E8D8]/20">
-                        <td className="py-2 text-left font-medium">SOCSO - Invalidity</td>
+                        <td className="py-2 text-left font-medium">{getDescription('socsoEmployee', 'SOCSO - Invalidity')}</td>
                         <td className="py-2 text-right font-mono font-bold">{breakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                       </tr>
                       <tr className="hover:bg-[#F2E8D8]/20">
-                        <td className="py-2 text-left font-medium">SOCSO - LINDUNG 24 Jam</td>
+                        <td className="py-2 text-left font-medium">{getDescription('lindung24Employee', 'SOCSO - LINDUNG 24 Jam')}</td>
                         <td className="py-2 text-right font-mono font-bold">{breakdown.skbbkEmpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                       </tr>
                       <tr className="bg-[#F2E8D8] text-[#333333] font-bold text-[11px] hover:bg-[#F2E8D8]">
@@ -543,25 +559,25 @@ export default function PayslipDocumentView({
                     </>
                   ) : (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left font-medium">SOCSO</td>
+                      <td className="py-2 text-left font-medium">{getDescription('socsoEmployee', 'SOCSO')}</td>
                       <td className="py-2 text-right font-mono font-bold">{breakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
 
                   <tr className="hover:bg-[#F2E8D8]/20">
-                    <td className="py-2 text-left font-medium">EIS</td>
+                    <td className="py-2 text-left font-medium">{getDescription('eisEmployee', 'EIS')}</td>
                     <td className="py-2 text-right font-mono font-bold">{breakdown.eisEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
 
                   <tr className="hover:bg-[#F2E8D8]/20">
-                    <td className="py-2 text-left font-medium">Income Tax (PCB)</td>
+                    <td className="py-2 text-left font-medium">{getDescription('taxPcb', 'Income Tax (PCB)')}</td>
                     <td className="py-2 text-right font-mono font-bold">{breakdown.taxPcbVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                   </tr>
 
                   {/* Unpaid Leave */}
                   {(activeEmployee.unpaidLeave || 0) > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left font-medium">Unpaid Leave</td>
+                      <td className="py-2 text-left font-medium">{getDescription('unpaidLeave', 'Unpaid Leave')}</td>
                       <td className="py-2 text-right font-mono font-bold">{(activeEmployee.unpaidLeave || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
@@ -569,7 +585,7 @@ export default function PayslipDocumentView({
                   {/* Payment in Lieu */}
                   {(activeEmployee.deductionInLieu || 0) > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left font-medium">Payment in Lieu</td>
+                      <td className="py-2 text-left font-medium">{getDescription('deductionInLieu', 'Payment in Lieu')}</td>
                       <td className="py-2 text-right font-mono font-bold">{(activeEmployee.deductionInLieu || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
@@ -577,7 +593,7 @@ export default function PayslipDocumentView({
                   {/* CP38 */}
                   {(activeEmployee.deductionCp38 || 0) > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left font-medium">CP38 Direct Tax</td>
+                      <td className="py-2 text-left font-medium">{getDescription('deductionCp38', 'CP38 Direct Tax')}</td>
                       <td className="py-2 text-right font-mono font-bold">{(activeEmployee.deductionCp38 || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}
@@ -585,7 +601,7 @@ export default function PayslipDocumentView({
                   {/* Other Deductions */}
                   {(activeEmployee.deductionOthers || 0) > 0 && (
                     <tr className="hover:bg-[#F2E8D8]/20">
-                      <td className="py-2 text-left font-medium">{activeEmployee.deductionOthersDesc || 'Other Deductions'}</td>
+                      <td className="py-2 text-left font-medium">{getDescription('deductionOthers', activeEmployee.deductionOthersDesc || 'Other Deductions')}</td>
                       <td className="py-2 text-right font-mono font-bold">{(activeEmployee.deductionOthers || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                     </tr>
                   )}

@@ -55,6 +55,26 @@ export interface CareerHistoryEntry {
   notes: string;
 }
 
+export interface PayslipDescriptionOverrides {
+  basicSalary?: string;
+  allowanceGeneral?: string;
+  allowanceTransport?: string;
+  allowanceParking?: string;
+  allowanceMeal?: string;
+  allowanceAccommodation?: string;
+  allowancePhone?: string;
+  overtime?: string;
+  unpaidLeave?: string;
+  deductionInLieu?: string;
+  deductionCp38?: string;
+  deductionOthers?: string;
+  epfEmployee?: string;
+  socsoEmployee?: string;
+  lindung24Employee?: string;
+  eisEmployee?: string;
+  taxPcb?: string;
+}
+
 export interface Employee {
   id: string; // Mapped to email - EMP ID removed from DB
   entityId: string; // Mapped to entityName (company name) - ENT ID removed from DB
@@ -78,6 +98,8 @@ export interface Employee {
   allowanceMeal?: number;
   allowanceAccommodation?: number;
   allowancePhone?: number;
+  paymentDate?: string;
+  payslipDescriptions?: PayslipDescriptionOverrides;
   
   reimbursementAmount?: number;
   reimbursementDesc?: string;
@@ -290,6 +312,7 @@ export interface EmployeeTaxProfile {
 export interface HistoricalPayrollRecord {
   payrollMonth: number; // 1 to 12
   payrollYear?: number;
+  paymentDate?: string;
   basicSalary: number;
   allowanceGeneral?: number;
   allowanceTransport?: number;
@@ -316,6 +339,7 @@ export interface HistoricalPayrollRecord {
   deductionCp38?: number;
   deductionOthers?: number;
   deductionOthersDesc?: string;
+  payslipDescriptions?: PayslipDescriptionOverrides;
   epfEmployee?: number;
   epfEmployer?: number;
   socsoEmployee?: number;
@@ -532,6 +556,7 @@ export interface PayrollRecord2026 {
   employeeEmail: string;
   payrollMonth: number;
   payrollYear: number;
+  paymentDate?: string;
   basicSalary: number;
   allowanceGeneral: number;
   allowanceTransport: number;
@@ -557,6 +582,7 @@ export interface PayrollRecord2026 {
   deductionCp38: number;
   deductionOthers: number;
   deductionOthersDesc?: string;
+  payslipDescriptions?: PayslipDescriptionOverrides;
   actualPCBDeducted: number;
   epfEmployee: number;
   epfEmployer: number;

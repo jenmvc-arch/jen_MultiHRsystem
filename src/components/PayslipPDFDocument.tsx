@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import { Employee, CorporateEntity } from '../types';
-import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getPayrollBasicSalary, getSalaryProration, calculateSocsoContribution, getEmployeeForMonth } from '../data';
+import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getPayrollBasicSalary, getSalaryProration, calculateSocsoContribution, getEmployeeForMonth, getEffectiveTerminationDateForDate } from '../data';
 import { formatToDDMMMYYYY } from '../lib/dateUtils';
 
 // Create styles for React PDF
@@ -408,6 +408,12 @@ interface PayslipPDFDocumentProps {
 export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }: PayslipPDFDocumentProps) => {
   const breakdown = calculatePayslip(employee, month, year);
   const payslipEmployee = getEmployeeForMonth(employee, month, year);
+  const lastWorkingDay = getEffectiveTerminationDateForDate(
+    employee,
+    `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate()}`
+  );
+  const getDescription = (key: keyof NonNullable<Employee['payslipDescriptions']>, fallback: string) =>
+    payslipEmployee.payslipDescriptions?.[key] || fallback;
 
   const formatCurrency = (val: number) => {
     return `RM ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -546,6 +552,12 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
                 <Text style={styles.detailLabelLeft}>Date Joined</Text>
                 <Text style={styles.detailValue}>{formatToDDMMMYYYY(employee.dateOfJoined)}</Text>
               </View>
+              {lastWorkingDay && (
+                <View style={styles.detailItem}>
+                  <Text style={styles.detailLabelLeft}>Last Working Day</Text>
+                  <Text style={styles.detailValue}>{formatToDDMMMYYYY(lastWorkingDay)}</Text>
+                </View>
+              )}
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabelLeft}>Employment Status</Text>
                 <Text style={styles.detailValue}>{employee.employmentType || 'Confirmation'}</Text>
@@ -565,6 +577,10 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabelMiddle}>Designation</Text>
                 <Text style={styles.detailValue}>{employee.designation}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabelMiddle}>Payment Date</Text>
+                <Text style={styles.detailValue}>{formatToDDMMMYYYY(employee.paymentDate || `${year}-${String(month).padStart(2, '0')}-28`)}</Text>
               </View>
             </View>
 
@@ -592,50 +608,50 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             </View>
 
             <View style={styles.tableRow}>
-              <Text style={styles.itemName}>{salaryProration.isProrated ? `Prorated ${getPayslipLabel(employee.employmentType)}` : getPayslipLabel(employee.employmentType)}</Text>
+              <Text style={styles.itemName}>{salaryProration.isProrated ? `Prorated ${getDescription('basicSalary', getPayslipLabel(employee.employmentType))}` : getDescription('basicSalary', getPayslipLabel(employee.employmentType))}</Text>
               <Text style={styles.itemVal}>{formatCurrency(actualBasic)}</Text>
             </View>
 
             {allowanceGen > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>General Allowance</Text>
+                <Text style={styles.itemName}>{getDescription('allowanceGeneral', 'General Allowance')}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(allowanceGen)}</Text>
               </View>
             )}
             {allowanceTrans > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Transport Allowance</Text>
+                <Text style={styles.itemName}>{getDescription('allowanceTransport', 'Transport Allowance')}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(allowanceTrans)}</Text>
               </View>
             )}
             {allowancePark > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Parking Allowance</Text>
+                <Text style={styles.itemName}>{getDescription('allowanceParking', 'Parking Allowance')}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(allowancePark)}</Text>
               </View>
             )}
             {allowanceMeal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Meal Allowance</Text>
+                <Text style={styles.itemName}>{getDescription('allowanceMeal', 'Meal Allowance')}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(allowanceMeal)}</Text>
               </View>
             )}
             {allowanceAccom > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Accommodation Allowance</Text>
+                <Text style={styles.itemName}>{getDescription('allowanceAccommodation', 'Accommodation Allowance')}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(allowanceAccom)}</Text>
               </View>
             )}
             {allowancePhone > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Phone Allowance</Text>
+                <Text style={styles.itemName}>{getDescription('allowancePhone', 'Phone Allowance')}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(allowancePhone)}</Text>
               </View>
             )}
 
             {overtimeVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Overtime</Text>
+                <Text style={styles.itemName}>{getDescription('overtime', 'Overtime')}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(overtimeVal)}</Text>
               </View>
             )}
@@ -695,7 +711,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
 
             {epfEmployeeValue > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>EPF (Employee {epfRateEmp}%)</Text>
+                <Text style={styles.itemName}>{getDescription('epfEmployee', `EPF (Employee ${epfRateEmp}%)`)}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(epfEmployeeValue)}</Text>
               </View>
             )}
@@ -703,11 +719,11 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             {skbbkEmployeeVal > 0 ? (
               <>
                 <View style={styles.tableRow}>
-                  <Text style={styles.itemName}>SOCSO - Invalidity</Text>
+                  <Text style={styles.itemName}>{getDescription('socsoEmployee', 'SOCSO - Invalidity')}</Text>
                   <Text style={styles.itemVal}>{formatCurrency(socsoEmployeeVal)}</Text>
                 </View>
                 <View style={styles.tableRow}>
-                  <Text style={styles.itemName}>SOCSO - LINDUNG 24 Jam</Text>
+                  <Text style={styles.itemName}>{getDescription('lindung24Employee', 'SOCSO - LINDUNG 24 Jam')}</Text>
                   <Text style={styles.itemVal}>{formatCurrency(skbbkEmployeeVal)}</Text>
                 </View>
                 <View style={styles.tableRowSocsoTotal}>
@@ -718,7 +734,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             ) : (
               socsoEmployeeVal > 0 && (
                 <View style={styles.tableRow}>
-                  <Text style={styles.itemName}>SOCSO</Text>
+                  <Text style={styles.itemName}>{getDescription('socsoEmployee', 'SOCSO')}</Text>
                   <Text style={styles.itemVal}>{formatCurrency(socsoEmployeeVal)}</Text>
                 </View>
               )
@@ -726,39 +742,39 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
 
             {eisEmployeeVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>EIS</Text>
+                <Text style={styles.itemName}>{getDescription('eisEmployee', 'EIS')}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(eisEmployeeVal)}</Text>
               </View>
             )}
 
             {taxPcbVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Income Tax (PCB)</Text>
+                <Text style={styles.itemName}>{getDescription('taxPcb', 'Income Tax (PCB)')}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(taxPcbVal)}</Text>
               </View>
             )}
 
             {unpaidLeaveVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Unpaid Leave</Text>
+                <Text style={styles.itemName}>{getDescription('unpaidLeave', 'Unpaid Leave')}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(unpaidLeaveVal)}</Text>
               </View>
             )}
             {deductionInLieuVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>Payment in Lieu</Text>
+                <Text style={styles.itemName}>{getDescription('deductionInLieu', 'Payment in Lieu')}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(deductionInLieuVal)}</Text>
               </View>
             )}
             {deductionCp38Val > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>CP38 Direct Tax</Text>
+                <Text style={styles.itemName}>{getDescription('deductionCp38', 'CP38 Direct Tax')}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(deductionCp38Val)}</Text>
               </View>
             )}
             {deductionOthersVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{payslipEmployee.deductionOthersDesc || 'Other Deduction'}</Text>
+                <Text style={styles.itemName}>{getDescription('deductionOthers', payslipEmployee.deductionOthersDesc || 'Other Deduction')}</Text>
                 <Text style={styles.itemVal}>{formatCurrency(deductionOthersVal)}</Text>
               </View>
             )}

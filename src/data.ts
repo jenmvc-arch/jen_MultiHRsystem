@@ -2073,6 +2073,33 @@ export function getMonthlyBaseSalary(employee: Employee, month: number, year: nu
   return Number(fullPeriodSalary.toFixed(2));
 }
 
+export function isEmployeeEligibleForPayrollPeriod(employee: Employee, month: number, year: number): boolean {
+  const monthStartDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const monthEndDay = new Date(year, month, 0).getDate();
+  const monthEndDate = `${year}-${String(month).padStart(2, '0')}-${String(monthEndDay).padStart(2, '0')}`;
+  const joinDate = parsePayrollDate(employee.dateOfJoined);
+  const terminationDateValue = getEffectiveTerminationDateForDate(employee, monthEndDate);
+  const terminationDate = parsePayrollDate(terminationDateValue);
+
+  if (joinDate && comparePayrollMonth(joinDate, month, year) > 0) {
+    return false;
+  }
+
+  if (terminationDate) {
+    const terminationDateString = `${terminationDate.year}-${String(terminationDate.month).padStart(2, '0')}-${String(terminationDate.day).padStart(2, '0')}`;
+    if (terminationDateString < monthStartDate) {
+      return false;
+    }
+  }
+
+  const monthEndStatus = getEffectiveEmploymentStatusForDate(employee, monthEndDate);
+  if (isEmployeeSeparationStatus(monthEndStatus) && !terminationDate) {
+    return false;
+  }
+
+  return getSalaryProration(employee, month, year).eligibleDays > 0;
+}
+
 function getHistoricalPayrollRecord(employee: Employee, month: number, year?: number): HistoricalPayrollRecord | undefined {
   return (employee.historicalPayrollRecords || []).find(record => (
     record.payrollMonth === month &&
@@ -2094,6 +2121,8 @@ export function getEmployeeForMonth(employee: Employee, month: number, year?: nu
   const effectiveEmployee: Employee = {
     ...employee,
     status: effectiveStatus,
+    paymentDate: employee.paymentDate,
+    payslipDescriptions: employee.payslipDescriptions,
     basicSalary: effectiveProfile.basicSalary,
     housingAllowance:
       effectiveProfile.housingAllowance !== undefined
@@ -2182,6 +2211,14 @@ export function getEmployeeForMonth(employee: Employee, month: number, year?: nu
   
   return {
     ...effectiveEmployee,
+    paymentDate:
+      histRecord.paymentDate !== undefined
+        ? histRecord.paymentDate
+        : effectiveEmployee.paymentDate,
+    payslipDescriptions:
+      histRecord.payslipDescriptions !== undefined
+        ? histRecord.payslipDescriptions
+        : effectiveEmployee.payslipDescriptions,
     allowanceGeneral:
       histRecord.allowanceGeneral !== undefined
         ? histRecord.allowanceGeneral
@@ -2506,122 +2543,64 @@ export function calculateYtd(employee: Employee, period: string): YtdBreakdown {
   const targetMonths = getMonthsMultiplier(period);
   const match = period.match(/\d{4}/);
   const targetYear = match ? parseInt(match[0], 10) : 2026;
-  
-  // Calculate service months in the target year
-  let serviceMonths = targetMonths;
-  if (employee.dateOfJoined) {
-    const joinDate = new Date(employee.dateOfJoined);
-    if (joinDate.getFullYear() > targetYear) {
-      serviceMonths = 0;
-    } else {
-      const endOfMonthInTargetYear = targetMonths - 1; // 0-indexed month of current year (e.g. 9 for Oct)
-      const joinMonthInTargetYear = joinDate.getFullYear() === targetYear ? joinDate.getMonth() : 0;
-      const monthsWorkedInTargetYear = Math.max(0, endOfMonthInTargetYear - joinMonthInTargetYear + 1);
-      serviceMonths = Math.min(targetMonths, monthsWorkedInTargetYear);
-    }
-  }
-
-  // Multiply individual monthly values
-  const monthly = calculatePayslip(employee);
-
-  const allowanceGen = employee.allowanceGeneral || 0;
-  const allowanceTrans = employee.allowanceTransport !== undefined ? employee.allowanceTransport : (employee.transportAllowance || 0);
-  const allowancePark = employee.allowanceParking || 0;
-  const allowanceMl = employee.allowanceMeal || 0;
-  const allowanceAccom = employee.allowanceAccommodation !== undefined ? employee.allowanceAccommodation : (employee.housingAllowance || 0);
-  const allowancePh = employee.allowancePhone || 0;
-  
-  const monthlyAllowances = allowanceGen + allowanceTrans + allowancePark + allowanceMl + allowanceAccom + allowancePh;
-
+  let serviceMonths = 0;
   let ytdBasic = 0;
+  let ytdAllowances = 0;
+  let ytdBonus = 0;
+  let ytdCommissions = 0;
+  let ytdBackPay = 0;
+  let ytdAws = 0;
+  let ytdCompensation = 0;
+  let ytdOvertime = 0;
+  let ytdReimbursements = 0;
+  let ytdGross = 0;
   let ytdEpfEmployee = 0;
   let ytdEpfEmployer = 0;
   let ytdSocsoEmployee = 0;
   let ytdSocsoEmployer = 0;
   let ytdEisEmployee = 0;
   let ytdEisEmployer = 0;
+  let ytdSkbbkEmployee = 0;
+  let ytdSkbbkEmployer = 0;
   let ytdTaxPcb = 0;
-  
-  const isEligible = 
-    employee.employmentType === 'Probationary' || 
-    employee.employmentType === 'Confirmation' || 
-    (employee.employmentType === 'Independent Contractor / Freelance' && employee.eligibleForStatutory === 'Yes');
-
-  let startMonth = 1;
-  if (employee.dateOfJoined) {
-    const joinDate = new Date(employee.dateOfJoined);
-    if (joinDate.getFullYear() === targetYear) {
-      startMonth = joinDate.getMonth() + 1;
-    } else if (joinDate.getFullYear() > targetYear) {
-      startMonth = 999;
-    }
-  }
+  let ytdDeductions = 0;
+  let ytdNetPay = 0;
 
   for (let m = 1; m <= targetMonths; m++) {
-    if (m >= startMonth) {
-      const basicSal = getAdjustedBasicSalary(employee, m, targetYear);
-      ytdBasic += basicSal;
-      
-      if (isEligible) {
-        const epfRateEmp = employee.epfRateEmployee || 11;
-        const epfEmployeeValue = Math.round((basicSal * epfRateEmp) / 100);
-        ytdEpfEmployee += epfEmployeeValue;
-
-        const epfRateEmployerCalculated = basicSal <= 5000 ? 13 : 12;
-        const epfRateEmployer = employee.epfRateEmployer || epfRateEmployerCalculated;
-        const epfEmployerValue = Math.round((basicSal * epfRateEmployer) / 100);
-        ytdEpfEmployer += epfEmployerValue;
-
-        const stat2026 = getStatutoryDeductions2026(basicSal);
-        ytdSocsoEmployee += stat2026.socsoEmployee;
-        ytdSocsoEmployer += stat2026.socsoEmployer;
-        ytdEisEmployee += stat2026.eisEmployee;
-        ytdEisEmployer += stat2026.eisEmployer;
-
-        const baseEmp = INITIAL_EMPLOYEES.find(e => e.id === employee.id);
-        const isSalaryChanged = baseEmp ? baseEmp.basicSalary !== basicSal : true;
-        const taxPcbVal = isSalaryChanged || employee.taxPcb === undefined
-          ? calculatePcb2026(basicSal, employee.maritalStatus || 'Single', employee.spouseIsWorking || 'No', employee.dependants?.length || 0, epfEmployeeValue, m)
-          : employee.taxPcb;
-        ytdTaxPcb += taxPcbVal;
-      }
+    const record = getHistoricalPayrollRecord(employee, m, targetYear);
+    const hasWorkedInPeriod = isEmployeeEligibleForPayrollPeriod(employee, m, targetYear);
+    if (!record && !hasWorkedInPeriod) {
+      continue;
     }
+
+    serviceMonths += 1;
+    const monthlyEmployee = getEmployeeForMonth(employee, m, targetYear);
+    const monthlyBreakdown = calculatePayslip(employee, m, targetYear);
+
+    ytdBasic += getPayrollBasicSalary(employee, m, targetYear);
+    ytdAllowances += monthlyBreakdown.allowancesSum;
+    ytdBonus += monthlyEmployee.bonusAmount !== undefined
+      ? monthlyEmployee.bonusAmount
+      : (monthlyEmployee.performanceBonus || 0);
+    ytdCommissions += monthlyEmployee.commissionAmount || 0;
+    ytdBackPay += monthlyEmployee.backPayAmount || 0;
+    ytdAws += monthlyEmployee.awsAmount || 0;
+    ytdCompensation += monthlyEmployee.compensationAmount || 0;
+    ytdOvertime += monthlyEmployee.overtime || 0;
+    ytdReimbursements += monthlyBreakdown.reimbursementsSum;
+    ytdGross += monthlyBreakdown.grossEarnings;
+    ytdEpfEmployee += monthlyBreakdown.epfEmployeeValue;
+    ytdEpfEmployer += monthlyBreakdown.epfEmployerValue;
+    ytdSocsoEmployee += monthlyBreakdown.socsoEmployeeVal;
+    ytdSocsoEmployer += monthlyBreakdown.socsoEmployerVal;
+    ytdEisEmployee += monthlyBreakdown.eisEmployeeVal;
+    ytdEisEmployer += monthlyBreakdown.eisEmployerVal;
+    ytdSkbbkEmployee += monthlyBreakdown.skbbkEmpVal;
+    ytdSkbbkEmployer += monthlyBreakdown.skbbkEmplyrVal;
+    ytdTaxPcb += monthlyBreakdown.taxPcbVal;
+    ytdDeductions += monthlyBreakdown.totalDeductions;
+    ytdNetPay += monthlyBreakdown.netPay;
   }
-
-  const ytdAllowances = monthlyAllowances * serviceMonths;
-  const ytdOvertime = (employee.overtime || 0) * serviceMonths;
-  
-  const ytdBonus = employee.bonusAmount !== undefined ? employee.bonusAmount : (employee.performanceBonus || 0);
-  const ytdCommissions = (employee.commissionAmount || 0) * Math.min(serviceMonths, 4);
-  const ytdBackPay = employee.backPayAmount || 0;
-  const ytdAws = employee.awsAmount || 0;
-  const ytdCompensation = employee.compensationAmount || 0;
-  const ytdReimbursements = (employee.reimbursementAmount || 0) * serviceMonths;
-
-  const ytdGross = ytdBasic + ytdAllowances + ytdOvertime + ytdBonus + ytdCommissions + ytdBackPay + ytdAws + ytdCompensation;
-
-  const ytdSkbbkEmployee = isEligible && serviceMonths > 0 ? parseFloat(((ytdSocsoEmployee / serviceMonths) * 0.25).toFixed(2)) * serviceMonths : 0;
-  const ytdSkbbkEmployer = isEligible && serviceMonths > 0 ? parseFloat(((ytdSocsoEmployer / serviceMonths) * 0.25).toFixed(2)) * serviceMonths : 0;
-  const ytdEisEmployeeVal = ytdEisEmployee;
-  const ytdEisEmployerVal = ytdEisEmployer;
-
-  const ytdUnpaidLeave = (employee.unpaidLeave || 0);
-  const ytdDeductionInLieu = (employee.deductionInLieu || 0);
-  const ytdDeductionCp38 = (employee.deductionCp38 || 0) * serviceMonths;
-  const ytdDeductionOthers = (employee.deductionOthers || 0);
-
-  const ytdDeductions = 
-    ytdEpfEmployee + 
-    ytdSocsoEmployee + 
-    ytdEisEmployee + 
-    ytdSkbbkEmployee + 
-    ytdTaxPcb + 
-    ytdUnpaidLeave + 
-    ytdDeductionInLieu + 
-    ytdDeductionCp38 + 
-    ytdDeductionOthers;
-
-  const ytdNetPay = ytdGross + ytdReimbursements - ytdDeductions;
 
   return {
     months: serviceMonths,

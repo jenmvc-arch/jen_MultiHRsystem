@@ -5,10 +5,11 @@
 
 import React, { useState } from 'react';
 import { CreditCard, Search, Plus, Printer, Download, Image, Mail, Share2, Eye, CheckCircle, TrendingUp, Sliders, DollarSign, Briefcase, FileText, Globe, Building2, Clock, RotateCcw } from 'lucide-react';
-import { Employee, CorporateEntity, HistoricalPayrollRecord, PayrollRecord2026 } from '../types';
-import { calculatePayslip, getPayslipLabel, calculateYtd, calculatePcb2026, recalculatePCBFromMonth, getPayrollBasicSalary, getSalaryProration, getEmployeeForMonth } from '../data';
+import { Employee, CorporateEntity, HistoricalPayrollRecord, PayrollRecord2026, PayslipDescriptionOverrides } from '../types';
+import { calculatePayslip, getPayslipLabel, calculateYtd, calculatePcb2026, recalculatePCBFromMonth, getPayrollBasicSalary, getSalaryProration, getEmployeeForMonth, getEffectiveTerminationDateForDate, isEmployeeEligibleForPayrollPeriod } from '../data';
 import PayslipDocumentView from './PayslipDocumentView';
 import SocsoCalculatorCard from './SocsoCalculatorCard';
+import { formatToDDMMMYYYY } from '../lib/dateUtils';
 
 interface PayrollViewProps {
   employees: Employee[];
@@ -20,6 +21,9 @@ interface PayrollViewProps {
   onShowNotification: (title: string, message: string) => void;
   activeEntity?: CorporateEntity;
 }
+
+const getDefaultPaymentDate = (month: number, year: number) =>
+  `${year}-${String(month).padStart(2, '0')}-28`;
 
 export default function PayrollView({
   employees,
@@ -94,28 +98,12 @@ export default function PayrollView({
   const [deductionCp38, setDeductionCp38] = useState(0);
   const [deductionOthers, setDeductionOthers] = useState(0);
   const [deductionOthersDesc, setDeductionOthersDesc] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
+  const [descriptionOverrides, setDescriptionOverrides] = useState<PayslipDescriptionOverrides>({});
 
   React.useEffect(() => {
     setIsEditing(false);
   }, [selectedEmployeeId, selectedPayPeriod]);
-
-  // Filter employees for the left list
-  const filteredEmployees = employees.filter(e => {
-    const matchesEntity = selectedEntityId === 'all' || e.entityId === selectedEntityId;
-    const matchesDept = selectedDepartment === 'All Departments' || e.department === selectedDepartment;
-    const matchesSearch = e.name.toLowerCase().includes(searchQuery.toLowerCase()) || e.id.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesEntity && matchesDept && matchesSearch;
-  });
-
-  const rawActiveEmployee = filteredEmployees.find(e => e.id === selectedEmployeeId) || filteredEmployees[0] || employees[0];
-
-  if (!rawActiveEmployee) {
-    return (
-      <div className="p-8 text-center bg-white rounded-lg border border-neutral-border">
-        No employees found. Please register an employee in the directory.
-      </div>
-    );
-  }
 
   const MONTHS_LIST = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -125,6 +113,31 @@ export default function PayrollView({
   const monthName = parts[0] || 'October';
   const payYear = Number(parts[1]) || 2026;
   const payMonthIndex = MONTHS_LIST.indexOf(monthName) + 1;
+
+  // Payroll is scoped to anyone who worked at least one day in the selected month.
+  const filteredEmployees = employees.filter(e => {
+    const matchesEntity = selectedEntityId === 'all' || e.entityId === selectedEntityId;
+    const matchesDept = selectedDepartment === 'All Departments' || e.department === selectedDepartment;
+    const matchesSearch = e.name.toLowerCase().includes(searchQuery.toLowerCase()) || e.id.toLowerCase().includes(searchQuery.toLowerCase());
+    const workedInPayPeriod = isEmployeeEligibleForPayrollPeriod(e, payMonthIndex, payYear);
+    return matchesEntity && matchesDept && matchesSearch && workedInPayPeriod;
+  });
+
+  React.useEffect(() => {
+    if (filteredEmployees.length > 0 && !filteredEmployees.some(e => e.id === selectedEmployeeId)) {
+      setSelectedEmployeeId(filteredEmployees[0].id);
+    }
+  }, [filteredEmployees, selectedEmployeeId]);
+
+  const rawActiveEmployee = filteredEmployees.find(e => e.id === selectedEmployeeId) || filteredEmployees[0];
+
+  if (!rawActiveEmployee) {
+    return (
+      <div className="p-8 text-center bg-white rounded-lg border border-neutral-border">
+        No employees worked during {selectedPayPeriod}. Adjust the pay period or register an employee in the directory.
+      </div>
+    );
+  }
 
   const dbActiveEmployee = getEmployeeForMonth(rawActiveEmployee, payMonthIndex, payYear);
 
@@ -154,8 +167,19 @@ export default function PayrollView({
     deductionCp38: deductionCp38,
     deductionOthers: deductionOthers,
     deductionOthersDesc: deductionOthersDesc,
+    paymentDate,
+    payslipDescriptions: descriptionOverrides,
     taxPcb: tempTax
   } : dbActiveEmployee;
+
+  const defaultPaymentDate = getDefaultPaymentDate(payMonthIndex, payYear);
+  const displayedPaymentDate = activeEmployee.paymentDate || defaultPaymentDate;
+  const lastWorkingDay = getEffectiveTerminationDateForDate(
+    activeEmployee,
+    `${payYear}-${String(payMonthIndex).padStart(2, '0')}-${new Date(payYear, payMonthIndex, 0).getDate()}`
+  );
+  const getDescription = (key: keyof PayslipDescriptionOverrides, fallback: string) =>
+    activeEmployee.payslipDescriptions?.[key] || fallback;
 
   const autoStatutoryBreakdown = calculatePayslip(activeEmployee, payMonthIndex, payYear, {
     basicSalaryOverride: tempBasic,
@@ -245,6 +269,11 @@ export default function PayrollView({
     setDeductionCp38(activeEmployee.deductionCp38 || 0);
     setDeductionOthers(activeEmployee.deductionOthers || 0);
     setDeductionOthersDesc(activeEmployee.deductionOthersDesc || '');
+    setPaymentDate(activeEmployee.paymentDate || defaultPaymentDate);
+    setDescriptionOverrides({
+      ...(activeEmployee.payslipDescriptions || {}),
+      deductionOthers: activeEmployee.payslipDescriptions?.deductionOthers || activeEmployee.deductionOthersDesc || ''
+    });
 
     setTempEpfEmployee(payrollBreakdown.epfEmployeeValue);
     setTempEpfEmployer(payrollBreakdown.epfEmployerValue);
@@ -304,12 +333,14 @@ export default function PayrollView({
     const totalEarnings = tempBasic + totalAllowances + (activeEmployee.overtime || 0) + bonusAmt + commissionAmt + backPayAmt + awsAmt + compensationAmt + reimbursementAmt;
     const totalDeductions = tempEpfEmployee + tempSocsoEmployee + tempLindung24Employee + tempEisEmployee + tempTax + unpaidLeave + deductionInLieu + deductionCp38 + deductionOthers;
     const netPay = parseFloat((totalEarnings - totalDeductions).toFixed(2));
+    const resolvedDeductionOthersDesc = descriptionOverrides.deductionOthers ?? deductionOthersDesc;
 
     const record2026: PayrollRecord2026 = {
       id: `${activeEmployee.email}_${payMonthIndex}_${payYear}`,
       employeeEmail: activeEmployee.email,
       payrollMonth: payMonthIndex,
       payrollYear: payYear,
+      paymentDate: paymentDate || defaultPaymentDate,
       basicSalary: tempBasic,
       allowanceGeneral: hasAllowances ? allowanceGen : 0,
       allowanceTransport: hasAllowances ? allowanceTrans : 0,
@@ -334,7 +365,8 @@ export default function PayrollView({
       deductionInLieu: deductionInLieu,
       deductionCp38: deductionCp38,
       deductionOthers: deductionOthers,
-      deductionOthersDesc,
+      deductionOthersDesc: resolvedDeductionOthersDesc,
+      payslipDescriptions: descriptionOverrides,
       actualPCBDeducted: tempTax,
       epfEmployee: tempEpfEmployee,
       epfEmployer: tempEpfEmployer,
@@ -355,6 +387,7 @@ export default function PayrollView({
     const newRecord: HistoricalPayrollRecord = {
       payrollMonth: payMonthIndex,
       payrollYear: payYear,
+      paymentDate: paymentDate || defaultPaymentDate,
       basicSalary: tempBasic,
       allowanceGeneral: hasAllowances ? allowanceGen : 0,
       allowanceTransport: hasAllowances ? allowanceTrans : 0,
@@ -379,7 +412,8 @@ export default function PayrollView({
       deductionInLieu,
       deductionCp38,
       deductionOthers,
-      deductionOthersDesc,
+      deductionOthersDesc: resolvedDeductionOthersDesc,
+      payslipDescriptions: descriptionOverrides,
       actualPCBDeducted: tempTax,
       epfEmployee: tempEpfEmployee,
       epfEmployer: tempEpfEmployer,
@@ -438,7 +472,7 @@ export default function PayrollView({
       deductionInLieu: deductionInLieu,
       deductionCp38: deductionCp38,
       deductionOthers: deductionOthers,
-      deductionOthersDesc,
+      deductionOthersDesc: resolvedDeductionOthersDesc,
 
       historicalPayrollRecords: updatedRecords,
       historicalPcbResults: recalculated
@@ -509,6 +543,26 @@ export default function PayrollView({
     { id: 'pcb', label: 'Monthly Income Tax (PCB)', value: tempTax, setValue: setTempTax, auto: computedAutoPcb },
     { id: 'hrd-corp', label: 'HRD Corp Employer Levy', value: tempHrdCorp, setValue: setTempHrdCorp, auto: autoStatutoryBreakdown.hrdCorpVal }
   ];
+
+  const payslipDescriptionFields = [
+    { key: 'basicSalary', label: 'Basic salary', placeholder: 'Basic Salary' },
+    { key: 'allowanceGeneral', label: 'General allowance', placeholder: 'General Allowance' },
+    { key: 'allowanceTransport', label: 'Transport allowance', placeholder: 'Transport Allowance' },
+    { key: 'allowanceParking', label: 'Parking allowance', placeholder: 'Parking Allowance' },
+    { key: 'allowanceMeal', label: 'Meal allowance', placeholder: 'Meal Allowance' },
+    { key: 'allowanceAccommodation', label: 'Accommodation allowance', placeholder: 'Accommodation Allowance' },
+    { key: 'allowancePhone', label: 'Phone allowance', placeholder: 'Phone Allowance' },
+    { key: 'overtime', label: 'Overtime', placeholder: 'Overtime' },
+    { key: 'epfEmployee', label: 'EPF employee', placeholder: 'EPF Employee' },
+    { key: 'socsoEmployee', label: 'SOCSO employee', placeholder: 'SOCSO' },
+    { key: 'lindung24Employee', label: 'LINDUNG 24 employee', placeholder: 'SOCSO - LINDUNG 24 Jam' },
+    { key: 'eisEmployee', label: 'EIS employee', placeholder: 'EIS' },
+    { key: 'taxPcb', label: 'PCB', placeholder: 'Income Tax (PCB)' },
+    { key: 'unpaidLeave', label: 'Unpaid leave', placeholder: 'Unpaid Leave' },
+    { key: 'deductionInLieu', label: 'Payment in lieu', placeholder: 'Payment in Lieu' },
+    { key: 'deductionCp38', label: 'CP38', placeholder: 'CP38 Direct Tax' },
+    { key: 'deductionOthers', label: 'Other deduction', placeholder: 'Other Deductions' }
+  ] as const;
 
   return (
     <div 
@@ -612,14 +666,7 @@ export default function PayrollView({
               );
             }
 
-            // Calculations
-            const totalBasic = records.reduce((sum, r) => sum + r.basicSalary, 0);
-            const totalAllowances = records.reduce(
-              (sum, r) => sum + r.allowanceGeneral + r.allowanceTransport + r.allowanceParking + r.allowanceMeal + r.allowanceAccommodation + r.allowancePhone, 
-              0
-            );
-            const totalPcb = records.reduce((sum, r) => sum + r.actualPCBDeducted, 0);
-            const totalNet = records.reduce((sum, r) => sum + r.netPay, 0);
+            const ytd = calculateYtd(activeEmp, selectedPayPeriod);
 
             const monthsName = [
               '', 'January', 'February', 'March', 'April', 'May', 'June',
@@ -632,19 +679,19 @@ export default function PayrollView({
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="p-4 bg-neutral-50 border border-neutral-border/60 rounded-lg">
                     <span className="text-[10px] font-bold text-on-surface-variant uppercase block">YTD Basic Salary</span>
-                    <span className="text-lg font-mono font-bold text-primary mt-1 block">RM {totalBasic.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    <span className="text-lg font-mono font-bold text-primary mt-1 block">RM {ytd.basicSalary.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
                   <div className="p-4 bg-neutral-50 border border-neutral-border/60 rounded-lg">
                     <span className="text-[10px] font-bold text-on-surface-variant uppercase block">YTD Allowances</span>
-                    <span className="text-lg font-mono font-bold text-primary mt-1 block">RM {totalAllowances.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    <span className="text-lg font-mono font-bold text-primary mt-1 block">RM {ytd.allowances.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
                   <div className="p-4 bg-neutral-50 border border-neutral-border/60 rounded-lg">
                     <span className="text-[10px] font-bold text-on-surface-variant uppercase block">YTD PCB Deducted</span>
-                    <span className="text-lg font-mono font-bold text-primary mt-1 block">RM {totalPcb.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    <span className="text-lg font-mono font-bold text-primary mt-1 block">RM {ytd.taxPcb.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
                   <div className="p-4 bg-neutral-50 border border-neutral-border/60 rounded-lg">
                     <span className="text-[10px] font-bold text-on-surface-variant uppercase block">YTD Net Payout</span>
-                    <span className="text-lg font-mono font-bold text-green-700 mt-1 block">RM {totalNet.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    <span className="text-lg font-mono font-bold text-green-700 mt-1 block">RM {ytd.netPay.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                   </div>
                 </div>
 
@@ -820,6 +867,10 @@ export default function PayrollView({
                 {filteredEmployees.map((emp) => {
                   const isSelected = emp.id === selectedEmployeeId;
                   const isGenerated = generatedMap[emp.id] || false;
+                  const empLastWorkingDay = getEffectiveTerminationDateForDate(
+                    emp,
+                    `${payYear}-${String(payMonthIndex).padStart(2, '0')}-${new Date(payYear, payMonthIndex, 0).getDate()}`
+                  );
                   return (
                     <div
                       key={emp.id}
@@ -841,6 +892,14 @@ export default function PayrollView({
                           <span className={`w-1.5 h-1.5 rounded-full ${isGenerated ? 'bg-green-600' : 'bg-blue-500'}`} />
                           {isGenerated ? 'Generated' : 'Draft'}
                         </span>
+                        <span className="text-[9px] text-on-surface-variant block mt-1">
+                          Joined: {formatToDDMMMYYYY(emp.dateOfJoined)}
+                        </span>
+                        {empLastWorkingDay && (
+                          <span className="text-[9px] text-error block">
+                            Last working day: {formatToDDMMMYYYY(empLastWorkingDay)}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-[10px] text-on-surface-variant font-mono">{emp.id}</span>
@@ -891,6 +950,39 @@ export default function PayrollView({
                     <Sliders className="w-5 h-5" /> Detailed Compensation & Statutory Editor
                   </span>
                   <span className="text-xs text-[#f7f0e0] bg-primary px-2.5 py-1 rounded font-mono font-bold">EMP: {activeEmployee.id}</span>
+                </div>
+
+                <div className="bg-white p-4 rounded border border-neutral-border/60 space-y-3">
+                  <div>
+                    <h3 className="font-bold text-xs text-primary uppercase tracking-wider">Payslip Settings</h3>
+                    <p className="text-[10px] text-on-surface-variant mt-1">
+                      These settings apply to {selectedPayPeriod} only and are saved with this employee&apos;s payslip.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-on-surface-variant mb-1">Payment Date</label>
+                      <input
+                        data-testid="payslip-payment-date"
+                        type="date"
+                        value={paymentDate || defaultPaymentDate}
+                        onChange={(event) => setPaymentDate(event.target.value)}
+                        className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-on-surface-variant mb-1">Date Joined</label>
+                      <div className="p-1.5 rounded border border-neutral-border/60 bg-neutral-50 text-xs font-mono">
+                        {formatToDDMMMYYYY(activeEmployee.dateOfJoined)}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-on-surface-variant mb-1">Last Working Day</label>
+                      <div className="p-1.5 rounded border border-neutral-border/60 bg-neutral-50 text-xs font-mono">
+                        {lastWorkingDay ? formatToDDMMMYYYY(lastWorkingDay) : 'N/A'}
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 
                 {/* 1. Base Pay & Flexible Allowances */}
@@ -1290,6 +1382,34 @@ export default function PayrollView({
                   </div>
                 </div>
 
+                <div className="bg-white p-4 rounded border border-neutral-border/60 space-y-3">
+                  <div>
+                    <h3 className="font-bold text-xs text-primary uppercase tracking-wider">5. Payslip Line Descriptions</h3>
+                    <p className="text-[10px] text-on-surface-variant mt-1">
+                      Replace the printed description for any earnings, statutory deduction, or other deduction line.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {payslipDescriptionFields.map(field => (
+                      <div key={field.key}>
+                        <label className="block text-[10px] font-semibold text-on-surface-variant uppercase mb-1">
+                          {field.label}
+                        </label>
+                        <input
+                          type="text"
+                          value={descriptionOverrides[field.key] || ''}
+                          placeholder={field.placeholder}
+                          onChange={(event) => setDescriptionOverrides(prev => ({
+                            ...prev,
+                            [field.key]: event.target.value
+                          }))}
+                          className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="flex justify-end gap-2 pt-2 border-t border-neutral-border">
                   <button 
                     onClick={() => setIsEditing(false)}
@@ -1334,6 +1454,14 @@ export default function PayrollView({
                   <p className="text-on-surface font-medium">{activeEmployee.designation}</p>
                   <p className="text-on-surface-variant mt-2">Department</p>
                   <p className="text-on-surface font-medium">{activeEmployee.department}</p>
+                  <p className="text-on-surface-variant mt-2">Date Joined</p>
+                  <p className="text-on-surface font-medium font-mono">{formatToDDMMMYYYY(activeEmployee.dateOfJoined)}</p>
+                  {lastWorkingDay && (
+                    <>
+                      <p className="text-on-surface-variant mt-2">Last Working Day</p>
+                      <p className="text-error font-medium font-mono">{formatToDDMMMYYYY(lastWorkingDay)}</p>
+                    </>
+                  )}
                   <p className="text-on-surface-variant mt-2">TIN / Tax Number</p>
                   <p className="text-on-surface font-medium font-mono">{activeEmployee.taxNumber || 'N/A'}</p>
                 </div>
@@ -1344,15 +1472,7 @@ export default function PayrollView({
                   <p className="text-on-surface font-mono font-medium">{activeEmployee.bankName} · {activeEmployee.accountNo}</p>
                   <p className="text-on-surface-variant mt-2">Payment Date</p>
                   <p className="text-on-surface font-medium">
-                    {(() => {
-                      const parts = selectedPayPeriod.split(' ');
-                      if (parts.length === 2) {
-                        const month = parts[0];
-                        const year = parts[1];
-                        return `28 ${month.substring(0, 3)} ${year}`;
-                      }
-                      return '28 Oct 2026';
-                    })()}
+                    {formatToDDMMMYYYY(displayedPaymentDate)}
                   </p>
                   <p className="text-on-surface-variant mt-2">EPF Member Number</p>
                   <p className="text-on-surface font-medium font-mono">{activeEmployee.epfNumber || 'N/A'}</p>
@@ -1370,33 +1490,33 @@ export default function PayrollView({
                   <div className="space-y-1.5 text-xs">
                     <div className="flex justify-between">
                       <div>
-                        <span>{salaryProration.isProrated ? `Prorated ${getPayslipLabel(activeEmployee.employmentType)}` : getPayslipLabel(activeEmployee.employmentType)}</span>
+                        <span>{salaryProration.isProrated ? `Prorated ${getDescription('basicSalary', getPayslipLabel(activeEmployee.employmentType))}` : getDescription('basicSalary', getPayslipLabel(activeEmployee.employmentType))}</span>
                       </div>
                       <span className="font-mono">RM {actualBasic.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                     </div>
                     
                     {/* Allowances breakdown */}
                     {(activeEmployee.allowanceGeneral || 0) > 0 && (
-                      <div className="flex justify-between"><span>General Allowance</span><span className="font-mono">RM {(activeEmployee.allowanceGeneral || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                      <div className="flex justify-between"><span>{getDescription('allowanceGeneral', 'General Allowance')}</span><span className="font-mono">RM {(activeEmployee.allowanceGeneral || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     )}
                     {(activeEmployee.allowanceTransport !== undefined ? activeEmployee.allowanceTransport : activeEmployee.transportAllowance) > 0 && (
-                      <div className="flex justify-between"><span>Transport Allowance</span><span className="font-mono">RM {Number(activeEmployee.allowanceTransport !== undefined ? activeEmployee.allowanceTransport : activeEmployee.transportAllowance).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                      <div className="flex justify-between"><span>{getDescription('allowanceTransport', 'Transport Allowance')}</span><span className="font-mono">RM {Number(activeEmployee.allowanceTransport !== undefined ? activeEmployee.allowanceTransport : activeEmployee.transportAllowance).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     )}
                     {(activeEmployee.allowanceParking || 0) > 0 && (
-                      <div className="flex justify-between"><span>Parking Allowance</span><span className="font-mono">RM {(activeEmployee.allowanceParking || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                      <div className="flex justify-between"><span>{getDescription('allowanceParking', 'Parking Allowance')}</span><span className="font-mono">RM {(activeEmployee.allowanceParking || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     )}
                     {(activeEmployee.allowanceMeal || 0) > 0 && (
-                      <div className="flex justify-between"><span>Meal Allowance</span><span className="font-mono">RM {(activeEmployee.allowanceMeal || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                      <div className="flex justify-between"><span>{getDescription('allowanceMeal', 'Meal Allowance')}</span><span className="font-mono">RM {(activeEmployee.allowanceMeal || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     )}
                     {(activeEmployee.allowanceAccommodation !== undefined ? activeEmployee.allowanceAccommodation : activeEmployee.housingAllowance) > 0 && (
-                      <div className="flex justify-between"><span>Accommodation Allowance</span><span className="font-mono">RM {Number(activeEmployee.allowanceAccommodation !== undefined ? activeEmployee.allowanceAccommodation : activeEmployee.housingAllowance).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                      <div className="flex justify-between"><span>{getDescription('allowanceAccommodation', 'Accommodation Allowance')}</span><span className="font-mono">RM {Number(activeEmployee.allowanceAccommodation !== undefined ? activeEmployee.allowanceAccommodation : activeEmployee.housingAllowance).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     )}
                     {(activeEmployee.allowancePhone || 0) > 0 && (
-                      <div className="flex justify-between"><span>Phone Allowance</span><span className="font-mono">RM {(activeEmployee.allowancePhone || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                      <div className="flex justify-between"><span>{getDescription('allowancePhone', 'Phone Allowance')}</span><span className="font-mono">RM {(activeEmployee.allowancePhone || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     )}
                     
                     {activeEmployee.overtime > 0 && (
-                      <div className="flex justify-between"><span>Overtime</span><span className="font-mono">RM {activeEmployee.overtime.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                      <div className="flex justify-between"><span>{getDescription('overtime', 'Overtime')}</span><span className="font-mono">RM {activeEmployee.overtime.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     )}
 
                     {/* Supplemental Payments breakdown */}
@@ -1452,35 +1572,35 @@ export default function PayrollView({
                     <span className="w-2 h-2 rounded-full bg-error" /> Deductions
                   </h4>
                   <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between"><span>EPF (Employee {activeEmployee.epfRateEmployee}%)</span><span className="font-mono">RM {payrollBreakdown.epfEmployeeValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                    <div className="flex justify-between"><span>{getDescription('epfEmployee', `EPF (Employee ${activeEmployee.epfRateEmployee}%)`)}</span><span className="font-mono">RM {payrollBreakdown.epfEmployeeValue.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     {payrollBreakdown.socsoEmployeeVal > 0 && (
-                      <div className="flex justify-between"><span>SOCSO (Invalidity)</span><span className="font-mono">RM {payrollBreakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                      <div className="flex justify-between"><span>{getDescription('socsoEmployee', 'SOCSO (Invalidity)')}</span><span className="font-mono">RM {payrollBreakdown.socsoEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     )}
                     {payrollBreakdown.skbbkEmpVal > 0 && (
-                      <div className="flex justify-between"><span>SOCSO (LINDUNG 24 Jam)</span><span className="font-mono">RM {payrollBreakdown.skbbkEmpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                      <div className="flex justify-between"><span>{getDescription('lindung24Employee', 'SOCSO (LINDUNG 24 Jam)')}</span><span className="font-mono">RM {payrollBreakdown.skbbkEmpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     )}
-                    <div className="flex justify-between"><span>EIS</span><span className="font-mono">RM {payrollBreakdown.eisEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
-                    <div className="flex justify-between"><span>Income Tax (PCB)</span><span className="font-mono">RM {payrollBreakdown.taxPcbVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                    <div className="flex justify-between"><span>{getDescription('eisEmployee', 'EIS')}</span><span className="font-mono">RM {payrollBreakdown.eisEmployeeVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                    <div className="flex justify-between"><span>{getDescription('taxPcb', 'Income Tax (PCB)')}</span><span className="font-mono">RM {payrollBreakdown.taxPcbVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     
                     {/* Unpaid Leave */}
                     {(activeEmployee.unpaidLeave || 0) > 0 && (
-                      <div className="flex justify-between"><span>Unpaid Leave</span><span className="font-mono">RM {(activeEmployee.unpaidLeave || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                      <div className="flex justify-between"><span>{getDescription('unpaidLeave', 'Unpaid Leave')}</span><span className="font-mono">RM {(activeEmployee.unpaidLeave || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     )}
 
                     {/* Payment in Lieu */}
                     {(activeEmployee.deductionInLieu || 0) > 0 && (
-                      <div className="flex justify-between"><span>Payment in Lieu (Notice Deduction)</span><span className="font-mono">RM {(activeEmployee.deductionInLieu || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                      <div className="flex justify-between"><span>{getDescription('deductionInLieu', 'Payment in Lieu (Notice Deduction)')}</span><span className="font-mono">RM {(activeEmployee.deductionInLieu || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     )}
 
                     {/* CP38 */}
                     {(activeEmployee.deductionCp38 || 0) > 0 && (
-                      <div className="flex justify-between"><span>CP38 Additional Tax</span><span className="font-mono">RM {(activeEmployee.deductionCp38 || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
+                      <div className="flex justify-between"><span>{getDescription('deductionCp38', 'CP38 Additional Tax')}</span><span className="font-mono">RM {(activeEmployee.deductionCp38 || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span></div>
                     )}
 
                     {/* Custom Others */}
                     {(activeEmployee.deductionOthers || 0) > 0 && (
                       <div className="flex justify-between items-start">
-                        <span>{activeEmployee.deductionOthersDesc || 'Other Deductions'}</span>
+                        <span>{getDescription('deductionOthers', activeEmployee.deductionOthersDesc || 'Other Deductions')}</span>
                         <span className="font-mono">RM {(activeEmployee.deductionOthers || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                       </div>
                     )}
