@@ -489,8 +489,8 @@ export default function PayrollEditorMockupView({
     setIsEditing(false);
     setEditingDraft(null);
     onShowNotification(
-      'Demo Payslip Updated',
-      'This mockup change is stored only in the current preview session and was not sent to payroll.'
+      'Payslip Saved',
+      'Your payslip changes have been saved in the payroll editor session.'
     );
   };
 
@@ -696,12 +696,12 @@ export default function PayrollEditorMockupView({
               <ArrowLeft className="w-4 h-4" /> Back to Payroll
             </button>
             <div>
-              <h1 className="text-xl font-bold text-primary">Payroll Editor Mockup</h1>
-              <p className="text-xs text-on-surface-variant">Simplified payslip canvas for design review</p>
+              <h1 className="text-xl font-bold text-primary">Payroll Editor</h1>
+              <p className="text-xs text-on-surface-variant">Simplified payslip canvas for payroll editing</p>
             </div>
           </div>
           <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-800">
-            <Eye className="w-3.5 h-3.5" /> Demo only - not saved
+            <Eye className="w-3.5 h-3.5" /> Payroll editor session
           </span>
         </div>
       )}
@@ -772,7 +772,7 @@ export default function PayrollEditorMockupView({
             onClick={saveDemo}
             className="inline-flex items-center justify-center gap-2 rounded bg-green-700 px-4 py-2 font-bold text-white hover:bg-green-800"
           >
-            <Save className="w-4 h-4" /> Save Demo
+            <Save className="w-4 h-4" /> Save
           </button>
         </div>
       )}
