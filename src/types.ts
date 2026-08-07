@@ -6,6 +6,7 @@
 export type AppTab =
   | 'dashboard'
   | 'payroll'
+  | 'payroll-mockup'
   | 'payslip-viewer'
   | 'performance'
   | 'directory'

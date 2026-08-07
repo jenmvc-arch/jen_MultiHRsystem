@@ -104,7 +104,7 @@ export default function Sidebar({
           <div className="space-y-0.5">
             {coreItems.map((item) => {
               const Icon = item.icon;
-              const isActive = currentTab === item.id;
+              const isActive = currentTab === item.id || (item.id === 'payroll' && currentTab === 'payroll-mockup');
               return (
                 <a
                   key={item.id}

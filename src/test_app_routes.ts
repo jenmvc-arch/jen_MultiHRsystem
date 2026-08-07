@@ -8,6 +8,8 @@ import {
 
 assert.equal(getPathForAppTab('payroll'), '/payroll');
 assert.equal(getAppTabFromPath('/payroll'), 'payroll');
+assert.equal(getPathForAppTab('payroll-mockup'), '/payroll/mockup');
+assert.equal(getAppTabFromPath('/payroll/mockup'), 'payroll-mockup');
 assert.equal(getAppTabFromPath('/payroll/payslip'), 'payslip-viewer');
 assert.equal(getAppTabFromPath('/employee-directory/'), 'directory');
 assert.equal(getAppTabFromPath('/hire-onboarding/onboarding-portal'), 'hire-onboarding');

@@ -4,6 +4,7 @@ export const APP_TAB_PATHS: Record<AppTab, string> = {
   dashboard: '/dashboard',
   directory: '/employee-directory',
   payroll: '/payroll',
+  'payroll-mockup': '/payroll/mockup',
   'payslip-viewer': '/payroll/payslip',
   performance: '/performance-appraisal',
   reports: '/reports',

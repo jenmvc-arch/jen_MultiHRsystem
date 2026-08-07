@@ -44,6 +44,7 @@ import { getAppTabFromPath, getPathForAppTab } from './lib/appRoutes';
 import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
 import PayrollView from './components/PayrollView';
+import PayrollEditorMockupView from './components/PayrollEditorMockupView';
 import PayslipDocumentView from './components/PayslipDocumentView';
 import PerformanceView from './components/PerformanceView';
 import EmployeeDirectoryView from './components/EmployeeDirectoryView';
@@ -1019,7 +1020,7 @@ export default function App() {
 
   const handleTabChange = (tab: AppTab, options?: { replace?: boolean; search?: string }) => {
     setCurrentTab(tab);
-    if (activeEntityId) {
+    if (activeEntityId && tab !== 'payroll-mockup') {
       localStorage.setItem(`active_tab_${activeEntityId}`, tab);
     }
 
@@ -1133,7 +1134,9 @@ export default function App() {
       const routeTab = getAppTabFromPath(window.location.pathname);
       if (routeTab) {
         setCurrentTab(routeTab);
-        localStorage.setItem(`active_tab_${activeEntityId}`, routeTab);
+        if (routeTab !== 'payroll-mockup') {
+          localStorage.setItem(`active_tab_${activeEntityId}`, routeTab);
+        }
         return;
       }
 
@@ -2126,13 +2129,19 @@ export default function App() {
           {currentTab === 'payroll' && (
             <PayrollView 
               employees={filteredEmployeesWithHistory}
-              entities={entities}
               payrollRecords2026={filteredPayrollRecords2026}
-              onSavePayrollRecord2026={handleSavePayrollRecord2026}
-              onUpdateEmployeeSalary={handleUpdateEmployeeSalary}
-              onNavigateToDocument={handleNavigateToDocument}
               onShowNotification={triggerNotification}
               activeEntity={activeEntity}
+            />
+          )}
+
+          {currentTab === 'payroll-mockup' && (
+            <PayrollEditorMockupView
+              employees={filteredEmployeesWithHistory}
+              payrollRecords2026={filteredPayrollRecords2026}
+              activeEntity={activeEntity}
+              onBack={() => handleTabChange('payroll')}
+              onShowNotification={triggerNotification}
             />
           )}
 
