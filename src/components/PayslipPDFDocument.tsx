@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
-import { Employee, CorporateEntity } from '../types';
-import { calculatePayslip, getPayslipLabel, getDirectLogoUrl, getPayrollBasicSalary, getSalaryProration, calculateSocsoContribution, getEmployeeForMonth, getEffectiveTerminationDateForDate } from '../data';
+import { Employee, CorporateEntity, PayrollDocumentDisplaySettings, PayrollRecord2026 } from '../types';
+import { calculatePayslip, getPayrollDocumentDisplaySettings, getPayrollDocumentFieldLabels, getPayrollDocumentProfile, getPayrollDocumentProfileForRecord, getDirectLogoUrl, getPayrollBasicSalary, getSalaryProration, calculateSocsoContribution, getEmployeeForMonth, getEffectiveTerminationDateForDate, getSeparatePayoutConfig, isSeparatePayrollRecord } from '../data';
 import { formatToDDMMMYYYY } from '../lib/dateUtils';
 
 // Create styles for React PDF
@@ -403,17 +403,102 @@ interface PayslipPDFDocumentProps {
   entity: CorporateEntity;
   month?: number;
   year?: number;
+  payrollRecordOverride?: PayrollRecord2026;
+  displaySettingsOverride?: Partial<PayrollDocumentDisplaySettings>;
 }
 
-export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }: PayslipPDFDocumentProps) => {
-  const breakdown = calculatePayslip(employee, month, year);
-  const payslipEmployee = getEmployeeForMonth(employee, month, year);
+export const PayslipPDFDocument = ({ employee: sourceEmployee, entity, month = 10, year = 2026, payrollRecordOverride, displaySettingsOverride }: PayslipPDFDocumentProps) => {
+  const activePayrollRecord = payrollRecordOverride || null;
+  const baseEmployee = getEmployeeForMonth(sourceEmployee, month, year);
+  const isSeparatePayoutDocument = !!activePayrollRecord && isSeparatePayrollRecord(activePayrollRecord);
+  const payoutConfig = isSeparatePayoutDocument && activePayrollRecord?.payoutKind && activePayrollRecord.payoutKind !== 'regular'
+    ? getSeparatePayoutConfig(activePayrollRecord.payoutKind)
+    : null;
+  const payoutAmount = isSeparatePayoutDocument && payoutConfig
+    ? Number(activePayrollRecord?.[payoutConfig.amountField] || 0)
+    : 0;
+  const payslipEmployee = activePayrollRecord
+    ? {
+      ...baseEmployee,
+      basicSalary: isSeparatePayoutDocument ? 0 : (activePayrollRecord.basicSalary ?? baseEmployee.basicSalary),
+      allowanceGeneral: isSeparatePayoutDocument ? 0 : activePayrollRecord.allowanceGeneral ?? baseEmployee.allowanceGeneral,
+      allowanceTransport: isSeparatePayoutDocument ? 0 : activePayrollRecord.allowanceTransport ?? baseEmployee.allowanceTransport,
+      allowanceParking: isSeparatePayoutDocument ? 0 : activePayrollRecord.allowanceParking ?? baseEmployee.allowanceParking,
+      allowanceMeal: isSeparatePayoutDocument ? 0 : activePayrollRecord.allowanceMeal ?? baseEmployee.allowanceMeal,
+      allowanceAccommodation: isSeparatePayoutDocument ? 0 : activePayrollRecord.allowanceAccommodation ?? baseEmployee.allowanceAccommodation,
+      allowancePhone: isSeparatePayoutDocument ? 0 : activePayrollRecord.allowancePhone ?? baseEmployee.allowancePhone,
+      overtime: isSeparatePayoutDocument ? 0 : activePayrollRecord.overtime ?? baseEmployee.overtime,
+      bonusAmount: isSeparatePayoutDocument ? Number(activePayrollRecord.bonusAmount || 0) : (activePayrollRecord.bonusAmount ?? baseEmployee.bonusAmount),
+      bonusDesc: activePayrollRecord.bonusDesc ?? baseEmployee.bonusDesc,
+      commissionAmount: isSeparatePayoutDocument ? Number(activePayrollRecord.commissionAmount || 0) : (activePayrollRecord.commissionAmount ?? baseEmployee.commissionAmount),
+      commissionDesc: activePayrollRecord.commissionDesc ?? baseEmployee.commissionDesc,
+      backPayAmount: isSeparatePayoutDocument ? 0 : activePayrollRecord.backPayAmount ?? baseEmployee.backPayAmount,
+      backPayDesc: activePayrollRecord.backPayDesc ?? baseEmployee.backPayDesc,
+      awsAmount: isSeparatePayoutDocument ? 0 : activePayrollRecord.awsAmount ?? baseEmployee.awsAmount,
+      awsDesc: activePayrollRecord.awsDesc ?? baseEmployee.awsDesc,
+      compensationAmount: isSeparatePayoutDocument ? Number(activePayrollRecord.compensationAmount || 0) : activePayrollRecord.compensationAmount ?? baseEmployee.compensationAmount,
+      compensationDesc: activePayrollRecord.compensationDesc ?? baseEmployee.compensationDesc,
+      reimbursementAmount: isSeparatePayoutDocument ? Number(activePayrollRecord.reimbursementAmount || 0) : (activePayrollRecord.reimbursementAmount ?? baseEmployee.reimbursementAmount),
+      reimbursementDesc: activePayrollRecord.reimbursementDesc ?? baseEmployee.reimbursementDesc,
+      unpaidLeave: activePayrollRecord.unpaidLeave ?? baseEmployee.unpaidLeave,
+      deductionInLieu: activePayrollRecord.deductionInLieu ?? baseEmployee.deductionInLieu,
+      deductionCp38: activePayrollRecord.deductionCp38 ?? baseEmployee.deductionCp38,
+      deductionOthers: activePayrollRecord.deductionOthers ?? baseEmployee.deductionOthers,
+      deductionOthersDesc: activePayrollRecord.deductionOthersDesc ?? baseEmployee.deductionOthersDesc,
+      payslipDescriptions: activePayrollRecord.payslipDescriptions ?? baseEmployee.payslipDescriptions,
+      contractStatutoryTreatment: activePayrollRecord.statutoryTreatment ?? baseEmployee.contractStatutoryTreatment,
+      eligibleForStatutory: activePayrollRecord.statutoryTreatment === 'with_statutory' ? 'Yes' : activePayrollRecord.statutoryTreatment === 'without_statutory' ? 'No' : baseEmployee.eligibleForStatutory,
+      paymentDate: activePayrollRecord.paymentDate || baseEmployee.paymentDate
+    }
+    : baseEmployee;
+  const documentProfile = activePayrollRecord
+    ? getPayrollDocumentProfileForRecord(payslipEmployee, activePayrollRecord)
+    : getPayrollDocumentProfile(payslipEmployee);
+  const documentFieldLabels = getPayrollDocumentFieldLabels(documentProfile);
+  const displaySettings = {
+    ...(activePayrollRecord?.displaySettingsSnapshot || getPayrollDocumentDisplaySettings(payslipEmployee)),
+    ...(displaySettingsOverride || {})
+  };
+  if (!documentProfile.statutoryEnabled) {
+    displaySettings.showEpfNumber = false;
+    displaySettings.showEmployerContributions = false;
+  }
+  const employee = payslipEmployee;
+  const breakdown = activePayrollRecord
+    ? calculatePayslip(employee, month, year, {
+      basicSalaryOverride: isSeparatePayoutDocument ? 0 : employee.basicSalary,
+      statutorySalaryOverride: isSeparatePayoutDocument ? payoutAmount : undefined,
+      statutoryEligibilityOverride: isSeparatePayoutDocument ? documentProfile.statutoryEnabled : undefined,
+      ignoreSavedStatutory: true,
+      statutoryOverrides: {
+        epfEmployee: activePayrollRecord.epfEmployee,
+        epfEmployer: activePayrollRecord.epfEmployer,
+        socsoEmployee: activePayrollRecord.socsoEmployee,
+        socsoEmployer: activePayrollRecord.socsoEmployer,
+        lindung24Employee: activePayrollRecord.lindung24Employee,
+        eisEmployee: activePayrollRecord.eisEmployee,
+        eisEmployer: activePayrollRecord.eisEmployer,
+        taxPcb: activePayrollRecord.actualPCBDeducted,
+        hrdCorp: activePayrollRecord.hrdCorp
+      }
+    })
+    : calculatePayslip(employee, month, year);
   const lastWorkingDay = getEffectiveTerminationDateForDate(
     employee,
     `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate()}`
   );
   const getDescription = (key: keyof NonNullable<Employee['payslipDescriptions']>, fallback: string) =>
     payslipEmployee.payslipDescriptions?.[key] || fallback;
+  const getLineNote = (field: string) => activePayrollRecord?.lineNotes?.[field] || '';
+  const renderItemDescription = (label: string, field: string) => {
+    const note = getLineNote(field);
+    return (
+      <View style={styles.itemDescriptionGroup}>
+        <Text style={styles.itemName}>{label}</Text>
+        {note && <Text style={styles.itemDescription}>{note}</Text>}
+      </View>
+    );
+  };
 
   const formatCurrency = (val: number) => {
     return `RM ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -436,7 +521,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
   const reimbursementVal = employee.reimbursementAmount || 0;
   const unpaidLeaveVal = employee.unpaidLeave || 0;
 
-  const basicSalaryForSocso = getPayrollBasicSalary(employee, month, year);
+  const basicSalaryForSocso = isSeparatePayoutDocument ? 0 : getPayrollBasicSalary(sourceEmployee, month, year);
   const payrollItemsForSocso = [
     { code: 'basic_salary', amount: basicSalaryForSocso },
     { code: 'overtime', amount: overtimeVal },
@@ -481,7 +566,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
 
   // Proration Deduction details
   const salaryProration = getSalaryProration(employee, month, year);
-  const actualBasic = getPayrollBasicSalary(employee, month, year);
+  const actualBasic = isSeparatePayoutDocument ? 0 : employee.basicSalary;
 
   // Calendar dates
   const monthsList = [
@@ -515,69 +600,83 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
               {entity?.registrationNumber && (
                 <Text style={styles.companyReg}>Co. Reg: {entity.registrationNumber}</Text>
               )}
-              <Text style={styles.companyAddress}>
-                {entity?.address || 'No registered corporate address'}
-              </Text>
+              {displaySettings.showCompanyAddress && (
+                <Text style={styles.companyAddress}>
+                  {entity?.address || 'No registered corporate address'}
+                </Text>
+              )}
             </View>
           </View>
           <View style={styles.rightHeaderBlock}>
-            <Text style={styles.rightHeaderLabel}>PAYSLIP</Text>
+            <Text style={styles.rightHeaderLabel}>{documentProfile.documentType.toUpperCase()}</Text>
             <Text style={styles.rightHeaderMonth}>{monthsList[month - 1].substring(0, 3)} {year}</Text>
+            {activePayrollRecord?.payoutTitle && (
+              <Text style={styles.rightHeaderMonth}>{activePayrollRecord.payoutTitle}</Text>
+            )}
           </View>
         </View>
+
+        {activePayrollRecord?.payoutDescription && (
+          <View style={styles.detailsCard}>
+            <View style={styles.detailsTitleContainer}>
+              <Text style={styles.detailsTitle}>Payout Notes</Text>
+            </View>
+            <Text style={styles.detailValue}>{activePayrollRecord.payoutDescription}</Text>
+          </View>
+        )}
 
         {/* Employee Details Card */}
         <View style={styles.detailsCard}>
           <View style={styles.detailsTitleContainer}>
-            <Text style={styles.detailsTitle}>Employee Details</Text>
+            <Text style={styles.detailsTitle}>{documentFieldLabels.detailsTitle}</Text>
           </View>
           <Text style={styles.employeeName}>{employee.name}</Text>
           
           <View style={styles.detailsGrid}>
             {/* Left Group */}
             <View style={styles.detailsCol}>
-              <View style={styles.detailItem}>
+              {displaySettings.showTin && <View style={styles.detailItem}>
                 <Text style={styles.detailLabelLeft}>TIN / Tax Number</Text>
                 <Text style={styles.detailValue}>{employee.taxNumber || 'IG 29068110030'}</Text>
-              </View>
-              <View style={styles.detailItem}>
+              </View>}
+              {displaySettings.showEpfNumber && <View style={styles.detailItem}>
                 <Text style={styles.detailLabelLeft}>EPF Member Number</Text>
                 <Text style={styles.detailValue}>{employee.epfNumber || '-'}</Text>
-              </View>
-              <View style={styles.detailItem}>
+              </View>}
+              {displaySettings.showNricPassport && <View style={styles.detailItem}>
                 <Text style={styles.detailLabelLeft}>NRIC / Passport</Text>
                 <Text style={styles.detailValue}>{employee.nricPassport || '-'}</Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabelLeft}>Date Joined</Text>
+              </View>}
+              {displaySettings.showDateJoined && <View style={styles.detailItem}>
+                <Text style={styles.detailLabelLeft}>{documentFieldLabels.dateJoined}</Text>
                 <Text style={styles.detailValue}>{formatToDDMMMYYYY(employee.dateOfJoined)}</Text>
-              </View>
-              {lastWorkingDay && (
+              </View>}
+              {lastWorkingDay && displaySettings.showLastWorkingDay && (
                 <View style={styles.detailItem}>
                   <Text style={styles.detailLabelLeft}>Last Working Day</Text>
                   <Text style={styles.detailValue}>{formatToDDMMMYYYY(lastWorkingDay)}</Text>
                 </View>
               )}
               <View style={styles.detailItem}>
-                <Text style={styles.detailLabelLeft}>Employment Status</Text>
+                <Text style={styles.detailLabelLeft}>{documentFieldLabels.employmentStatus}</Text>
                 <Text style={styles.detailValue}>{employee.employmentType || 'Confirmation'}</Text>
               </View>
             </View>
 
             {/* Middle Group */}
             <View style={styles.detailsCol}>
-              <View style={styles.detailItem}>
+              {displaySettings.showEmail && <View style={styles.detailItem}>
                 <Text style={styles.detailLabelMiddle}>Email Address</Text>
                 <Text style={styles.detailValue}>{employee.email}</Text>
-              </View>
-              <View style={styles.detailItem}>
+              </View>}
+              {displaySettings.showDepartment && <View style={styles.detailItem}>
                 <Text style={styles.detailLabelMiddle}>Department</Text>
                 <Text style={styles.detailValue}>{employee.department}</Text>
-              </View>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabelMiddle}>Designation</Text>
+              </View>}
+              {displaySettings.showDesignation && <View style={styles.detailItem}>
+                <Text style={styles.detailLabelMiddle}>{documentFieldLabels.designation}</Text>
                 <Text style={styles.detailValue}>{employee.designation}</Text>
-              </View>
+              </View>}
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabelMiddle}>Payment Date</Text>
                 <Text style={styles.detailValue}>{formatToDDMMMYYYY(employee.paymentDate || `${year}-${String(month).padStart(2, '0')}-28`)}</Text>
@@ -585,13 +684,13 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             </View>
 
             {/* Right Group (Bank details) */}
-            <View style={styles.detailsCol}>
+            {displaySettings.showBankAccount && <View style={styles.detailsCol}>
               <Text style={styles.bankTitle}>Bank Details</Text>
               <Text style={[styles.detailLabel, { marginBottom: 2 }]}>Bank Account</Text>
               <View style={styles.bankBox}>
                 <Text style={styles.bankText}>{getBankAccount()}</Text>
               </View>
-            </View>
+            </View>}
           </View>
         </View>
 
@@ -607,94 +706,108 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
               <Text style={styles.tableThText}>Amount (RM)</Text>
             </View>
 
-            <View style={styles.tableRow}>
-              <Text style={styles.itemName}>{salaryProration.isProrated ? `Prorated ${getDescription('basicSalary', getPayslipLabel(employee.employmentType))}` : getDescription('basicSalary', getPayslipLabel(employee.employmentType))}</Text>
-              <Text style={styles.itemVal}>{formatCurrency(actualBasic)}</Text>
-            </View>
+            {!isSeparatePayoutDocument && (
+              <View style={styles.tableRow}>
+                {renderItemDescription(
+                  salaryProration.isProrated ? `Prorated ${getDescription('basicSalary', documentProfile.compensationLabel)}` : getDescription('basicSalary', documentProfile.compensationLabel),
+                  'basicSalary'
+                )}
+                <Text style={styles.itemVal}>{formatCurrency(actualBasic)}</Text>
+              </View>
+            )}
 
+            {displaySettings.showEarningsDetails && (
+              <>
             {allowanceGen > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{getDescription('allowanceGeneral', 'General Allowance')}</Text>
+                {renderItemDescription(getDescription('allowanceGeneral', 'General Allowance'), 'allowanceGeneral')}
                 <Text style={styles.itemVal}>{formatCurrency(allowanceGen)}</Text>
               </View>
             )}
             {allowanceTrans > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{getDescription('allowanceTransport', 'Transport Allowance')}</Text>
+                {renderItemDescription(getDescription('allowanceTransport', 'Transport Allowance'), 'allowanceTransport')}
                 <Text style={styles.itemVal}>{formatCurrency(allowanceTrans)}</Text>
               </View>
             )}
             {allowancePark > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{getDescription('allowanceParking', 'Parking Allowance')}</Text>
+                {renderItemDescription(getDescription('allowanceParking', 'Parking Allowance'), 'allowanceParking')}
                 <Text style={styles.itemVal}>{formatCurrency(allowancePark)}</Text>
               </View>
             )}
             {allowanceMeal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{getDescription('allowanceMeal', 'Meal Allowance')}</Text>
+                {renderItemDescription(getDescription('allowanceMeal', 'Meal Allowance'), 'allowanceMeal')}
                 <Text style={styles.itemVal}>{formatCurrency(allowanceMeal)}</Text>
               </View>
             )}
             {allowanceAccom > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{getDescription('allowanceAccommodation', 'Accommodation Allowance')}</Text>
+                {renderItemDescription(getDescription('allowanceAccommodation', 'Accommodation Allowance'), 'allowanceAccommodation')}
                 <Text style={styles.itemVal}>{formatCurrency(allowanceAccom)}</Text>
               </View>
             )}
             {allowancePhone > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{getDescription('allowancePhone', 'Phone Allowance')}</Text>
+                {renderItemDescription(getDescription('allowancePhone', 'Phone Allowance'), 'allowancePhone')}
                 <Text style={styles.itemVal}>{formatCurrency(allowancePhone)}</Text>
               </View>
             )}
 
             {overtimeVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{getDescription('overtime', 'Overtime')}</Text>
+                {renderItemDescription(getDescription('overtime', 'Overtime'), 'overtime')}
                 <Text style={styles.itemVal}>{formatCurrency(overtimeVal)}</Text>
               </View>
             )}
 
             {bonusVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{payslipEmployee.bonusDesc || 'Performance Bonus'}</Text>
+                {renderItemDescription(payslipEmployee.bonusDesc || 'Performance Bonus', 'bonusAmount')}
                 <Text style={styles.itemVal}>{formatCurrency(bonusVal)}</Text>
               </View>
             )}
             {commissionVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{payslipEmployee.commissionDesc || 'Commissions'}</Text>
+                {renderItemDescription(payslipEmployee.commissionDesc || 'Commissions', 'commissionAmount')}
                 <Text style={styles.itemVal}>{formatCurrency(commissionVal)}</Text>
               </View>
             )}
             {backPayVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{payslipEmployee.backPayDesc || 'BackPay / Arrears'}</Text>
+                {renderItemDescription(payslipEmployee.backPayDesc || 'BackPay / Arrears', 'backPayAmount')}
                 <Text style={styles.itemVal}>{formatCurrency(backPayVal)}</Text>
               </View>
             )}
             {awsVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{payslipEmployee.awsDesc || 'AWS (13th Month)'}</Text>
+                {renderItemDescription(payslipEmployee.awsDesc || 'AWS (13th Month)', 'awsAmount')}
                 <Text style={styles.itemVal}>{formatCurrency(awsVal)}</Text>
               </View>
             )}
             {compensationVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{payslipEmployee.compensationDesc || 'Compensation / Severance'}</Text>
+                {renderItemDescription(payslipEmployee.compensationDesc || 'Compensation / Severance', 'compensationAmount')}
                 <Text style={styles.itemVal}>{formatCurrency(compensationVal)}</Text>
               </View>
             )}
             {reimbursementVal > 0 && (
               <View style={[styles.tableRow, { backgroundColor: '#f9fafb' }]}>
-                <Text style={[styles.itemName, { fontFamily: 'Helvetica-Bold' }]}>{payslipEmployee.reimbursementDesc || 'Reimbursements (Tax-Free)'}</Text>
+                <View style={styles.itemDescriptionGroup}>
+                  <Text style={[styles.itemName, { fontFamily: 'Helvetica-Bold' }]}>{payslipEmployee.reimbursementDesc || 'Reimbursements (Tax-Free)'}</Text>
+                  {getLineNote('reimbursementAmount') && (
+                    <Text style={styles.itemDescription}>{getLineNote('reimbursementAmount')}</Text>
+                  )}
+                </View>
                 <Text style={styles.itemVal}>{formatCurrency(reimbursementVal)}</Text>
               </View>
             )}
+              </>
+            )}
 
             <View style={styles.tableTotalRow}>
-              <Text style={styles.tableTotalText}>Total Earnings & Additions</Text>
+              <Text style={styles.tableTotalText}>{documentProfile.isPaymentVoucher ? 'Gross Amount' : 'Total Earnings & Additions'}</Text>
               <Text style={styles.tableTotalText}>{formatCurrency(breakdown.grossEarnings + breakdown.reimbursementsSum)}</Text>
             </View>
           </View>
@@ -709,21 +822,21 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
               <Text style={styles.tableThText}>Amount (RM)</Text>
             </View>
 
-            {epfEmployeeValue > 0 && (
+            {documentProfile.statutoryEnabled && epfEmployeeValue > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{getDescription('epfEmployee', `EPF (Employee ${epfRateEmp}%)`)}</Text>
+                {renderItemDescription(getDescription('epfEmployee', `EPF (Employee ${epfRateEmp}%)`), 'epfEmployee')}
                 <Text style={styles.itemVal}>{formatCurrency(epfEmployeeValue)}</Text>
               </View>
             )}
 
-            {skbbkEmployeeVal > 0 ? (
+            {documentProfile.statutoryEnabled && (skbbkEmployeeVal > 0 ? (
               <>
                 <View style={styles.tableRow}>
-                  <Text style={styles.itemName}>{getDescription('socsoEmployee', 'SOCSO - Invalidity')}</Text>
+                  {renderItemDescription(getDescription('socsoEmployee', 'SOCSO - Invalidity'), 'socsoEmployee')}
                   <Text style={styles.itemVal}>{formatCurrency(socsoEmployeeVal)}</Text>
                 </View>
                 <View style={styles.tableRow}>
-                  <Text style={styles.itemName}>{getDescription('lindung24Employee', 'SOCSO - LINDUNG 24 Jam')}</Text>
+                  {renderItemDescription(getDescription('lindung24Employee', 'SOCSO - LINDUNG 24 Jam'), 'lindung24Employee')}
                   <Text style={styles.itemVal}>{formatCurrency(skbbkEmployeeVal)}</Text>
                 </View>
                 <View style={styles.tableRowSocsoTotal}>
@@ -734,53 +847,53 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             ) : (
               socsoEmployeeVal > 0 && (
                 <View style={styles.tableRow}>
-                  <Text style={styles.itemName}>{getDescription('socsoEmployee', 'SOCSO')}</Text>
+                  {renderItemDescription(getDescription('socsoEmployee', 'SOCSO'), 'socsoEmployee')}
                   <Text style={styles.itemVal}>{formatCurrency(socsoEmployeeVal)}</Text>
                 </View>
               )
-            )}
+            ))}
 
-            {eisEmployeeVal > 0 && (
+            {documentProfile.statutoryEnabled && eisEmployeeVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{getDescription('eisEmployee', 'EIS')}</Text>
+                {renderItemDescription(getDescription('eisEmployee', 'EIS'), 'eisEmployee')}
                 <Text style={styles.itemVal}>{formatCurrency(eisEmployeeVal)}</Text>
               </View>
             )}
 
-            {taxPcbVal > 0 && (
+            {documentProfile.statutoryEnabled && taxPcbVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{getDescription('taxPcb', 'Income Tax (PCB)')}</Text>
+                {renderItemDescription(getDescription('taxPcb', 'Income Tax (PCB)'), 'taxPcb')}
                 <Text style={styles.itemVal}>{formatCurrency(taxPcbVal)}</Text>
               </View>
             )}
 
-            {unpaidLeaveVal > 0 && (
+            {displaySettings.showDeductionDetails && unpaidLeaveVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{getDescription('unpaidLeave', 'Unpaid Leave')}</Text>
+                {renderItemDescription(getDescription('unpaidLeave', 'Unpaid Leave'), 'unpaidLeave')}
                 <Text style={styles.itemVal}>{formatCurrency(unpaidLeaveVal)}</Text>
               </View>
             )}
-            {deductionInLieuVal > 0 && (
+            {displaySettings.showDeductionDetails && deductionInLieuVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{getDescription('deductionInLieu', 'Payment in Lieu')}</Text>
+                {renderItemDescription(getDescription('deductionInLieu', 'Payment in Lieu'), 'deductionInLieu')}
                 <Text style={styles.itemVal}>{formatCurrency(deductionInLieuVal)}</Text>
               </View>
             )}
-            {deductionCp38Val > 0 && (
+            {displaySettings.showDeductionDetails && documentProfile.statutoryEnabled && deductionCp38Val > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{getDescription('deductionCp38', 'CP38 Direct Tax')}</Text>
+                {renderItemDescription(getDescription('deductionCp38', 'CP38 Direct Tax'), 'deductionCp38')}
                 <Text style={styles.itemVal}>{formatCurrency(deductionCp38Val)}</Text>
               </View>
             )}
-            {deductionOthersVal > 0 && (
+            {displaySettings.showDeductionDetails && deductionOthersVal > 0 && (
               <View style={styles.tableRow}>
-                <Text style={styles.itemName}>{getDescription('deductionOthers', payslipEmployee.deductionOthersDesc || 'Other Deduction')}</Text>
+                {renderItemDescription(getDescription('deductionOthers', payslipEmployee.deductionOthersDesc || 'Other Deduction'), 'deductionOthers')}
                 <Text style={styles.itemVal}>{formatCurrency(deductionOthersVal)}</Text>
               </View>
             )}
 
             <View style={styles.tableTotalRow}>
-              <Text style={styles.tableTotalText}>Total Deductions</Text>
+              <Text style={styles.tableTotalText}>{documentProfile.isPaymentVoucher ? 'Other Deductions' : 'Total Deductions'}</Text>
               <Text style={styles.tableTotalText}>{formatCurrency(breakdown.totalDeductions)}</Text>
             </View>
           </View>
@@ -790,7 +903,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
         <View style={styles.summaryStrip}>
           {/* Gross Pay */}
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Gross Pay</Text>
+            <Text style={styles.summaryLabel}>{documentProfile.isPaymentVoucher ? 'Gross Amount' : 'Gross Pay'}</Text>
             <Text style={styles.summaryValue}>
               {formatCurrency(breakdown.grossEarnings + breakdown.reimbursementsSum)}
             </Text>
@@ -798,7 +911,7 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
 
           {/* Total Deductions */}
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Total Deductions</Text>
+            <Text style={styles.summaryLabel}>{documentProfile.isPaymentVoucher ? 'Other Deductions' : 'Total Deductions'}</Text>
             <Text style={styles.summaryValue}>
               {formatCurrency(breakdown.totalDeductions)}
             </Text>
@@ -806,12 +919,13 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
 
           {/* Net Pay (Deep Red Block) */}
           <View style={styles.summaryCardNetPay}>
-            <Text style={styles.summaryLabelNetPay}>Net Pay</Text>
+            <Text style={styles.summaryLabelNetPay}>{documentProfile.isPaymentVoucher ? 'Net Payable' : 'Net Pay'}</Text>
             <Text style={styles.summaryValueNetPay}>{formatCurrency(breakdown.netPay)}</Text>
           </View>
         </View>
 
         {/* Employer Contributions (Option A Card Layout) */}
+        {documentProfile.statutoryEnabled && displaySettings.showEmployerContributions && (
         <View style={styles.contributionsCard}>
           <Text style={styles.contributionsTitle}>Employer Contributions (Not Paid to Employee)</Text>
           <View style={styles.contributionsGrid}>
@@ -861,8 +975,10 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             </View>
           </View>
         </View>
+        )}
 
         {/* Footer Notes (Option A) */}
+        {displaySettings.showNotesFooter && (
         <View style={styles.footerSection}>
           <View style={styles.footerCol}>
             <Text style={styles.footerTitle}>Important Note</Text>
@@ -878,14 +994,17 @@ export const PayslipPDFDocument = ({ employee, entity, month = 10, year = 2026 }
             <Text style={styles.footerTextBold}>{payPeriodText}</Text>
           </View>
         </View>
+        )}
 
         {/* Bottom Confidential Bar */}
+        {displaySettings.showNotesFooter && (
         <View style={styles.confidentialBar}>
           <Text style={styles.confidentialBarText}>
             Thank you for your continued contribution to {entity?.name || 'Red Point Sdn Bhd'}.
           </Text>
           <Text style={styles.confidentialBarLabel}>CONFIDENTIAL</Text>
         </View>
+        )}
 
       </Page>
     </Document>

@@ -25,7 +25,12 @@ import {
   HistoricalPCBMonthContext,
   EmployeePCBHistoryLedgerEntry,
   EmployeeTP3Declaration,
-  Dependant
+  Dependant,
+  ContractStatutoryTreatment,
+  PayrollDocumentDisplaySettings,
+  PayrollDocumentType,
+  PayrollPayoutKind,
+  PayrollRecord2026
 } from './types';
 import { getGmt8DateString } from './lib/dateUtils';
 import { Decimal, dec } from './lib/decimal';
@@ -126,24 +131,266 @@ export interface PayslipStatutoryOverrides {
 
 export interface PayslipCalculationOptions {
   basicSalaryOverride?: number;
+  statutorySalaryOverride?: number;
+  statutoryEligibilityOverride?: boolean;
   statutoryOverrides?: PayslipStatutoryOverrides;
   ignoreSavedStatutory?: boolean;
 }
 
-export function getPayslipLabel(employmentType: string): string {
-  if (employmentType === 'Probationary' || employmentType === 'Confirmation') {
-    return 'Basic Salary';
+export interface PayrollDocumentProfile {
+  documentType: PayrollDocumentType;
+  compensationLabel: string;
+  statutoryEnabled: boolean;
+  isPaymentVoucher: boolean;
+  requiresContractStatutoryChoice: boolean;
+  contractStatutoryTreatment?: ContractStatutoryTreatment;
+}
+
+export interface PayrollDocumentFieldLabels {
+  detailsTitle: string;
+  designation: string;
+  dateJoined: string;
+  employmentStatus: string;
+}
+
+export interface SeparatePayoutConfig {
+  kind: Exclude<PayrollPayoutKind, 'regular'>;
+  title: string;
+  compensationLabel: string;
+  amountField: 'bonusAmount' | 'commissionAmount' | 'reimbursementAmount';
+  descriptionField: 'bonusDesc' | 'commissionDesc' | 'reimbursementDesc';
+  defaultStatutoryTreatment: ContractStatutoryTreatment;
+}
+
+export const SEPARATE_PAYOUT_CONFIGS: Record<Exclude<PayrollPayoutKind, 'regular'>, SeparatePayoutConfig> = {
+  bonus: {
+    kind: 'bonus',
+    title: 'Bonus',
+    compensationLabel: 'Bonus',
+    amountField: 'bonusAmount',
+    descriptionField: 'bonusDesc',
+    defaultStatutoryTreatment: 'with_statutory'
+  },
+  incentive_commission: {
+    kind: 'incentive_commission',
+    title: 'Incentives / Commission',
+    compensationLabel: 'Incentives / Commission',
+    amountField: 'commissionAmount',
+    descriptionField: 'commissionDesc',
+    defaultStatutoryTreatment: 'with_statutory'
+  },
+  claim_reimbursement: {
+    kind: 'claim_reimbursement',
+    title: 'Claim / Reimbursement',
+    compensationLabel: 'Claim / Reimbursement',
+    amountField: 'reimbursementAmount',
+    descriptionField: 'reimbursementDesc',
+    defaultStatutoryTreatment: 'without_statutory'
   }
-  if (employmentType === 'Internship') {
-    return 'Allowance';
+};
+
+export const isSeparatePayrollRecord = (record?: Pick<PayrollRecord2026, 'isSeparatePayout' | 'payoutKind'> | Pick<HistoricalPayrollRecord, 'isSeparatePayout' | 'payoutKind'>) =>
+  !!record && (record.isSeparatePayout === true || (!!record.payoutKind && record.payoutKind !== 'regular'));
+
+export const getSeparatePayoutConfig = (kind: Exclude<PayrollPayoutKind, 'regular'>): SeparatePayoutConfig =>
+  SEPARATE_PAYOUT_CONFIGS[kind];
+
+export function mergePayrollRecords2026(records: PayrollRecord2026[], recordToSave: PayrollRecord2026): PayrollRecord2026[] {
+  const savingSeparatePayout = isSeparatePayrollRecord(recordToSave);
+  const filtered = records.filter(record => {
+    if (record.id === recordToSave.id) return false;
+    if (savingSeparatePayout || isSeparatePayrollRecord(record)) return true;
+    return !(
+      record.employeeEmail.toLowerCase() === recordToSave.employeeEmail.toLowerCase() &&
+      record.payrollMonth === recordToSave.payrollMonth &&
+      record.payrollYear === recordToSave.payrollYear
+    );
+  });
+  return [...filtered, recordToSave];
+}
+
+export function getSeparatePayoutDocumentProfile(kind: Exclude<PayrollPayoutKind, 'regular'>, statutoryTreatment: ContractStatutoryTreatment): PayrollDocumentProfile {
+  const config = getSeparatePayoutConfig(kind);
+  const statutoryEnabled = statutoryTreatment === 'with_statutory';
+
+  return {
+    documentType: statutoryEnabled ? 'Payslip' : 'Payment Voucher',
+    compensationLabel: config.compensationLabel,
+    statutoryEnabled,
+    isPaymentVoucher: !statutoryEnabled,
+    requiresContractStatutoryChoice: false,
+    contractStatutoryTreatment: statutoryTreatment
+  };
+}
+
+export function getPayrollDocumentProfileForRecord(
+  employee: Pick<Employee, 'employmentType' | 'eligibleForStatutory' | 'contractStatutoryTreatment'>,
+  record?: Pick<PayrollRecord2026, 'documentType' | 'compensationLabel' | 'payoutKind' | 'isSeparatePayout' | 'statutoryTreatment'>
+): PayrollDocumentProfile {
+  const baseProfile = getPayrollDocumentProfile(employee);
+
+  if (!record || !isSeparatePayrollRecord(record)) {
+    return record?.documentType
+      ? {
+        ...baseProfile,
+        documentType: record.documentType,
+        isPaymentVoucher: record.documentType === 'Payment Voucher',
+        statutoryEnabled: record.documentType === 'Payment Voucher' ? false : baseProfile.statutoryEnabled,
+        compensationLabel: record.compensationLabel || baseProfile.compensationLabel
+      }
+      : baseProfile;
   }
-  if (employmentType === 'Independent Contractor / Freelance') {
-    return 'Services Fees';
+
+  const payoutKind = (record.payoutKind && record.payoutKind !== 'regular' ? record.payoutKind : 'bonus') as Exclude<PayrollPayoutKind, 'regular'>;
+  const statutoryTreatment = record.statutoryTreatment || (record.documentType === 'Payment Voucher' ? 'without_statutory' : 'with_statutory');
+  return {
+    ...getSeparatePayoutDocumentProfile(payoutKind, statutoryTreatment),
+    documentType: record.documentType || (statutoryTreatment === 'with_statutory' ? 'Payslip' : 'Payment Voucher'),
+    compensationLabel: record.compensationLabel || getSeparatePayoutConfig(payoutKind).compensationLabel
+  };
+}
+
+const isContractEmploymentType = (employmentType?: string) =>
+  employmentType === 'Contract' || employmentType === 'Fixed Term Contract';
+
+const resolveContractStatutoryTreatment = (employee: Pick<Employee, 'employmentType' | 'eligibleForStatutory' | 'contractStatutoryTreatment'>): ContractStatutoryTreatment | undefined => {
+  if (!isContractEmploymentType(employee.employmentType)) {
+    return undefined;
   }
+  if (employee.contractStatutoryTreatment) {
+    return employee.contractStatutoryTreatment;
+  }
+  if (employee.eligibleForStatutory === 'Yes') {
+    return 'with_statutory';
+  }
+  if (employee.eligibleForStatutory === 'No') {
+    return 'without_statutory';
+  }
+  return undefined;
+};
+
+export function getPayrollDocumentProfile(employee: Pick<Employee, 'employmentType' | 'eligibleForStatutory' | 'contractStatutoryTreatment'>): PayrollDocumentProfile {
+  const employmentType = employee.employmentType || 'Permanent';
+  const contractTreatment = resolveContractStatutoryTreatment(employee);
+
+  if (employmentType === 'Probation' || employmentType === 'Probationary' || employmentType === 'Permanent' || employmentType === 'Confirmation') {
+    return {
+      documentType: 'Payslip',
+      compensationLabel: 'Basic Salary',
+      statutoryEnabled: true,
+      isPaymentVoucher: false,
+      requiresContractStatutoryChoice: false
+    };
+  }
+
+  if (isContractEmploymentType(employmentType)) {
+    const statutoryEnabled = contractTreatment === 'with_statutory';
+    return {
+      documentType: statutoryEnabled ? 'Payslip' : 'Payment Voucher',
+      compensationLabel: statutoryEnabled ? 'Basic Salary' : 'Service Fees',
+      statutoryEnabled,
+      isPaymentVoucher: !statutoryEnabled,
+      requiresContractStatutoryChoice: !contractTreatment,
+      contractStatutoryTreatment: contractTreatment
+    };
+  }
+
   if (employmentType === 'Part Time') {
-    return 'Wages / Retainer';
+    return {
+      documentType: 'Payment Voucher',
+      compensationLabel: 'Wages / Service Fees',
+      statutoryEnabled: false,
+      isPaymentVoucher: true,
+      requiresContractStatutoryChoice: false
+    };
   }
-  return 'Basic Salary';
+
+  if (employmentType === 'Independent Contractor' || employmentType === 'Independent Contractor / Freelance') {
+    return {
+      documentType: 'Payment Voucher',
+      compensationLabel: 'Monthly Retainer',
+      statutoryEnabled: false,
+      isPaymentVoucher: true,
+      requiresContractStatutoryChoice: false
+    };
+  }
+
+  if (employmentType === 'Internship') {
+    return {
+      documentType: 'Payment Voucher',
+      compensationLabel: 'Allowance',
+      statutoryEnabled: false,
+      isPaymentVoucher: true,
+      requiresContractStatutoryChoice: false
+    };
+  }
+
+  return {
+    documentType: 'Payslip',
+    compensationLabel: 'Basic Salary',
+    statutoryEnabled: true,
+    isPaymentVoucher: false,
+    requiresContractStatutoryChoice: false
+  };
+}
+
+export function getPayrollDocumentFieldLabels(profile: Pick<PayrollDocumentProfile, 'isPaymentVoucher'>): PayrollDocumentFieldLabels {
+  if (profile.isPaymentVoucher) {
+    return {
+      detailsTitle: 'Recipient Details',
+      designation: 'Service Role',
+      dateJoined: 'Engagement Start Date',
+      employmentStatus: 'Engagement Status'
+    };
+  }
+
+  return {
+    detailsTitle: 'Employee Details',
+    designation: 'Designation',
+    dateJoined: 'Date Joined',
+    employmentStatus: 'Employment Status'
+  };
+}
+
+export function getDefaultPayrollDocumentDisplaySettings(employee: Pick<Employee, 'employmentType' | 'eligibleForStatutory' | 'contractStatutoryTreatment'>): Required<PayrollDocumentDisplaySettings> {
+  const profile = getPayrollDocumentProfile(employee);
+  return {
+    showDesignation: true,
+    showDepartment: true,
+    showEmail: true,
+    showNricPassport: true,
+    showTin: true,
+    showEpfNumber: profile.statutoryEnabled,
+    showDateJoined: true,
+    showLastWorkingDay: true,
+    showBankAccount: true,
+    showCompanyAddress: true,
+    showEarningsDetails: true,
+    showDeductionDetails: true,
+    showEmployerContributions: profile.statutoryEnabled,
+    showYtdSummary: profile.statutoryEnabled,
+    showNotesFooter: true
+  };
+}
+
+export function getPayrollDocumentDisplaySettings(employee: Pick<Employee, 'employmentType' | 'eligibleForStatutory' | 'contractStatutoryTreatment' | 'payrollDocumentDisplaySettings'>): Required<PayrollDocumentDisplaySettings> {
+  const profile = getPayrollDocumentProfile(employee);
+  const defaults = getDefaultPayrollDocumentDisplaySettings(employee);
+  const merged = {
+    ...defaults,
+    ...(employee.payrollDocumentDisplaySettings || {})
+  };
+
+  if (!profile.statutoryEnabled) {
+    merged.showEpfNumber = false;
+    merged.showEmployerContributions = false;
+  }
+
+  return merged;
+}
+
+export function getPayslipLabel(employmentType: string): string {
+  return getPayrollDocumentProfile({ employmentType: employmentType as Employee['employmentType'] }).compensationLabel;
 }
 
 export function getStatutoryDeductions2026(salary: number): {
@@ -2102,6 +2349,7 @@ export function isEmployeeEligibleForPayrollPeriod(employee: Employee, month: nu
 
 function getHistoricalPayrollRecord(employee: Employee, month: number, year?: number): HistoricalPayrollRecord | undefined {
   return (employee.historicalPayrollRecords || []).find(record => (
+    !isSeparatePayrollRecord(record) &&
     record.payrollMonth === month &&
     (year === undefined || record.payrollYear === undefined || record.payrollYear === year)
   ));
@@ -2181,6 +2429,14 @@ export function getEmployeeForMonth(employee: Employee, month: number, year?: nu
       effectiveProfile.eligibleForStatutory !== undefined
         ? effectiveProfile.eligibleForStatutory
         : employee.eligibleForStatutory,
+    contractStatutoryTreatment:
+      effectiveProfile.contractStatutoryTreatment !== undefined
+        ? effectiveProfile.contractStatutoryTreatment
+        : employee.contractStatutoryTreatment,
+    payrollDocumentDisplaySettings:
+      effectiveProfile.payrollDocumentDisplaySettings !== undefined
+        ? effectiveProfile.payrollDocumentDisplaySettings
+        : employee.payrollDocumentDisplaySettings,
     epfRateEmployee:
       effectiveProfile.epfRateEmployee !== undefined
         ? effectiveProfile.epfRateEmployee
@@ -2343,6 +2599,9 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
     : (month !== undefined && year !== undefined)
       ? getPayrollBasicSalary(employee, month, year)
       : (mergedEmployee.basicSalary || 0);
+  const statutorySalary = options.statutorySalaryOverride !== undefined
+    ? options.statutorySalaryOverride
+    : basicSalary;
 
   // Compute individual allowances, falling back to old ones for backwards compatibility
   const allowanceGen = mergedEmployee.allowanceGeneral || 0;
@@ -2376,15 +2635,8 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
     awsVal + 
     compensationVal;
 
-  const isEligible = 
-    mergedEmployee.employmentType === 'Probation' || 
-    mergedEmployee.employmentType === 'Probationary' || 
-    mergedEmployee.employmentType === 'Permanent' || 
-    mergedEmployee.employmentType === 'Confirmation' || 
-    mergedEmployee.employmentType === 'Fixed Term Contract' ||
-    mergedEmployee.employmentType === 'Part Time' ||
-    (mergedEmployee.employmentType === 'Independent Contractor' && mergedEmployee.eligibleForStatutory === 'Yes') ||
-    (mergedEmployee.employmentType === 'Independent Contractor / Freelance' && mergedEmployee.eligibleForStatutory === 'Yes');
+  const isEligible = options.statutoryEligibilityOverride ?? getPayrollDocumentProfile(mergedEmployee).statutoryEnabled;
+  const appliedStatutoryOverrides = isEligible ? statutoryOverrides : {};
 
   const optInEpf = mergedEmployee.optInEpf !== false;
   const optInSocso = mergedEmployee.optInSocso !== false;
@@ -2392,13 +2644,13 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
   const optInPcb = mergedEmployee.optInPcb !== false;
 
   const epfRateEmp = mergedEmployee.epfRateEmployee || 11;
-  const epfRateEmployerCalculated = basicSalary <= 5000 ? 13 : 12;
+  const epfRateEmployerCalculated = statutorySalary <= 5000 ? 13 : 12;
   const epfRateEmployer = mergedEmployee.epfRateEmployer || epfRateEmployerCalculated;
 
-  const autoEpfEmployeeValue = (isEligible && optInEpf) ? Math.round((basicSalary * epfRateEmp) / 100) : 0;
-  const autoEpfEmployerValue = (isEligible && optInEpf) ? Math.round((basicSalary * epfRateEmployer) / 100) : 0;
-  const epfEmployeeValue = statutoryOverrides.epfEmployee ?? autoEpfEmployeeValue;
-  const epfEmployerValue = statutoryOverrides.epfEmployer ?? autoEpfEmployerValue;
+  const autoEpfEmployeeValue = (isEligible && optInEpf) ? Math.round((statutorySalary * epfRateEmp) / 100) : 0;
+  const autoEpfEmployerValue = (isEligible && optInEpf) ? Math.round((statutorySalary * epfRateEmployer) / 100) : 0;
+  const epfEmployeeValue = appliedStatutoryOverrides.epfEmployee ?? autoEpfEmployeeValue;
+  const epfEmployerValue = appliedStatutoryOverrides.epfEmployer ?? autoEpfEmployerValue;
 
   // Custom Deductions
   const unpaidLeaveVal = mergedEmployee.unpaidLeave || 0;
@@ -2407,20 +2659,22 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
   const deductionOthersVal = mergedEmployee.deductionOthers || 0;
 
   // Calculate 2026 dynamic SOCSO and EIS
-  const stat2026 = getStatutoryDeductions2026(basicSalary);
+  const stat2026 = getStatutoryDeductions2026(statutorySalary);
   
-  const payrollItems = [
-    { code: 'basic_salary', amount: basicSalary },
-    { code: 'overtime', amount: overtimeVal },
-    { code: 'commission', amount: commissionVal },
-    { code: 'allowance_general', amount: allowanceGen },
-    { code: 'allowance_transport', amount: allowanceTrans },
-    { code: 'allowance_parking', amount: allowancePark },
-    { code: 'allowance_meal', amount: allowanceMl },
-    { code: 'allowance_accommodation', amount: allowanceAccom },
-    { code: 'allowance_phone', amount: allowancePh },
-    { code: 'backpay', amount: backPayVal }
-  ];
+  const payrollItems = options.statutorySalaryOverride !== undefined
+    ? [{ code: 'basic_salary', amount: statutorySalary }]
+    : [
+      { code: 'basic_salary', amount: basicSalary },
+      { code: 'overtime', amount: overtimeVal },
+      { code: 'commission', amount: commissionVal },
+      { code: 'allowance_general', amount: allowanceGen },
+      { code: 'allowance_transport', amount: allowanceTrans },
+      { code: 'allowance_parking', amount: allowancePark },
+      { code: 'allowance_meal', amount: allowanceMl },
+      { code: 'allowance_accommodation', amount: allowanceAccom },
+      { code: 'allowance_phone', amount: allowancePh },
+      { code: 'backpay', amount: backPayVal }
+    ];
   if (unpaidLeaveVal > 0) {
     payrollItems.push({ code: 'unpaid_leave', amount: unpaidLeaveVal });
   }
@@ -2439,25 +2693,27 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
   const autoSocsoEmployerVal = (isEligible && optInSocso) ? socsoRes.employerSocsoTotal : 0;
   const isLindung24OptedIn = optInSocso && (mergedEmployee.enableLindung24 === true);
   const autoSkbbkEmpVal = (isEligible && isLindung24OptedIn) ? socsoRes.employeeLindung24 : 0;
-  const socsoEmployeeVal = statutoryOverrides.socsoEmployee ?? autoSocsoEmployeeVal;
-  const socsoEmployerVal = statutoryOverrides.socsoEmployer ?? autoSocsoEmployerVal;
-  const skbbkEmpVal = statutoryOverrides.lindung24Employee ?? autoSkbbkEmpVal;
+  const socsoEmployeeVal = appliedStatutoryOverrides.socsoEmployee ?? autoSocsoEmployeeVal;
+  const socsoEmployerVal = appliedStatutoryOverrides.socsoEmployer ?? autoSocsoEmployerVal;
+  const skbbkEmpVal = appliedStatutoryOverrides.lindung24Employee ?? autoSkbbkEmpVal;
   const skbbkEmplyrVal = 0; // LINDUNG 24 is employee-borne
   const autoEisEmployeeVal = (isEligible && optInEis) ? stat2026.eisEmployee : 0;
   const autoEisEmployerVal = (isEligible && optInEis) ? stat2026.eisEmployer : 0;
-  const eisEmployeeVal = statutoryOverrides.eisEmployee ?? autoEisEmployeeVal;
-  const eisEmployerVal = statutoryOverrides.eisEmployer ?? autoEisEmployerVal;
+  const eisEmployeeVal = appliedStatutoryOverrides.eisEmployee ?? autoEisEmployeeVal;
+  const eisEmployerVal = appliedStatutoryOverrides.eisEmployer ?? autoEisEmployerVal;
 
   // Dynamic 2026 PCB calculation if basicSalary changed from original or if taxPcb is missing
   const baseEmp = INITIAL_EMPLOYEES.find(e => e.id === mergedEmployee.id);
   const isSalaryChanged = baseEmp ? baseEmp.basicSalary !== basicSalary : false;
   const autoTaxPcbVal = (isEligible && optInPcb)
     ? (isSalaryChanged || mergedEmployee.taxPcb === undefined
-       ? calculatePcb2026(basicSalary, mergedEmployee.maritalStatus || 'Single', mergedEmployee.spouseIsWorking || 'No', mergedEmployee.dependants?.length || 0, autoEpfEmployeeValue, actMonth)
+       ? calculatePcb2026(statutorySalary, mergedEmployee.maritalStatus || 'Single', mergedEmployee.spouseIsWorking || 'No', mergedEmployee.dependants?.length || 0, autoEpfEmployeeValue, actMonth)
        : mergedEmployee.taxPcb)
     : 0;
-  const taxPcbVal = statutoryOverrides.taxPcb ?? autoTaxPcbVal;
-  const hrdCorpVal = statutoryOverrides.hrdCorp ?? (mergedEmployee.hrdCorp || 0);
+  const taxPcbVal = appliedStatutoryOverrides.taxPcb ?? autoTaxPcbVal;
+  const hrdCorpVal = isEligible
+    ? appliedStatutoryOverrides.hrdCorp ?? (mergedEmployee.hrdCorp || 0)
+    : 0;
 
   // Total Deductions
   const totalDeductions =
@@ -2568,38 +2824,102 @@ export function calculateYtd(employee: Employee, period: string): YtdBreakdown {
 
   for (let m = 1; m <= targetMonths; m++) {
     const record = getHistoricalPayrollRecord(employee, m, targetYear);
+    const separateRecords = (employee.historicalPayrollRecords || []).filter(history => (
+      isSeparatePayrollRecord(history) &&
+      history.payrollMonth === m &&
+      (history.payrollYear === undefined || history.payrollYear === targetYear)
+    ));
     const hasWorkedInPeriod = isEmployeeEligibleForPayrollPeriod(employee, m, targetYear);
-    if (!record && !hasWorkedInPeriod) {
+    if (!record && !hasWorkedInPeriod && separateRecords.length === 0) {
       continue;
     }
 
-    serviceMonths += 1;
-    const monthlyEmployee = getEmployeeForMonth(employee, m, targetYear);
-    const monthlyBreakdown = calculatePayslip(employee, m, targetYear);
+    if (record || hasWorkedInPeriod) {
+      serviceMonths += 1;
+      const monthlyEmployee = getEmployeeForMonth(employee, m, targetYear);
+      const monthlyBreakdown = calculatePayslip(employee, m, targetYear);
 
-    ytdBasic += getPayrollBasicSalary(employee, m, targetYear);
-    ytdAllowances += monthlyBreakdown.allowancesSum;
-    ytdBonus += monthlyEmployee.bonusAmount !== undefined
-      ? monthlyEmployee.bonusAmount
-      : (monthlyEmployee.performanceBonus || 0);
-    ytdCommissions += monthlyEmployee.commissionAmount || 0;
-    ytdBackPay += monthlyEmployee.backPayAmount || 0;
-    ytdAws += monthlyEmployee.awsAmount || 0;
-    ytdCompensation += monthlyEmployee.compensationAmount || 0;
-    ytdOvertime += monthlyEmployee.overtime || 0;
-    ytdReimbursements += monthlyBreakdown.reimbursementsSum;
-    ytdGross += monthlyBreakdown.grossEarnings;
-    ytdEpfEmployee += monthlyBreakdown.epfEmployeeValue;
-    ytdEpfEmployer += monthlyBreakdown.epfEmployerValue;
-    ytdSocsoEmployee += monthlyBreakdown.socsoEmployeeVal;
-    ytdSocsoEmployer += monthlyBreakdown.socsoEmployerVal;
-    ytdEisEmployee += monthlyBreakdown.eisEmployeeVal;
-    ytdEisEmployer += monthlyBreakdown.eisEmployerVal;
-    ytdSkbbkEmployee += monthlyBreakdown.skbbkEmpVal;
-    ytdSkbbkEmployer += monthlyBreakdown.skbbkEmplyrVal;
-    ytdTaxPcb += monthlyBreakdown.taxPcbVal;
-    ytdDeductions += monthlyBreakdown.totalDeductions;
-    ytdNetPay += monthlyBreakdown.netPay;
+      ytdBasic += getPayrollBasicSalary(employee, m, targetYear);
+      ytdAllowances += monthlyBreakdown.allowancesSum;
+      ytdBonus += monthlyEmployee.bonusAmount !== undefined
+        ? monthlyEmployee.bonusAmount
+        : (monthlyEmployee.performanceBonus || 0);
+      ytdCommissions += monthlyEmployee.commissionAmount || 0;
+      ytdBackPay += monthlyEmployee.backPayAmount || 0;
+      ytdAws += monthlyEmployee.awsAmount || 0;
+      ytdCompensation += monthlyEmployee.compensationAmount || 0;
+      ytdOvertime += monthlyEmployee.overtime || 0;
+      ytdReimbursements += monthlyBreakdown.reimbursementsSum;
+      ytdGross += monthlyBreakdown.grossEarnings;
+      ytdEpfEmployee += monthlyBreakdown.epfEmployeeValue;
+      ytdEpfEmployer += monthlyBreakdown.epfEmployerValue;
+      ytdSocsoEmployee += monthlyBreakdown.socsoEmployeeVal;
+      ytdSocsoEmployer += monthlyBreakdown.socsoEmployerVal;
+      ytdEisEmployee += monthlyBreakdown.eisEmployeeVal;
+      ytdEisEmployer += monthlyBreakdown.eisEmployerVal;
+      ytdSkbbkEmployee += monthlyBreakdown.skbbkEmpVal;
+      ytdSkbbkEmployer += monthlyBreakdown.skbbkEmplyrVal;
+      ytdTaxPcb += monthlyBreakdown.taxPcbVal;
+      ytdDeductions += monthlyBreakdown.totalDeductions;
+      ytdNetPay += monthlyBreakdown.netPay;
+    }
+
+    separateRecords.forEach(separateRecord => {
+      const recordAllowances =
+        (separateRecord.allowanceGeneral || 0) +
+        (separateRecord.allowanceTransport || 0) +
+        (separateRecord.allowanceParking || 0) +
+        (separateRecord.allowanceMeal || 0) +
+        (separateRecord.allowanceAccommodation || 0) +
+        (separateRecord.allowancePhone || 0);
+      const recordBonus = separateRecord.bonusAmount || 0;
+      const recordCommission = separateRecord.commissionAmount || 0;
+      const recordBackPay = separateRecord.backPayAmount || 0;
+      const recordAws = separateRecord.awsAmount || 0;
+      const recordCompensation = separateRecord.compensationAmount || 0;
+      const recordOvertime = separateRecord.overtime || 0;
+      const recordReimbursements = separateRecord.reimbursementAmount || 0;
+      const recordGross =
+        (separateRecord.basicSalary || 0) +
+        recordAllowances +
+        recordOvertime +
+        recordBonus +
+        recordCommission +
+        recordBackPay +
+        recordAws +
+        recordCompensation;
+      const recordDeductions =
+        (separateRecord.epfEmployee || 0) +
+        (separateRecord.socsoEmployee || 0) +
+        (separateRecord.eisEmployee || 0) +
+        (separateRecord.lindung24Employee || 0) +
+        (separateRecord.actualPCBDeducted || 0) +
+        (separateRecord.unpaidLeave || 0) +
+        (separateRecord.deductionInLieu || 0) +
+        (separateRecord.deductionCp38 || 0) +
+        (separateRecord.deductionOthers || 0);
+
+      ytdBasic += separateRecord.basicSalary || 0;
+      ytdAllowances += recordAllowances;
+      ytdBonus += recordBonus;
+      ytdCommissions += recordCommission;
+      ytdBackPay += recordBackPay;
+      ytdAws += recordAws;
+      ytdCompensation += recordCompensation;
+      ytdOvertime += recordOvertime;
+      ytdReimbursements += recordReimbursements;
+      ytdGross += recordGross;
+      ytdEpfEmployee += separateRecord.epfEmployee || 0;
+      ytdEpfEmployer += separateRecord.epfEmployer || 0;
+      ytdSocsoEmployee += separateRecord.socsoEmployee || 0;
+      ytdSocsoEmployer += separateRecord.socsoEmployer || 0;
+      ytdEisEmployee += separateRecord.eisEmployee || 0;
+      ytdEisEmployer += separateRecord.eisEmployer || 0;
+      ytdSkbbkEmployee += separateRecord.lindung24Employee || 0;
+      ytdTaxPcb += separateRecord.actualPCBDeducted || 0;
+      ytdDeductions += recordDeductions;
+      ytdNetPay += separateRecord.netPay !== undefined ? separateRecord.netPay : recordGross + recordReimbursements - recordDeductions;
+    });
   }
 
   return {
@@ -2660,6 +2980,13 @@ export const MOCK_USERS: UserAccount[] = [
     password: 'leader123#',
     name: 'Team Leader',
     role: 'Leader'
+  },
+  {
+    email: 's.jenkins@acme-global.com',
+    password: 'employee123#',
+    name: 'Sarah Jenkins',
+    role: 'Employee',
+    nickname: 'Sarah'
   }
 ];
 

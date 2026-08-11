@@ -4,20 +4,33 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Building2, Clock, CreditCard, FileText } from 'lucide-react';
-import type { CorporateEntity, Employee, PayrollRecord2026 } from '../types';
-import { calculateYtd, isEmployeeEligibleForPayrollPeriod } from '../data';
+import { Building2, Clock, CreditCard, FileText, PlusCircle } from 'lucide-react';
+import type { CorporateEntity, Employee, PayrollRecord2026, PayrollPayoutKind } from '../types';
+import type { PayrollDocumentDisplaySettings } from '../types';
+import {
+  calculateYtd,
+  getDefaultPayrollDocumentDisplaySettings,
+  getPayrollDocumentDisplaySettings,
+  getPayrollDocumentFieldLabels,
+  getPayrollDocumentProfile,
+  getPayrollDocumentProfileForRecord,
+  getSeparatePayoutConfig,
+  isEmployeeEligibleForPayrollPeriod
+} from '../data';
 import PayslipDocumentView from './PayslipDocumentView';
 import PayrollEditorMockupView from './PayrollEditorMockupView';
 
 interface PayrollViewProps {
   employees: Employee[];
   payrollRecords2026?: PayrollRecord2026[];
+  onUpdateEmployee?: (id: string, updates: Partial<Employee>) => Promise<void>;
   onShowNotification: (title: string, message: string) => void;
   activeEntity?: CorporateEntity;
+  onSavePayrollRecord?: (record: PayrollRecord2026) => Promise<void>;
 }
 
 type PayrollSubTab = 'processing' | 'document' | 'history';
+type PayrollDocumentViewMode = 'regular' | 'payout';
 
 const MONTHS = [
   'January',
@@ -45,14 +58,20 @@ const formatMoney = (value: number) =>
 export default function PayrollView({
   employees,
   payrollRecords2026 = [],
+  onUpdateEmployee,
   onShowNotification,
-  activeEntity
+  activeEntity,
+  onSavePayrollRecord
 }: PayrollViewProps) {
   const defaultPeriod = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const [selectedPayPeriod, setSelectedPayPeriod] = useState(defaultPeriod);
   const [selectedDepartment, setSelectedDepartment] = useState('All Departments');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(employees[0]?.id || '');
   const [activeSubTab, setActiveSubTab] = useState<PayrollSubTab>('processing');
+  const [displaySettingsDraft, setDisplaySettingsDraft] = useState<PayrollDocumentDisplaySettings>({});
+  const [isSavingDisplaySettings, setIsSavingDisplaySettings] = useState(false);
+  const [selectedPayoutKind, setSelectedPayoutKind] = useState<Exclude<PayrollPayoutKind, 'regular'> | null>(null);
+  const [selectedPayrollRecord, setSelectedPayrollRecord] = useState<PayrollRecord2026 | null>(null);
 
   const [monthName, selectedYearText] = selectedPayPeriod.split(' ');
   const payMonthIndex = Math.max(1, MONTHS.indexOf(monthName) + 1);
@@ -77,10 +96,225 @@ export default function PayrollView({
     }
   }, [eligibleEmployees, entityEmployees, selectedEmployeeId]);
 
+  const activePayrollEmployee = entityEmployees.find(employee => employee.id === selectedEmployeeId) || entityEmployees[0];
+  const activeDocumentProfile = activePayrollEmployee ? getPayrollDocumentProfile(activePayrollEmployee) : null;
+  const activeDocumentFieldLabels = activeDocumentProfile
+    ? getPayrollDocumentFieldLabels(activeDocumentProfile)
+    : getPayrollDocumentFieldLabels({ isPaymentVoucher: false });
+
+  useEffect(() => {
+    if (activePayrollEmployee) {
+      setDisplaySettingsDraft(getPayrollDocumentDisplaySettings(activePayrollEmployee));
+    }
+  }, [activePayrollEmployee?.id, activePayrollEmployee?.payrollDocumentDisplaySettings, activePayrollEmployee?.employmentType, activePayrollEmployee?.contractStatutoryTreatment]);
+
+  const displaySettingFields: Array<{ key: keyof PayrollDocumentDisplaySettings; label: string; statutoryOnly?: boolean }> = [
+    { key: 'showDesignation', label: activeDocumentFieldLabels.designation },
+    { key: 'showDepartment', label: 'Department' },
+    { key: 'showEmail', label: 'Email' },
+    { key: 'showNricPassport', label: 'NRIC / Passport' },
+    { key: 'showTin', label: 'TIN / Tax Number' },
+    { key: 'showEpfNumber', label: 'EPF Number', statutoryOnly: true },
+    { key: 'showDateJoined', label: activeDocumentFieldLabels.dateJoined },
+    { key: 'showLastWorkingDay', label: 'Last Working Day' },
+    { key: 'showBankAccount', label: 'Bank Account' },
+    { key: 'showCompanyAddress', label: 'Company Address' },
+    { key: 'showEarningsDetails', label: 'Earnings Details' },
+    { key: 'showDeductionDetails', label: 'Deduction Details' },
+    { key: 'showEmployerContributions', label: 'Employer Contributions', statutoryOnly: true },
+    { key: 'showYtdSummary', label: 'YTD Summary' },
+    { key: 'showNotesFooter', label: 'Notes / Footer' }
+  ];
+
+  const handleSaveDisplaySettings = async () => {
+    if (!activePayrollEmployee || !onUpdateEmployee) {
+      onShowNotification('Display Settings Not Saved', 'Employee update handler is not available for this payroll view.');
+      return;
+    }
+    setIsSavingDisplaySettings(true);
+    try {
+      await onUpdateEmployee(activePayrollEmployee.id, {
+        payrollDocumentDisplaySettings: displaySettingsDraft
+      });
+      onShowNotification('Display Settings Saved', `Payroll document display settings were saved for ${activePayrollEmployee.name}.`);
+    } catch (error: any) {
+      onShowNotification('Save Failed', error?.message || 'Payroll document display settings could not be saved.');
+    } finally {
+      setIsSavingDisplaySettings(false);
+    }
+  };
+
+  const handleResetDisplaySettings = () => {
+    if (!activePayrollEmployee) return;
+    setDisplaySettingsDraft(getDefaultPayrollDocumentDisplaySettings(activePayrollEmployee));
+  };
+
+  const launchSeparatePayout = (kind: Exclude<PayrollPayoutKind, 'regular'>) => {
+    setSelectedPayoutKind(kind);
+    setSelectedPayrollRecord(null);
+    setActiveSubTab('processing');
+  };
+
+  const clearSeparatePayoutMode = () => setSelectedPayoutKind(null);
+
+  const handleSelectedEmployeeChange = (employeeId: string) => {
+    setSelectedPayrollRecord(null);
+    setSelectedEmployeeId(employeeId);
+  };
+
+  const handleSelectedPayPeriodChange = (payPeriod: string) => {
+    setSelectedPayrollRecord(null);
+    setSelectedPayPeriod(payPeriod);
+  };
+
+  const handleSelectedDepartmentChange = (department: string) => {
+    setSelectedPayrollRecord(null);
+    setSelectedDepartment(department);
+  };
+
+  const renderSeparatePayoutPanel = () => {
+    if (!activePayrollEmployee) return null;
+
+    const payoutKinds: Exclude<PayrollPayoutKind, 'regular'>[] = ['bonus', 'incentive_commission', 'claim_reimbursement'];
+
+    return (
+      <div className="bg-white border border-neutral-border p-4 rounded-lg shadow-xs text-left space-y-3">
+        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h4 className="font-bold text-xs text-primary uppercase tracking-wider">Generate Separate Payout</h4>
+            <p className="text-[11px] text-on-surface-variant mt-1">
+              Create a separate payroll record for bonus, commission, or claim reimbursement payments.
+            </p>
+          </div>
+          {selectedPayoutKind && (
+            <button
+              type="button"
+              onClick={clearSeparatePayoutMode}
+              className="rounded border border-neutral-border px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant hover:bg-neutral-50"
+            >
+              Clear Selection
+            </button>
+          )}
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-3">
+          {payoutKinds.map(kind => {
+            const config = getSeparatePayoutConfig(kind);
+            return (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => launchSeparatePayout(kind)}
+                className={`rounded-lg border p-3 text-left transition-all hover:shadow-xs ${
+                  selectedPayoutKind === kind
+                    ? 'border-primary bg-primary/5'
+                    : 'border-neutral-border bg-neutral-50 hover:bg-primary/5'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Separate Payout</span>
+                  <PlusCircle className="h-4 w-4 text-primary" />
+                </div>
+                <p className="mt-2 font-bold text-primary">{config.title}</p>
+                <p className="mt-1 text-[11px] text-on-surface-variant">
+                  {kind === 'bonus' && 'Bonus payment document with optional statutory treatment.'}
+                  {kind === 'incentive_commission' && 'Commission or incentive payment document with optional statutory treatment.'}
+                  {kind === 'claim_reimbursement' && 'Claim or reimbursement voucher with optional statutory treatment.'}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderDisplaySettingsPanel = () => {
+    if (!activePayrollEmployee || !activeDocumentProfile) return null;
+
+    return (
+      <div className="bg-white border border-neutral-border p-4 rounded-lg shadow-xs text-left space-y-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h4 className="font-bold text-xs text-primary uppercase tracking-wider">Document Display Settings</h4>
+            <p className="text-[11px] text-on-surface-variant mt-1">
+              Saved per employee and used for both Payslip and Payment Voucher output.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+              activeDocumentProfile.isPaymentVoucher ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+            }`}>
+              {activeDocumentProfile.documentType}
+            </span>
+            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+              {activeDocumentProfile.compensationLabel}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-5">
+          {displaySettingFields.map(field => {
+            const disabled = field.statutoryOnly && !activeDocumentProfile.statutoryEnabled;
+            return (
+              <label
+                key={field.key}
+                className={`flex items-center gap-2 rounded border px-2.5 py-2 text-xs font-semibold ${
+                  disabled ? 'border-neutral-border bg-neutral-50 text-on-surface-variant opacity-60' : 'border-neutral-border bg-white text-on-surface hover:bg-primary/5'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={!!displaySettingsDraft[field.key] && !disabled}
+                  disabled={disabled}
+                  onChange={event => setDisplaySettingsDraft(previous => ({
+                    ...previous,
+                    [field.key]: event.target.checked
+                  }))}
+                  className="h-3.5 w-3.5 accent-primary"
+                />
+                {field.label}
+              </label>
+            );
+          })}
+        </div>
+
+        {!activeDocumentProfile.statutoryEnabled && (
+          <p className="rounded border border-amber-200 bg-amber-50 p-2 text-[11px] font-semibold text-amber-800">
+            Statutory-only fields are disabled because this employee receives a Payment Voucher without statutory.
+          </p>
+        )}
+
+        <div className="flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            onClick={handleResetDisplaySettings}
+            className="rounded border border-neutral-border px-3 py-1.5 text-xs font-bold text-on-surface-variant hover:bg-neutral-50"
+          >
+            Reset to Default
+          </button>
+          <button
+            type="button"
+            onClick={handleSaveDisplaySettings}
+            disabled={isSavingDisplaySettings}
+            className="rounded bg-primary px-3 py-1.5 text-xs font-bold text-white hover:bg-primary-container disabled:cursor-not-allowed disabled:bg-zinc-300"
+          >
+            {isSavingDisplaySettings ? 'Saving...' : 'Save Display Settings'}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const renderSubTabButton = (tab: PayrollSubTab, label: string, icon: React.ReactNode) => (
     <button
       type="button"
-      onClick={() => setActiveSubTab(tab)}
+      onClick={() => {
+        if (tab === 'document') {
+          setSelectedPayrollRecord(null);
+        }
+        setActiveSubTab(tab);
+      }}
       className={`flex-1 py-2 px-4 rounded font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
         activeSubTab === tab
           ? 'bg-primary text-white shadow-xs'
@@ -109,7 +343,11 @@ export default function PayrollView({
         activeEmployee.email &&
         record.employeeEmail.toLowerCase() === activeEmployee.email.toLowerCase()
       ))
-      .sort((a, b) => a.payrollMonth - b.payrollMonth);
+      .sort((a, b) => {
+        const monthDiff = a.payrollMonth - b.payrollMonth;
+        if (monthDiff !== 0) return monthDiff;
+        return String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+      });
 
     const ytd = calculateYtd(activeEmployee, selectedPayPeriod);
 
@@ -173,6 +411,11 @@ export default function PayrollView({
                     <tr key={record.id} className="hover:bg-neutral-50/40">
                       <td className="p-3 font-semibold text-primary">
                         {HISTORY_MONTHS[record.payrollMonth]} {record.payrollYear}
+                        {record.isSeparatePayout && (
+                          <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                            {record.payoutTitle || 'Separate Payout'}
+                          </span>
+                        )}
                       </td>
                       <td className="p-3 text-right font-mono">{formatMoney(record.basicSalary)}</td>
                       <td className="p-3 text-right font-mono text-on-surface-variant">{formatMoney(recordAllowances)}</td>
@@ -184,12 +427,13 @@ export default function PayrollView({
                         <button
                           type="button"
                           onClick={() => {
+                            setSelectedPayrollRecord(record);
                             setSelectedPayPeriod(`${HISTORY_MONTHS[record.payrollMonth]} ${record.payrollYear}`);
                             setActiveSubTab('document');
                           }}
                           className="px-2.5 py-1 bg-primary/10 text-primary hover:bg-primary/20 rounded font-bold transition-colors cursor-pointer text-[10px]"
                         >
-                          View Payslip
+                          View {record.payoutTitle || record.documentType || getPayrollDocumentProfile(activeEmployee).documentType}
                         </button>
                       </td>
                     </tr>
@@ -224,6 +468,9 @@ export default function PayrollView({
         </span>
       </div>
 
+      {renderSeparatePayoutPanel()}
+      {renderDisplaySettingsPanel()}
+
       {activeSubTab === 'processing' ? (
         <PayrollEditorMockupView
           mode="embedded"
@@ -231,11 +478,19 @@ export default function PayrollView({
           payrollRecords2026={payrollRecords2026}
           activeEntity={activeEntity}
           selectedEmployeeId={selectedEmployeeId}
-          onSelectedEmployeeIdChange={setSelectedEmployeeId}
+          onSelectedEmployeeIdChange={handleSelectedEmployeeChange}
           selectedPayPeriod={selectedPayPeriod}
-          onSelectedPayPeriodChange={setSelectedPayPeriod}
+          onSelectedPayPeriodChange={handleSelectedPayPeriodChange}
           selectedDepartment={selectedDepartment}
-          onSelectedDepartmentChange={setSelectedDepartment}
+          onSelectedDepartmentChange={handleSelectedDepartmentChange}
+          displaySettingsOverride={displaySettingsDraft}
+          separatePayoutKind={selectedPayoutKind}
+          onSavePayrollRecord={onSavePayrollRecord}
+          onGeneratedPayrollRecord={record => {
+            setSelectedPayrollRecord(record);
+            setSelectedPayoutKind(record.payoutKind && record.payoutKind !== 'regular' ? record.payoutKind : null);
+            setActiveSubTab('document');
+          }}
           onShowNotification={onShowNotification}
         />
       ) : activeSubTab === 'document' ? (
@@ -248,6 +503,8 @@ export default function PayrollView({
             activeEntity={activeEntity}
             payMonth={payMonthIndex}
             payYear={payYear}
+            displaySettingsOverride={displaySettingsDraft}
+            payrollRecordOverride={selectedPayrollRecord || undefined}
           />
         </div>
       ) : (
@@ -265,7 +522,7 @@ export default function PayrollView({
               <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Select Employee</label>
               <select
                 value={selectedEmployeeId}
-                onChange={event => setSelectedEmployeeId(event.target.value)}
+                onChange={event => handleSelectedEmployeeChange(event.target.value)}
                 className="rounded border border-neutral-border bg-surface p-1.5 focus:border-primary outline-none text-xs font-semibold text-primary cursor-pointer w-64"
               >
                 {entityEmployees.map(employee => (

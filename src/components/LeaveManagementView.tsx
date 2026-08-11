@@ -48,7 +48,7 @@ export interface LeaveConfig {
   condition: string;
 }
 
-const DEFAULT_LEAVE_CONFIGS: LeaveConfig[] = [
+export const DEFAULT_LEAVE_CONFIGS: LeaveConfig[] = [
   { id: '1', leaveType: 'Annual Leave', daysEntitled: 18, leaveGroup: 'Full-Time', condition: 'Paid leave' },
   { id: '2', leaveType: 'Sick Leave', daysEntitled: 14, leaveGroup: 'All', condition: 'Paid leave' },
   { id: '3', leaveType: 'Hospitalisation Leave', daysEntitled: 60, leaveGroup: 'All', condition: 'Paid leave' },

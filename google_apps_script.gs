@@ -419,7 +419,7 @@ function initializeDatabase() {
     employees: ["id", "entityId", "entityName", "name", "email", "designation", "department", "status", "bankName", "accountNo", "basicSalary", "housingAllowance", "transportAllowance", "overtime", "performanceBonus", "epfRateEmployee", "epfRateEmployer", "socsoEmployee", "socsoEmployer", "eisEmployee", "eisEmployer", "taxPcb", "unpaidLeave", "hrdCorp", "avatarUrl", "gender", "nricPassport", "nationality", "contactNumber", "taxNumber", "epfNumber", "employmentType", "maritalStatus", "eligibleForStatutory", "emergencyContactName", "emergencyContactRelation", "emergencyContactPhone", "dateOfJoined", "dateOfConfirmation", "allowanceGeneral", "allowanceTransport", "allowanceParking", "allowanceMeal", "allowanceAccommodation", "allowancePhone", "reimbursementAmount", "reimbursementDesc", "bonusAmount", "bonusDesc", "commissionAmount", "commissionDesc", "backPayAmount", "backPayDesc", "awsAmount", "awsDesc", "compensationAmount", "compensationDesc", "deductionInLieu", "deductionCp38", "deductionOthers", "deductionOthersDesc", "spouseName", "spouseNric", "spouseIsWorking", "spouseCompany", "spousePosition", "hasDependants", "icFrontUrl", "icBackUrl", "educationCertUrl", "skbbkEmployee", "skbbkEmployer", "careerHistory", "dependants", "salaryAdjustments", "createdAt", "updatedAt"],
     candidates: ["id", "name", "email", "phone", "designation", "department", "entityName", "entityId", "stage", "progress", "dateJoined", "createdAt", "updatedAt"],
     performances: ["employeeId", "employeeEmail", "reviewCycleId", "managerName", "reviewStatus", "rating", "teamworkScore", "communicationScore", "problemSolvingScore", "selfEvaluation", "managerComments", "goals", "createdAt", "updatedAt"],
-    payroll_records_2026: ["id", "employeeEmail", "payrollMonth", "payrollYear", "basicSalary", "totalAllowance", "grossSalary", "epfEmployee", "epfEmployer", "socsoEmployee", "socsoEmployer", "eisEmployee", "eisEmployer", "taxPcb", "netSalary", "status", "paymentDate", "payslipDescriptions", "createdAt", "updatedAt"],
+    payroll_records_2026: ["id", "employeeEmail", "payrollMonth", "payrollYear", "basicSalary", "allowanceGeneral", "allowanceTransport", "allowanceParking", "allowanceMeal", "allowanceAccommodation", "allowancePhone", "overtime", "bonusAmount", "bonusDesc", "commissionAmount", "commissionDesc", "backPayAmount", "backPayDesc", "awsAmount", "awsDesc", "compensationAmount", "compensationDesc", "reimbursementAmount", "reimbursementDesc", "unpaidLeave", "deductionInLieu", "deductionCp38", "deductionOthers", "deductionOthersDesc", "actualPCBDeducted", "epfEmployee", "epfEmployer", "socsoEmployee", "socsoEmployer", "lindung24Employee", "eisEmployee", "eisEmployer", "hrdCorp", "netPay", "paymentDate", "payslipDescriptions", "payoutKind", "isSeparatePayout", "statutoryTreatment", "payoutTitle", "payoutDescription", "lineNotes", "documentType", "compensationLabel", "displaySettingsSnapshot", "createdAt", "updatedAt"],
     users: ["email", "password", "name", "role", "createdAt"],
     audit_logs: ["id", "employeeEmail", "changedBy", "changeType", "oldValue", "newValue", "createdAt"]
   };
@@ -431,6 +431,15 @@ function initializeDatabase() {
       sheet.appendRow(schema[sheetName]);
     } else if (sheet.getDataRange().getLastRow() === 0) {
       sheet.appendRow(schema[sheetName]);
+    } else {
+      var existingHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]
+        .map(function(header) { return String(header).trim(); });
+      var missingHeaders = schema[sheetName].filter(function(header) {
+        return existingHeaders.indexOf(header) === -1;
+      });
+      if (missingHeaders.length > 0) {
+        sheet.getRange(1, existingHeaders.length + 1, 1, missingHeaders.length).setValues([missingHeaders]);
+      }
     }
   }
 }

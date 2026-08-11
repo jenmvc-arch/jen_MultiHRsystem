@@ -2,6 +2,7 @@ import type { AppTab } from '../types';
 
 export const APP_TAB_PATHS: Record<AppTab, string> = {
   dashboard: '/dashboard',
+  'employee-portal': '/employee-portal',
   directory: '/employee-directory',
   payroll: '/payroll',
   'payroll-mockup': '/payroll/mockup',

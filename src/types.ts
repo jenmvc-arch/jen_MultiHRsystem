@@ -5,6 +5,7 @@
 
 export type AppTab =
   | 'dashboard'
+  | 'employee-portal'
   | 'payroll'
   | 'payroll-mockup'
   | 'payslip-viewer'
@@ -74,6 +75,32 @@ export interface PayslipDescriptionOverrides {
   lindung24Employee?: string;
   eisEmployee?: string;
   taxPcb?: string;
+}
+
+export type PayrollDocumentType = 'Payslip' | 'Payment Voucher';
+
+export type ContractStatutoryTreatment = 'with_statutory' | 'without_statutory';
+
+export type PayrollPayoutKind = 'regular' | 'bonus' | 'incentive_commission' | 'claim_reimbursement';
+
+export type PayrollLineNotes = Record<string, string>;
+
+export interface PayrollDocumentDisplaySettings {
+  showDesignation?: boolean;
+  showDepartment?: boolean;
+  showEmail?: boolean;
+  showNricPassport?: boolean;
+  showTin?: boolean;
+  showEpfNumber?: boolean;
+  showDateJoined?: boolean;
+  showLastWorkingDay?: boolean;
+  showBankAccount?: boolean;
+  showCompanyAddress?: boolean;
+  showEarningsDetails?: boolean;
+  showDeductionDetails?: boolean;
+  showEmployerContributions?: boolean;
+  showYtdSummary?: boolean;
+  showNotesFooter?: boolean;
 }
 
 export interface Employee {
@@ -150,6 +177,7 @@ export interface Employee {
     | 'Internship'
     | 'Probation'
     | 'Permanent'
+    | 'Contract'
     | 'Fixed Term Contract'
     | 'Independent Contractor'
     | 'Part Time'
@@ -158,6 +186,8 @@ export interface Employee {
     | 'Independent Contractor / Freelance';
   maritalStatus: 'Single' | 'Married' | 'Divorced' | 'Widowed';
   eligibleForStatutory?: 'Yes' | 'No';
+  contractStatutoryTreatment?: ContractStatutoryTreatment;
+  payrollDocumentDisplaySettings?: PayrollDocumentDisplaySettings;
   optInEpf?: boolean;
   optInSocso?: boolean;
   optInEis?: boolean;
@@ -292,6 +322,8 @@ export interface EmployeeTaxProfile {
   hasDependants?: 'Yes' | 'No';
   dependantsCount?: number;
   eligibleForStatutory?: 'Yes' | 'No';
+  contractStatutoryTreatment?: ContractStatutoryTreatment;
+  payrollDocumentDisplaySettings?: PayrollDocumentDisplaySettings;
   epfRateEmployee?: number;
   epfRateEmployer?: number;
   taxNumber?: string;
@@ -311,6 +343,7 @@ export interface EmployeeTaxProfile {
 }
 
 export interface HistoricalPayrollRecord {
+  id?: string;
   payrollMonth: number; // 1 to 12
   payrollYear?: number;
   paymentDate?: string;
@@ -341,6 +374,15 @@ export interface HistoricalPayrollRecord {
   deductionOthers?: number;
   deductionOthersDesc?: string;
   payslipDescriptions?: PayslipDescriptionOverrides;
+  payoutKind?: PayrollPayoutKind;
+  isSeparatePayout?: boolean;
+  statutoryTreatment?: ContractStatutoryTreatment;
+  payoutTitle?: string;
+  payoutDescription?: string;
+  lineNotes?: PayrollLineNotes;
+  documentType?: PayrollDocumentType;
+  compensationLabel?: string;
+  displaySettingsSnapshot?: PayrollDocumentDisplaySettings;
   epfEmployee?: number;
   epfEmployer?: number;
   socsoEmployee?: number;
@@ -352,6 +394,7 @@ export interface HistoricalPayrollRecord {
   zakat?: number;
   cp38?: number;
   actualPCBDeducted: number;
+  netPay?: number;
 }
 
 export interface TP1Declaration {
@@ -584,6 +627,15 @@ export interface PayrollRecord2026 {
   deductionOthers: number;
   deductionOthersDesc?: string;
   payslipDescriptions?: PayslipDescriptionOverrides;
+  payoutKind?: PayrollPayoutKind;
+  isSeparatePayout?: boolean;
+  statutoryTreatment?: ContractStatutoryTreatment;
+  payoutTitle?: string;
+  payoutDescription?: string;
+  lineNotes?: PayrollLineNotes;
+  documentType?: PayrollDocumentType;
+  compensationLabel?: string;
+  displaySettingsSnapshot?: PayrollDocumentDisplaySettings;
   actualPCBDeducted: number;
   epfEmployee: number;
   epfEmployer: number;

@@ -35,7 +35,11 @@ import {
   SEED_CANDIDATES,
   SEED_REVIEW_CYCLES,
   seedSocsoConfigurationsAndBrackets,
-  compressLogoFile
+  compressLogoFile,
+  getPayrollDocumentDisplaySettings,
+  getPayrollDocumentProfile,
+  mergePayrollRecords2026,
+  isSeparatePayrollRecord
 } from './data';
 import { getGmt8Timestamp, getGmt8DateString } from './lib/dateUtils';
 import { formatNricOrPassport } from './lib/employeeInput';
@@ -56,6 +60,7 @@ import FormsDirectoryView from './components/FormsDirectoryView';
 import HireOnboardingView from './components/HireOnboardingView';
 import DepartmentRoleView from './components/DepartmentRoleView';
 import SocsoConfigAdminView from './components/SocsoConfigAdminView';
+import EmployeePortalView from './components/EmployeePortalView';
 import LoginView from './components/LoginView';
 import JobApplicationForm from './components/JobApplicationForm';
 import OnboardingForm from './components/OnboardingForm';
@@ -63,6 +68,20 @@ import { EntityContextProvider } from './context/EntityContext';
 
 import { googleSheetsClient, isGoogleConfigured, SheetsDataPayload } from './lib/googleSheetsClient';
 import { supabase, supabaseClient, isSupabaseConfigured } from './lib/supabaseClient';
+
+const parseOptionalJson = <T,>(value: unknown): T | undefined => {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T;
+    } catch (_error) {
+      return undefined;
+    }
+  }
+  return value as T;
+};
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -96,6 +115,11 @@ class ErrorBoundary extends (React.Component as any) {
 }
 
 export default function App() {
+  useState(() => {
+    seedSocsoConfigurationsAndBrackets();
+    return true;
+  });
+
   // Navigation & View States
   const [activeEntityId, setActiveEntityId] = useState<string>(() => {
     return localStorage.getItem('active_corporate_entity_id') || (isGoogleConfigured ? '' : 'ENT-92');
@@ -144,6 +168,9 @@ export default function App() {
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [currentUserNickname, setCurrentUserNickname] = useState<string | null>(null);
+  const isEmployeePortalDemoPath = window.location.pathname.startsWith('/employee-portal/demo');
+  const isEmployeeAccount = String(currentUserRole || '').toLowerCase().includes('employee');
+  const employeePortalQueryEmployeeId = new URLSearchParams(window.location.search).get('employeeId') || 'EMP-84729';
 
   const handleLoginSuccess = (user: UserAccount) => {
     localStorage.setItem('hr-nexus-auth', 'true');
@@ -160,6 +187,16 @@ export default function App() {
     setCurrentUserName(user.name);
     setCurrentUserRole(user.role);
     setCurrentUserNickname(user.nickname || null);
+
+    if (String(user.role || '').toLowerCase().includes('employee')) {
+      setCurrentTab('employee-portal');
+      if (!window.location.pathname.startsWith('/employee-portal')) {
+        window.history.replaceState({ tab: 'employee-portal' }, '', '/employee-portal');
+      }
+    } else if (window.location.pathname.startsWith('/employee-portal')) {
+      setCurrentTab('dashboard');
+      window.history.replaceState({ tab: 'dashboard' }, '', '/dashboard');
+    }
 
     // Read and restore preferences
     const prefJson = localStorage.getItem(`user_entity_preferences_${user.email}`);
@@ -191,6 +228,9 @@ export default function App() {
     setCurrentUserEmail(null);
     setCurrentUserName(null);
     setCurrentUserRole(null);
+    setCurrentUserNickname(null);
+    setCurrentTab('dashboard');
+    window.history.replaceState({}, '', '/');
   };
 
   // Core Database States
@@ -260,11 +300,15 @@ export default function App() {
       const employeeRecords = emp.historicalPayrollRecords || [];
       const mapped = records.map(r => {
         const existing = employeeRecords.find(history => (
-          history.payrollMonth === r.payrollMonth &&
-          (history.payrollYear === undefined || history.payrollYear === r.payrollYear)
+          isSeparatePayrollRecord(r)
+            ? history.id === r.id
+            : !isSeparatePayrollRecord(history) &&
+              history.payrollMonth === r.payrollMonth &&
+              (history.payrollYear === undefined || history.payrollYear === r.payrollYear)
         ));
         return {
           ...existing,
+          id: r.id,
           payrollMonth: r.payrollMonth,
           payrollYear: r.payrollYear,
           paymentDate: r.paymentDate ?? existing?.paymentDate,
@@ -291,10 +335,19 @@ export default function App() {
           unpaidLeave: r.unpaidLeave,
           deductionInLieu: r.deductionInLieu,
           deductionCp38: r.deductionCp38,
-          deductionOthers: r.deductionOthers,
-          deductionOthersDesc: r.deductionOthersDesc ?? existing?.deductionOthersDesc,
-          payslipDescriptions: r.payslipDescriptions ?? existing?.payslipDescriptions,
-          actualPCBDeducted: r.actualPCBDeducted,
+	          deductionOthers: r.deductionOthers,
+	          deductionOthersDesc: r.deductionOthersDesc ?? existing?.deductionOthersDesc,
+	          payslipDescriptions: r.payslipDescriptions ?? existing?.payslipDescriptions,
+	          payoutKind: r.payoutKind ?? existing?.payoutKind ?? 'regular',
+	          isSeparatePayout: r.isSeparatePayout ?? existing?.isSeparatePayout ?? false,
+	          statutoryTreatment: r.statutoryTreatment ?? existing?.statutoryTreatment,
+	          payoutTitle: r.payoutTitle ?? existing?.payoutTitle,
+	          payoutDescription: r.payoutDescription ?? existing?.payoutDescription,
+	          lineNotes: r.lineNotes ?? existing?.lineNotes,
+	          documentType: r.documentType ?? existing?.documentType,
+	          compensationLabel: r.compensationLabel ?? existing?.compensationLabel,
+	          displaySettingsSnapshot: r.displaySettingsSnapshot ?? existing?.displaySettingsSnapshot,
+	          actualPCBDeducted: r.actualPCBDeducted,
           epfEmployee: r.epfEmployee,
           epfEmployer: r.epfEmployer,
           socsoEmployee: r.socsoEmployee,
@@ -304,12 +357,16 @@ export default function App() {
           eisEmployer: r.eisEmployer,
           hrdCorp: r.hrdCorp ?? existing?.hrdCorp,
           zakat: existing?.zakat || 0,
-          cp38: r.deductionCp38
+          cp38: r.deductionCp38,
+          netPay: r.netPay
         };
       });
       const employeeOnlyRecords = employeeRecords.filter(record => !mapped.some(mappedRecord => (
-        mappedRecord.payrollMonth === record.payrollMonth &&
-        (record.payrollYear === undefined || mappedRecord.payrollYear === record.payrollYear)
+        isSeparatePayrollRecord(record)
+          ? mappedRecord.id && mappedRecord.id === record.id
+          : !isSeparatePayrollRecord(mappedRecord) &&
+            mappedRecord.payrollMonth === record.payrollMonth &&
+            (record.payrollYear === undefined || mappedRecord.payrollYear === record.payrollYear)
       )));
       return {
         ...emp,
@@ -427,6 +484,8 @@ export default function App() {
           employmentType: emp.employmentType,
           maritalStatus: emp.maritalStatus,
           eligibleForStatutory: emp.eligibleForStatutory || 'Yes',
+          contractStatutoryTreatment: emp.contractStatutoryTreatment || '',
+          payrollDocumentDisplaySettings: JSON.stringify(emp.payrollDocumentDisplaySettings || {}),
           emergencyContactName: emp.emergencyContactName,
           emergencyContactRelation: emp.emergencyContactRelation,
           emergencyContactPhone: emp.emergencyContactPhone,
@@ -539,9 +598,27 @@ export default function App() {
 
       // Preferences are managed strictly by active_corporate_entity_id state
     }
-    // Seed statutory configurations and brackets on mount
-    seedSocsoConfigurationsAndBrackets();
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !currentUserRole) return;
+
+    const role = String(currentUserRole).toLowerCase();
+    const onEmployeePortalPath = window.location.pathname.startsWith('/employee-portal');
+
+    if (role.includes('employee')) {
+      if (!onEmployeePortalPath) {
+        setCurrentTab('employee-portal');
+        window.history.replaceState({ tab: 'employee-portal' }, '', '/employee-portal');
+      }
+      return;
+    }
+
+    if (onEmployeePortalPath) {
+      setCurrentTab('dashboard');
+      window.history.replaceState({ tab: 'dashboard' }, '', '/dashboard');
+    }
+  }, [isAuthenticated, currentUserRole]);
 
   // Load data from Supabase or Google Sheets dynamically if configured
   useEffect(() => {
@@ -816,6 +893,8 @@ export default function App() {
             employmentType: e.employmentType || 'Confirmation',
             maritalStatus: e.maritalStatus || 'Single',
             eligibleForStatutory: e.eligibleForStatutory || 'Yes',
+            contractStatutoryTreatment: e.contractStatutoryTreatment || undefined,
+            payrollDocumentDisplaySettings: parseOptionalJson(e.payrollDocumentDisplaySettings),
             emergencyContactName: e.emergencyContactName || '',
             emergencyContactRelation: e.emergencyContactRelation || '',
             emergencyContactPhone: e.emergencyContactPhone || '',
@@ -955,18 +1034,17 @@ export default function App() {
           deductionOthersDesc: r.deductionOthersDesc === undefined ? undefined : String(r.deductionOthersDesc || ''),
           paymentDate: r.paymentDate ? String(r.paymentDate) : undefined,
           payslipDescriptions: (() => {
-            if (r.payslipDescriptions === undefined || r.payslipDescriptions === null || r.payslipDescriptions === '') {
-              return undefined;
-            }
-            if (typeof r.payslipDescriptions === 'string') {
-              try {
-                return JSON.parse(r.payslipDescriptions);
-              } catch (_error) {
-                return undefined;
-              }
-            }
-            return r.payslipDescriptions;
+            return parseOptionalJson(r.payslipDescriptions);
           })(),
+          payoutKind: r.payoutKind || 'regular',
+          isSeparatePayout: r.isSeparatePayout === true || r.isSeparatePayout === 'true',
+          statutoryTreatment: r.statutoryTreatment || undefined,
+          payoutTitle: r.payoutTitle === undefined ? undefined : String(r.payoutTitle || ''),
+          payoutDescription: r.payoutDescription === undefined ? undefined : String(r.payoutDescription || ''),
+          lineNotes: parseOptionalJson(r.lineNotes),
+          documentType: r.documentType || undefined,
+          compensationLabel: r.compensationLabel || undefined,
+          displaySettingsSnapshot: parseOptionalJson(r.displaySettingsSnapshot),
           actualPCBDeducted: Number(r.actualPCBDeducted ?? r.taxPcb ?? 0),
           epfEmployee: Number(r.epfEmployee || 0),
           epfEmployer: Number(r.epfEmployer || 0),
@@ -1361,6 +1439,8 @@ export default function App() {
           employmentType: newEmployee.employmentType,
           maritalStatus: newEmployee.maritalStatus,
           eligibleForStatutory: newEmployee.eligibleForStatutory || 'Yes',
+          contractStatutoryTreatment: newEmployee.contractStatutoryTreatment || '',
+          payrollDocumentDisplaySettings: JSON.stringify(newEmployee.payrollDocumentDisplaySettings || {}),
           emergencyContactName: newEmployee.emergencyContactName,
           emergencyContactRelation: newEmployee.emergencyContactRelation,
           emergencyContactPhone: newEmployee.emergencyContactPhone,
@@ -1542,6 +1622,8 @@ export default function App() {
         if (updates.employmentType !== undefined) payloadUpdates.employmentType = updates.employmentType;
         if (updates.maritalStatus !== undefined) payloadUpdates.maritalStatus = updates.maritalStatus;
         if (updates.eligibleForStatutory !== undefined) payloadUpdates.eligibleForStatutory = updates.eligibleForStatutory;
+        if (updates.contractStatutoryTreatment !== undefined) payloadUpdates.contractStatutoryTreatment = updates.contractStatutoryTreatment;
+        if (updates.payrollDocumentDisplaySettings !== undefined) payloadUpdates.payrollDocumentDisplaySettings = JSON.stringify(updates.payrollDocumentDisplaySettings);
         if (updates.emergencyContactName !== undefined) payloadUpdates.emergencyContactName = updates.emergencyContactName;
         if (updates.emergencyContactRelation !== undefined) payloadUpdates.emergencyContactRelation = updates.emergencyContactRelation;
         if (updates.emergencyContactPhone !== undefined) payloadUpdates.emergencyContactPhone = updates.emergencyContactPhone;
@@ -1630,12 +1712,21 @@ export default function App() {
   };
 
   const handleSavePayrollRecord2026 = async (record: PayrollRecord2026) => {
+    const payrollEmployee = employees.find(e => e.email?.toLowerCase() === record.employeeEmail?.toLowerCase());
+    const documentProfile = payrollEmployee ? getPayrollDocumentProfile(payrollEmployee) : null;
+    const recordToSave: PayrollRecord2026 = {
+      ...record,
+      documentType: record.documentType || documentProfile?.documentType,
+      compensationLabel: record.compensationLabel || documentProfile?.compensationLabel,
+      displaySettingsSnapshot: record.displaySettingsSnapshot || (payrollEmployee ? getPayrollDocumentDisplaySettings(payrollEmployee) : undefined)
+    };
+
     if (isSupabaseConfigured) {
       try {
         await supabaseClient.upsert('payroll_records_2026', {
-          ...record,
-          taxPcb: record.actualPCBDeducted,
-          netSalary: record.netPay
+          ...recordToSave,
+          taxPcb: recordToSave.actualPCBDeducted,
+          netSalary: recordToSave.netPay
         });
         console.log('[Supabase] Saved payroll record successfully:', record.id);
       } catch (err: any) {
@@ -1645,15 +1736,16 @@ export default function App() {
       }
     } else if (isGoogleConfigured) {
       try {
-        const emp = employees.find(e => e.email?.toLowerCase() === record.employeeEmail?.toLowerCase());
-        const scriptUrl = getScriptUrlForEntity(emp?.entityId);
+        const scriptUrl = getScriptUrlForEntity(payrollEmployee?.entityId);
         const sheetRecord = {
-          ...record,
-          payslipDescriptions: JSON.stringify(record.payslipDescriptions || {})
+          ...recordToSave,
+          payslipDescriptions: JSON.stringify(recordToSave.payslipDescriptions || {}),
+          lineNotes: JSON.stringify(recordToSave.lineNotes || {}),
+          displaySettingsSnapshot: JSON.stringify(recordToSave.displaySettingsSnapshot || {})
         };
         try {
-          await googleSheetsClient.update('payroll_records_2026', record.id, sheetRecord, 'id', scriptUrl);
-          console.log('[Google Sheets] Updated payroll record successfully:', record.id);
+          await googleSheetsClient.update('payroll_records_2026', recordToSave.id, sheetRecord, 'id', scriptUrl);
+          console.log('[Google Sheets] Updated payroll record successfully:', recordToSave.id);
         } catch (updateErr: any) {
           console.warn('[Google Sheets] Update failed or record not found, inserting:', updateErr);
           await googleSheetsClient.insert('payroll_records_2026', sheetRecord, scriptUrl);
@@ -1666,15 +1758,7 @@ export default function App() {
       }
     }
 
-    setPayrollRecords2026(prev => {
-      const filtered = prev.filter(r =>
-        r.id !== record.id &&
-        !(r.employeeEmail.toLowerCase() === record.employeeEmail.toLowerCase() &&
-          r.payrollMonth === record.payrollMonth &&
-          r.payrollYear === record.payrollYear)
-      );
-      return [...filtered, record];
-    });
+    setPayrollRecords2026(prev => mergePayrollRecords2026(prev, recordToSave));
   };
 
   const handleSavePerformance = async (updatedPerf: EmployeePerformance) => {
@@ -1815,7 +1899,72 @@ export default function App() {
     );
   };
 
-  if (isLoadingDb) {
+  const isEmployeePortalPreview = isEmployeePortalDemoPath && !isAuthenticated;
+  const employeePortalSessionEmail = String(currentUserEmail || '').toLowerCase();
+  const employeePortalDemoEmployee = SEED_EMPLOYEES.find(employee =>
+    employee.id === employeePortalQueryEmployeeId ||
+    employee.email.toLowerCase() === employeePortalQueryEmployeeId.toLowerCase()
+  ) || SEED_EMPLOYEES[0] || null;
+  const employeePortalLiveEmployee = isEmployeeAccount
+    ? (
+      employees.find(employee => employee.email.toLowerCase() === employeePortalSessionEmail) ||
+      (!isSupabaseConfigured && !isGoogleConfigured
+        ? SEED_EMPLOYEES.find(employee => employee.email.toLowerCase() === employeePortalSessionEmail)
+        : null)
+    )
+    : null;
+  const employeePortalEmployee = isEmployeePortalPreview
+    ? employeePortalDemoEmployee
+    : employeePortalLiveEmployee;
+  const employeePortalEmployeeEmail = String(employeePortalEmployee?.email || '').toLowerCase();
+  const employeePortalEmployees = employeePortalEmployee ? [employeePortalEmployee] : [];
+  const employeePortalEntitiesSource = isEmployeePortalPreview
+    ? SEED_ENTITIES
+    : (entities.length > 0 ? entities : SEED_ENTITIES);
+  const employeePortalEntity = employeePortalEmployee
+    ? (
+      employeePortalEntitiesSource.find(entity => entity.id === employeePortalEmployee.entityId) ||
+      SEED_ENTITIES.find(entity => entity.id === employeePortalEmployee.entityId)
+    )
+    : null;
+  const employeePortalEntities = employeePortalEntity ? [employeePortalEntity] : employeePortalEntitiesSource;
+  const employeePortalPayrollRecords = employeePortalEmployeeEmail
+    ? payrollRecords2026.filter(record => record.employeeEmail.toLowerCase() === employeePortalEmployeeEmail)
+    : [];
+  const employeePortalEmployeeKeys = new Set(
+    [employeePortalEmployee?.id, employeePortalEmployee?.email]
+      .filter(Boolean)
+      .map(value => String(value).toLowerCase())
+  );
+  const employeePortalPerformances = (isEmployeePortalPreview ? SEED_PERFORMANCES : performances)
+    .filter(performance => employeePortalEmployeeKeys.has(performance.employeeId.toLowerCase()));
+  const employeePortalReviewCycles = isEmployeePortalPreview
+    ? SEED_REVIEW_CYCLES
+    : (reviewCycles.length > 0 ? reviewCycles : SEED_REVIEW_CYCLES);
+  const shouldRenderEmployeePortal = isEmployeePortalPreview || (isAuthenticated && isEmployeeAccount);
+  const handleEmployeePortalUpdateEmployee = async (id: string, updates: Partial<Employee>) => {
+    const normalizedId = id.toLowerCase();
+    const existingEmployee = employees.find(employee =>
+      employee.id.toLowerCase() === normalizedId ||
+      employee.email.toLowerCase() === normalizedId
+    );
+    if (existingEmployee) {
+      await handleUpdateEmployeeSalary(id, updates);
+      return;
+    }
+
+    const fallbackEmployee = SEED_EMPLOYEES.find(employee =>
+      employee.id.toLowerCase() === normalizedId ||
+      employee.email.toLowerCase() === normalizedId
+    );
+    if (!fallbackEmployee) {
+      throw new Error('The employee record could not be found.');
+    }
+
+    setEmployees(prev => [{ ...fallbackEmployee, ...updates }, ...prev]);
+  };
+
+  if (isLoadingDb && !shouldRenderEmployeePortal) {
     return (
       <div className="min-h-screen bg-[#FFF8F0] flex flex-col items-center justify-center p-4">
         <div className="flex flex-col items-center gap-4 text-center">
@@ -1915,6 +2064,27 @@ export default function App() {
     );
   }
 
+  if (shouldRenderEmployeePortal) {
+    return (
+      <ErrorBoundary onError={(err) => setGlobalError({ message: err.message, stack: err.stack })}>
+        <EmployeePortalView
+          employees={employeePortalEmployees}
+          payrollRecords2026={employeePortalPayrollRecords}
+          entities={employeePortalEntities}
+          performances={employeePortalPerformances}
+          reviewCycles={employeePortalReviewCycles}
+          currentUserName={isEmployeePortalPreview ? employeePortalEmployee?.name || 'Employee' : currentUserName}
+          currentUserEmail={isEmployeePortalPreview ? employeePortalEmployee?.email || 'employee@redpoint.com' : currentUserEmail}
+          currentUserRole={isEmployeePortalPreview ? 'Employee' : currentUserRole}
+          onShowNotification={triggerNotification}
+          onUpdateEmployee={isEmployeePortalPreview ? async () => {} : handleEmployeePortalUpdateEmployee}
+          onSignOut={handleSignOut}
+          isPreviewMode={isEmployeePortalPreview}
+          previewEmployeeId={isEmployeePortalPreview ? employeePortalEmployee?.id || employeePortalQueryEmployeeId : undefined}
+        />
+      </ErrorBoundary>
+    );
+  }
 
   if (!isAuthenticated) {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
@@ -2128,11 +2298,13 @@ export default function App() {
 
           {currentTab === 'payroll' && (
             <PayrollView 
-              employees={filteredEmployeesWithHistory}
-              payrollRecords2026={filteredPayrollRecords2026}
-              onShowNotification={triggerNotification}
-              activeEntity={activeEntity}
-            />
+	              employees={filteredEmployeesWithHistory}
+	              payrollRecords2026={filteredPayrollRecords2026}
+	              onUpdateEmployee={handleUpdateEmployeeSalary}
+	              onSavePayrollRecord={handleSavePayrollRecord2026}
+	              onShowNotification={triggerNotification}
+	              activeEntity={activeEntity}
+	            />
           )}
 
           {currentTab === 'payroll-mockup' && (

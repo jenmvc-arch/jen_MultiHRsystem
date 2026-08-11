@@ -333,6 +333,13 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                 'Sign In'
               )}
             </button>
+
+            <a
+              href="/employee-portal/demo?employeeId=EMP-84729"
+              className="mt-3 w-full h-11 inline-flex items-center justify-center rounded-xl border border-[#A32626]/20 bg-[#FFF8EF] text-sm font-semibold text-[#A32626] hover:bg-[#F9EBDD] transition-colors"
+            >
+              Open employee demo
+            </a>
           </form>
 
         </div>

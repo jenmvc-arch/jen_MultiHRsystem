@@ -21,7 +21,11 @@ import type {
   CorporateEntity,
   Employee,
   PayrollRecord2026,
-  PayslipDescriptionOverrides
+  PayrollDocumentDisplaySettings,
+  PayslipDescriptionOverrides,
+  PayrollLineNotes,
+  PayrollPayoutKind,
+  ContractStatutoryTreatment
 } from '../types';
 import {
   calculatePayslip,
@@ -29,13 +33,18 @@ import {
   calculateYtd,
   getEffectiveTerminationDateForDate,
   getEmployeeForMonth,
+  getPayrollDocumentDisplaySettings,
+  getPayrollDocumentFieldLabels,
+  getPayrollDocumentProfile,
   getPayrollBasicSalary,
   getSalaryProration,
+  getSeparatePayoutConfig,
+  getSeparatePayoutDocumentProfile,
   isEmployeeEligibleForPayrollPeriod,
   type PayslipBreakdown,
   type YtdBreakdown
 } from '../data';
-import { formatToDDMMMYYYY } from '../lib/dateUtils';
+import { formatToDDMMMYYYY, getGmt8Timestamp } from '../lib/dateUtils';
 
 interface PayrollEditorMockupViewProps {
   employees: Employee[];
@@ -48,6 +57,10 @@ interface PayrollEditorMockupViewProps {
   onSelectedPayPeriodChange?: (payPeriod: string) => void;
   selectedDepartment?: string;
   onSelectedDepartmentChange?: (department: string) => void;
+  displaySettingsOverride?: PayrollDocumentDisplaySettings;
+  separatePayoutKind?: Exclude<PayrollPayoutKind, 'regular'> | null;
+  onSavePayrollRecord?: (record: PayrollRecord2026) => Promise<void>;
+  onGeneratedPayrollRecord?: (record: PayrollRecord2026) => void;
   onBack?: () => void;
   onShowNotification: (title: string, message: string) => void;
 }
@@ -90,10 +103,13 @@ type MockupDraft = {
   deductionCp38: number;
   deductionOthers: number;
   deductionOthersDesc: string;
+  statutoryTreatment: ContractStatutoryTreatment;
+  payoutDescription: string;
+  lineNotes: PayrollLineNotes;
   descriptions: PayslipDescriptionOverrides;
 };
 
-type NumberField = Exclude<keyof MockupDraft, 'paymentDate' | 'bonusDesc' | 'commissionDesc' | 'backPayDesc' | 'awsDesc' | 'compensationDesc' | 'reimbursementDesc' | 'otherEarningDesc' | 'deductionOthersDesc' | 'descriptions'>;
+type NumberField = Exclude<keyof MockupDraft, 'paymentDate' | 'bonusDesc' | 'commissionDesc' | 'backPayDesc' | 'awsDesc' | 'compensationDesc' | 'reimbursementDesc' | 'otherEarningDesc' | 'deductionOthersDesc' | 'statutoryTreatment' | 'payoutDescription' | 'lineNotes' | 'descriptions'>;
 type VariableDescriptionField = 'bonusDesc' | 'commissionDesc' | 'backPayDesc' | 'awsDesc' | 'compensationDesc' | 'reimbursementDesc' | 'otherEarningDesc';
 
 const MONTHS = [
@@ -128,8 +144,8 @@ const parseEditableAmount = (value: string) => {
 const getDefaultPaymentDate = (month: number, year: number) =>
   `${year}-${String(month).padStart(2, '0')}-28`;
 
-const getDraftKey = (employee: Employee, month: number, year: number) =>
-  `${employee.email.toLowerCase()}_${year}_${month}`;
+const getDraftKey = (employee: Employee, month: number, year: number, payoutKind?: Exclude<PayrollPayoutKind, 'regular'> | null) =>
+  `${employee.email.toLowerCase()}_${year}_${month}_${payoutKind || 'regular'}`;
 
 const DEFAULT_DESCRIPTION_OVERRIDES: PayslipDescriptionOverrides = {
   basicSalary: 'Basic Salary',
@@ -151,11 +167,16 @@ const DEFAULT_DESCRIPTION_OVERRIDES: PayslipDescriptionOverrides = {
   taxPcb: 'Income Tax (PCB)'
 };
 
-const getInitialDraft = (employee: Employee, month: number, year: number): MockupDraft => {
+const getInitialDraft = (employee: Employee, month: number, year: number, payoutKind?: Exclude<PayrollPayoutKind, 'regular'> | null): MockupDraft => {
   const effectiveEmployee = getEmployeeForMonth(employee, month, year);
   const breakdown = calculatePayslip(employee, month, year);
+  const documentProfile = getPayrollDocumentProfile(effectiveEmployee);
+  const separatePayoutConfig = payoutKind ? getSeparatePayoutConfig(payoutKind) : null;
+  const separatePayoutAmount = separatePayoutConfig
+    ? Number(effectiveEmployee[separatePayoutConfig.amountField] || 0)
+    : 0;
 
-  return {
+  const regularDraft: MockupDraft = {
     paymentDate: effectiveEmployee.paymentDate || getDefaultPaymentDate(month, year),
     basicSalary: getPayrollBasicSalary(employee, month, year),
     allowanceGeneral: effectiveEmployee.allowanceGeneral || 0,
@@ -193,11 +214,62 @@ const getInitialDraft = (employee: Employee, month: number, year: number): Mocku
     deductionCp38: effectiveEmployee.deductionCp38 || 0,
     deductionOthers: effectiveEmployee.deductionOthers || 0,
     deductionOthersDesc: effectiveEmployee.deductionOthersDesc || '',
+    statutoryTreatment: documentProfile.statutoryEnabled ? 'with_statutory' : 'without_statutory',
+    payoutDescription: '',
+    lineNotes: {},
     descriptions: {
       ...DEFAULT_DESCRIPTION_OVERRIDES,
       ...(effectiveEmployee.deductionOthersDesc ? { deductionOthers: effectiveEmployee.deductionOthersDesc } : {}),
       ...(effectiveEmployee.payslipDescriptions || {})
     }
+  };
+
+  if (!separatePayoutConfig) {
+    return regularDraft;
+  }
+
+  return {
+    ...regularDraft,
+    basicSalary: 0,
+    allowanceGeneral: 0,
+    allowanceTransport: 0,
+    allowanceParking: 0,
+    allowanceMeal: 0,
+    allowanceAccommodation: 0,
+    allowancePhone: 0,
+    overtime: 0,
+    bonusAmount: payoutKind === 'bonus' ? separatePayoutAmount : 0,
+    bonusDesc: payoutKind === 'bonus' ? (effectiveEmployee.bonusDesc || separatePayoutConfig.compensationLabel) : '',
+    commissionAmount: payoutKind === 'incentive_commission' ? separatePayoutAmount : 0,
+    commissionDesc: payoutKind === 'incentive_commission' ? (effectiveEmployee.commissionDesc || separatePayoutConfig.compensationLabel) : '',
+    backPayAmount: 0,
+    backPayDesc: '',
+    awsAmount: 0,
+    awsDesc: '',
+    compensationAmount: 0,
+    compensationDesc: '',
+    reimbursementAmount: payoutKind === 'claim_reimbursement' ? separatePayoutAmount : 0,
+    reimbursementDesc: payoutKind === 'claim_reimbursement' ? (effectiveEmployee.reimbursementDesc || separatePayoutConfig.compensationLabel) : '',
+    otherEarningAmount: 0,
+    otherEarningDesc: '',
+    epfEmployee: 0,
+    epfEmployer: 0,
+    socsoEmployee: 0,
+    socsoEmployer: 0,
+    lindung24Employee: 0,
+    eisEmployee: 0,
+    eisEmployer: 0,
+    taxPcb: 0,
+    hrdCorp: 0,
+    unpaidLeave: 0,
+    deductionInLieu: 0,
+    deductionCp38: 0,
+    deductionOthers: 0,
+    deductionOthersDesc: '',
+    statutoryTreatment: separatePayoutConfig.defaultStatutoryTreatment,
+    payoutDescription: '',
+    lineNotes: {},
+    descriptions: { ...DEFAULT_DESCRIPTION_OVERRIDES }
   };
 };
 
@@ -233,6 +305,19 @@ const getCalculationEmployee = (employee: Employee, draft: MockupDraft): Employe
   deductionOthersDesc: draft.deductionOthersDesc,
   payslipDescriptions: draft.descriptions,
   taxPcb: draft.taxPcb
+});
+
+const getDraftPayoutAmount = (draft: MockupDraft, payoutKind?: Exclude<PayrollPayoutKind, 'regular'> | null) => {
+  if (!payoutKind) return 0;
+  const config = getSeparatePayoutConfig(payoutKind);
+  return Number(draft[config.amountField] || 0);
+};
+
+const getStatutoryAdjustedEmployee = (employee: Employee, statutoryTreatment: ContractStatutoryTreatment): Employee => ({
+  ...employee,
+  employmentType: statutoryTreatment === 'with_statutory' ? 'Permanent' : 'Contract',
+  eligibleForStatutory: statutoryTreatment === 'with_statutory' ? 'Yes' : 'No',
+  contractStatutoryTreatment: statutoryTreatment
 });
 
 const replaceCurrentYtd = (
@@ -281,6 +366,10 @@ export default function PayrollEditorMockupView({
   onSelectedPayPeriodChange,
   selectedDepartment: controlledSelectedDepartment,
   onSelectedDepartmentChange,
+  displaySettingsOverride,
+  separatePayoutKind = null,
+  onSavePayrollRecord,
+  onGeneratedPayrollRecord,
   onBack,
   onShowNotification
 }: PayrollEditorMockupViewProps) {
@@ -302,6 +391,8 @@ export default function PayrollEditorMockupView({
   const selectedPayPeriod = controlledSelectedPayPeriod ?? internalSelectedPayPeriod;
   const selectedDepartment = controlledSelectedDepartment ?? internalSelectedDepartment;
   const selectedEmployeeId = controlledSelectedEmployeeId ?? internalSelectedEmployeeId;
+  const isSeparatePayoutMode = !!separatePayoutKind;
+  const separatePayoutConfig = separatePayoutKind ? getSeparatePayoutConfig(separatePayoutKind) : null;
 
   const setSelectedPayPeriod = (payPeriod: string) => {
     if (controlledSelectedPayPeriod === undefined) {
@@ -350,7 +441,7 @@ export default function PayrollEditorMockupView({
     setExpandedDeductions([]);
     setIsEarningMenuOpen(false);
     setIsDeductionMenuOpen(false);
-  }, [selectedEmployeeId, selectedPayPeriod, selectedDepartment]);
+  }, [selectedEmployeeId, selectedPayPeriod, selectedDepartment, separatePayoutKind]);
 
   const rawActiveEmployee = eligibleEmployees.find(employee => employee.id === selectedEmployeeId) || eligibleEmployees[0];
 
@@ -368,49 +459,95 @@ export default function PayrollEditorMockupView({
         )}
         <div className="p-10 bg-white rounded-lg border border-neutral-border text-center">
           <p className="font-bold text-primary">No eligible employees for this pay period.</p>
-          <p className="text-xs text-on-surface-variant mt-1">Change the month, department, or employee filters to preview a payslip.</p>
+          <p className="text-xs text-on-surface-variant mt-1">Change the month, department, or employee filters to preview a payroll document.</p>
         </div>
       </div>
     );
   }
 
-  const draftKey = getDraftKey(rawActiveEmployee, payMonth, payYear);
-  const currentDraft = demoDrafts[draftKey] || getInitialDraft(rawActiveEmployee, payMonth, payYear);
+  const draftKey = getDraftKey(rawActiveEmployee, payMonth, payYear, separatePayoutKind);
+  const currentDraft = demoDrafts[draftKey] || getInitialDraft(rawActiveEmployee, payMonth, payYear, separatePayoutKind);
   const activeDraft = editingDraft || currentDraft;
   const effectiveEmployee = getEmployeeForMonth(rawActiveEmployee, payMonth, payYear);
-  const calculationEmployee = getCalculationEmployee(effectiveEmployee, activeDraft);
-  const defaultStatutoryEmployee = getCalculationEmployee(effectiveEmployee, {
-    ...activeDraft,
-    taxPcb: 0
-  });
-  const defaultStatutoryBreakdown = calculatePayslip(defaultStatutoryEmployee, payMonth, payYear, {
-    basicSalaryOverride: activeDraft.basicSalary,
-    ignoreSavedStatutory: true
-  });
-  const isStatutoryEligible = [
-    'Probation',
-    'Probationary',
-    'Permanent',
-    'Confirmation',
-    'Fixed Term Contract',
-    'Part Time'
-  ].includes(effectiveEmployee.employmentType) || (
-    (effectiveEmployee.employmentType === 'Independent Contractor' ||
-      effectiveEmployee.employmentType === 'Independent Contractor / Freelance') &&
-    effectiveEmployee.eligibleForStatutory === 'Yes'
-  );
-  const defaultPcb = isStatutoryEligible
-    ? calculatePcb2026(
-      activeDraft.basicSalary,
-      effectiveEmployee.maritalStatus || 'Single',
-      effectiveEmployee.spouseIsWorking || 'No',
-      effectiveEmployee.dependants?.length || 0,
-      defaultStatutoryBreakdown.epfEmployeeValue,
-      payMonth
-    )
-    : 0;
+  const selectedPayoutAmount = getDraftPayoutAmount(activeDraft, separatePayoutKind);
+  const documentProfile = isSeparatePayoutMode && separatePayoutKind
+    ? getSeparatePayoutDocumentProfile(separatePayoutKind, activeDraft.statutoryTreatment)
+    : getPayrollDocumentProfile(effectiveEmployee);
+  const documentFieldLabels = getPayrollDocumentFieldLabels(documentProfile);
+  const displaySettings = {
+    ...getPayrollDocumentDisplaySettings(effectiveEmployee),
+    ...(displaySettingsOverride || {})
+  };
+  if (!documentProfile.statutoryEnabled) {
+    displaySettings.showEpfNumber = false;
+    displaySettings.showEmployerContributions = false;
+  }
+  const statutoryBasis = isSeparatePayoutMode ? selectedPayoutAmount : activeDraft.basicSalary;
+  const calculationEmployee = isSeparatePayoutMode
+    ? getStatutoryAdjustedEmployee(getCalculationEmployee(effectiveEmployee, activeDraft), activeDraft.statutoryTreatment)
+    : getCalculationEmployee(effectiveEmployee, activeDraft);
+  const calculateStatutoryBreakdown = (draft: MockupDraft, treatment: ContractStatutoryTreatment) => {
+    const draftStatutoryBasis = isSeparatePayoutMode ? getDraftPayoutAmount(draft, separatePayoutKind) : draft.basicSalary;
+    const calculationDraft = {
+      ...draft,
+      epfEmployee: 0,
+      epfEmployer: 0,
+      socsoEmployee: 0,
+      socsoEmployer: 0,
+      lindung24Employee: 0,
+      eisEmployee: 0,
+      eisEmployer: 0,
+      taxPcb: 0,
+      hrdCorp: 0
+    };
+    const employeeForCalc = isSeparatePayoutMode
+      ? getStatutoryAdjustedEmployee(getCalculationEmployee(effectiveEmployee, calculationDraft), treatment)
+      : getCalculationEmployee(effectiveEmployee, calculationDraft);
+    return calculatePayslip(employeeForCalc, payMonth, payYear, {
+      basicSalaryOverride: isSeparatePayoutMode ? 0 : draft.basicSalary,
+      statutorySalaryOverride: isSeparatePayoutMode ? draftStatutoryBasis : undefined,
+      ignoreSavedStatutory: true
+    });
+  };
+  const getDefaultStatutoryDraftValues = (draft: MockupDraft, treatment: ContractStatutoryTreatment) => {
+    if (treatment === 'without_statutory') {
+      return {
+        epfEmployee: 0,
+        epfEmployer: 0,
+        socsoEmployee: 0,
+        socsoEmployer: 0,
+        lindung24Employee: 0,
+        eisEmployee: 0,
+        eisEmployer: 0,
+        taxPcb: 0,
+        hrdCorp: 0
+      };
+    }
+
+    const statutoryBreakdown = calculateStatutoryBreakdown(draft, treatment);
+    const draftStatutoryBasis = isSeparatePayoutMode ? getDraftPayoutAmount(draft, separatePayoutKind) : draft.basicSalary;
+    return {
+      epfEmployee: statutoryBreakdown.epfEmployeeValue,
+      epfEmployer: statutoryBreakdown.epfEmployerValue,
+      socsoEmployee: statutoryBreakdown.socsoEmployeeVal,
+      socsoEmployer: statutoryBreakdown.socsoEmployerVal,
+      lindung24Employee: statutoryBreakdown.skbbkEmpVal,
+      eisEmployee: statutoryBreakdown.eisEmployeeVal,
+      eisEmployer: statutoryBreakdown.eisEmployerVal,
+      taxPcb: calculatePcb2026(
+        draftStatutoryBasis,
+        effectiveEmployee.maritalStatus || 'Single',
+        effectiveEmployee.spouseIsWorking || 'No',
+        effectiveEmployee.dependants?.length || 0,
+        statutoryBreakdown.epfEmployeeValue,
+        payMonth
+      ),
+      hrdCorp: statutoryBreakdown.hrdCorpVal
+    };
+  };
   const breakdown = calculatePayslip(calculationEmployee, payMonth, payYear, {
-    basicSalaryOverride: activeDraft.basicSalary,
+    basicSalaryOverride: isSeparatePayoutMode ? 0 : activeDraft.basicSalary,
+    statutorySalaryOverride: isSeparatePayoutMode ? statutoryBasis : undefined,
     ignoreSavedStatutory: true,
     statutoryOverrides: {
       epfEmployee: activeDraft.epfEmployee,
@@ -435,9 +572,31 @@ export default function PayrollEditorMockupView({
   const monthEnd = `${payYear}-${String(payMonth).padStart(2, '0')}-${new Date(payYear, payMonth, 0).getDate()}`;
   const lastWorkingDay = getEffectiveTerminationDateForDate(effectiveEmployee, monthEnd);
   const proration = getSalaryProration(rawActiveEmployee, payMonth, payYear);
+  const setDraftStatutoryTreatment = (treatment: ContractStatutoryTreatment) => {
+    setEditingDraft(previous => previous ? {
+      ...previous,
+      statutoryTreatment: treatment,
+      ...getDefaultStatutoryDraftValues(previous, treatment)
+    } : previous);
+  };
 
   const updateDraft = <K extends keyof MockupDraft>(field: K, value: MockupDraft[K]) => {
-    setEditingDraft(previous => previous ? { ...previous, [field]: value } : previous);
+    setEditingDraft(previous => {
+      if (!previous) return previous;
+      const nextDraft = { ...previous, [field]: value };
+      if (
+        isSeparatePayoutMode &&
+        separatePayoutConfig &&
+        field === separatePayoutConfig.amountField &&
+        nextDraft.statutoryTreatment === 'with_statutory'
+      ) {
+        return {
+          ...nextDraft,
+          ...getDefaultStatutoryDraftValues(nextDraft, nextDraft.statutoryTreatment)
+        };
+      }
+      return nextDraft;
+    });
   };
 
   const updateDescription = (field: keyof PayslipDescriptionOverrides, value: string) => {
@@ -447,21 +606,25 @@ export default function PayrollEditorMockupView({
     } : previous);
   };
 
+  const updateLineNote = (field: NumberField, value: string) => {
+    setEditingDraft(previous => previous ? {
+      ...previous,
+      lineNotes: {
+        ...previous.lineNotes,
+        [field]: value
+      }
+    } : previous);
+  };
+
   const startEditing = () => {
+    const baselineStatutory = getDefaultStatutoryDraftValues(currentDraft, currentDraft.statutoryTreatment);
     setEditingDraft({
       ...currentDraft,
-      epfEmployee: defaultStatutoryBreakdown.epfEmployeeValue,
-      epfEmployer: defaultStatutoryBreakdown.epfEmployerValue,
-      socsoEmployee: defaultStatutoryBreakdown.socsoEmployeeVal,
-      socsoEmployer: defaultStatutoryBreakdown.socsoEmployerVal,
-      lindung24Employee: defaultStatutoryBreakdown.skbbkEmpVal,
-      eisEmployee: defaultStatutoryBreakdown.eisEmployeeVal,
-      eisEmployer: defaultStatutoryBreakdown.eisEmployerVal,
-      taxPcb: defaultPcb,
-      hrdCorp: defaultStatutoryBreakdown.hrdCorpVal,
-      descriptions: { ...currentDraft.descriptions }
+      ...baselineStatutory,
+      descriptions: { ...currentDraft.descriptions },
+      lineNotes: { ...currentDraft.lineNotes }
     });
-    setExpandedEarnings([
+    const defaultExpandedEarnings = ([
       'allowanceGeneral',
       'allowanceTransport',
       'allowanceParking',
@@ -475,23 +638,134 @@ export default function PayrollEditorMockupView({
       'awsAmount',
       'compensationAmount',
       'reimbursementAmount',
-      'otherEarningAmount'
+      'otherEarningAmount',
+      'basicSalary'
     ].filter(field => Number(currentDraft[field]) > 0) as NumberField[]);
+    if (isSeparatePayoutMode && separatePayoutConfig && !defaultExpandedEarnings.includes(separatePayoutConfig.amountField)) {
+      defaultExpandedEarnings.push(separatePayoutConfig.amountField);
+    }
+    setExpandedEarnings(defaultExpandedEarnings);
     setExpandedDeductions([]);
     setIsEarningMenuOpen(false);
     setIsDeductionMenuOpen(false);
     setIsEditing(true);
   };
 
-  const saveDemo = () => {
+  const buildPayrollRecord = (draft: MockupDraft): PayrollRecord2026 => {
+    const recordDocumentProfile = isSeparatePayoutMode && separatePayoutKind
+      ? getSeparatePayoutDocumentProfile(separatePayoutKind, draft.statutoryTreatment)
+      : documentProfile;
+    const recordBreakdown = calculatePayslip(
+      isSeparatePayoutMode
+        ? getStatutoryAdjustedEmployee(getCalculationEmployee(effectiveEmployee, draft), draft.statutoryTreatment)
+        : getCalculationEmployee(effectiveEmployee, draft),
+      payMonth,
+      payYear,
+      {
+        basicSalaryOverride: isSeparatePayoutMode ? 0 : draft.basicSalary,
+        statutorySalaryOverride: isSeparatePayoutMode ? getDraftPayoutAmount(draft, separatePayoutKind) : undefined,
+        ignoreSavedStatutory: true,
+        statutoryOverrides: {
+          epfEmployee: draft.epfEmployee,
+          epfEmployer: draft.epfEmployer,
+          socsoEmployee: draft.socsoEmployee,
+          socsoEmployer: draft.socsoEmployer,
+          lindung24Employee: draft.lindung24Employee,
+          eisEmployee: draft.eisEmployee,
+          eisEmployer: draft.eisEmployer,
+          taxPcb: draft.taxPcb,
+          hrdCorp: draft.hrdCorp
+        }
+      }
+    );
+    const cleanEmployeeKey = effectiveEmployee.email.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const payoutSuffix = isSeparatePayoutMode && separatePayoutKind ? `_${separatePayoutKind}_${Date.now()}` : '';
+
+    return {
+      id: `${cleanEmployeeKey}_${payYear}_${String(payMonth).padStart(2, '0')}${payoutSuffix}`,
+      employeeEmail: effectiveEmployee.email,
+      payrollMonth: payMonth,
+      payrollYear: payYear,
+      paymentDate: draft.paymentDate,
+      basicSalary: isSeparatePayoutMode ? 0 : draft.basicSalary,
+      allowanceGeneral: isSeparatePayoutMode ? 0 : draft.allowanceGeneral,
+      allowanceTransport: isSeparatePayoutMode ? 0 : draft.allowanceTransport,
+      allowanceParking: isSeparatePayoutMode ? 0 : draft.allowanceParking,
+      allowanceMeal: isSeparatePayoutMode ? 0 : draft.allowanceMeal,
+      allowanceAccommodation: isSeparatePayoutMode ? 0 : draft.allowanceAccommodation,
+      allowancePhone: isSeparatePayoutMode ? 0 : draft.allowancePhone,
+      overtime: isSeparatePayoutMode ? 0 : draft.overtime,
+      bonusAmount: draft.bonusAmount,
+      bonusDesc: draft.bonusDesc,
+      commissionAmount: draft.commissionAmount,
+      commissionDesc: draft.commissionDesc,
+      backPayAmount: isSeparatePayoutMode ? 0 : draft.backPayAmount,
+      backPayDesc: draft.backPayDesc,
+      awsAmount: isSeparatePayoutMode ? 0 : draft.awsAmount,
+      awsDesc: draft.awsDesc,
+      compensationAmount: draft.compensationAmount + draft.otherEarningAmount,
+      compensationDesc: draft.compensationDesc || draft.otherEarningDesc,
+      reimbursementAmount: draft.reimbursementAmount,
+      reimbursementDesc: draft.reimbursementDesc,
+      unpaidLeave: draft.unpaidLeave,
+      deductionInLieu: draft.deductionInLieu,
+      deductionCp38: draft.deductionCp38,
+      deductionOthers: draft.deductionOthers,
+      deductionOthersDesc: draft.deductionOthersDesc,
+      payslipDescriptions: draft.descriptions,
+      payoutKind: isSeparatePayoutMode ? separatePayoutKind || 'bonus' : 'regular',
+      isSeparatePayout: isSeparatePayoutMode,
+      statutoryTreatment: isSeparatePayoutMode ? draft.statutoryTreatment : undefined,
+      payoutTitle: isSeparatePayoutMode ? separatePayoutConfig?.title : undefined,
+      payoutDescription: isSeparatePayoutMode ? draft.payoutDescription : undefined,
+      lineNotes: draft.lineNotes,
+      documentType: recordDocumentProfile.documentType,
+      compensationLabel: recordDocumentProfile.compensationLabel,
+      displaySettingsSnapshot: displaySettings,
+      actualPCBDeducted: recordBreakdown.taxPcbVal,
+      epfEmployee: recordBreakdown.epfEmployeeValue,
+      epfEmployer: recordBreakdown.epfEmployerValue,
+      socsoEmployee: recordBreakdown.socsoEmployeeVal,
+      socsoEmployer: recordBreakdown.socsoEmployerVal,
+      lindung24Employee: recordBreakdown.skbbkEmpVal,
+      eisEmployee: recordBreakdown.eisEmployeeVal,
+      eisEmployer: recordBreakdown.eisEmployerVal,
+      hrdCorp: recordBreakdown.hrdCorpVal,
+      netPay: recordBreakdown.netPay,
+      createdAt: getGmt8Timestamp()
+    };
+  };
+
+  const saveDemo = async () => {
     if (!editingDraft) return;
+    const recordToSave = buildPayrollRecord(editingDraft);
+
+    if (isSeparatePayoutMode && !onSavePayrollRecord) {
+      onShowNotification('Save Failed', 'Payroll save handler is not available for separate payout generation.');
+      return;
+    }
+
+    if (isSeparatePayoutMode && onSavePayrollRecord) {
+      try {
+        await onSavePayrollRecord(recordToSave);
+      } catch (error: any) {
+        onShowNotification('Save Failed', error?.message || 'Separate payout record could not be saved.');
+        return;
+      }
+    }
+
     setDemoDrafts(previous => ({ ...previous, [draftKey]: editingDraft }));
     setIsEditing(false);
     setEditingDraft(null);
     onShowNotification(
-      'Payslip Saved',
-      'Your payslip changes have been saved in the payroll editor session.'
+      `${recordToSave.documentType || documentProfile.documentType} Saved`,
+      isSeparatePayoutMode
+        ? `${recordToSave.payoutTitle || 'Separate payout'} was saved and generated for preview.`
+        : `Your ${documentProfile.documentType.toLowerCase()} changes have been saved in the payroll editor session.`
     );
+    if (isSeparatePayoutMode) {
+      onGeneratedPayrollRecord?.(recordToSave);
+    }
   };
 
   const cancelEditing = () => {
@@ -522,6 +796,14 @@ export default function PayrollEditorMockupView({
     { field: 'reimbursementAmount', label: 'Reimbursements', descriptionField: 'reimbursementDesc' },
     { field: 'otherEarningAmount', label: 'Others:', descriptionField: 'otherEarningDesc' }
   ];
+  const displayedEarningOptions = isSeparatePayoutMode
+    ? earningOptions.filter(option => (
+      option.field === 'bonusAmount' ||
+      option.field === 'commissionAmount' ||
+      option.field === 'reimbursementAmount' ||
+      option.field === 'otherEarningAmount'
+    ))
+    : earningOptions;
 
   const addEarning = (field: NumberField) => {
     setExpandedEarnings(previous => previous.includes(field) ? previous : [...previous, field]);
@@ -544,54 +826,49 @@ export default function PayrollEditorMockupView({
     setIsDeductionMenuOpen(false);
   };
 
+  const removeLine = (
+    field: NumberField,
+    section: 'earnings' | 'deductions',
+    descriptionKey?: keyof PayslipDescriptionOverrides,
+    descriptionField?: VariableDescriptionField
+  ) => {
+    setEditingDraft(previous => {
+      if (!previous) return previous;
+      const { [field]: _removedAmount, ...remainingLineNotes } = previous.lineNotes;
+      const nextDescriptions = { ...previous.descriptions };
+      if (descriptionKey) delete nextDescriptions[descriptionKey];
+
+      return {
+        ...previous,
+        [field]: 0,
+        ...(descriptionField ? { [descriptionField]: '' } : {}),
+        lineNotes: remainingLineNotes,
+        descriptions: nextDescriptions
+      };
+    });
+
+    if (section === 'earnings') {
+      setExpandedEarnings(previous => previous.filter(item => item !== field));
+    } else {
+      setExpandedDeductions(previous => previous.filter(item => item !== field));
+    }
+  };
+
   const useDefaultCalculatedAmount = () => {
     if (!editingDraft) return;
 
-    const defaultBasicSalary = proration.payableSalary;
-    const defaultEmployee = getCalculationEmployee(effectiveEmployee, {
+    const defaultBasicSalary = isSeparatePayoutMode ? 0 : proration.payableSalary;
+    const baseDraft = {
       ...editingDraft,
       basicSalary: defaultBasicSalary,
       taxPcb: 0
-    });
-    const defaultBreakdown = calculatePayslip(defaultEmployee, payMonth, payYear, {
-      basicSalaryOverride: defaultBasicSalary,
-      ignoreSavedStatutory: true
-    });
-    const isStatutoryEligible = [
-      'Probation',
-      'Probationary',
-      'Permanent',
-      'Confirmation',
-      'Fixed Term Contract',
-      'Part Time'
-    ].includes(effectiveEmployee.employmentType) || (
-      (effectiveEmployee.employmentType === 'Independent Contractor' ||
-        effectiveEmployee.employmentType === 'Independent Contractor / Freelance') &&
-      effectiveEmployee.eligibleForStatutory === 'Yes'
-    );
-    const defaultPcb = isStatutoryEligible
-      ? calculatePcb2026(
-        defaultBasicSalary,
-        effectiveEmployee.maritalStatus || 'Single',
-        effectiveEmployee.spouseIsWorking || 'No',
-        effectiveEmployee.dependants?.length || 0,
-        defaultBreakdown.epfEmployeeValue,
-        payMonth
-      )
-      : 0;
+    };
+    const defaultStatutoryValues = getDefaultStatutoryDraftValues(baseDraft, editingDraft.statutoryTreatment);
 
     setEditingDraft(previous => previous ? {
       ...previous,
       basicSalary: defaultBasicSalary,
-      epfEmployee: defaultBreakdown.epfEmployeeValue,
-      epfEmployer: defaultBreakdown.epfEmployerValue,
-      socsoEmployee: defaultBreakdown.socsoEmployeeVal,
-      socsoEmployer: defaultBreakdown.socsoEmployerVal,
-      lindung24Employee: defaultBreakdown.skbbkEmpVal,
-      eisEmployee: defaultBreakdown.eisEmployeeVal,
-      eisEmployer: defaultBreakdown.eisEmployerVal,
-      taxPcb: defaultPcb,
-      hrdCorp: defaultBreakdown.hrdCorpVal
+      ...defaultStatutoryValues
     } : previous);
     onShowNotification(
       'Default Calculated Amounts Applied',
@@ -608,7 +885,8 @@ export default function PayrollEditorMockupView({
     fallback,
     alwaysShow = false,
     earningsOnly = false,
-    collapsedWhenEditing = false
+    collapsedWhenEditing = false,
+    removable = false
   }: {
     label: string;
     amount: number;
@@ -619,9 +897,11 @@ export default function PayrollEditorMockupView({
     alwaysShow?: boolean;
     earningsOnly?: boolean;
     collapsedWhenEditing?: boolean;
+    removable?: boolean;
   }) => {
     if (!isEditing && !alwaysShow && amount === 0) return null;
-    if (isEditing && earningsOnly && field !== 'basicSalary' && !expandedEarnings.includes(field)) return null;
+    const isPrimarySeparatePayoutLine = isSeparatePayoutMode && separatePayoutConfig?.amountField === field;
+    if (isEditing && earningsOnly && field !== 'basicSalary' && !expandedEarnings.includes(field) && !isPrimarySeparatePayoutLine) return null;
     if (isEditing && collapsedWhenEditing && !expandedDeductions.includes(field)) return null;
 
     const descriptionValue = descriptionKey
@@ -629,39 +909,67 @@ export default function PayrollEditorMockupView({
       : descriptionField
         ? activeDraft[descriptionField]
         : '';
-    const displayLabel = descriptionValue || fallback || label;
+    const normalizedDescriptionValue = descriptionKey === 'basicSalary' && descriptionValue === DEFAULT_DESCRIPTION_OVERRIDES.basicSalary
+      ? ''
+      : descriptionValue;
+    const displayLabel = normalizedDescriptionValue || fallback || label;
     const isSubdued = descriptionField === 'otherEarningDesc';
+    const lineNote = activeDraft.lineNotes[field] || '';
 
     return (
-      <div key={field} className="flex items-center justify-between gap-3 border-t border-primary/10 py-2 text-xs">
-        <div className="min-w-0 flex-1">
-          {isEditing && (descriptionKey || descriptionField) ? (
-            <input
-              type="text"
-              value={descriptionValue}
-              placeholder={fallback || label}
-              onChange={event => descriptionKey
-                ? updateDescription(descriptionKey, event.target.value)
-                : updateDraft(descriptionField as VariableDescriptionField, event.target.value)}
-              className={`w-full rounded border border-neutral-border bg-white px-2 py-1 text-xs outline-none focus:border-primary ${
-                isSubdued ? 'text-on-surface-variant' : 'text-[#5a352b]'
-              } placeholder:text-[#b8a6a0]`}
-            />
-          ) : (
-            <span className="truncate">{displayLabel}</span>
-          )}
+      <div key={field} className="border-t border-primary/10 py-2 text-xs">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            {isEditing && (descriptionKey || descriptionField) ? (
+              <input
+                type="text"
+                value={normalizedDescriptionValue}
+                placeholder={fallback || label}
+                onChange={event => descriptionKey
+                  ? updateDescription(descriptionKey, event.target.value)
+                  : updateDraft(descriptionField as VariableDescriptionField, event.target.value)}
+                className={`w-full rounded border border-neutral-border bg-white px-2 py-1 text-xs outline-none focus:border-primary ${
+                  isSubdued ? 'text-on-surface-variant' : 'text-[#5a352b]'
+                } placeholder:text-[#b8a6a0]`}
+              />
+            ) : (
+              <span className="block truncate">{displayLabel}</span>
+            )}
+            {isEditing ? (
+              <textarea
+                value={lineNote}
+                onChange={event => updateLineNote(field, event.target.value)}
+                placeholder="Add description for clarification..."
+                rows={2}
+                className="mt-1 w-full resize-y rounded border border-neutral-border bg-white px-2 py-1 text-[11px] leading-relaxed text-on-surface outline-none focus:border-primary placeholder:text-[#b8a6a0]"
+              />
+            ) : lineNote ? (
+              <p className="mt-1 whitespace-pre-line text-[11px] leading-relaxed text-on-surface-variant">{lineNote}</p>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {isEditing && removable && (
+              <button
+                type="button"
+                onClick={() => removeLine(field, earningsOnly ? 'earnings' : 'deductions', descriptionKey, descriptionField)}
+                className="rounded border border-red-300 px-1.5 py-1 text-[10px] font-bold text-red-700 hover:bg-red-50"
+              >
+                Cancel
+              </button>
+            )}
+            {isEditing ? (
+              <input
+                type="text"
+                inputMode="decimal"
+                value={formatEditableAmount(Number(activeDraft[field] || 0))}
+                onChange={event => updateDraft(field, parseEditableAmount(event.target.value))}
+                className="w-28 rounded border border-neutral-border bg-white px-2 py-1 text-right font-mono text-xs outline-none focus:border-primary"
+              />
+            ) : (
+              <span className="font-mono">{formatMoney(amount)}</span>
+            )}
+          </div>
         </div>
-        {isEditing ? (
-          <input
-            type="text"
-            inputMode="decimal"
-            value={formatEditableAmount(Number(activeDraft[field] || 0))}
-            onChange={event => updateDraft(field, parseEditableAmount(event.target.value))}
-            className="w-28 rounded border border-neutral-border bg-white px-2 py-1 text-right font-mono text-xs outline-none focus:border-primary"
-          />
-        ) : (
-          <span className="shrink-0 font-mono">{formatMoney(amount)}</span>
-        )}
       </div>
     );
   };
@@ -697,7 +1005,7 @@ export default function PayrollEditorMockupView({
             </button>
             <div>
               <h1 className="text-xl font-bold text-primary">Payroll Editor</h1>
-              <p className="text-xs text-on-surface-variant">Simplified payslip canvas for payroll editing</p>
+              <p className="text-xs text-on-surface-variant">Simplified payroll document canvas for editing</p>
             </div>
           </div>
           <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-800">
@@ -758,21 +1066,74 @@ export default function PayrollEditorMockupView({
           className="inline-flex items-center justify-center gap-2 rounded bg-primary px-4 py-2 text-xs font-bold text-white hover:bg-primary-container"
         >
           {isEditing ? <X className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
-          {isEditing ? 'Cancel Edit' : 'Edit Payslip'}
+          {isEditing ? 'Cancel Edit' : `Edit ${isSeparatePayoutMode ? separatePayoutConfig?.title : documentProfile.documentType}`}
         </button>
       </div>
+
+      {isSeparatePayoutMode && separatePayoutConfig && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-left text-xs shadow-xs">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1">
+              <h3 className="text-sm font-black uppercase tracking-wider text-amber-900">
+                Generate Separate Payout: {separatePayoutConfig.title}
+              </h3>
+              <p className="text-amber-800">
+                This payout will be saved as a separate payroll record and will not overwrite the regular monthly salary payroll.
+              </p>
+            </div>
+            <div className="min-w-[280px] text-[10px] font-bold uppercase tracking-wider text-amber-900">
+              <span>Statutory Treatment</span>
+              <div className="mt-1 grid grid-cols-2 gap-1 rounded border border-amber-300 bg-white p-1">
+                <button
+                  type="button"
+                  disabled={!isEditing}
+                  aria-pressed={activeDraft.statutoryTreatment === 'with_statutory'}
+                  onClick={() => setDraftStatutoryTreatment('with_statutory')}
+                  className={`rounded px-2 py-2 text-left text-[11px] normal-case tracking-normal transition-colors ${
+                    activeDraft.statutoryTreatment === 'with_statutory'
+                      ? 'bg-primary text-white'
+                      : 'text-amber-900 hover:bg-amber-50'
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  <span className="block font-black">With Statutory</span>
+                  <span className="mt-0.5 block text-[9px] font-semibold opacity-80">Generate Payslip</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!isEditing}
+                  aria-pressed={activeDraft.statutoryTreatment === 'without_statutory'}
+                  onClick={() => setDraftStatutoryTreatment('without_statutory')}
+                  className={`rounded px-2 py-2 text-left text-[11px] normal-case tracking-normal transition-colors ${
+                    activeDraft.statutoryTreatment === 'without_statutory'
+                      ? 'bg-primary text-white'
+                      : 'text-amber-900 hover:bg-amber-50'
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  <span className="block font-black">Without Statutory</span>
+                  <span className="mt-0.5 block text-[9px] font-semibold opacity-80">Generate Payment Voucher</span>
+                </button>
+              </div>
+              <p className="mt-1 text-[10px] font-medium normal-case tracking-normal text-amber-800/80">
+                {isEditing ? 'Select either treatment before saving.' : 'Click Edit to change the treatment.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isEditing && (
         <div className="flex flex-col gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs sm:flex-row sm:items-center sm:justify-between">
           <p className="text-on-surface-variant">
-            Inline edit mode is active. Add earnings only when needed, or restore calculated statutory amounts.
+            {isSeparatePayoutMode
+              ? 'Separate payout edit mode is active. Enter the payout amount, statutory treatment, and long descriptions before generating.'
+              : 'Inline edit mode is active. Add earnings only when needed, or restore calculated statutory amounts.'}
           </p>
           <button
             type="button"
             onClick={saveDemo}
             className="inline-flex items-center justify-center gap-2 rounded bg-green-700 px-4 py-2 font-bold text-white hover:bg-green-800"
           >
-            <Save className="w-4 h-4" /> Save
+            <Save className="w-4 h-4" /> {isSeparatePayoutMode ? 'Save and Generate' : 'Save'}
           </button>
         </div>
       )}
@@ -780,31 +1141,39 @@ export default function PayrollEditorMockupView({
       <article className="mx-auto max-w-5xl rounded border border-[#e3d3c4] bg-[#fffdfa] p-5 text-[#5a352b] shadow-sm sm:p-8">
         <header className="flex flex-col gap-4 border-b border-[#eadfd6] pb-6 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-primary">PAYSLIP</h2>
+            <h2 className="text-xl font-bold tracking-tight text-primary">{documentProfile.documentType.toUpperCase()}</h2>
             <p className="mt-1 text-xs text-on-surface-variant">{selectedPayPeriod}</p>
             <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
               <CalendarDays className="w-3.5 h-3.5" /> {activeEntity?.name || 'Active Entity'}
             </span>
+            <span className={`ml-2 mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+              documentProfile.isPaymentVoucher ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+            }`}>
+              {documentProfile.compensationLabel}
+            </span>
           </div>
           <div className="text-left text-xs sm:text-right">
             <p className="font-bold text-primary">{activeEntity?.name || 'Red Point Sdn Bhd'}</p>
-            <p className="mt-1 max-w-xs text-[10px] leading-relaxed text-on-surface-variant">
-              {activeEntity?.address || 'Company address not configured'}
-            </p>
+            {displaySettings.showCompanyAddress && (
+              <p className="mt-1 max-w-xs text-[10px] leading-relaxed text-on-surface-variant">
+                {activeEntity?.address || 'Company address not configured'}
+              </p>
+            )}
           </div>
         </header>
 
         <section className="grid grid-cols-1 gap-x-10 gap-y-4 border-b border-[#eadfd6] py-6 text-xs sm:grid-cols-2">
           <div className="space-y-3">
-            <div><span className="block text-[10px] text-on-surface-variant">Employee Name</span><strong className="block mt-0.5 text-primary">{effectiveEmployee.name}</strong></div>
-            <div><span className="block text-[10px] text-on-surface-variant">Designation</span><strong className="block mt-0.5 text-primary">{effectiveEmployee.designation}</strong></div>
-            <div><span className="block text-[10px] text-on-surface-variant">Department</span><strong className="block mt-0.5 text-primary">{effectiveEmployee.department}</strong></div>
-            <div><span className="block text-[10px] text-on-surface-variant">Date Joined</span><strong className="block mt-0.5 text-primary">{formatToDDMMMYYYY(effectiveEmployee.dateOfJoined)}</strong></div>
-            <div><span className="block text-[10px] text-on-surface-variant">TIN / Tax Number</span><strong className="block mt-0.5 font-mono text-primary">{effectiveEmployee.taxNumber || 'N/A'}</strong></div>
+            <div><span className="block text-[10px] text-on-surface-variant">{documentProfile.isPaymentVoucher ? 'Recipient Name' : 'Employee Name'}</span><strong className="block mt-0.5 text-primary">{effectiveEmployee.name}</strong></div>
+            {displaySettings.showDesignation && <div><span className="block text-[10px] text-on-surface-variant">{documentFieldLabels.designation}</span><strong className="block mt-0.5 text-primary">{effectiveEmployee.designation}</strong></div>}
+            {displaySettings.showDepartment && <div><span className="block text-[10px] text-on-surface-variant">Department</span><strong className="block mt-0.5 text-primary">{effectiveEmployee.department}</strong></div>}
+            {displaySettings.showNricPassport && <div><span className="block text-[10px] text-on-surface-variant">NRIC / Passport</span><strong className="block mt-0.5 font-mono text-primary">{effectiveEmployee.nricPassport || 'N/A'}</strong></div>}
+            {displaySettings.showDateJoined && <div><span className="block text-[10px] text-on-surface-variant">{documentFieldLabels.dateJoined}</span><strong className="block mt-0.5 text-primary">{formatToDDMMMYYYY(effectiveEmployee.dateOfJoined)}</strong></div>}
+            {displaySettings.showTin && <div><span className="block text-[10px] text-on-surface-variant">TIN / Tax Number</span><strong className="block mt-0.5 font-mono text-primary">{effectiveEmployee.taxNumber || 'N/A'}</strong></div>}
           </div>
           <div className="space-y-3">
-            <div><span className="block text-[10px] text-on-surface-variant">Email Address</span><strong className="block mt-0.5 break-all text-primary">{effectiveEmployee.email}</strong></div>
-            <div><span className="block text-[10px] text-on-surface-variant">Bank Account</span><strong className="block mt-0.5 text-primary">{effectiveEmployee.bankName || 'N/A'} <span className="font-mono">- {effectiveEmployee.accountNo || 'N/A'}</span></strong></div>
+            {displaySettings.showEmail && <div><span className="block text-[10px] text-on-surface-variant">Email Address</span><strong className="block mt-0.5 break-all text-primary">{effectiveEmployee.email}</strong></div>}
+            {displaySettings.showBankAccount && <div><span className="block text-[10px] text-on-surface-variant">Bank Account</span><strong className="block mt-0.5 text-primary">{effectiveEmployee.bankName || 'N/A'} <span className="font-mono">- {effectiveEmployee.accountNo || 'N/A'}</span></strong></div>}
             <div>
               <span className="block text-[10px] text-on-surface-variant">Payment Date</span>
               {isEditing ? (
@@ -818,8 +1187,8 @@ export default function PayrollEditorMockupView({
                 <strong className="block mt-0.5 text-primary">{formatToDDMMMYYYY(activeDraft.paymentDate)}</strong>
               )}
             </div>
-            <div><span className="block text-[10px] text-on-surface-variant">EPF Member Number</span><strong className="block mt-0.5 font-mono text-primary">{effectiveEmployee.epfNumber || 'N/A'}</strong></div>
-            <div><span className="block text-[10px] text-on-surface-variant">Last Working Day</span><strong className="block mt-0.5 text-primary">{lastWorkingDay ? formatToDDMMMYYYY(lastWorkingDay) : 'N/A'}</strong></div>
+            {displaySettings.showEpfNumber && <div><span className="block text-[10px] text-on-surface-variant">EPF Member Number</span><strong className="block mt-0.5 font-mono text-primary">{effectiveEmployee.epfNumber || 'N/A'}</strong></div>}
+            {displaySettings.showLastWorkingDay && <div><span className="block text-[10px] text-on-surface-variant">Last Working Day</span><strong className="block mt-0.5 text-primary">{lastWorkingDay ? formatToDDMMMYYYY(lastWorkingDay) : 'N/A'}</strong></div>}
           </div>
         </section>
 
@@ -829,48 +1198,85 @@ export default function PayrollEditorMockupView({
               <span className="h-2 w-2 rounded-full bg-green-600" /> Earnings & Additions
             </h3>
             <div className="mt-1">
-              {renderLine({ label: 'Basic Salary', amount: activeDraft.basicSalary, field: 'basicSalary', descriptionKey: 'basicSalary', fallback: 'Basic Salary', alwaysShow: true, earningsOnly: true })}
-              {renderLine({ label: 'General Allowance', amount: activeDraft.allowanceGeneral, field: 'allowanceGeneral', descriptionKey: 'allowanceGeneral', fallback: 'General Allowance', earningsOnly: true })}
-              {renderLine({ label: 'Transport Allowance', amount: activeDraft.allowanceTransport, field: 'allowanceTransport', descriptionKey: 'allowanceTransport', fallback: 'Transport Allowance', earningsOnly: true })}
-              {renderLine({ label: 'Parking Allowance', amount: activeDraft.allowanceParking, field: 'allowanceParking', descriptionKey: 'allowanceParking', fallback: 'Parking Allowance', earningsOnly: true })}
-              {renderLine({ label: 'Meal Allowance', amount: activeDraft.allowanceMeal, field: 'allowanceMeal', descriptionKey: 'allowanceMeal', fallback: 'Meal Allowance', earningsOnly: true })}
-              {renderLine({ label: 'Accommodation Allowance', amount: activeDraft.allowanceAccommodation, field: 'allowanceAccommodation', descriptionKey: 'allowanceAccommodation', fallback: 'Accommodation Allowance', earningsOnly: true })}
-              {renderLine({ label: 'Phone Allowance', amount: activeDraft.allowancePhone, field: 'allowancePhone', descriptionKey: 'allowancePhone', fallback: 'Phone Allowance', earningsOnly: true })}
-              {renderLine({ label: 'Overtime', amount: activeDraft.overtime, field: 'overtime', descriptionKey: 'overtime', fallback: 'Overtime', earningsOnly: true })}
-              {renderLine({ label: 'Performance Bonus', amount: activeDraft.bonusAmount, field: 'bonusAmount', descriptionField: 'bonusDesc', fallback: 'Performance Bonus', earningsOnly: true })}
-              {renderLine({ label: 'Commission', amount: activeDraft.commissionAmount, field: 'commissionAmount', descriptionField: 'commissionDesc', fallback: 'Commission', earningsOnly: true })}
-              {renderLine({ label: 'BackPay / Arrears', amount: activeDraft.backPayAmount, field: 'backPayAmount', descriptionField: 'backPayDesc', fallback: 'BackPay / Arrears', earningsOnly: true })}
-              {renderLine({ label: 'AWS', amount: activeDraft.awsAmount, field: 'awsAmount', descriptionField: 'awsDesc', fallback: 'AWS', earningsOnly: true })}
-              {renderLine({ label: 'Compensation / Severance', amount: activeDraft.compensationAmount, field: 'compensationAmount', descriptionField: 'compensationDesc', fallback: 'Compensation / Severance', earningsOnly: true })}
-              {renderLine({ label: 'Reimbursements', amount: activeDraft.reimbursementAmount, field: 'reimbursementAmount', descriptionField: 'reimbursementDesc', fallback: 'Reimbursements', earningsOnly: true })}
-              {renderLine({ label: 'Others:', amount: activeDraft.otherEarningAmount, field: 'otherEarningAmount', descriptionField: 'otherEarningDesc', fallback: 'Others:', earningsOnly: true })}
-              {isEditing && (
+            {isSeparatePayoutMode && separatePayoutConfig ? (
+                <>
+                  {renderLine({
+                    label: separatePayoutConfig.title,
+                    amount: selectedPayoutAmount,
+                    field: separatePayoutConfig.amountField,
+                    descriptionField: separatePayoutConfig.descriptionField,
+                    fallback: separatePayoutConfig.title,
+                    alwaysShow: true,
+                    earningsOnly: true
+                  })}
+                  {displaySettings.showEarningsDetails && displayedEarningOptions
+                    .filter(option => option.field !== separatePayoutConfig.amountField)
+                    .map(option => renderLine({
+                      label: option.label,
+                      amount: activeDraft[option.field],
+                      field: option.field,
+                      descriptionKey: option.descriptionKey,
+                      descriptionField: option.descriptionField,
+                      fallback: option.label,
+                      earningsOnly: true,
+                      removable: true
+                    }))}
+                </>
+              ) : (
+                renderLine({ label: documentProfile.compensationLabel, amount: activeDraft.basicSalary, field: 'basicSalary', descriptionKey: 'basicSalary', fallback: documentProfile.compensationLabel, alwaysShow: true, earningsOnly: true })
+              )}
+              {!isSeparatePayoutMode && displaySettings.showEarningsDetails && (
+                <>
+                  {renderLine({ label: 'General Allowance', amount: activeDraft.allowanceGeneral, field: 'allowanceGeneral', descriptionKey: 'allowanceGeneral', fallback: 'General Allowance', earningsOnly: true, removable: true })}
+                  {renderLine({ label: 'Transport Allowance', amount: activeDraft.allowanceTransport, field: 'allowanceTransport', descriptionKey: 'allowanceTransport', fallback: 'Transport Allowance', earningsOnly: true, removable: true })}
+                  {renderLine({ label: 'Parking Allowance', amount: activeDraft.allowanceParking, field: 'allowanceParking', descriptionKey: 'allowanceParking', fallback: 'Parking Allowance', earningsOnly: true, removable: true })}
+                  {renderLine({ label: 'Meal Allowance', amount: activeDraft.allowanceMeal, field: 'allowanceMeal', descriptionKey: 'allowanceMeal', fallback: 'Meal Allowance', earningsOnly: true, removable: true })}
+                  {renderLine({ label: 'Accommodation Allowance', amount: activeDraft.allowanceAccommodation, field: 'allowanceAccommodation', descriptionKey: 'allowanceAccommodation', fallback: 'Accommodation Allowance', earningsOnly: true, removable: true })}
+                  {renderLine({ label: 'Phone Allowance', amount: activeDraft.allowancePhone, field: 'allowancePhone', descriptionKey: 'allowancePhone', fallback: 'Phone Allowance', earningsOnly: true, removable: true })}
+                  {renderLine({ label: 'Overtime', amount: activeDraft.overtime, field: 'overtime', descriptionKey: 'overtime', fallback: 'Overtime', earningsOnly: true, removable: true })}
+                  {renderLine({ label: 'Performance Bonus', amount: activeDraft.bonusAmount, field: 'bonusAmount', descriptionField: 'bonusDesc', fallback: 'Performance Bonus', earningsOnly: true, removable: true })}
+                  {renderLine({ label: 'Commission', amount: activeDraft.commissionAmount, field: 'commissionAmount', descriptionField: 'commissionDesc', fallback: 'Commission', earningsOnly: true, removable: true })}
+                  {renderLine({ label: 'BackPay / Arrears', amount: activeDraft.backPayAmount, field: 'backPayAmount', descriptionField: 'backPayDesc', fallback: 'BackPay / Arrears', earningsOnly: true, removable: true })}
+                  {renderLine({ label: 'AWS', amount: activeDraft.awsAmount, field: 'awsAmount', descriptionField: 'awsDesc', fallback: 'AWS', earningsOnly: true, removable: true })}
+                  {renderLine({ label: 'Compensation / Severance', amount: activeDraft.compensationAmount, field: 'compensationAmount', descriptionField: 'compensationDesc', fallback: 'Compensation / Severance', earningsOnly: true, removable: true })}
+                  {renderLine({ label: 'Reimbursements', amount: activeDraft.reimbursementAmount, field: 'reimbursementAmount', descriptionField: 'reimbursementDesc', fallback: 'Reimbursements', earningsOnly: true, removable: true })}
+                  {renderLine({ label: 'Others:', amount: activeDraft.otherEarningAmount, field: 'otherEarningAmount', descriptionField: 'otherEarningDesc', fallback: 'Others:', earningsOnly: true, removable: true })}
+                </>
+              )}
+              {isEditing && displaySettings.showEarningsDetails && (
                 <div className="relative mt-3">
                   <button
                     type="button"
                     onClick={() => setIsEarningMenuOpen(previous => !previous)}
                     className="inline-flex items-center gap-1.5 rounded border border-dashed border-green-600/50 px-3 py-1.5 text-xs font-bold text-green-700 hover:bg-green-50"
                   >
-                    <Plus className="w-3.5 h-3.5" /> Add earning
+                    <Plus className="w-3.5 h-3.5" /> {isSeparatePayoutMode ? 'Add payment item' : 'Add earning'}
                   </button>
                   {isEarningMenuOpen && (
                     <div className="absolute left-0 top-10 z-20 w-64 rounded border border-neutral-border bg-white p-2 shadow-xl">
-                      <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Choose an earning</p>
-                      {earningOptions.filter(option => !expandedEarnings.includes(option.field)).map(option => (
+                      <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                        {isSeparatePayoutMode ? 'Choose a payment item' : 'Choose an earning'}
+                      </p>
+                      {displayedEarningOptions.map(option => {
+                        const isAdded = expandedEarnings.includes(option.field);
+                        return (
                         <button
                           key={option.field}
                           type="button"
+                          disabled={isAdded}
                           onClick={() => addEarning(option.field)}
-                          className={`block w-full rounded px-2 py-1.5 text-left text-xs ${
+                          className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs ${
                             option.field === 'otherEarningAmount'
                               ? 'text-on-surface-variant hover:bg-neutral-50 hover:text-on-surface'
                               : 'text-on-surface hover:bg-primary/5 hover:text-primary'
-                          }`}
+                          } disabled:cursor-not-allowed disabled:opacity-50`}
                         >
-                          {option.label}
+                          <span>{option.label}</span>
+                          {isAdded && <span className="text-[9px] font-bold uppercase tracking-wider">Added</span>}
                         </button>
-                      ))}
-                      {earningOptions.every(option => expandedEarnings.includes(option.field)) && (
+                        );
+                      })}
+                      {displayedEarningOptions.every(option => expandedEarnings.includes(option.field)) && (
                         <p className="px-2 py-1.5 text-xs text-on-surface-variant">All earning types are already visible.</p>
                       )}
                     </div>
@@ -878,7 +1284,7 @@ export default function PayrollEditorMockupView({
                 </div>
               )}
               <div className="mt-2 flex items-center justify-between border-t border-primary/20 pt-3 text-xs font-bold text-primary">
-                <span>Total Earnings & Reimbursements</span>
+                <span>{documentProfile.isPaymentVoucher ? 'Gross Amount' : 'Total Earnings & Reimbursements'}</span>
                 <span className="font-mono">{formatMoney(breakdown.grossEarnings + breakdown.reimbursementsSum)}</span>
               </div>
             </div>
@@ -889,7 +1295,7 @@ export default function PayrollEditorMockupView({
               <h3 className="flex items-center gap-2 text-sm font-bold text-red-700">
                 <span className="h-2 w-2 rounded-full bg-red-600" /> Deductions
               </h3>
-              {isEditing && (
+              {isEditing && documentProfile.statutoryEnabled && (
                 <button
                   type="button"
                   onClick={useDefaultCalculatedAmount}
@@ -900,11 +1306,15 @@ export default function PayrollEditorMockupView({
               )}
             </div>
             <div className="mt-1">
-              {renderLine({ label: `EPF (Employee ${effectiveEmployee.epfRateEmployee || 11}%)`, amount: breakdown.epfEmployeeValue, field: 'epfEmployee', descriptionKey: 'epfEmployee', fallback: `EPF (Employee ${effectiveEmployee.epfRateEmployee || 11}%)`, alwaysShow: true })}
-              {renderLine({ label: 'SOCSO (Invalidity)', amount: breakdown.socsoEmployeeVal, field: 'socsoEmployee', descriptionKey: 'socsoEmployee', fallback: 'SOCSO (Invalidity)' })}
-              {renderLine({ label: 'SOCSO (LINDUNG 24 Jam)', amount: breakdown.skbbkEmpVal, field: 'lindung24Employee', descriptionKey: 'lindung24Employee', fallback: 'SOCSO (LINDUNG 24 Jam)' })}
-              {renderLine({ label: 'EIS', amount: breakdown.eisEmployeeVal, field: 'eisEmployee', descriptionKey: 'eisEmployee', fallback: 'EIS', alwaysShow: true })}
-              {renderLine({ label: 'Income Tax (PCB)', amount: breakdown.taxPcbVal, field: 'taxPcb', descriptionKey: 'taxPcb', fallback: 'Income Tax (PCB)', alwaysShow: true })}
+              {documentProfile.statutoryEnabled && (
+                <>
+                  {renderLine({ label: `EPF (Employee ${effectiveEmployee.epfRateEmployee || 11}%)`, amount: breakdown.epfEmployeeValue, field: 'epfEmployee', descriptionKey: 'epfEmployee', fallback: `EPF (Employee ${effectiveEmployee.epfRateEmployee || 11}%)`, alwaysShow: true })}
+                  {renderLine({ label: 'SOCSO (Invalidity)', amount: breakdown.socsoEmployeeVal, field: 'socsoEmployee', descriptionKey: 'socsoEmployee', fallback: 'SOCSO (Invalidity)' })}
+                  {renderLine({ label: 'SOCSO (LINDUNG 24 Jam)', amount: breakdown.skbbkEmpVal, field: 'lindung24Employee', descriptionKey: 'lindung24Employee', fallback: 'SOCSO (LINDUNG 24 Jam)' })}
+                  {renderLine({ label: 'EIS', amount: breakdown.eisEmployeeVal, field: 'eisEmployee', descriptionKey: 'eisEmployee', fallback: 'EIS', alwaysShow: true })}
+                  {renderLine({ label: 'Income Tax (PCB)', amount: breakdown.taxPcbVal, field: 'taxPcb', descriptionKey: 'taxPcb', fallback: 'Income Tax (PCB)', alwaysShow: true })}
+                </>
+              )}
               {isEditing && (
                 <div className="relative mt-3">
                   <button
@@ -917,92 +1327,115 @@ export default function PayrollEditorMockupView({
                   {isDeductionMenuOpen && (
                     <div className="absolute left-0 top-10 z-20 w-64 rounded border border-neutral-border bg-white p-2 shadow-xl">
                       <p className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Choose a deduction</p>
-                      {deductionOptions.filter(option => !expandedDeductions.includes(option.field)).map(option => (
+                      {deductionOptions
+                        .filter(option => documentProfile.statutoryEnabled || option.field !== 'deductionCp38')
+                        .map(option => {
+                        const isAdded = expandedDeductions.includes(option.field);
+                        return (
                         <button
                           key={option.field}
                           type="button"
+                          disabled={isAdded}
                           onClick={() => addDeduction(option.field)}
                           className={`block w-full rounded px-2 py-1.5 text-left text-xs ${
                             option.subdued
                               ? 'text-on-surface-variant hover:bg-neutral-50 hover:text-on-surface'
                               : 'text-on-surface hover:bg-red-50 hover:text-red-700'
-                          }`}
+                          } disabled:cursor-not-allowed disabled:opacity-50`}
                         >
-                          {option.label}
+                          <span className="flex items-center justify-between gap-2">
+                            <span>{option.label}</span>
+                            {isAdded && <span className="text-[9px] font-bold uppercase tracking-wider">Added</span>}
+                          </span>
                         </button>
-                      ))}
-                      {deductionOptions.every(option => expandedDeductions.includes(option.field)) && (
+                        );
+                      })}
+                      {deductionOptions
+                        .filter(option => documentProfile.statutoryEnabled || option.field !== 'deductionCp38')
+                        .every(option => expandedDeductions.includes(option.field)) && (
                         <p className="px-2 py-1.5 text-xs text-on-surface-variant">All deduction types are already visible.</p>
                       )}
                     </div>
                   )}
                 </div>
               )}
-              {renderLine({ label: 'Unpaid Leave', amount: activeDraft.unpaidLeave, field: 'unpaidLeave', descriptionKey: 'unpaidLeave', fallback: 'Unpaid Leave', collapsedWhenEditing: true })}
-              {renderLine({ label: 'Payment in Lieu', amount: activeDraft.deductionInLieu, field: 'deductionInLieu', descriptionKey: 'deductionInLieu', fallback: 'Payment in Lieu', collapsedWhenEditing: true })}
-              {renderLine({ label: 'CP38 Direct Tax', amount: activeDraft.deductionCp38, field: 'deductionCp38', descriptionKey: 'deductionCp38', fallback: 'CP38 Direct Tax', collapsedWhenEditing: true })}
-              {renderLine({ label: 'Other Deductions', amount: activeDraft.deductionOthers, field: 'deductionOthers', descriptionKey: 'deductionOthers', fallback: activeDraft.deductionOthersDesc || 'Other Deductions', collapsedWhenEditing: true })}
+              {displaySettings.showDeductionDetails && (
+                <>
+                  {renderLine({ label: 'Unpaid Leave', amount: activeDraft.unpaidLeave, field: 'unpaidLeave', descriptionKey: 'unpaidLeave', fallback: 'Unpaid Leave', collapsedWhenEditing: true, removable: true })}
+                  {renderLine({ label: 'Payment in Lieu', amount: activeDraft.deductionInLieu, field: 'deductionInLieu', descriptionKey: 'deductionInLieu', fallback: 'Payment in Lieu', collapsedWhenEditing: true, removable: true })}
+                  {documentProfile.statutoryEnabled && renderLine({ label: 'CP38 Direct Tax', amount: activeDraft.deductionCp38, field: 'deductionCp38', descriptionKey: 'deductionCp38', fallback: 'CP38 Direct Tax', collapsedWhenEditing: true, removable: true })}
+                  {renderLine({ label: 'Other Deductions', amount: activeDraft.deductionOthers, field: 'deductionOthers', descriptionKey: 'deductionOthers', fallback: activeDraft.deductionOthersDesc || 'Other Deductions', collapsedWhenEditing: true, removable: true })}
+                </>
+              )}
               <div className="mt-2 flex items-center justify-between border-t border-red-200 pt-3 text-xs font-bold text-red-700">
-                <span>Total Deductions</span>
+                <span>{documentProfile.isPaymentVoucher ? 'Other Deductions' : 'Total Deductions'}</span>
                 <span className="font-mono">{formatMoney(breakdown.totalDeductions)}</span>
               </div>
             </div>
           </div>
         </section>
 
-        <section className="rounded border border-[#e3d3c4] bg-[#f8f1e8] p-4">
-          <h3 className="text-xs font-bold text-on-surface-variant">
-            Employer Contributions <span className="font-normal">(Not paid to employee)</span>
-          </h3>
-          <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {renderEmployerLine(`EPF (${effectiveEmployee.epfRateEmployer || 13}%)`, 'epfEmployer', breakdown.epfEmployerValue)}
-            {renderEmployerLine('SOCSO', 'socsoEmployer', breakdown.socsoEmployerVal)}
-            {renderEmployerLine('EIS', 'eisEmployer', breakdown.eisEmployerVal)}
-            {renderEmployerLine('HRD Corp', 'hrdCorp', breakdown.hrdCorpVal)}
-          </div>
-        </section>
+	        {documentProfile.statutoryEnabled && displaySettings.showEmployerContributions && (
+	          <section className="rounded border border-[#e3d3c4] bg-[#f8f1e8] p-4">
+	            <h3 className="text-xs font-bold text-on-surface-variant">
+	              Employer Contributions <span className="font-normal">(Not paid to employee)</span>
+	            </h3>
+	            <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
+	              {renderEmployerLine(`EPF (${effectiveEmployee.epfRateEmployer || 13}%)`, 'epfEmployer', breakdown.epfEmployerValue)}
+	              {renderEmployerLine('SOCSO', 'socsoEmployer', breakdown.socsoEmployerVal)}
+	              {renderEmployerLine('EIS', 'eisEmployer', breakdown.eisEmployerVal)}
+	              {renderEmployerLine('HRD Corp', 'hrdCorp', breakdown.hrdCorpVal)}
+	            </div>
+	          </section>
+	        )}
 
-        <section className="mt-6 rounded border border-[#e3d3c4] bg-[#fcfaf7] p-4">
-          <div className="flex flex-col gap-2 border-b border-[#eadfd6] pb-3 sm:flex-row sm:items-center sm:justify-between">
-            <h3 className="flex items-center gap-2 text-sm font-bold text-primary">
-              <TrendingUp className="w-4 h-4" /> Year-to-Date (YTD) Balances
+	        {displaySettings.showYtdSummary && (
+	        <section className="mt-6 rounded border border-[#e3d3c4] bg-[#fcfaf7] p-4">
+	          <div className="flex flex-col gap-2 border-b border-[#eadfd6] pb-3 sm:flex-row sm:items-center sm:justify-between">
+	            <h3 className="flex items-center gap-2 text-sm font-bold text-primary">
+	              <TrendingUp className="w-4 h-4" /> Year-to-Date (YTD) Balances
             </h3>
             <span className="w-fit rounded-full bg-neutral-200/70 px-2.5 py-1 font-mono text-[10px] font-semibold text-on-surface-variant">
               Accrued up to {selectedPayPeriod} ({ytd.months} Months)
             </span>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-            {[
-              ['YTD Gross Pay', ytd.grossEarnings, 'text-on-surface'],
-              ['YTD EPF (Emp)', ytd.epfEmployee, 'text-on-surface'],
-              ['YTD Tax (PCB)', ytd.taxPcb, 'text-red-700'],
-              ['YTD Net Pay', ytd.netPay, 'text-primary']
-            ].map(([label, value, color]) => (
-              <div key={String(label)} className="rounded border border-neutral-border/50 bg-white p-3">
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">{label}</span>
+	          </div>
+	          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+	            {[
+	              [documentProfile.isPaymentVoucher ? 'YTD Gross Amount' : 'YTD Gross Pay', ytd.grossEarnings, 'text-on-surface'],
+	              ...(documentProfile.statutoryEnabled ? [
+	                ['YTD EPF (Emp)', ytd.epfEmployee, 'text-on-surface'],
+	                ['YTD Tax (PCB)', ytd.taxPcb, 'text-red-700']
+	              ] : []),
+	              [documentProfile.isPaymentVoucher ? 'YTD Net Payable' : 'YTD Net Pay', ytd.netPay, 'text-primary']
+	            ].map(([label, value, color]) => (
+	              <div key={String(label)} className="rounded border border-neutral-border/50 bg-white p-3">
+	                <span className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">{label}</span>
                 <span className={`mt-1 block font-mono text-sm font-bold ${color}`}>{formatMoney(Number(value))}</span>
               </div>
-            ))}
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 rounded border border-neutral-border/30 bg-white p-3 text-[10px] text-on-surface-variant sm:grid-cols-4">
-            <span>YTD Allowances: <strong className="font-mono text-on-surface">{formatMoney(ytd.allowances)}</strong></span>
-            <span>YTD SOCSO (Emp): <strong className="font-mono text-on-surface">{formatMoney(ytd.socsoEmployee)}</strong></span>
-            <span>YTD LINDUNG 24: <strong className="font-mono text-on-surface">{formatMoney(ytd.skbbkEmployee)}</strong></span>
-            <span>YTD EIS (Emp): <strong className="font-mono text-on-surface">{formatMoney(ytd.eisEmployee)}</strong></span>
-          </div>
-        </section>
+	            ))}
+	          </div>
+	          {documentProfile.statutoryEnabled && (
+	            <div className="mt-3 grid grid-cols-2 gap-2 rounded border border-neutral-border/30 bg-white p-3 text-[10px] text-on-surface-variant sm:grid-cols-4">
+	              <span>YTD Allowances: <strong className="font-mono text-on-surface">{formatMoney(ytd.allowances)}</strong></span>
+	              <span>YTD SOCSO (Emp): <strong className="font-mono text-on-surface">{formatMoney(ytd.socsoEmployee)}</strong></span>
+	              <span>YTD LINDUNG 24: <strong className="font-mono text-on-surface">{formatMoney(ytd.skbbkEmployee)}</strong></span>
+	              <span>YTD EIS (Emp): <strong className="font-mono text-on-surface">{formatMoney(ytd.eisEmployee)}</strong></span>
+	            </div>
+	          )}
+	        </section>
+	        )}
 
-        <section className="mt-5 rounded border border-primary/20 bg-primary/5 p-4">
-          <div className="flex items-center justify-between gap-4">
-            <h3 className="text-xs font-bold text-primary">Calculation Summary</h3>
-            <span className="font-mono text-sm font-bold text-primary">{formatMoney(breakdown.netPay)}</span>
-          </div>
-          <div className="mt-3 space-y-1 text-xs">
-            <div className="flex justify-between gap-4"><span className="text-on-surface-variant">Gross Earnings + Reimbursements</span><span className="font-mono">{formatMoney(breakdown.grossEarnings + breakdown.reimbursementsSum)}</span></div>
-            <div className="flex justify-between gap-4"><span className="text-on-surface-variant">Total Deductions</span><span className="font-mono text-red-700">- {formatMoney(breakdown.totalDeductions)}</span></div>
-            <div className="flex justify-between gap-4 border-t border-primary/15 pt-2 font-bold text-primary"><span>Net Pay</span><span className="font-mono">{formatMoney(breakdown.netPay)}</span></div>
-          </div>
-        </section>
+	        <section className="mt-5 rounded border border-primary/20 bg-primary/5 p-4">
+	          <div className="flex items-center justify-between gap-4">
+	            <h3 className="text-xs font-bold text-primary">Calculation Summary</h3>
+	            <span className="font-mono text-sm font-bold text-primary">{formatMoney(breakdown.netPay)}</span>
+	          </div>
+	          <div className="mt-3 space-y-1 text-xs">
+	            <div className="flex justify-between gap-4"><span className="text-on-surface-variant">{documentProfile.isPaymentVoucher ? 'Gross Amount' : 'Gross Earnings + Reimbursements'}</span><span className="font-mono">{formatMoney(breakdown.grossEarnings + breakdown.reimbursementsSum)}</span></div>
+	            <div className="flex justify-between gap-4"><span className="text-on-surface-variant">{documentProfile.isPaymentVoucher ? 'Other Deductions' : 'Total Deductions'}</span><span className="font-mono text-red-700">- {formatMoney(breakdown.totalDeductions)}</span></div>
+	            <div className="flex justify-between gap-4 border-t border-primary/15 pt-2 font-bold text-primary"><span>{documentProfile.isPaymentVoucher ? 'Net Payable' : 'Net Pay'}</span><span className="font-mono">{formatMoney(breakdown.netPay)}</span></div>
+	          </div>
+	        </section>
 
         {proration.isProrated && (
           <div className="mt-4 flex items-center gap-2 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
@@ -1015,7 +1448,7 @@ export default function PayrollEditorMockupView({
       {!isEmbedded && (
         <div className="flex items-center justify-center gap-2 text-[10px] text-on-surface-variant">
           <FileText className="w-3.5 h-3.5" />
-          This design preview mirrors the payslip information hierarchy without saving payroll data.
+          This payroll editor mirrors the document information hierarchy without saving payroll data.
         </div>
       )}
     </div>

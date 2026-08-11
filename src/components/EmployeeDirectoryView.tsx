@@ -64,7 +64,8 @@ import {
   getEmployeeForMonth,
   getEffectiveEmploymentStatusForDate,
   getEffectiveProfileForDate,
-  getEffectiveTerminationDateForDate
+  getEffectiveTerminationDateForDate,
+  getPayrollDocumentProfile
 } from '../data';
 
 const EMPLOYEE_STATUS_OPTIONS: Exclude<Employee['status'], 'On Leave'>[] = [
@@ -227,6 +228,7 @@ export default function EmployeeDirectoryView({
   const [formEpfNumber, setFormEpfNumber] = useState('');
   const [formEmploymentType, setFormEmploymentType] = useState<Employee['employmentType']>('Confirmation');
   const [formEligibleForStatutory, setFormEligibleForStatutory] = useState<'Yes' | 'No'>('Yes');
+  const [formContractStatutoryTreatment, setFormContractStatutoryTreatment] = useState<NonNullable<Employee['contractStatutoryTreatment']>>('without_statutory');
   const [formOptInEpf, setFormOptInEpf] = useState<boolean>(true);
   const [formOptInSocso, setFormOptInSocso] = useState<boolean>(true);
   const [formOptInEis, setFormOptInEis] = useState<boolean>(true);
@@ -281,6 +283,7 @@ export default function EmployeeDirectoryView({
   const [editNationality, setEditNationality] = useState('');
   const [editContactNumber, setEditContactNumber] = useState('');
   const [editEmploymentType, setEditEmploymentType] = useState('');
+  const [editContractStatutoryTreatment, setEditContractStatutoryTreatment] = useState<NonNullable<Employee['contractStatutoryTreatment']>>('without_statutory');
   const [editDateOfJoined, setEditDateOfJoined] = useState('');
   const [editDateOfConfirmation, setEditDateOfConfirmation] = useState('');
   const [editEpfRateEmployee, setEditEpfRateEmployee] = useState(11);
@@ -312,6 +315,11 @@ export default function EmployeeDirectoryView({
     setEditNationality(selectedEmployee.nationality || '');
     setEditContactNumber(selectedEmployee.contactNumber || '');
     setEditEmploymentType(selectedEmployee.employmentType || '');
+    setEditContractStatutoryTreatment(
+      selectedEmployee.contractStatutoryTreatment ||
+      getPayrollDocumentProfile(selectedEmployee).contractStatutoryTreatment ||
+      'without_statutory'
+    );
     setEditDateOfJoined(selectedEmployee.dateOfJoined || '');
     setEditDateOfConfirmation(selectedEmployee.dateOfConfirmation || '');
     setEditEpfRateEmployee(selectedEmployee.epfRateEmployee !== undefined ? selectedEmployee.epfRateEmployee : 11);
@@ -326,6 +334,13 @@ export default function EmployeeDirectoryView({
 
   const handleSaveGeneralInfoUpdates = async () => {
     if (!selectedEmployee) return;
+    const contractTreatment = isContractEmploymentType(editEmploymentType)
+      ? editContractStatutoryTreatment
+      : undefined;
+    const updatedDocumentProfile = getPayrollDocumentProfile({
+      employmentType: editEmploymentType as Employee['employmentType'],
+      contractStatutoryTreatment: contractTreatment
+    });
     const currentEffectiveStatus = getEffectiveEmploymentStatusForDate(selectedEmployee, todayIsoDate);
     const currentProfile = getEffectiveProfileForDate(selectedEmployee, todayIsoDate);
     const statusProfile: EmployeeTaxProfile = {
@@ -343,6 +358,8 @@ export default function EmployeeDirectoryView({
       allowancePhone: Number(editAllowancePhone),
       epfRateEmployee: Number(editEpfRateEmployee),
       epfRateEmployer: Number(editEpfRateEmployer),
+      eligibleForStatutory: updatedDocumentProfile.statutoryEnabled ? 'Yes' : 'No',
+      contractStatutoryTreatment: contractTreatment,
       dateOfJoined: editDateOfJoined,
       dateOfTermination: isSeparationStatus(editStatus) ? todayIsoDate : undefined,
       approvedAt: getGmt8Timestamp(),
@@ -386,6 +403,8 @@ export default function EmployeeDirectoryView({
       nationality: editNationality,
       contactNumber: editContactNumber,
       employmentType: editEmploymentType,
+      eligibleForStatutory: updatedDocumentProfile.statutoryEnabled ? 'Yes' : 'No',
+      contractStatutoryTreatment: contractTreatment,
       dateOfJoined: editDateOfJoined,
       dateOfConfirmation: editEmploymentType === 'Confirmation' ? editDateOfConfirmation : '',
       epfRateEmployee: Number(editEpfRateEmployee),
@@ -531,6 +550,7 @@ export default function EmployeeDirectoryView({
 
   // Selected Employee object (synchronized with parent state in real time)
   const selectedEmployee = employees.find(e => e.id === selectedEmployeeId) || null;
+  const selectedPayrollDocumentProfile = selectedEmployee ? getPayrollDocumentProfile(selectedEmployee) : null;
 
   // Local staged changes for Career & Salary
   const [localSalaryAdjustments, setLocalSalaryAdjustments] = useState<any[]>([]);
@@ -543,6 +563,16 @@ export default function EmployeeDirectoryView({
   const [localTaxPcb, setLocalTaxPcb] = useState(0);
   const [localEntityId, setLocalEntityId] = useState('');
   const [localEffectiveDatedProfiles, setLocalEffectiveDatedProfiles] = useState<EmployeeTaxProfile[]>([]);
+
+  const isContractEmploymentType = (employmentType: string) =>
+    employmentType === 'Contract' || employmentType === 'Fixed Term Contract';
+
+  const formPayrollDocumentProfile = getPayrollDocumentProfile({
+    employmentType: formEmploymentType,
+    contractStatutoryTreatment: isContractEmploymentType(formEmploymentType)
+      ? formContractStatutoryTreatment
+      : undefined
+  });
 
   // Sync with selectedEmployee changes
   useEffect(() => {
@@ -680,6 +710,8 @@ export default function EmployeeDirectoryView({
     setFormTaxNumber('');
     setFormEpfNumber('');
     setFormEmploymentType('Permanent');
+    setFormContractStatutoryTreatment('without_statutory');
+    setFormEligibleForStatutory('Yes');
     setFormMaritalStatus('Single');
     setFormEmergencyContactName('');
     setFormEmergencyContactRelation('');
@@ -911,6 +943,13 @@ export default function EmployeeDirectoryView({
       spouseAndDependantFields.spousePosition = '';
     }
 
+    const newEmployeeDocumentProfile = getPayrollDocumentProfile({
+      employmentType: formEmploymentType,
+      contractStatutoryTreatment: isContractEmploymentType(formEmploymentType)
+        ? formContractStatutoryTreatment
+        : undefined
+    });
+
     const newEmp: Employee = {
       id: formEmail,
       entityId: formEntityId || activeEntityId || entities[0]?.id || 'ENT-92',
@@ -947,12 +986,13 @@ export default function EmployeeDirectoryView({
       epfNumber: formEpfNumber || `EP-${Math.floor(100000000 + Math.random() * 900000000)}`,
       employmentType: formEmploymentType,
       maritalStatus: formMaritalStatus,
-      eligibleForStatutory: (formEmploymentType === 'Independent Contractor' || formEmploymentType === 'Independent Contractor / Freelance') ? formEligibleForStatutory : 'No',
-      optInEpf: formOptInEpf,
-      optInSocso: formOptInSocso,
-      optInEis: formOptInEis,
-      optInPcb: formOptInPcb,
-      enableLindung24: formEnableLindung24,
+      eligibleForStatutory: newEmployeeDocumentProfile.statutoryEnabled ? 'Yes' : 'No',
+      contractStatutoryTreatment: isContractEmploymentType(formEmploymentType) ? formContractStatutoryTreatment : undefined,
+      optInEpf: newEmployeeDocumentProfile.statutoryEnabled ? formOptInEpf : false,
+      optInSocso: newEmployeeDocumentProfile.statutoryEnabled ? formOptInSocso : false,
+      optInEis: newEmployeeDocumentProfile.statutoryEnabled ? formOptInEis : false,
+      optInPcb: newEmployeeDocumentProfile.statutoryEnabled ? formOptInPcb : false,
+      enableLindung24: newEmployeeDocumentProfile.statutoryEnabled ? formEnableLindung24 : false,
       emergencyContactName: formEmergencyContactName || 'N/A',
       emergencyContactRelation: formEmergencyContactRelation || 'Spouse',
       emergencyContactPhone: formEmergencyContactPhone || 'N/A',
@@ -2373,6 +2413,7 @@ export default function EmployeeDirectoryView({
                     const displayedStatus = getEffectiveEmploymentStatusForDate(emp, todayIsoDate);
                     const statusClasses = getEmployeeStatusClasses(displayedStatus);
                     const displayedBasicSalary = getDisplayedMonthlyBasicSalary(emp);
+                    const documentProfile = getPayrollDocumentProfile(emp);
                     
                     return (
                       <tr 
@@ -2409,6 +2450,12 @@ export default function EmployeeDirectoryView({
                           <span className="text-[10px] font-bold text-secondary uppercase bg-surface-container-high px-1.5 py-0.5 rounded block w-fit mb-1">
                             {emp.employmentType || 'Full-Time'}
                           </span>
+                          <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded block w-fit mb-1 ${
+                            documentProfile.isPaymentVoucher ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                          }`}>
+                            {documentProfile.documentType}
+                          </span>
+                          <div className="text-[10px] font-semibold text-on-surface-variant mb-1">{documentProfile.compensationLabel}</div>
                           <div className="font-mono text-xs font-semibold text-on-surface">{emp.nricPassport || 'N/A'}</div>
                         </td>
 
@@ -2608,6 +2655,23 @@ export default function EmployeeDirectoryView({
                         <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Type of Employment</div>
                         <div className="font-semibold text-sm text-primary uppercase">{selectedEmployee.employmentType || 'Full-Time'}</div>
                       </div>
+
+                      {selectedPayrollDocumentProfile && (
+                        <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
+                          <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Payroll Document</div>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className={`font-bold text-[10px] uppercase px-2 py-0.5 rounded-full ${
+                              selectedPayrollDocumentProfile.isPaymentVoucher ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                            }`}>
+                              {selectedPayrollDocumentProfile.documentType}
+                            </span>
+                            <span className="font-semibold text-xs text-on-surface">{selectedPayrollDocumentProfile.compensationLabel}</span>
+                          </div>
+                          {selectedPayrollDocumentProfile.requiresContractStatutoryChoice && (
+                            <p className="mt-1 text-[10px] font-semibold text-amber-700">Contract statutory treatment needs confirmation.</p>
+                          )}
+                        </div>
+                      )}
 
                       <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
                         <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Marital Status</div>
@@ -2833,15 +2897,43 @@ export default function EmployeeDirectoryView({
                             onChange={(e) => setEditEmploymentType(e.target.value)}
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           >
-                            <option value="Internship">Internship</option>
-                            <option value="Probation">Probation</option>
-                            <option value="Permanent">Permanent</option>
-                            <option value="Fixed Term Contract">Fixed Term Contract</option>
-                            <option value="Independent Contractor">Independent Contractor</option>
-                            <option value="Part Time">Part Time</option>
-                          </select>
-                        </div>
-                        <div>
+	                            <option value="Internship">Internship</option>
+	                            <option value="Probation">Probation</option>
+	                            <option value="Permanent">Permanent</option>
+	                            <option value="Contract">Contract</option>
+	                            <option value="Fixed Term Contract">Fixed Term Contract</option>
+	                            <option value="Independent Contractor">Independent Contractor</option>
+	                            <option value="Part Time">Part Time</option>
+	                          </select>
+	                        </div>
+	                        {isContractEmploymentType(editEmploymentType) && (
+	                          <div>
+	                            <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Contract Payroll Treatment</label>
+	                            <select
+	                              value={editContractStatutoryTreatment}
+	                              onChange={(e) => setEditContractStatutoryTreatment(e.target.value as NonNullable<Employee['contractStatutoryTreatment']>)}
+	                              className="w-full bg-white border border-primary/40 rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs font-semibold text-primary"
+	                            >
+	                              <option value="with_statutory">Salary with Statutory</option>
+	                              <option value="without_statutory">Service Fees without Statutory</option>
+	                            </select>
+	                          </div>
+	                        )}
+	                        <div className="sm:col-span-2 rounded border border-primary/20 bg-primary/5 p-2 text-[10px] text-primary">
+	                          {(() => {
+	                            const profile = getPayrollDocumentProfile({
+	                              employmentType: editEmploymentType as Employee['employmentType'],
+	                              contractStatutoryTreatment: isContractEmploymentType(editEmploymentType) ? editContractStatutoryTreatment : undefined
+	                            });
+	                            return (
+	                              <span className="font-semibold">
+	                                Payroll output: {profile.documentType} / {profile.compensationLabel}
+	                                {profile.statutoryEnabled ? ' with statutory' : ' without statutory'}.
+	                              </span>
+	                            );
+	                          })()}
+	                        </div>
+	                        <div>
                           <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Date Joined</label>
                           <input
                             type="date"
@@ -3026,8 +3118,12 @@ export default function EmployeeDirectoryView({
                     <h4 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5">
                       <ShieldCheck className="w-4 h-4 text-primary" /> Statutory Settings
                     </h4>
-                    {!isEditingStatutorySettings ? (
-                      <button 
+	                    {!selectedPayrollDocumentProfile?.statutoryEnabled ? (
+	                      <span className="rounded bg-amber-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-800">
+	                        Not applicable
+	                      </span>
+	                    ) : !isEditingStatutorySettings ? (
+	                      <button
                         type="button"
                         onClick={handleStartEditStatutorySettings}
                         className="text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors text-xs font-semibold cursor-pointer border border-primary/20"
@@ -3055,7 +3151,11 @@ export default function EmployeeDirectoryView({
                     )}
                   </div>
 
-                  {!isEditingStatutorySettings ? (
+	                  {!selectedPayrollDocumentProfile?.statutoryEnabled ? (
+	                    <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+	                      Not applicable for this employment type. Statutory deductions and employer contributions will remain RM 0.00.
+	                    </div>
+	                  ) : !isEditingStatutorySettings ? (
                     /* VIEW MODE: Tick box for opt in, Cross box for opt out */
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                       <div className="flex justify-between items-center bg-white p-2 rounded border border-neutral-border/50 shadow-xs">
@@ -4291,14 +4391,15 @@ export default function EmployeeDirectoryView({
                       value={formEmploymentType} onChange={(e) => setFormEmploymentType(e.target.value as any)}
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold text-primary"
                     >
-                      <option value="Internship">Internship</option>
-                      <option value="Probation">Probation</option>
-                      <option value="Permanent">Permanent</option>
-                      <option value="Fixed Term Contract">Fixed Term Contract</option>
-                      <option value="Independent Contractor">Independent Contractor</option>
-                      <option value="Part Time">Part Time</option>
-                    </select>
-                  </div>
+	                      <option value="Internship">Internship</option>
+	                      <option value="Probation">Probation</option>
+	                      <option value="Permanent">Permanent</option>
+	                      <option value="Contract">Contract</option>
+	                      <option value="Fixed Term Contract">Fixed Term Contract</option>
+	                      <option value="Independent Contractor">Independent Contractor</option>
+	                      <option value="Part Time">Part Time</option>
+	                    </select>
+	                  </div>
                   <div>
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Date Joined</label>
                     <input 
@@ -4327,43 +4428,67 @@ export default function EmployeeDirectoryView({
                         <option key={status} value={status}>{status}</option>
                       ))}
                     </select>
-                  </div>
-                </div>
+	                  </div>
+	                </div>
 
-                {formEmploymentType === 'Independent Contractor / Freelance' && (
-                  <div className="p-3 bg-primary/5 border border-primary/25 rounded-md animate-in slide-in-from-top-1 duration-150">
-                    <label className="block text-xs font-bold text-primary uppercase mb-1">Eligible for Statutory Payment ? (Y / N)</label>
-                    <select
-                      value={formEligibleForStatutory} onChange={(e) => setFormEligibleForStatutory(e.target.value as 'Yes' | 'No')}
-                      className="w-full bg-white border border-primary/40 rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
-                    >
-                      <option value="Yes">Yes (Y)</option>
-                      <option value="No">No (N)</option>
-                    </select>
-                  </div>
-                )}
+	                {isContractEmploymentType(formEmploymentType) && (
+	                  <div className="p-3 bg-primary/5 border border-primary/25 rounded-md animate-in slide-in-from-top-1 duration-150">
+	                    <label className="block text-xs font-bold text-primary uppercase mb-1">Contract Payroll Treatment *</label>
+	                    <select
+	                      value={formContractStatutoryTreatment}
+	                      onChange={(e) => {
+	                        const nextTreatment = e.target.value as NonNullable<Employee['contractStatutoryTreatment']>;
+	                        setFormContractStatutoryTreatment(nextTreatment);
+	                        setFormEligibleForStatutory(nextTreatment === 'with_statutory' ? 'Yes' : 'No');
+	                      }}
+	                      className="w-full bg-white border border-primary/40 rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
+	                    >
+	                      <option value="with_statutory">Salary with Statutory</option>
+	                      <option value="without_statutory">Service Fees without Statutory</option>
+	                    </select>
+	                  </div>
+	                )}
 
-                <div className="p-3 bg-primary/5 border border-primary/25 rounded-md space-y-2">
-                  <span className="text-xs font-bold text-primary uppercase tracking-wider block">Statutory Opt In / Opt Out Defaults</span>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <label className="block text-[10px] font-bold text-primary uppercase mb-1">KWSP (EPF)</label>
-                      <select
-                        value={formOptInEpf ? 'Yes' : 'No'}
-                        onChange={(e) => setFormOptInEpf(e.target.value === 'Yes')}
-                        className="w-full bg-white border border-primary/40 rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
-                      >
+	                <div className={`p-3 rounded-md border text-xs ${
+	                  formPayrollDocumentProfile.statutoryEnabled
+	                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+	                    : 'bg-amber-50 border-amber-200 text-amber-800'
+	                }`}>
+	                  <span className="font-bold uppercase tracking-wider block">Payroll Output</span>
+	                  <span className="mt-1 block font-semibold">
+	                    {formPayrollDocumentProfile.documentType} / {formPayrollDocumentProfile.compensationLabel}
+	                    {formPayrollDocumentProfile.statutoryEnabled ? ' with statutory.' : ' without statutory.'}
+	                  </span>
+	                </div>
+
+	                <div className="p-3 bg-primary/5 border border-primary/25 rounded-md space-y-2">
+	                  <span className="text-xs font-bold text-primary uppercase tracking-wider block">Statutory Opt In / Opt Out Defaults</span>
+	                  {!formPayrollDocumentProfile.statutoryEnabled && (
+	                    <p className="text-[11px] font-semibold text-amber-800">
+	                      Not applicable for this employment type. Statutory values will stay at RM 0.00.
+	                    </p>
+	                  )}
+	                  <div className="grid grid-cols-2 gap-2 text-xs">
+	                    <div>
+	                      <label className="block text-[10px] font-bold text-primary uppercase mb-1">KWSP (EPF)</label>
+	                      <select
+	                        value={formOptInEpf ? 'Yes' : 'No'}
+	                        onChange={(e) => setFormOptInEpf(e.target.value === 'Yes')}
+	                        disabled={!formPayrollDocumentProfile.statutoryEnabled}
+	                        className="w-full bg-white border border-primary/40 rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
+	                      >
                         <option value="Yes">Opt In (Active)</option>
                         <option value="No">Opt Out (Inactive)</option>
                       </select>
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-primary uppercase mb-1">PERKESO (SOCSO)</label>
-                      <select
-                        value={formOptInSocso ? 'Yes' : 'No'}
-                        onChange={(e) => setFormOptInSocso(e.target.value === 'Yes')}
-                        className="w-full bg-white border border-primary/40 rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
-                      >
+	                      <select
+	                        value={formOptInSocso ? 'Yes' : 'No'}
+	                        onChange={(e) => setFormOptInSocso(e.target.value === 'Yes')}
+	                        disabled={!formPayrollDocumentProfile.statutoryEnabled}
+	                        className="w-full bg-white border border-primary/40 rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
+	                      >
                         <option value="Yes">Opt In (Active)</option>
                         <option value="No">Opt Out (Inactive)</option>
                       </select>
@@ -4373,6 +4498,7 @@ export default function EmployeeDirectoryView({
                       <select
                         value={formOptInEis ? 'Yes' : 'No'}
                         onChange={(e) => setFormOptInEis(e.target.value === 'Yes')}
+                        disabled={!formPayrollDocumentProfile.statutoryEnabled}
                         className="w-full bg-white border border-primary/40 rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
                       >
                         <option value="Yes">Opt In (Active)</option>
@@ -4384,6 +4510,7 @@ export default function EmployeeDirectoryView({
                       <select
                         value={formOptInPcb ? 'Yes' : 'No'}
                         onChange={(e) => setFormOptInPcb(e.target.value === 'Yes')}
+                        disabled={!formPayrollDocumentProfile.statutoryEnabled}
                         className="w-full bg-white border border-primary/40 rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
                       >
                         <option value="Yes">Opt In (Active)</option>
@@ -4395,6 +4522,7 @@ export default function EmployeeDirectoryView({
                       <select
                         value={formEnableLindung24 ? 'Yes' : 'No'}
                         onChange={(e) => setFormEnableLindung24(e.target.value === 'Yes')}
+                        disabled={!formPayrollDocumentProfile.statutoryEnabled}
                         className="w-full bg-white border border-primary/40 rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
                       >
                         <option value="No">Opt Out (Inactive)</option>
