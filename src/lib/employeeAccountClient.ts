@@ -29,6 +29,19 @@ const isPreviewMode = () => (
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
+const isAccountSchemaUnavailable = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error || '');
+  return /employee_accounts|employee_account_events|schema cache|could not find the table/i.test(message);
+};
+
+const buildDefaultSummary = (employee: Employee): EmployeeAccountSummary => ({
+  employeeId: employee.id,
+  employeeEmail: normalizeEmail(employee.email),
+  username: normalizeEmail(employee.email),
+  accountStatus: 'not_created',
+  mustChangePassword: false,
+});
+
 const readPreviewRecords = (): Record<string, PreviewAccountRecord> => {
   if (typeof window === 'undefined') return {};
   try {
@@ -202,7 +215,13 @@ export const getEmployeeAccountSummaries = async (
 
   const response = await request<{ accounts: EmployeeAccountSummary[] }>(
     `/api/admin/employee-accounts?employeeIds=${encodeURIComponent(employees.map((employee) => employee.id).join(','))}`
-  );
+  ).catch((error) => {
+    if (isAccountSchemaUnavailable(error)) {
+      console.warn('[Employee Account Status] Account tables are not migrated yet. Showing default local statuses.');
+      return { accounts: employees.map(buildDefaultSummary) };
+    }
+    throw error;
+  });
   return response.accounts;
 };
 
@@ -227,7 +246,13 @@ export const getEmployeeAccountEvents = async (
 
   const response = await request<{ events: EmployeeAccountEvent[] }>(
     `/api/admin/employee-accounts/events?employeeId=${encodeURIComponent(employee.id)}`
-  );
+  ).catch((error) => {
+    if (isAccountSchemaUnavailable(error)) {
+      console.warn('[Employee Account History] Account tables are not migrated yet. Showing empty delivery history.');
+      return { events: [] };
+    }
+    throw error;
+  });
   return response.events;
 };
 

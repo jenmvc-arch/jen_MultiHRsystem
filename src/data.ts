@@ -2953,7 +2953,6 @@ export interface UserAccount {
   password: string;
   name: string;
   role: string;
-  nickname?: string;
   mustChangePassword?: boolean;
   profileLoadedFromServer?: boolean;
 }
@@ -2987,8 +2986,7 @@ export const MOCK_USERS: UserAccount[] = [
     email: 's.jenkins@acme-global.com',
     password: 'employee123#',
     name: 'Sarah Jenkins',
-    role: 'Employee',
-    nickname: 'Sarah'
+    role: 'Employee'
   }
 ];
 

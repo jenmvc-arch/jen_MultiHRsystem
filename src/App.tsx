@@ -77,17 +77,6 @@ import {
   isSupabaseConfigured,
 } from './lib/supabaseClient';
 
-const getNicknameStorageKey = (email: string | null | undefined) => (
-  `hr-nexus-user-nickname:${String(email || '').trim().toLowerCase()}`
-);
-
-const getStoredNickname = (email: string | null | undefined) => {
-  const normalizedEmail = String(email || '').trim().toLowerCase();
-  return normalizedEmail
-    ? localStorage.getItem(getNicknameStorageKey(normalizedEmail))
-    : null;
-};
-
 const parseOptionalJson = <T,>(value: unknown): T | undefined => {
   if (value === undefined || value === null || value === '') {
     return undefined;
@@ -100,6 +89,26 @@ const parseOptionalJson = <T,>(value: unknown): T | undefined => {
     }
   }
   return value as T;
+};
+
+const REMOTE_DATA_LOAD_TIMEOUT_MS = import.meta.env.DEV ? 7000 : 30000;
+
+const withRemoteLoadTimeout = async <T,>(
+  promise: Promise<T>,
+  label: string
+): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out. Using local preview data instead.`));
+    }, REMOTE_DATA_LOAD_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 };
 
 interface ErrorBoundaryProps {
@@ -186,28 +195,17 @@ export default function App() {
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
-  const [currentUserNickname, setCurrentUserNickname] = useState<string | null>(null);
   const [currentUserMustChangePassword, setCurrentUserMustChangePassword] = useState(false);
   const isEmployeePortalDemoPath = window.location.pathname.startsWith('/employee-portal/demo');
   const isEmployeeAccount = isEmployeePortalRole(currentUserRole);
   const employeePortalQueryEmployeeId = new URLSearchParams(window.location.search).get('employeeId') || 'EMP-84729';
 
   const handleLoginSuccess = (user: UserAccount) => {
-    const serverNickname = String(user.nickname || '').trim();
-    const nickname = serverNickname || (
-      user.profileLoadedFromServer ? '' : String(getStoredNickname(user.email) || '').trim()
-    );
     localStorage.setItem('hr-nexus-auth', 'true');
     localStorage.setItem('hr-nexus-user-email', user.email);
     localStorage.setItem('hr-nexus-user-name', user.name);
     localStorage.setItem('hr-nexus-user-role', user.role);
-    if (nickname) {
-      localStorage.setItem(getNicknameStorageKey(user.email), nickname);
-      localStorage.setItem('hr-nexus-user-nickname', nickname);
-    } else {
-      localStorage.removeItem(getNicknameStorageKey(user.email));
-      localStorage.removeItem('hr-nexus-user-nickname');
-    }
+    localStorage.removeItem('hr-nexus-user-nickname');
     localStorage.setItem(
       'hr-nexus-user-must-change-password',
       String(Boolean(user.mustChangePassword))
@@ -216,7 +214,6 @@ export default function App() {
     setCurrentUserEmail(user.email);
     setCurrentUserName(user.name);
     setCurrentUserRole(user.role);
-    setCurrentUserNickname(nickname || null);
     setCurrentUserMustChangePassword(Boolean(user.mustChangePassword));
 
     if (isEmployeePortalRole(user.role)) {
@@ -262,67 +259,9 @@ export default function App() {
     setCurrentUserEmail(null);
     setCurrentUserName(null);
     setCurrentUserRole(null);
-    setCurrentUserNickname(null);
     setCurrentUserMustChangePassword(false);
     setCurrentTab('dashboard');
     window.history.replaceState({}, '', '/');
-  };
-
-  const handleSaveNickname = async (nickname: string) => {
-    const normalizedNickname = nickname.trim();
-    if (normalizedNickname.length < 2 || normalizedNickname.length > 40) {
-      throw new Error('Nickname must be between 2 and 40 characters.');
-    }
-
-    if (isEmployeeAccount) {
-      const employeeAuthClient = employeeSupabase || supabase;
-      const {
-        data: { session },
-      } = await employeeAuthClient?.auth.getSession() || { data: { session: null } };
-      if (session?.access_token) {
-        try {
-          const response = await fetch('/api/employee-auth/profile', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${session.access_token}`,
-            },
-            body: JSON.stringify({ nickname: normalizedNickname }),
-          });
-          const payload = await response.json().catch(() => ({}));
-          if (!response.ok && !import.meta.env.DEV) {
-            throw new Error(payload.error || 'Your nickname could not be saved.');
-          }
-        } catch (error) {
-          if (!import.meta.env.DEV) throw error;
-          console.warn('[Employee Profile] Local development fallback:', error);
-        }
-      } else if (!import.meta.env.DEV) {
-        throw new Error('Your employee session is not available.');
-      }
-    } else {
-      try {
-        const response = await fetch('/api/auth/profile', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nickname: normalizedNickname }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok && !import.meta.env.DEV) {
-          throw new Error(payload.error || 'Your nickname could not be saved.');
-        }
-      } catch (error) {
-        if (!import.meta.env.DEV) throw error;
-        console.warn('[Admin Profile] Local development fallback:', error);
-      }
-    }
-
-    if (currentUserEmail) {
-      localStorage.setItem(getNicknameStorageKey(currentUserEmail), normalizedNickname);
-    }
-    localStorage.setItem('hr-nexus-user-nickname', normalizedNickname);
-    setCurrentUserNickname(normalizedNickname);
   };
 
   // Core Database States
@@ -712,15 +651,7 @@ export default function App() {
             setCurrentUserEmail(user.username || user.email || storedEmail);
             setCurrentUserName(user.name || localStorage.getItem('hr-nexus-user-name'));
             setCurrentUserRole(user.role || storedRole);
-            const nickname = String(user.nickname || '').trim();
-            if (nickname) {
-              localStorage.setItem(getNicknameStorageKey(user.username || user.email || storedEmail), nickname);
-              localStorage.setItem('hr-nexus-user-nickname', nickname);
-            } else {
-              localStorage.removeItem(getNicknameStorageKey(user.username || user.email || storedEmail));
-              localStorage.removeItem('hr-nexus-user-nickname');
-            }
-            setCurrentUserNickname(nickname || null);
+            localStorage.removeItem('hr-nexus-user-nickname');
             setCurrentUserMustChangePassword(false);
             return;
           }
@@ -757,14 +688,7 @@ export default function App() {
                 });
                 if (profileResponse.ok) {
                   const profile = await profileResponse.json();
-                  const nickname = String(profile.nickname || '').trim();
-                  if (nickname) {
-                    localStorage.setItem(getNicknameStorageKey(data.user.email), nickname);
-                    localStorage.setItem('hr-nexus-user-nickname', nickname);
-                  } else {
-                    localStorage.removeItem(getNicknameStorageKey(data.user.email));
-                    localStorage.removeItem('hr-nexus-user-nickname');
-                  }
+                  localStorage.removeItem('hr-nexus-user-nickname');
                   localStorage.setItem(
                     'hr-nexus-user-must-change-password',
                     String(Boolean(profile.mustChangePassword))
@@ -774,7 +698,6 @@ export default function App() {
                   setCurrentUserEmail(data.user.email);
                   setCurrentUserName(localStorage.getItem('hr-nexus-user-name'));
                   setCurrentUserRole(storedRole);
-                  setCurrentUserNickname(nickname || null);
                   setCurrentUserMustChangePassword(Boolean(profile.mustChangePassword));
                   return;
                 }
@@ -795,7 +718,6 @@ export default function App() {
       setCurrentUserEmail(storedEmail);
       setCurrentUserName(localStorage.getItem('hr-nexus-user-name'));
       setCurrentUserRole(storedRole);
-      setCurrentUserNickname(getStoredNickname(storedEmail));
       setCurrentUserMustChangePassword(
         localStorage.getItem('hr-nexus-user-must-change-password') === 'true'
       );
@@ -838,10 +760,16 @@ export default function App() {
         let mainPayload: any = null;
         if (isSupabaseConfigured) {
           console.log('[App] Fetching database from Supabase...');
-          mainPayload = await supabaseClient.loadData();
+          mainPayload = await withRemoteLoadTimeout(
+            supabaseClient.loadData(),
+            'Supabase database load'
+          );
         } else if (isGoogleConfigured) {
           console.log('[App] Fetching database from Google Sheets...');
-          mainPayload = await googleSheetsClient.loadData();
+          mainPayload = await withRemoteLoadTimeout(
+            googleSheetsClient.loadData(),
+            'Google Sheets database load'
+          );
         }
 
         if (!mainPayload) {
@@ -888,7 +816,10 @@ export default function App() {
             if (payloadsByUrl[url]) return;
             try {
               console.log(`[Multi-Script] Fetching data for entity ${ent.name} from:`, url);
-              const customPayload = await googleSheetsClient.loadData(url);
+              const customPayload = await withRemoteLoadTimeout(
+                googleSheetsClient.loadData(url),
+                `Google Sheets data load for ${ent.name}`
+              );
               payloadsByUrl[url] = customPayload;
             } catch (fetchErr) {
               console.error(`[Multi-Script] Failed to load data for entity ${ent.name} from:`, url, fetchErr);
@@ -1389,7 +1320,6 @@ export default function App() {
   const [companyEpfReferenceNo, setCompanyEpfReferenceNo] = useState('');
   const [companySocsoReferenceNo, setCompanySocsoReferenceNo] = useState('');
   const [isSavingCompanySettings, setIsSavingCompanySettings] = useState(false);
-  const [adminNicknameDraft, setAdminNicknameDraft] = useState('');
 
   const [taxRate, setTaxRate] = useState(() => {
     const saved = localStorage.getItem('company_tax_rate');
@@ -1409,10 +1339,6 @@ export default function App() {
 
     }
   }, [activeEntityId, activeEntity]);
-
-  useEffect(() => {
-    setAdminNicknameDraft(currentUserNickname || '');
-  }, [currentUserNickname]);
 
   // Restore persisted tab per-entity on entity switch
   useEffect(() => {
@@ -2280,12 +2206,9 @@ export default function App() {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
 
-  const needsProfileSetup = isAuthenticated && (
-    !currentUserNickname
-    || (isEmployeeAccount && currentUserMustChangePassword)
-  );
+  const needsPasswordSetup = isAuthenticated && isEmployeeAccount && currentUserMustChangePassword;
 
-  if (needsProfileSetup) {
+  if (needsPasswordSetup) {
     return (
       <div className="min-h-screen bg-neutral-900 flex items-center justify-center p-4 font-sans relative overflow-hidden">
         <div className="absolute top-0 left-0 w-64 h-full pointer-events-none opacity-20">
@@ -2301,113 +2224,80 @@ export default function App() {
         <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm text-center relative z-10 border border-[#E5E5E5]">
           <h2 className="text-xl font-bold text-[#333333] mb-2">Welcome, {currentUserName}!</h2>
           <p className="text-sm text-gray-500 mb-6">
-            {isEmployeeAccount && currentUserMustChangePassword
-              ? 'Set your nickname and a new password before entering the employee portal.'
-              : 'Please choose a nickname for your profile before continuing.'}
+            Set a new password before entering the employee portal.
           </p>
           <form onSubmit={async (e) => {
             e.preventDefault();
             const form = e.target as HTMLFormElement;
-            const input = form.elements.namedItem('nickname') as HTMLInputElement;
-            const val = input.value.trim();
             const newPassword = (form.elements.namedItem('newPassword') as HTMLInputElement | null)?.value || '';
             const confirmPassword = (form.elements.namedItem('confirmPassword') as HTMLInputElement | null)?.value || '';
-            if (!val) return;
 
-            if (isEmployeeAccount && currentUserMustChangePassword) {
-              if (newPassword.length < 8) {
-                triggerNotification('Password Required', 'Your new password must be at least 8 characters.', 'info');
+            if (newPassword.length < 8) {
+              triggerNotification('Password Required', 'Your new password must be at least 8 characters.', 'info');
+              return;
+            }
+            if (newPassword !== confirmPassword) {
+              triggerNotification('Password Mismatch', 'The new password and confirmation do not match.', 'info');
+              return;
+            }
+
+            const employeeAuthClient = employeeSupabase || supabase;
+            if (employeeAuthClient) {
+              const { error: passwordError } = await employeeAuthClient.auth.updateUser({
+                password: newPassword,
+                data: {
+                  must_change_password: false,
+                },
+              });
+              if (passwordError) {
+                triggerNotification('Setup Failed', passwordError.message, 'info');
                 return;
               }
-              if (newPassword !== confirmPassword) {
-                triggerNotification('Password Mismatch', 'The new password and confirmation do not match.', 'info');
-                return;
-              }
 
-              const employeeAuthClient = employeeSupabase || supabase;
-              if (employeeAuthClient) {
-                const { error: passwordError } = await employeeAuthClient.auth.updateUser({
-                  password: newPassword,
-                  data: {
-                    nickname: val,
-                    must_change_password: false,
+              const {
+                data: { session },
+              } = await employeeAuthClient.auth.getSession();
+              if (session?.access_token) {
+                const setupResponse = await fetch('/api/employee-auth/complete-setup', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${session.access_token}`,
                   },
                 });
-                if (passwordError) {
-                  triggerNotification('Setup Failed', passwordError.message, 'info');
+                if (!setupResponse.ok) {
+                  const setupPayload = await setupResponse.json().catch(() => ({}));
+                  triggerNotification(
+                    'Setup Sync Failed',
+                    setupPayload.error || 'Your password was updated, but the employee account status could not be synchronized.',
+                    'info'
+                  );
                   return;
                 }
-
-                const {
-                  data: { session },
-                } = await employeeAuthClient.auth.getSession();
-                if (session?.access_token) {
-                  const setupResponse = await fetch('/api/employee-auth/complete-setup', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      Authorization: `Bearer ${session.access_token}`,
-                    },
-                    body: JSON.stringify({ nickname: val }),
-                  });
-                  if (!setupResponse.ok) {
-                    const setupPayload = await setupResponse.json().catch(() => ({}));
-                    triggerNotification(
-                      'Setup Sync Failed',
-                      setupPayload.error || 'Your password was updated, but the employee account status could not be synchronized.',
-                      'info'
-                    );
-                    return;
-                  }
-                }
               }
             }
 
-            if (isEmployeeAccount) {
-              // The password setup flow already writes the nickname. For
-              // nickname-only first login, persist it through the profile API.
-              if (!currentUserMustChangePassword) {
-                await handleSaveNickname(val);
-              } else {
-                localStorage.setItem(getNicknameStorageKey(currentUserEmail), val);
-              }
-            } else {
-              await handleSaveNickname(val);
-            }
-            localStorage.setItem('hr-nexus-user-nickname', val);
             localStorage.setItem('hr-nexus-user-must-change-password', 'false');
-            setCurrentUserNickname(val);
             setCurrentUserMustChangePassword(false);
           }}>
-            <input 
-              name="nickname"
-              type="text" 
+            <input
+              name="newPassword"
+              type="password"
               required
-              placeholder="e.g. Jenny"
+              minLength={8}
+              placeholder="New password"
+              className="w-full h-12 px-4 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] mb-3 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all text-center"
+            />
+            <input
+              name="confirmPassword"
+              type="password"
+              required
+              minLength={8}
+              placeholder="Confirm new password"
               className="w-full h-12 px-4 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] mb-4 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all text-center"
             />
-            {isEmployeeAccount && currentUserMustChangePassword && (
-              <>
-                <input
-                  name="newPassword"
-                  type="password"
-                  required
-                  minLength={8}
-                  placeholder="New password"
-                  className="w-full h-12 px-4 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] mb-3 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all text-center"
-                />
-                <input
-                  name="confirmPassword"
-                  type="password"
-                  required
-                  minLength={8}
-                  placeholder="Confirm new password"
-                  className="w-full h-12 px-4 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] mb-4 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all text-center"
-                />
-              </>
-            )}
             <button type="submit" className="w-full h-12 bg-[#A32626] hover:bg-[#8F1F1F] text-white font-semibold rounded-xl shadow-md shadow-[#A32626]/20 transition-all focus:outline-none focus:ring-2 focus:ring-[#A32626]/50">
-              Save Nickname
+              Save New Password
             </button>
           </form>
         </div>
@@ -2426,11 +2316,9 @@ export default function App() {
           reviewCycles={employeePortalReviewCycles}
           currentUserName={isEmployeePortalPreview ? employeePortalEmployee?.name || 'Employee' : currentUserName}
           currentUserEmail={isEmployeePortalPreview ? employeePortalEmployee?.email || 'employee@redpoint.com' : currentUserEmail}
-          currentUserNickname={isEmployeePortalPreview ? '' : currentUserNickname}
           currentUserRole={isEmployeePortalPreview ? 'Employee' : currentUserRole}
           onShowNotification={triggerNotification}
           onUpdateEmployee={isEmployeePortalPreview ? async () => {} : handleEmployeePortalUpdateEmployee}
-          onSaveNickname={isEmployeePortalPreview ? async () => {} : handleSaveNickname}
           onSavePerformance={isEmployeePortalPreview ? () => {} : handleSavePerformance}
           onSignOut={handleSignOut}
           isPreviewMode={isEmployeePortalPreview}
@@ -2737,46 +2625,6 @@ export default function App() {
                 </div>
 
                 <div className="space-y-4 text-sm">
-                  <div className="rounded-lg border border-neutral-border bg-surface-container-low p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-xs font-bold text-primary uppercase">Your Profile</h3>
-                        <p className="text-[11px] text-on-surface-variant mt-1">Change the nickname shown in your admin console. This does not change your login username.</p>
-                      </div>
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
-                        {currentUserEmail || 'Signed-in user'}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
-                      <label className="flex-1">
-                        <span className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Nickname</span>
-                        <input
-                          type="text"
-                          value={adminNicknameDraft}
-                          onChange={(e) => setAdminNicknameDraft(e.target.value)}
-                          minLength={2}
-                          maxLength={40}
-                          placeholder="e.g. Jenny"
-                          className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            await handleSaveNickname(adminNicknameDraft);
-                            triggerNotification('Profile Saved', 'Your admin nickname has been updated.');
-                          } catch (err: any) {
-                            triggerNotification('Profile Save Failed', err.message || 'Your nickname could not be saved.', 'info');
-                          }
-                        }}
-                        className="bg-primary text-white text-xs font-semibold py-2 px-4 rounded hover:bg-primary-container"
-                      >
-                        Save nickname
-                      </button>
-                    </div>
-                  </div>
-
                   <div>
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Company Legal Entity Name</label>
                     <input 

@@ -69,7 +69,6 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       const profile = await response.json();
       return {
         ...fallback,
-        nickname: String(profile.nickname || ''),
         mustChangePassword: Boolean(profile.mustChangePassword),
         profileLoadedFromServer: true,
       };
@@ -129,7 +128,6 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         password: '',
         name: signer.name,
         role: employee ? 'Employee' : 'Candidate',
-        nickname: '',
       });
       onLoginSuccess(signedInUser);
     });
@@ -213,7 +211,6 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             password: '',
             name: securePayload.user.name,
             role: securePayload.user.role,
-            nickname: securePayload.user.nickname || '',
             mustChangePassword: Boolean(securePayload.user.mustChangePassword),
             profileLoadedFromServer: true,
           });
@@ -271,7 +268,6 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
               password: '',
               name: matchedSigner.name,
               role: employee ? 'Employee' : 'Candidate',
-              nickname: '',
             });
           } else {
             await performLocalFallback();
@@ -303,7 +299,6 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             password: matched.password,
             name: matched.name,
             role: matched.role,
-            nickname: matched.nickname,
           });
         } else {
           setIsLoading(false);

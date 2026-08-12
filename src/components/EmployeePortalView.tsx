@@ -71,11 +71,9 @@ interface EmployeePortalViewProps {
   reviewCycles: ReviewCycle[];
   currentUserName?: string | null;
   currentUserEmail?: string | null;
-  currentUserNickname?: string | null;
   currentUserRole?: string | null;
   onShowNotification: (title: string, message: string) => void;
   onUpdateEmployee: (id: string, updates: Partial<Employee>) => Promise<void>;
-  onSaveNickname: (nickname: string) => Promise<void>;
   onSavePerformance: (performance: EmployeePerformance) => void;
   onSignOut: () => void;
   isPreviewMode?: boolean;
@@ -119,9 +117,7 @@ const saveJson = (key: string, value: unknown) => {
   localStorage.setItem(key, JSON.stringify(value));
 };
 
-interface PreviewEmployeeOverrides extends Partial<Employee> {
-  nickname?: string;
-}
+type PreviewEmployeeOverrides = Partial<Employee>;
 
 const readPreviewEmployeeOverrides = (employeeId: string): PreviewEmployeeOverrides =>
   readJson<PreviewEmployeeOverrides>(`employee_portal_demo_employee_${employeeId}`, {});
@@ -150,11 +146,9 @@ export default function EmployeePortalView({
   reviewCycles,
   currentUserName,
   currentUserEmail,
-  currentUserNickname,
   currentUserRole,
   onShowNotification,
   onUpdateEmployee,
-  onSaveNickname,
   onSavePerformance,
   onSignOut,
   isPreviewMode = false,
@@ -294,7 +288,6 @@ export default function EmployeePortalView({
   }, [selectedEmployee?.id, supportStorageKey]);
 
   const [profileDraft, setProfileDraft] = useState({
-    nickname: currentUserNickname || '',
     contactNumber: '',
     emergencyContactName: '',
     emergencyContactRelation: '',
@@ -308,14 +301,13 @@ export default function EmployeePortalView({
       ? readPreviewEmployeeOverrides(selectedEmployee.id)
       : {};
     setProfileDraft({
-      nickname: currentUserNickname || previewOverrides.nickname || '',
       contactNumber: selectedEmployee.contactNumber || '',
       emergencyContactName: selectedEmployee.emergencyContactName || '',
       emergencyContactRelation: selectedEmployee.emergencyContactRelation || '',
       emergencyContactPhone: selectedEmployee.emergencyContactPhone || '',
       avatarUrl: selectedEmployee.avatarUrl || '',
     });
-  }, [currentUserNickname, isPreviewMode, selectedEmployee?.id]);
+  }, [isPreviewMode, selectedEmployee?.id]);
 
   useEffect(() => {
     if (!selectedEmployee) return;
@@ -409,18 +401,8 @@ export default function EmployeePortalView({
 
   const handleSaveProfile = async () => {
     if (!selectedEmployee) return;
-    const nickname = profileDraft.nickname.trim() || (
-      isPreviewMode ? selectedEmployee.name.split(/\s+/)[0] : ''
-    );
-    if (!isPreviewMode && (nickname.length < 2 || nickname.length > 40)) {
-      onShowNotification('Profile Update Failed', 'Nickname must be between 2 and 40 characters.');
-      return;
-    }
     setIsSavingProfile(true);
     try {
-      if (!isPreviewMode) {
-        await onSaveNickname(nickname);
-      }
       const profileUpdates: Partial<Employee> = {
         contactNumber: profileDraft.contactNumber.trim(),
         emergencyContactName: profileDraft.emergencyContactName.trim(),
@@ -431,12 +413,11 @@ export default function EmployeePortalView({
       if (isPreviewMode) {
         savePreviewEmployeeOverrides(selectedEmployee.id, {
           ...profileUpdates,
-          nickname,
         });
       } else {
         await onUpdateEmployee(selectedEmployee.id, profileUpdates);
       }
-      onShowNotification('Profile Updated', 'Your nickname and contact details were saved.');
+      onShowNotification('Profile Updated', 'Your contact details were saved.');
     } catch (error) {
       console.error('[Employee Portal] Profile save failed:', error);
       onShowNotification('Profile Update Failed', 'We could not save your profile details right now.');
@@ -821,17 +802,6 @@ export default function EmployeePortalView({
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <label className="space-y-2 md:col-span-2">
-              <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Nickname</span>
-              <input
-                value={profileDraft.nickname}
-                onChange={(event) => setProfileDraft((prev) => ({ ...prev, nickname: event.target.value }))}
-                minLength={2}
-                maxLength={40}
-                className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary"
-              />
-              <span className="block text-[11px] text-on-surface-variant">This is the name shown in your employee portal.</span>
-            </label>
             <label className="space-y-2">
               <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Mobile number</span>
               <input

@@ -29,7 +29,6 @@ interface AdminUserRecord {
   password_hash?: string;
   name: string;
   role: string;
-  nickname?: string;
   must_change_password?: boolean;
 }
 
@@ -37,7 +36,6 @@ export interface AdminSessionActor {
   username: string;
   name: string;
   role: string;
-  nickname?: string;
 }
 
 interface SessionPayload extends AdminSessionActor {
@@ -66,6 +64,10 @@ export interface EmployeeAccountTarget {
 }
 
 const normalize = (value: unknown) => String(value || '').trim().toLowerCase();
+
+const isAccountSchemaMissing = (message: string) => (
+  /employee_accounts|employee_account_events|schema cache|could not find the table/i.test(message)
+);
 
 const getMainSupabaseConfig = () => ({
   url: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
@@ -174,7 +176,6 @@ export const getAdminSession = (req: any): AdminSessionActor | null => {
     username: session.username,
     name: session.name,
     role: session.role,
-    nickname: session.nickname,
   };
 };
 
@@ -230,7 +231,7 @@ const findAdminUser = async (username: string): Promise<AdminUserRecord | null> 
   const admin = createMainAdminClient();
   const extended = await admin
     .from('users')
-    .select('email,password,password_hash,name,role,nickname,must_change_password')
+    .select('email,password,password_hash,name,role,must_change_password')
     .ilike('email', username.trim())
     .maybeSingle();
   if (!extended.error) return extended.data as AdminUserRecord | null;
@@ -276,7 +277,6 @@ export const authenticateAdmin = async (
     username: user.email,
     name: user.name,
     role: user.role,
-    nickname: user.nickname,
   };
 };
 
@@ -293,7 +293,6 @@ export const requireAdminSession = async (req: any): Promise<AdminSessionActor> 
     username: current.email,
     name: current.name,
     role: current.role,
-    nickname: current.nickname,
   };
 };
 
@@ -307,34 +306,8 @@ export const requireMasterUser = async (req: any): Promise<AdminSessionActor> =>
 
 export const updateAdminProfile = async (req: any, res: any) => {
   const actor = await requireAdminSession(req);
-  const nickname = String(req.body?.nickname || '').trim();
-  if (nickname.length < 2 || nickname.length > 40) {
-    throw Object.assign(new Error('Nickname must be between 2 and 40 characters.'), { statusCode: 400 });
-  }
-
-  const admin = createMainAdminClient();
-  const { data, error } = await admin
-    .from('users')
-    .update({ nickname })
-    .eq('email', actor.username)
-    .select('email,name,role,nickname')
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Admin profile could not be updated: ${error.message}`);
-  }
-  if (!data) {
-    throw Object.assign(new Error('The signed-in admin account could not be found.'), { statusCode: 404 });
-  }
-
-  const updatedActor: AdminSessionActor = {
-    username: data.email,
-    name: data.name,
-    role: data.role,
-    nickname: data.nickname,
-  };
-  setAdminSessionCookie(res, updatedActor);
-  return { user: updatedActor };
+  setAdminSessionCookie(res, actor);
+  return { user: actor };
 };
 
 export const normalizePhoneNumber = (value: string | undefined): string | null => {
@@ -356,6 +329,17 @@ const mapAccountRow = (row: EmployeeAccountRow): EmployeeAccountSummary => ({
   lastDeliveryStatus: row.last_delivery_status || undefined,
 });
 
+const buildMissingAccountSummary = (employeeId: string): EmployeeAccountSummary => {
+  const normalized = normalize(employeeId);
+  return {
+    employeeId,
+    employeeEmail: normalized,
+    username: normalized,
+    accountStatus: 'not_created',
+    mustChangePassword: false,
+  };
+};
+
 export const loadAccountSummaries = async (
   employeeIds?: string[]
 ): Promise<EmployeeAccountSummary[]> => {
@@ -368,7 +352,12 @@ export const loadAccountSummaries = async (
     query = query.in('employee_id', employeeIds);
   }
   const { data, error } = await query;
-  if (error) throw new Error(`Employee account lookup failed: ${error.message}`);
+  if (error) {
+    if (isAccountSchemaMissing(error.message || '')) {
+      return (employeeIds || []).map(buildMissingAccountSummary);
+    }
+    throw new Error(`Employee account lookup failed: ${error.message}`);
+  }
   return (data || []).map(mapAccountRow);
 };
 
@@ -380,7 +369,10 @@ export const loadAccountEvents = async (employeeId: string) => {
     .eq('employee_id', employeeId)
     .order('created_at', { ascending: false })
     .limit(50);
-  if (error) throw new Error(`Employee account history lookup failed: ${error.message}`);
+  if (error) {
+    if (isAccountSchemaMissing(error.message || '')) return [];
+    throw new Error(`Employee account history lookup failed: ${error.message}`);
+  }
   return (data || []).map((row: any) => ({
     id: row.id,
     employeeId: row.employee_id,
@@ -829,7 +821,6 @@ export const loadEmployeeAuthProfile = async (req: any) => {
 
   return {
     email: user.email || '',
-    nickname: String(user.user_metadata?.nickname || ''),
     mustChangePassword: Boolean(
       account?.must_change_password ?? user.user_metadata?.must_change_password
     ),
@@ -840,16 +831,11 @@ export const loadEmployeeAuthProfile = async (req: any) => {
 
 export const completeEmployeeAuthSetup = async (req: any) => {
   const { user } = await getEmployeeAuthUser(req);
-  const nickname = String(req.body?.nickname || '').trim();
-  if (nickname.length < 2 || nickname.length > 40) {
-    throw Object.assign(new Error('Nickname must be between 2 and 40 characters.'), { statusCode: 400 });
-  }
 
   const employeeAdmin = createEmployeeAdminClient();
   const updatedUser = await employeeAdmin.auth.admin.updateUserById(user.id, {
     user_metadata: {
       ...(user.user_metadata || {}),
-      nickname,
       must_change_password: false,
     },
   });
@@ -876,7 +862,6 @@ export const completeEmployeeAuthSetup = async (req: any) => {
 
   return {
     email: user.email || '',
-    nickname,
     mustChangePassword: false,
     employeeId,
   };
@@ -884,22 +869,7 @@ export const completeEmployeeAuthSetup = async (req: any) => {
 
 export const updateEmployeeAuthProfile = async (req: any) => {
   const { user } = await getEmployeeAuthUser(req);
-  const nickname = String(req.body?.nickname || '').trim();
-  if (nickname.length < 2 || nickname.length > 40) {
-    throw Object.assign(new Error('Nickname must be between 2 and 40 characters.'), { statusCode: 400 });
-  }
-
   const employeeAdmin = createEmployeeAdminClient();
-  const updatedUser = await employeeAdmin.auth.admin.updateUserById(user.id, {
-    user_metadata: {
-      ...(user.user_metadata || {}),
-      nickname,
-    },
-  });
-  if (updatedUser.error) {
-    throw new Error(`Employee Auth profile could not be updated: ${updatedUser.error.message}`);
-  }
-
   const { data: account, error: accountError } = await employeeAdmin
     .from('employee_accounts')
     .select('must_change_password,employee_id')
@@ -911,7 +881,6 @@ export const updateEmployeeAuthProfile = async (req: any) => {
 
   return {
     email: user.email || '',
-    nickname,
     mustChangePassword: Boolean(
       account?.must_change_password ?? user.user_metadata?.must_change_password
     ),

@@ -47,7 +47,6 @@ export async function handleAdminLogin(req: any, res: any) {
         email: actor.username,
         name: actor.name,
         role: actor.role,
-        nickname: actor.nickname,
       },
     });
   } catch (error) {
