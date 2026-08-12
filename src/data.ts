@@ -3409,6 +3409,33 @@ export function getEffectiveEmploymentStatus(
   return getEffectiveEmploymentStatusForDate(employee, targetDateStr);
 }
 
+export const CURRENT_EMPLOYMENT_STATUSES: Employee['status'][] = ['Active', 'On Leave'];
+
+export function isCurrentActiveEmployee(
+  employee: Employee,
+  targetDateStr = getGmt8DateString()
+): boolean {
+  if (employee.dateOfJoined && employee.dateOfJoined > targetDateStr) {
+    return false;
+  }
+
+  const terminationDate = getEffectiveTerminationDateForDate(employee, targetDateStr);
+  if (terminationDate && terminationDate <= targetDateStr) {
+    return false;
+  }
+
+  return CURRENT_EMPLOYMENT_STATUSES.includes(
+    getEffectiveEmploymentStatusForDate(employee, targetDateStr)
+  );
+}
+
+export function getCurrentActiveEmployees(
+  employees: Employee[],
+  targetDateStr = getGmt8DateString()
+): Employee[] {
+  return employees.filter((employee) => isCurrentActiveEmployee(employee, targetDateStr));
+}
+
 export function getEffectiveProfileForMonth(employee: Employee, month: number, year: number): EmployeeTaxProfile {
   const targetDateStr = `${year}-${String(month).padStart(2, '0')}-01`;
   return getEffectiveProfileForDate(employee, targetDateStr);

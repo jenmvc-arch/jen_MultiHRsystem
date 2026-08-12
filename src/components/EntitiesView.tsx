@@ -20,7 +20,13 @@ import {
 import { CorporateEntity, Employee } from '../types';
 import { googleSheetsClient, isGoogleConfigured } from '../lib/googleSheetsClient';
 import { supabaseClient, isSupabaseConfigured } from '../lib/supabaseClient';
-import { getDirectLogoUrl, compressLogoFile } from '../data';
+import {
+  getCurrentActiveEmployees,
+  getDirectLogoUrl,
+  compressLogoFile,
+  getEffectiveEmploymentStatusForDate
+} from '../data';
+import { getGmt8DateString } from '../lib/dateUtils';
 import { FilePond, registerPlugin } from 'react-filepond';
 import 'filepond/dist/filepond.min.css';
 import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
@@ -165,7 +171,9 @@ export default function EntitiesView({
     }
   };
 
-  const activeEntityEmployees = employees.filter(emp => emp.entityId === selectedEntityId);
+  const currentActiveEmployees = getCurrentActiveEmployees(employees);
+  const activeEntityEmployees = currentActiveEmployees.filter(emp => emp.entityId === selectedEntityId);
+  const todayIsoDate = getGmt8DateString();
   const selectedEntity = entities.find(e => e.id === selectedEntityId);
 
   return (
@@ -192,7 +200,7 @@ export default function EntitiesView({
       {/* Grid of Subsidiaries */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {entities.map(ent => {
-          const headcount = employees.filter(e => e.entityId === ent.id).length;
+          const headcount = currentActiveEmployees.filter(e => e.entityId === ent.id).length;
           const isSelected = selectedEntityId === ent.id;
 
           return (
@@ -380,17 +388,22 @@ export default function EntitiesView({
                         </span>
                       </td>
                       <td className="p-3 text-right">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                          emp.status === 'Active' 
+                        {(() => {
+                          const currentStatus = getEffectiveEmploymentStatusForDate(emp, todayIsoDate);
+                          return (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                              currentStatus === 'Active' || currentStatus === 'On Leave'
                             ? 'bg-green-100 text-green-700' 
-                            : emp.status === 'Resigned'
+                            : currentStatus === 'Resigned'
                             ? 'bg-amber-100 text-amber-700' 
-                            : emp.status === 'Suspended'
+                            : currentStatus === 'Suspended'
                             ? 'bg-zinc-100 text-zinc-600'
                             : 'bg-red-100 text-red-700'
-                        }`}>
-                          {emp.status}
-                        </span>
+                            }`}>
+                              {currentStatus}
+                            </span>
+                          );
+                        })()}
                       </td>
                     </tr>
                   ))}

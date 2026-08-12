@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 import { Employee, ReviewCycle, CorporateEntity, EmployeePerformance, PayrollRecord2026 } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
+import { getEffectiveEmploymentStatusForDate } from '../data';
+import { getGmt8DateString } from '../lib/dateUtils';
 
 interface DashboardViewProps {
   employees: Employee[];
@@ -67,8 +69,13 @@ export default function DashboardView({
 
   // 3. Compute dynamic stats
   const totalEmployees = filteredEmployees.length;
-  const activeEmployees = filteredEmployees.filter(e => e.status === 'Active').length;
-  const resignedEmployees = filteredEmployees.filter(e => e.status === 'Resigned').length;
+  const todayIsoDate = getGmt8DateString();
+  const activeEmployees = filteredEmployees.filter(
+    e => getEffectiveEmploymentStatusForDate(e, todayIsoDate) === 'Active'
+  ).length;
+  const onLeaveEmployees = filteredEmployees.filter(
+    e => getEffectiveEmploymentStatusForDate(e, todayIsoDate) === 'On Leave'
+  ).length;
   
   // Find actual processed payroll records matching the selected month and year
   const matchingRecords = (payrollRecords2026 || []).filter(
@@ -346,7 +353,8 @@ export default function DashboardView({
           <div className="mt-4">
             <div className="text-3xl font-bold text-on-background">{totalEmployees}</div>
             <div className="text-xs text-on-surface-variant mt-1">
-              <span className="text-green-600 font-semibold">{activeEmployees} Active</span> · {resignedEmployees} Resigned
+              <span className="text-green-600 font-semibold">{activeEmployees} Active</span>
+              {onLeaveEmployees > 0 && <> · {onLeaveEmployees} On Leave</>}
             </div>
           </div>
           <div className="mt-4 flex items-center text-xs text-primary font-semibold group-hover:underline">

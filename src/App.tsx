@@ -38,6 +38,7 @@ import {
   compressLogoFile,
   getPayrollDocumentDisplaySettings,
   getPayrollDocumentProfile,
+  getCurrentActiveEmployees,
   mergePayrollRecords2026,
   isSeparatePayrollRecord
 } from './data';
@@ -394,12 +395,17 @@ export default function App() {
   }, [employees, payrollRecords2026]);
 
   // Corporate scopes data isolation filters
+  const currentActiveEmployees = React.useMemo(() => (
+    getCurrentActiveEmployees(employees)
+  ), [employees]);
+
   const filteredEmployees = React.useMemo(() => {
-    return employees.filter(e => e.entityId === activeEntityId);
-  }, [employees, activeEntityId]);
+    return currentActiveEmployees.filter(e => e.entityId === activeEntityId);
+  }, [currentActiveEmployees, activeEntityId]);
 
   const filteredEmployeesWithHistory = React.useMemo(() => {
-    return employeesWithHistory.filter(e => e.entityId === activeEntityId);
+    return getCurrentActiveEmployees(employeesWithHistory)
+      .filter(e => e.entityId === activeEntityId);
   }, [employeesWithHistory, activeEntityId]);
 
   const filteredPerformances = React.useMemo(() => {
@@ -417,9 +423,9 @@ export default function App() {
   // Reset selectedEmployeeId if the employee doesn't belong to the active entity
   React.useEffect(() => {
     if (selectedEmployeeId) {
-      const match = employees.find(e => e.id === selectedEmployeeId);
+      const match = currentActiveEmployees.find(e => e.id === selectedEmployeeId);
       if (match && match.entityId !== activeEntityId) {
-        const entityEmployees = employees.filter(e => e.entityId === activeEntityId);
+        const entityEmployees = currentActiveEmployees.filter(e => e.entityId === activeEntityId);
         if (entityEmployees.length > 0) {
           setSelectedEmployeeId(entityEmployees[0].id);
         } else {
@@ -427,7 +433,7 @@ export default function App() {
         }
       }
     }
-  }, [activeEntityId, employees, selectedEmployeeId]);
+  }, [activeEntityId, currentActiveEmployees, selectedEmployeeId]);
 
   // Persist user entity switching preferences
   React.useEffect(() => {
@@ -1970,14 +1976,14 @@ export default function App() {
 
   const isEmployeePortalPreview = isEmployeePortalDemoPath && !isAuthenticated;
   const employeePortalSessionEmail = String(currentUserEmail || '').toLowerCase();
-  const employeePortalDemoEmployee = SEED_EMPLOYEES.find(employee =>
+  const employeePortalDemoEmployee = getCurrentActiveEmployees(SEED_EMPLOYEES).find(employee =>
     employee.id === employeePortalQueryEmployeeId ||
     employee.email.toLowerCase() === employeePortalQueryEmployeeId.toLowerCase()
-  ) || SEED_EMPLOYEES[0] || null;
+  ) || getCurrentActiveEmployees(SEED_EMPLOYEES)[0] || null;
   const employeePortalLiveEmployee = isEmployeeAccount
     ? (
-      employees.find(employee => employee.email.toLowerCase() === employeePortalSessionEmail) ||
-      SEED_EMPLOYEES.find(employee => employee.email.toLowerCase() === employeePortalSessionEmail) ||
+      currentActiveEmployees.find(employee => employee.email.toLowerCase() === employeePortalSessionEmail) ||
+      getCurrentActiveEmployees(SEED_EMPLOYEES).find(employee => employee.email.toLowerCase() === employeePortalSessionEmail) ||
       null
     )
     : null;
@@ -2021,7 +2027,7 @@ export default function App() {
       return;
     }
 
-    const fallbackEmployee = SEED_EMPLOYEES.find(employee =>
+    const fallbackEmployee = getCurrentActiveEmployees(SEED_EMPLOYEES).find(employee =>
       employee.id.toLowerCase() === normalizedId ||
       employee.email.toLowerCase() === normalizedId
     );
@@ -2049,7 +2055,7 @@ export default function App() {
     return (
       <div style={getThemeStyles(activeEntity?.theme)} className="bg-white min-h-screen p-0">
         <PayslipDocumentView 
-          employees={employees}
+          employees={currentActiveEmployees}
           selectedEmployeeId={empId}
           onBack={() => {}}
           onShowNotification={() => {}}
@@ -2506,7 +2512,7 @@ export default function App() {
           {currentTab === 'entities' && (
             <EntitiesView 
               entities={entities}
-              employees={employees}
+              employees={currentActiveEmployees}
               onAddEntity={handleAddEntity}
               onUpdateEntity={handleUpdateEntity}
               onShowNotification={triggerNotification}
@@ -2740,7 +2746,7 @@ export default function App() {
               </div>
 
               <AppAccessSettingsPreview
-                employees={employees}
+                employees={currentActiveEmployees}
                 currentUserEmail={currentUserEmail}
                 onShowNotification={triggerNotification}
               />
