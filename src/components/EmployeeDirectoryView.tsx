@@ -82,6 +82,7 @@ import {
   getSalaryProration,
   getMonthlyBaseSalary,
   getEmployeeForMonth,
+  getCurrentActiveEmployees,
   getEffectiveEmploymentStatusForDate,
   getEffectiveProfileForDate,
   getEffectiveTerminationDateForDate,
@@ -151,6 +152,7 @@ export default function EmployeeDirectoryView({
   activeEntityId,
   currentUserEmail
 }: EmployeeDirectoryViewProps) {
+  const activeEmployees = getCurrentActiveEmployees(employees);
   const [searchQuery, setSearchQuery] = useState('');
   const currentMonth = new Date().getMonth() + 1;
   const currentYear = new Date().getFullYear();
@@ -160,7 +162,7 @@ export default function EmployeeDirectoryView({
   const formatCurrencyAmount = (amount: number) =>
     amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const [deptFilter, setDeptFilter] = useState('All Departments');
-  const [statusFilter, setStatusFilter] = useState('All Statuses');
+  const [statusFilter, setStatusFilter] = useState('Active');
   const [entityFilter, setEntityFilter] = useState(activeEntityId || 'All Subsidiaries');
 
   useEffect(() => {
@@ -208,7 +210,7 @@ export default function EmployeeDirectoryView({
 
   // Self-Service Mode & Preview States
   const [viewMode, setViewMode] = useState<'admin' | 'self-service'>('admin');
-  const [previewEmployeeId, setPreviewEmployeeId] = useState<string>(employees[0]?.id || '');
+  const [previewEmployeeId, setPreviewEmployeeId] = useState<string>(activeEmployees[0]?.id || '');
   const [viewingPayslipMonth, setViewingPayslipMonth] = useState<string | null>(null);
   const [selfServiceActiveTab, setSelfServiceActiveTab] = useState<'personal' | 'family' | 'financial' | 'history'>('personal');
   
@@ -1342,7 +1344,7 @@ export default function EmployeeDirectoryView({
     setProgressionNotes('');
   };
 
-  const previewEmployee = employees.find(e => e.id === previewEmployeeId) || employees[0];
+  const previewEmployee = activeEmployees.find(e => e.id === previewEmployeeId) || activeEmployees[0];
 
   if (viewMode === 'self-service' && previewEmployee) {
     const activeSub = entities.find(e => e.id === previewEmployee.entityId) || entities[0];
@@ -1424,7 +1426,7 @@ export default function EmployeeDirectoryView({
               onChange={(e) => {
                 const id = e.target.value;
                 setPreviewEmployeeId(id);
-                const emp = employees.find(x => x.id === id);
+                const emp = activeEmployees.find(x => x.id === id);
                 if (emp) {
                   setSelfServiceContactNumber(emp.contactNumber || '');
                   setSelfServiceEmergencyName(emp.emergencyContactName || '');
@@ -1435,7 +1437,7 @@ export default function EmployeeDirectoryView({
               }}
               className="bg-surface-container border border-neutral-border text-xs font-bold text-primary rounded-md px-3 py-1.5 focus:ring-1 focus:ring-primary outline-none cursor-pointer"
             >
-              {employees.map(emp => (
+              {activeEmployees.map(emp => (
                 <option key={emp.id} value={emp.id}>
                   {emp.name} ({emp.id} · {emp.designation})
                 </option>
@@ -2461,7 +2463,7 @@ export default function EmployeeDirectoryView({
               onClick={() => {
                 setViewMode('self-service');
                 // Auto-select first employee to begin simulation
-                const sarah = employees.find(e => e.id === 'EMP-84729') || employees[0];
+                const sarah = activeEmployees.find(e => e.id === 'EMP-84729') || activeEmployees[0];
                 if (sarah) {
                   setPreviewEmployeeId(sarah.id);
                   setSelfServiceContactNumber(sarah.contactNumber || '');

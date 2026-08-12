@@ -54,12 +54,16 @@ const currentEmployees = getCurrentActiveEmployees([
   employee('past-termination', 'Active', { dateOfTermination: '2026-01-31' }),
 ], '2026-08-12');
 
-if (currentEmployees.map((item) => item.id).join(',') !== 'active,leave') {
-  throw new Error('Current employee filtering should keep only Active and On Leave records.');
+if (currentEmployees.map((item) => item.id).join(',') !== 'active') {
+  throw new Error('Current employee filtering should keep only Active records.');
 }
 
 if (!isCurrentActiveEmployee(employee('active', 'Active'), '2026-08-12')) {
   throw new Error('Active employees should remain visible.');
+}
+
+if (isCurrentActiveEmployee(employee('leave', 'On Leave'), '2026-08-12')) {
+  throw new Error('Employees on leave should not appear in active-only operational functions.');
 }
 
 if (isCurrentActiveEmployee(employee('future-hire', 'Active', { dateOfJoined: '2026-12-01' }), '2026-08-12')) {

@@ -408,6 +408,10 @@ export default function App() {
       .filter(e => e.entityId === activeEntityId);
   }, [employeesWithHistory, activeEntityId]);
 
+  const directoryEmployees = React.useMemo(() => (
+    employees.filter(e => e.entityId === activeEntityId)
+  ), [employees, activeEntityId]);
+
   const filteredPerformances = React.useMemo(() => {
     return performances.filter(p => filteredEmployees.some(e => e.id === p.employeeId));
   }, [performances, filteredEmployees]);
@@ -2498,7 +2502,7 @@ export default function App() {
 
           {currentTab === 'directory' && (
             <EmployeeDirectoryView 
-              employees={filteredEmployees}
+              employees={directoryEmployees}
               entities={entities}
               onAddEmployee={handleAddEmployee}
               onDeleteEmployee={handleDeleteEmployee}

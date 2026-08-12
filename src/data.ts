@@ -3409,7 +3409,7 @@ export function getEffectiveEmploymentStatus(
   return getEffectiveEmploymentStatusForDate(employee, targetDateStr);
 }
 
-export const CURRENT_EMPLOYMENT_STATUSES: Employee['status'][] = ['Active', 'On Leave'];
+export const CURRENT_EMPLOYMENT_STATUSES: Employee['status'][] = ['Active'];
 
 export function isCurrentActiveEmployee(
   employee: Employee,
