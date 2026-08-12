@@ -1,14 +1,14 @@
 import { createHash } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { PNG } from 'pngjs';
-import { stampHandbookTemplate } from '../../src/onboarding-portal/signing/handbookPdf';
+import { stampHandbookTemplate } from '../../src/onboarding-portal/signing/handbookPdf.js';
 import {
   FINAL_SIGNATURE_PART_NUMBER,
   FinalizeHandbookResponse,
   HandbookPdfMarkInput,
   HandbookPlacementManifest,
   INITIAL_PART_NUMBERS,
-} from '../../src/onboarding-portal/signing/types';
+} from '../../src/onboarding-portal/signing/types.js';
 
 const SIGNED_URL_TTL_SECONDS = 5 * 60;
 const MAX_SIGNATURE_IMAGE_BYTES = 2 * 1024 * 1024;

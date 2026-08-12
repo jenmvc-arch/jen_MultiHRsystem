@@ -1,3 +1,3 @@
-import { handleEmployeeAuthSetup } from '../_lib/employeeAccountHandlers';
+import { handleEmployeeAuthSetup } from '../_lib/employeeAccountHandlers.js';
 
 export default handleEmployeeAuthSetup;

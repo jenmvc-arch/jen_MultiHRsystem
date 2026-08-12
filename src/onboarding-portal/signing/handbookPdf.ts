@@ -14,7 +14,7 @@ import {
   HandbookStampPlacement,
   HandbookTextPlacement,
   INITIAL_PART_NUMBERS,
-} from './types';
+} from './types.js';
 
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;

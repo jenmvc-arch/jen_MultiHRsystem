@@ -14,7 +14,7 @@ import {
   toEmployeeAccountTarget,
   updateAdminProfile,
   updateEmployeeAuthProfile,
-} from './employeeAccountServer';
+} from './employeeAccountServer.js';
 
 const sendError = (res: any, error: any) => {
   const message = error instanceof Error ? error.message : 'Request failed.';

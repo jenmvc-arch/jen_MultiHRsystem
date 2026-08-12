@@ -1,3 +1,3 @@
-import { handleAdminLogout } from '../_lib/employeeAccountHandlers';
+import { handleAdminLogout } from '../_lib/employeeAccountHandlers.js';
 
 export default handleAdminLogout;

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { HandbookTemplateAccessResponse } from '../../src/onboarding-portal/signing/types';
+import { HandbookTemplateAccessResponse } from '../../src/onboarding-portal/signing/types.js';
 
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 

@@ -13,8 +13,8 @@ import {
   EmployeeAccountAction,
   EmployeeAccountStatus,
   EmployeeAccountSummary,
-} from '../../src/lib/employeeAccountTypes';
-import { isAdminPortalRole } from '../../src/lib/userRoles';
+} from '../../src/lib/employeeAccountTypes.js';
+import { isAdminPortalRole } from '../../src/lib/userRoles.js';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();

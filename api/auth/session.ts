@@ -1,5 +1,5 @@
-import { handleAdminSession } from '../_lib/employeeAccountHandlers';
-import { handleAdminProfile } from '../_lib/employeeAccountHandlers';
+import { handleAdminSession } from '../_lib/employeeAccountHandlers.js';
+import { handleAdminProfile } from '../_lib/employeeAccountHandlers.js';
 
 export default async function handleAdminSessionRoute(req: any, res: any) {
   if (req.method === 'POST') {
