@@ -42,11 +42,31 @@ import {
   Plus,
   Minus,
   RotateCw,
-  Save
+  Save,
+  KeyRound,
+  MessageCircle,
+  Send,
+  Copy,
+  ExternalLink,
+  Clock3
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { Employee, EmployeeTaxProfile, CareerHistoryEntry, Dependant, CorporateEntity } from '../types';
+import {
+  getEmployeeAccountEvents,
+  getEmployeeAccountSummaries,
+  isEmployeeAccountPreview,
+  runEmployeeAccountAction,
+} from '../lib/employeeAccountClient';
+import {
+  AccountActionResult,
+  AccountDeliveryChannel,
+  EmployeeAccountAction,
+  EmployeeAccountEvent,
+  EmployeeAccountSummary,
+} from '../lib/employeeAccountTypes';
+import { canManageAppAccess } from '../lib/userRoles';
 import EmployeeAvatar from './EmployeeAvatar';
 import { FilePond, registerPlugin } from 'react-filepond';
 import 'filepond/dist/filepond.min.css';
@@ -77,6 +97,8 @@ const EMPLOYEE_STATUS_OPTIONS: Exclude<Employee['status'], 'On Leave'>[] = [
 
 const isSeparationStatus = (status: Employee['status']) =>
   status === 'Resigned' || status === 'Terminated';
+
+const toUppercase = (value: string) => value.toUpperCase();
 
 const getEmployeeStatusClasses = (status: Employee['status']) => {
   switch (status) {
@@ -114,8 +136,9 @@ interface EmployeeDirectoryViewProps {
   onAddEmployee: (emp: Employee) => void;
   onDeleteEmployee: (id: string) => Promise<void>;
   onUpdateEmployee: (id: string, updates: Partial<Employee>) => Promise<void>;
-  onShowNotification: (title: string, message: string) => void;
+  onShowNotification: (title: string, message: string, type?: 'success' | 'info') => void;
   activeEntityId?: string;
+  currentUserEmail?: string | null;
 }
 
 export default function EmployeeDirectoryView({
@@ -125,7 +148,8 @@ export default function EmployeeDirectoryView({
   onDeleteEmployee,
   onUpdateEmployee,
   onShowNotification,
-  activeEntityId
+  activeEntityId,
+  currentUserEmail
 }: EmployeeDirectoryViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const currentMonth = new Date().getMonth() + 1;
@@ -203,6 +227,17 @@ export default function EmployeeDirectoryView({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSavingForm, setIsSavingForm] = useState(false);
   const [savingAction, setSavingAction] = useState<string | null>(null);
+  const [accountSummaries, setAccountSummaries] = useState<Record<string, EmployeeAccountSummary>>({});
+  const [accountActionEmployee, setAccountActionEmployee] = useState<Employee | null>(null);
+  const [accountActionMode, setAccountActionMode] = useState<EmployeeAccountAction>('share');
+  const [accountActionChannel, setAccountActionChannel] = useState<AccountDeliveryChannel>('email');
+  const [accountActionResult, setAccountActionResult] = useState<AccountActionResult | null>(null);
+  const [accountEvents, setAccountEvents] = useState<EmployeeAccountEvent[]>([]);
+  const [isAccountActionModalOpen, setIsAccountActionModalOpen] = useState(false);
+  const [isAccountEventsLoading, setIsAccountEventsLoading] = useState(false);
+  const [isAccountActionSaving, setIsAccountActionSaving] = useState(false);
+  const accountPreviewMode = isEmployeeAccountPreview();
+  const canManageAccountActions = accountPreviewMode || canManageAppAccess(currentUserEmail);
   const [formEntityId, setFormEntityId] = useState(activeEntityId || entities[0]?.id || 'ENT-92');
   
   useEffect(() => {
@@ -219,6 +254,7 @@ export default function EmployeeDirectoryView({
   const [formSalary, setFormSalary] = useState(5000);
   const [formHousing, setFormHousing] = useState(500);
   const [formTransport, setFormTransport] = useState(300);
+  const [formCreateAccount, setFormCreateAccount] = useState(true);
 
   // New specific compliance form states
   const [formNricPassport, setFormNricPassport] = useState('');
@@ -296,14 +332,14 @@ export default function EmployeeDirectoryView({
 
   const handleStartEditGeneralInfo = () => {
     if (!selectedEmployee) return;
-    setEditName(selectedEmployee.name);
+    setEditName(toUppercase(selectedEmployee.name));
     setEditEmail(selectedEmployee.email || '');
     setEditDesignation(selectedEmployee.designation);
     setEditDepartment(selectedEmployee.department);
     const currentStatus = getEffectiveEmploymentStatusForDate(selectedEmployee, todayIsoDate);
     setEditStatus(currentStatus === 'On Leave' ? 'Active' : currentStatus);
-    setEditBankName(selectedEmployee.bankName || '');
-    setEditAccountNo(selectedEmployee.accountNo || '');
+    setEditBankName(toUppercase(selectedEmployee.bankName || ''));
+    setEditAccountNo(toUppercase(selectedEmployee.accountNo || ''));
     setEditBasicSalary(selectedEmployee.basicSalary);
     setEditHousingAllowance(selectedEmployee.allowanceAccommodation !== undefined ? selectedEmployee.allowanceAccommodation : selectedEmployee.housingAllowance || 0);
     setEditTransportAllowance(selectedEmployee.allowanceTransport !== undefined ? selectedEmployee.allowanceTransport : selectedEmployee.transportAllowance || 0);
@@ -311,8 +347,8 @@ export default function EmployeeDirectoryView({
     setEditAllowanceParking(selectedEmployee.allowanceParking || 0);
     setEditAllowanceMeal(selectedEmployee.allowanceMeal || 0);
     setEditAllowancePhone(selectedEmployee.allowancePhone || 0);
-    setEditNricPassport(selectedEmployee.nricPassport || '');
-    setEditNationality(selectedEmployee.nationality || '');
+    setEditNricPassport(formatNricOrPassport(selectedEmployee.nricPassport || ''));
+    setEditNationality(toUppercase(selectedEmployee.nationality || ''));
     setEditContactNumber(selectedEmployee.contactNumber || '');
     setEditEmploymentType(selectedEmployee.employmentType || '');
     setEditContractStatutoryTreatment(
@@ -325,9 +361,9 @@ export default function EmployeeDirectoryView({
     setEditEpfRateEmployee(selectedEmployee.epfRateEmployee !== undefined ? selectedEmployee.epfRateEmployee : 11);
     setEditEpfRateEmployer(selectedEmployee.epfRateEmployer !== undefined ? selectedEmployee.epfRateEmployer : 13);
     setEditTaxPcb(selectedEmployee.taxPcb || 0);
-    setEditEmergencyContactName(selectedEmployee.emergencyContactName || '');
-    setEditEmergencyContactRelation(selectedEmployee.emergencyContactRelation || '');
-    setEditEmergencyContactPhone(selectedEmployee.emergencyContactPhone || '');
+    setEditEmergencyContactName(toUppercase(selectedEmployee.emergencyContactName || ''));
+    setEditEmergencyContactRelation(toUppercase(selectedEmployee.emergencyContactRelation || ''));
+    setEditEmergencyContactPhone(toUppercase(selectedEmployee.emergencyContactPhone || ''));
     setEditEntityId(selectedEmployee.entityId || entities[0]?.id || '');
     setIsEditingGeneralInfo(true);
   };
@@ -552,6 +588,128 @@ export default function EmployeeDirectoryView({
   const selectedEmployee = employees.find(e => e.id === selectedEmployeeId) || null;
   const selectedPayrollDocumentProfile = selectedEmployee ? getPayrollDocumentProfile(selectedEmployee) : null;
 
+  const getAccountSummary = (employee: Employee): EmployeeAccountSummary => (
+    accountSummaries[employee.id]
+    || accountSummaries[employee.email.trim().toLowerCase()]
+    || {
+      employeeId: employee.id,
+      employeeEmail: employee.email.trim().toLowerCase(),
+      username: employee.email.trim().toLowerCase(),
+      accountStatus: 'not_created',
+      mustChangePassword: false,
+    }
+  );
+  const selectedAccountSummary = selectedEmployee ? getAccountSummary(selectedEmployee) : null;
+
+  const saveAccountSummary = (summary: EmployeeAccountSummary) => {
+    setAccountSummaries((previous) => ({
+      ...previous,
+      [summary.employeeId]: summary,
+      [summary.employeeEmail.trim().toLowerCase()]: summary,
+    }));
+  };
+
+  useEffect(() => {
+    if (!accountPreviewMode && !canManageAppAccess(currentUserEmail)) return;
+    let cancelled = false;
+    void getEmployeeAccountSummaries(employees)
+      .then((summaries) => {
+        if (cancelled) return;
+        const next: Record<string, EmployeeAccountSummary> = {};
+        summaries.forEach((summary) => {
+          next[summary.employeeId] = summary;
+          next[summary.employeeEmail.trim().toLowerCase()] = summary;
+        });
+        setAccountSummaries(next);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn('[Employee Account Status] Could not load account metadata:', error);
+        if (!accountPreviewMode) {
+          onShowNotification(
+            'Account Access Unavailable',
+            error.message || 'Secure account status is unavailable. Start the API server or use accountPreview=1.',
+            'info'
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [employees, currentUserEmail, accountPreviewMode]);
+
+  const openAccountAction = (
+    employee: Employee,
+    action: EmployeeAccountAction
+  ) => {
+    if (!canManageAccountActions) {
+      onShowNotification(
+        'Master User Required',
+        'Only hr.redpoint can create, share, or reset employee accounts.',
+        'info'
+      );
+      return;
+    }
+    setAccountActionEmployee(employee);
+    setAccountActionMode(action);
+    setAccountActionChannel('email');
+    setAccountActionResult(null);
+    setAccountEvents([]);
+    setIsAccountActionModalOpen(true);
+  };
+
+  const handleAccountActionSubmit = async () => {
+    if (!accountActionEmployee) return;
+    setIsAccountActionSaving(true);
+    try {
+      const result = await runEmployeeAccountAction(
+        accountActionEmployee,
+        accountActionMode,
+        accountActionChannel
+      );
+      saveAccountSummary(result.account);
+      setAccountActionResult(result);
+      onShowNotification(
+        result.ok ? 'Account Action Complete' : 'Delivery Needs Attention',
+        result.message || 'The account action has been recorded.',
+        result.ok ? 'success' : 'info'
+      );
+    } catch (error: any) {
+      onShowNotification(
+        'Account Action Failed',
+        error.message || 'The employee account action could not be completed.',
+        'info'
+      );
+    } finally {
+      setIsAccountActionSaving(false);
+    }
+  };
+
+  const handleLoadAccountEvents = async () => {
+    if (!accountActionEmployee) return;
+    setIsAccountEventsLoading(true);
+    try {
+      setAccountEvents(await getEmployeeAccountEvents(accountActionEmployee));
+    } catch (error: any) {
+      onShowNotification(
+        'History Unavailable',
+        error.message || 'Account delivery history could not be loaded.',
+        'info'
+      );
+    } finally {
+      setIsAccountEventsLoading(false);
+    }
+  };
+
+  const copyHandoffUrl = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      onShowNotification('Link Copied', 'The local preview handoff link was copied to your clipboard.');
+    } catch {
+      onShowNotification('Copy Unavailable', 'Open the handoff link directly from the preview card.', 'info');
+    }
+  };
+
   // Local staged changes for Career & Salary
   const [localSalaryAdjustments, setLocalSalaryAdjustments] = useState<any[]>([]);
   const [localCareerHistory, setLocalCareerHistory] = useState<any[]>([]);
@@ -699,13 +857,14 @@ export default function EmployeeDirectoryView({
     setFormDesignation(availableRoles[0] || 'Software Engineer');
     setFormDepartment(availableDepartments[0] || 'Product & Engineering');
     setFormStatus('Active');
-    setFormBank('Maybank Berhad');
+    setFormBank('MAYBANK BERHAD');
     setFormAccount('');
     setFormSalary(5000);
     setFormHousing(500);
     setFormTransport(300);
+    setFormCreateAccount(canManageAccountActions);
     setFormNricPassport('');
-    setFormNationality('Malaysian');
+    setFormNationality('MALAYSIAN');
     setFormContactNumber('');
     setFormTaxNumber('');
     setFormEpfNumber('');
@@ -743,7 +902,7 @@ export default function EmployeeDirectoryView({
       return;
     }
     setFormDependants(prev => [...prev, {
-      name: tempDepName,
+      name: toUppercase(tempDepName),
       gender: tempDepGender,
       dob: tempDepDob
     }]);
@@ -767,7 +926,7 @@ export default function EmployeeDirectoryView({
     }
     setEditDependants(prev => [...prev, {
       id: `dep-${Date.now()}-${Math.floor(Math.random()*1000)}`,
-      name: detailTempDepName,
+      name: toUppercase(detailTempDepName),
       gender: detailTempDepGender,
       dob: detailTempDepDob
     }]);
@@ -782,11 +941,11 @@ export default function EmployeeDirectoryView({
   const handleStartEditFamily = () => {
     if (!selectedEmployee) return;
     setEditMaritalStatus(selectedEmployee.maritalStatus);
-    setEditSpouseName(selectedEmployee.spouseName || '');
-    setEditSpouseNric(selectedEmployee.spouseNric || '');
+    setEditSpouseName(toUppercase(selectedEmployee.spouseName || ''));
+    setEditSpouseNric(toUppercase(selectedEmployee.spouseNric || ''));
     setEditSpouseIsWorking(selectedEmployee.spouseIsWorking || 'No');
-    setEditSpouseCompany(selectedEmployee.spouseCompany || '');
-    setEditSpousePosition(selectedEmployee.spousePosition || '');
+    setEditSpouseCompany(toUppercase(selectedEmployee.spouseCompany || ''));
+    setEditSpousePosition(toUppercase(selectedEmployee.spousePosition || ''));
     setEditHasDependants(selectedEmployee.hasDependants || 'No');
     let initialDependants = selectedEmployee.dependants || [];
     if (typeof initialDependants === 'string' && initialDependants) {
@@ -799,9 +958,12 @@ export default function EmployeeDirectoryView({
     if (!Array.isArray(initialDependants)) {
       initialDependants = [];
     }
-    setEditDependants(initialDependants);
-    setEditTaxNumber(selectedEmployee.taxNumber || '');
-    setEditEpfNumber(selectedEmployee.epfNumber || '');
+    setEditDependants(initialDependants.map((dependant) => ({
+      ...dependant,
+      name: toUppercase(dependant.name || '')
+    })));
+    setEditTaxNumber(toUppercase(selectedEmployee.taxNumber || ''));
+    setEditEpfNumber(toUppercase(selectedEmployee.epfNumber || ''));
     setIsEditingFamily(true);
   };
 
@@ -845,13 +1007,17 @@ export default function EmployeeDirectoryView({
     if (detailTempDepName.trim()) {
       finalDependants.push({
         id: `dep-${Date.now()}-${Math.floor(Math.random()*1000)}`,
-        name: detailTempDepName,
+        name: toUppercase(detailTempDepName),
         gender: detailTempDepGender,
         dob: detailTempDepDob
       });
       finalHasDependants = 'Yes';
       setDetailTempDepName('');
     }
+    finalDependants = finalDependants.map((dependant) => ({
+      ...dependant,
+      name: toUppercase(dependant.name || '')
+    }));
     
     const updates: Partial<Employee> = {
       maritalStatus: editMaritalStatus,
@@ -906,7 +1072,7 @@ export default function EmployeeDirectoryView({
 
     if (tempDepName.trim()) {
       finalFormDependants.push({
-        name: tempDepName,
+        name: toUppercase(tempDepName),
         gender: tempDepGender,
         dob: tempDepDob
       });
@@ -924,12 +1090,12 @@ export default function EmployeeDirectoryView({
         : []
     };
     if (formMaritalStatus === 'Married') {
-      spouseAndDependantFields.spouseName = formSpouseName;
-      spouseAndDependantFields.spouseNric = formSpouseNric;
+      spouseAndDependantFields.spouseName = toUppercase(formSpouseName);
+      spouseAndDependantFields.spouseNric = toUppercase(formSpouseNric);
       spouseAndDependantFields.spouseIsWorking = formSpouseIsWorking;
       if (formSpouseIsWorking === 'Yes') {
-        spouseAndDependantFields.spouseCompany = formSpouseCompany;
-        spouseAndDependantFields.spousePosition = formSpousePosition;
+        spouseAndDependantFields.spouseCompany = toUppercase(formSpouseCompany);
+        spouseAndDependantFields.spousePosition = toUppercase(formSpousePosition);
       } else {
         spouseAndDependantFields.spouseCompany = '';
         spouseAndDependantFields.spousePosition = '';
@@ -953,13 +1119,13 @@ export default function EmployeeDirectoryView({
     const newEmp: Employee = {
       id: formEmail,
       entityId: formEntityId || activeEntityId || entities[0]?.id || 'ENT-92',
-      name: formName,
+      name: toUppercase(formName),
       email: formEmail,
       designation: formDesignation,
       department: formDepartment,
       status: formStatus,
-      bankName: formBank,
-      accountNo: formAccount,
+      bankName: toUppercase(formBank),
+      accountNo: toUppercase(formAccount),
       basicSalary: Number(formSalary),
       housingAllowance: Number(formHousing),
       transportAllowance: Number(formTransport),
@@ -980,10 +1146,10 @@ export default function EmployeeDirectoryView({
       
       // New fields mapping
       nricPassport: formatNricOrPassport(formNricPassport),
-      nationality: formNationality,
+      nationality: toUppercase(formNationality),
       contactNumber: formContactNumber,
-      taxNumber: formTaxNumber || `TX-${Math.floor(100000000 + Math.random() * 900000000)}`,
-      epfNumber: formEpfNumber || `EP-${Math.floor(100000000 + Math.random() * 900000000)}`,
+      taxNumber: toUppercase(formTaxNumber || `TX-${Math.floor(100000000 + Math.random() * 900000000)}`),
+      epfNumber: toUppercase(formEpfNumber || `EP-${Math.floor(100000000 + Math.random() * 900000000)}`),
       employmentType: formEmploymentType,
       maritalStatus: formMaritalStatus,
       eligibleForStatutory: newEmployeeDocumentProfile.statutoryEnabled ? 'Yes' : 'No',
@@ -993,9 +1159,9 @@ export default function EmployeeDirectoryView({
       optInEis: newEmployeeDocumentProfile.statutoryEnabled ? formOptInEis : false,
       optInPcb: newEmployeeDocumentProfile.statutoryEnabled ? formOptInPcb : false,
       enableLindung24: newEmployeeDocumentProfile.statutoryEnabled ? formEnableLindung24 : false,
-      emergencyContactName: formEmergencyContactName || 'N/A',
-      emergencyContactRelation: formEmergencyContactRelation || 'Spouse',
-      emergencyContactPhone: formEmergencyContactPhone || 'N/A',
+      emergencyContactName: toUppercase(formEmergencyContactName || 'N/A'),
+      emergencyContactRelation: toUppercase(formEmergencyContactRelation || 'Spouse'),
+      emergencyContactPhone: toUppercase(formEmergencyContactPhone || 'N/A'),
       dateOfJoined: formDateOfJoined,
       dateOfConfirmation: formEmploymentType === 'Confirmation' ? formDateOfConfirmation : '',
       
@@ -1022,6 +1188,25 @@ export default function EmployeeDirectoryView({
           'Employee Registered',
           `${formName} has been onboarded into Workforce records.`
         );
+        if (formCreateAccount && canManageAccountActions) {
+          try {
+            const accountResult = await runEmployeeAccountAction(newEmp, 'provision', 'email');
+            saveAccountSummary(accountResult.account);
+            onShowNotification(
+              accountResult.ok ? 'Account Setup Sent' : 'Employee Saved',
+              accountResult.ok
+                ? `A one-time account setup link was prepared for ${newEmp.email}.`
+                : `${newEmp.name} was saved, but account delivery needs attention.`,
+              accountResult.ok ? 'success' : 'info'
+            );
+          } catch (accountError: any) {
+            onShowNotification(
+              'Employee Saved',
+              `${newEmp.name} was saved, but the employee account could not be provisioned: ${accountError.message || accountError}`,
+              'info'
+            );
+          }
+        }
       } catch (err: any) {
         onShowNotification('Save Error', `Failed to register employee: ${err.message || err}`);
       } finally {
@@ -2405,6 +2590,7 @@ export default function EmployeeDirectoryView({
                     <th className="p-4 min-w-[140px]">Salary Base (RM)</th>
                     <th className="p-4">Date of Joined</th>
                     <th className="p-4">Status</th>
+                    <th className="p-4">Account Access</th>
                     <th className="p-4 text-right">Administrative</th>
                   </tr>
                 </thead>
@@ -2414,6 +2600,23 @@ export default function EmployeeDirectoryView({
                     const statusClasses = getEmployeeStatusClasses(displayedStatus);
                     const displayedBasicSalary = getDisplayedMonthlyBasicSalary(emp);
                     const documentProfile = getPayrollDocumentProfile(emp);
+                    const accountSummary = getAccountSummary(emp);
+                    const accountLabel = accountSummary.accountStatus === 'must_change_password'
+                      ? 'Setup required'
+                      : accountSummary.accountStatus === 'not_created'
+                        ? 'Not created'
+                        : accountSummary.accountStatus === 'invited'
+                          ? 'Invite sent'
+                          : accountSummary.accountStatus === 'active'
+                            ? 'Active'
+                            : accountSummary.accountStatus === 'disabled'
+                              ? 'Disabled'
+                              : 'Needs attention';
+                    const accountClasses = accountSummary.accountStatus === 'active'
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                      : accountSummary.accountStatus === 'error'
+                        ? 'bg-rose-100 text-rose-800 border-rose-200'
+                        : 'bg-amber-100 text-amber-800 border-amber-200';
                     
                     return (
                       <tr 
@@ -2483,7 +2686,25 @@ export default function EmployeeDirectoryView({
                           </span>
                         </td>
 
-                        {/* Column 8: Delete / Admin */}
+                        {/* Column 8: Employee Account */}
+                        <td className="p-4 min-w-[150px]" onClick={(event) => event.stopPropagation()}>
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${accountClasses}`}>
+                            <KeyRound className="w-3 h-3" />
+                            {accountLabel}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedEmployeeId(emp.id);
+                              setIsDetailOpen(true);
+                            }}
+                            className="mt-1 block text-[10px] font-semibold text-primary hover:underline cursor-pointer"
+                          >
+                            Manage access
+                          </button>
+                        </td>
+
+                        {/* Column 9: Delete / Admin */}
                         <td className="p-4 text-right">
                           <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                             <button 
@@ -2613,6 +2834,98 @@ export default function EmployeeDirectoryView({
                     </div>
                   )}
                 </div>
+
+                {selectedAccountSummary && (
+                  <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h4 className="font-bold text-sm text-primary flex items-center gap-2">
+                          <KeyRound className="w-4 h-4" /> Account Access
+                        </h4>
+                        <p className="text-[11px] text-on-surface-variant mt-0.5">
+                          Username: <span className="font-mono font-semibold">{selectedAccountSummary.username}</span>
+                        </p>
+                      </div>
+                      <span className={`inline-flex w-fit items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                        selectedAccountSummary.accountStatus === 'active'
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                          : selectedAccountSummary.accountStatus === 'error'
+                            ? 'bg-rose-100 text-rose-800 border-rose-200'
+                            : 'bg-amber-100 text-amber-800 border-amber-200'
+                      }`}>
+                        {selectedAccountSummary.accountStatus === 'must_change_password'
+                          ? 'Setup required'
+                          : selectedAccountSummary.accountStatus.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openAccountAction(
+                          selectedEmployee,
+                          selectedAccountSummary.accountStatus === 'not_created' ? 'provision' : 'share'
+                        )}
+                        disabled={!canManageAccountActions}
+                        className="inline-flex items-center gap-1.5 rounded bg-primary px-3 py-1.5 text-[11px] font-bold text-white hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {selectedAccountSummary.accountStatus === 'not_created'
+                          ? <UserPlus className="w-3.5 h-3.5" />
+                          : <Send className="w-3.5 h-3.5" />}
+                        {selectedAccountSummary.accountStatus === 'not_created'
+                          ? 'Create Account'
+                          : 'Share Account Details'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openAccountAction(selectedEmployee, 'reset_password')}
+                        disabled={!canManageAccountActions}
+                        className="inline-flex items-center gap-1.5 rounded border border-primary/30 bg-white px-3 py-1.5 text-[11px] font-bold text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <RotateCw className="w-3.5 h-3.5" /> Reset Password
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleLoadAccountEvents}
+                        disabled={!canManageAccountActions || isAccountEventsLoading}
+                        className="inline-flex items-center gap-1.5 rounded border border-neutral-border bg-white px-3 py-1.5 text-[11px] font-bold text-on-surface-variant hover:bg-surface-container disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Clock3 className="w-3.5 h-3.5" />
+                        {isAccountEventsLoading ? 'Loading history...' : 'View Delivery History'}
+                      </button>
+                    </div>
+
+                    {accountPreviewMode && (
+                      <p className="text-[10px] font-semibold text-amber-800">
+                        Preview mode: no external message is sent. Email and WhatsApp handoff links are generated locally.
+                      </p>
+                    )}
+                    {!canManageAccountActions && (
+                      <p className="text-[10px] font-semibold text-on-surface-variant">
+                        Read-only: only hr.redpoint can manage employee accounts.
+                      </p>
+                    )}
+
+                    {accountEvents.length > 0 && (
+                      <div className="border-t border-primary/15 pt-3 space-y-2">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                          Recent delivery history
+                        </div>
+                        {accountEvents.slice(0, 5).map((event) => (
+                          <div key={event.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-neutral-border/60 bg-white px-2.5 py-2 text-[10px]">
+                            <span className="font-semibold text-on-surface">
+                              {event.action.replace(/_/g, ' ')}
+                              {event.channel ? ` via ${event.channel}` : ''}
+                            </span>
+                            <span className="text-on-surface-variant">
+                              {event.result} · {new Date(event.createdAt).toLocaleString()}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {!isEditingGeneralInfo ? (
                   <>
@@ -2790,7 +3103,7 @@ export default function EmployeeDirectoryView({
                           <input
                             type="text"
                             value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
+                            onChange={(e) => setEditName(toUppercase(e.target.value))}
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           />
                         </div>
@@ -2877,7 +3190,7 @@ export default function EmployeeDirectoryView({
                           <input
                             type="text"
                             value={editNationality}
-                            onChange={(e) => setEditNationality(e.target.value)}
+                            onChange={(e) => setEditNationality(toUppercase(e.target.value))}
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           />
                         </div>
@@ -3056,7 +3369,7 @@ export default function EmployeeDirectoryView({
                             type="text"
                             list="employee-edit-bank-options"
                             value={editBankName}
-                            onChange={(e) => setEditBankName(e.target.value)}
+                            onChange={(e) => setEditBankName(toUppercase(e.target.value))}
                             placeholder="Select or enter bank name"
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           />
@@ -3069,7 +3382,7 @@ export default function EmployeeDirectoryView({
                           <input
                             type="text"
                             value={editAccountNo}
-                            onChange={(e) => setEditAccountNo(e.target.value)}
+                            onChange={(e) => setEditAccountNo(toUppercase(e.target.value))}
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           />
                         </div>
@@ -3085,7 +3398,7 @@ export default function EmployeeDirectoryView({
                           <input
                             type="text"
                             value={editEmergencyContactName}
-                            onChange={(e) => setEditEmergencyContactName(e.target.value)}
+                            onChange={(e) => setEditEmergencyContactName(toUppercase(e.target.value))}
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           />
                         </div>
@@ -3094,7 +3407,7 @@ export default function EmployeeDirectoryView({
                           <input
                             type="text"
                             value={editEmergencyContactRelation}
-                            onChange={(e) => setEditEmergencyContactRelation(e.target.value)}
+                            onChange={(e) => setEditEmergencyContactRelation(toUppercase(e.target.value))}
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           />
                         </div>
@@ -3103,7 +3416,7 @@ export default function EmployeeDirectoryView({
                           <input
                             type="text"
                             value={editEmergencyContactPhone}
-                            onChange={(e) => setEditEmergencyContactPhone(e.target.value)}
+                            onChange={(e) => setEditEmergencyContactPhone(toUppercase(e.target.value))}
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           />
                         </div>
@@ -3489,7 +3802,7 @@ export default function EmployeeDirectoryView({
                           <input
                             type="text"
                             value={editTaxNumber}
-                            onChange={(e) => setEditTaxNumber(e.target.value)}
+                            onChange={(e) => setEditTaxNumber(toUppercase(e.target.value))}
                             className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
                           />
                         </div>
@@ -3498,7 +3811,7 @@ export default function EmployeeDirectoryView({
                           <input
                             type="text"
                             value={editEpfNumber}
-                            onChange={(e) => setEditEpfNumber(e.target.value)}
+                            onChange={(e) => setEditEpfNumber(toUppercase(e.target.value))}
                             className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
                           />
                         </div>
@@ -3515,7 +3828,7 @@ export default function EmployeeDirectoryView({
                               <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Spouse Name</label>
                               <input 
                                 type="text"
-                                value={editSpouseName} onChange={(e) => setEditSpouseName(e.target.value)}
+                                value={editSpouseName} onChange={(e) => setEditSpouseName(toUppercase(e.target.value))}
                                 className="w-full bg-white border border-neutral-border rounded p-1 text-[11px] outline-none"
                                 placeholder="Name"
                               />
@@ -3524,7 +3837,7 @@ export default function EmployeeDirectoryView({
                               <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Spouse NRIC</label>
                               <input 
                                 type="text"
-                                value={editSpouseNric} onChange={(e) => setEditSpouseNric(e.target.value)}
+                                value={editSpouseNric} onChange={(e) => setEditSpouseNric(toUppercase(e.target.value))}
                                 className="w-full bg-white border border-neutral-border rounded p-1 text-[11px] outline-none"
                                 placeholder="NRIC"
                               />
@@ -3547,7 +3860,7 @@ export default function EmployeeDirectoryView({
                                 <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Working Company</label>
                                 <input 
                                   type="text"
-                                  value={editSpouseCompany} onChange={(e) => setEditSpouseCompany(e.target.value)}
+                                  value={editSpouseCompany} onChange={(e) => setEditSpouseCompany(toUppercase(e.target.value))}
                                   className="w-full bg-white border border-neutral-border rounded p-1 text-[11px] outline-none"
                                   placeholder="Company"
                                 />
@@ -3556,7 +3869,7 @@ export default function EmployeeDirectoryView({
                                 <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Position Title</label>
                                 <input 
                                   type="text"
-                                  value={editSpousePosition} onChange={(e) => setEditSpousePosition(e.target.value)}
+                                  value={editSpousePosition} onChange={(e) => setEditSpousePosition(toUppercase(e.target.value))}
                                   className="w-full bg-white border border-neutral-border rounded p-1 text-[11px] outline-none"
                                   placeholder="Position"
                                 />
@@ -3628,7 +3941,7 @@ export default function EmployeeDirectoryView({
                                       <label className="block text-[8px] font-bold text-on-surface-variant uppercase mb-0.5">Name</label>
                                       <input 
                                         type="text"
-                                        value={detailTempDepName} onChange={(e) => setDetailTempDepName(e.target.value)}
+                                        value={detailTempDepName} onChange={(e) => setDetailTempDepName(toUppercase(e.target.value))}
                                         placeholder="Sally"
                                         className="w-full bg-white border border-neutral-border rounded p-1 text-[10px] outline-none"
                                       />
@@ -4100,7 +4413,7 @@ export default function EmployeeDirectoryView({
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Employee Name *</label>
                     <input 
                       type="text" required
-                      value={formName} onChange={(e) => setFormName(e.target.value)}
+                      value={formName} onChange={(e) => setFormName(toUppercase(e.target.value))}
                       placeholder="Jane Cooper"
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
                     />
@@ -4121,7 +4434,7 @@ export default function EmployeeDirectoryView({
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Nationality *</label>
                     <input 
                       type="text" required
-                      value={formNationality} onChange={(e) => setFormNationality(e.target.value)}
+                      value={formNationality} onChange={(e) => setFormNationality(toUppercase(e.target.value))}
                       placeholder="e.g. Malaysian"
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
                     />
@@ -4158,7 +4471,7 @@ export default function EmployeeDirectoryView({
                         <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Spouse Name *</label>
                         <input 
                           type="text" required
-                          value={formSpouseName} onChange={(e) => setFormSpouseName(e.target.value)}
+                          value={formSpouseName} onChange={(e) => setFormSpouseName(toUppercase(e.target.value))}
                           placeholder="e.g. John Doe"
                           className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
                         />
@@ -4167,7 +4480,7 @@ export default function EmployeeDirectoryView({
                         <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Spouse NRIC *</label>
                         <input 
                           type="text" required
-                          value={formSpouseNric} onChange={(e) => setFormSpouseNric(e.target.value)}
+                          value={formSpouseNric} onChange={(e) => setFormSpouseNric(toUppercase(e.target.value))}
                           placeholder="e.g. 850320-14-1123"
                           className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
                         />
@@ -4191,7 +4504,7 @@ export default function EmployeeDirectoryView({
                           <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Working Company *</label>
                           <input 
                             type="text" required
-                            value={formSpouseCompany} onChange={(e) => setFormSpouseCompany(e.target.value)}
+                            value={formSpouseCompany} onChange={(e) => setFormSpouseCompany(toUppercase(e.target.value))}
                             placeholder="e.g. Tech Corp Sdn Bhd"
                             className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
                           />
@@ -4200,7 +4513,7 @@ export default function EmployeeDirectoryView({
                           <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Position Title *</label>
                           <input 
                             type="text" required
-                            value={formSpousePosition} onChange={(e) => setFormSpousePosition(e.target.value)}
+                          value={formSpousePosition} onChange={(e) => setFormSpousePosition(toUppercase(e.target.value))}
                             placeholder="e.g. Software Engineer"
                             className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
                           />
@@ -4275,7 +4588,7 @@ export default function EmployeeDirectoryView({
                                 <label className="block text-[9px] font-bold text-on-surface-variant uppercase mb-1">Dependant Name</label>
                                 <input 
                                   type="text"
-                                  value={tempDepName} onChange={(e) => setTempDepName(e.target.value)}
+                                  value={tempDepName} onChange={(e) => setTempDepName(toUppercase(e.target.value))}
                                   placeholder="e.g. Sally Doe"
                                   className="w-full bg-white border border-neutral-border rounded p-1 text-[11px] outline-none"
                                 />
@@ -4332,7 +4645,7 @@ export default function EmployeeDirectoryView({
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Tax PCB Income Number</label>
                     <input 
                       type="text"
-                      value={formTaxNumber} onChange={(e) => setFormTaxNumber(e.target.value)}
+                      value={formTaxNumber} onChange={(e) => setFormTaxNumber(toUppercase(e.target.value))}
                       placeholder="SG 29481729010 (or auto-gen)"
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
                     />
@@ -4341,7 +4654,7 @@ export default function EmployeeDirectoryView({
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">EPF Member Number</label>
                     <input 
                       type="text"
-                      value={formEpfNumber} onChange={(e) => setFormEpfNumber(e.target.value)}
+                      value={formEpfNumber} onChange={(e) => setFormEpfNumber(toUppercase(e.target.value))}
                       placeholder="EP-29481729010 (or auto-gen)"
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
                     />
@@ -4543,7 +4856,7 @@ export default function EmployeeDirectoryView({
                     <input
                       type="text"
                       list="employee-bank-options"
-                      value={formBank} onChange={(e) => setFormBank(e.target.value)}
+                      value={formBank} onChange={(e) => setFormBank(toUppercase(e.target.value))}
                       placeholder="Select or enter bank name"
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
                     />
@@ -4555,7 +4868,7 @@ export default function EmployeeDirectoryView({
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Bank Account Number *</label>
                     <input 
                       type="text" required
-                      value={formAccount} onChange={(e) => setFormAccount(e.target.value)}
+                      value={formAccount} onChange={(e) => setFormAccount(toUppercase(e.target.value))}
                       placeholder="1642 9845 2210"
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
                     />
@@ -4608,7 +4921,7 @@ export default function EmployeeDirectoryView({
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Emergency Name *</label>
                     <input 
                       type="text" required
-                      value={formEmergencyContactName} onChange={(e) => setFormEmergencyContactName(e.target.value)}
+                      value={formEmergencyContactName} onChange={(e) => setFormEmergencyContactName(toUppercase(e.target.value))}
                       placeholder="Emma Jenkins"
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
                     />
@@ -4617,7 +4930,7 @@ export default function EmployeeDirectoryView({
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Relationship *</label>
                     <input 
                       type="text" required
-                      value={formEmergencyContactRelation} onChange={(e) => setFormEmergencyContactRelation(e.target.value)}
+                      value={formEmergencyContactRelation} onChange={(e) => setFormEmergencyContactRelation(toUppercase(e.target.value))}
                       placeholder="e.g. Spouse / Mother"
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
                     />
@@ -4626,11 +4939,41 @@ export default function EmployeeDirectoryView({
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Emergency Phone *</label>
                     <input 
                       type="text" required
-                      value={formEmergencyContactPhone} onChange={(e) => setFormEmergencyContactPhone(e.target.value)}
+                      value={formEmergencyContactPhone} onChange={(e) => setFormEmergencyContactPhone(toUppercase(e.target.value))}
                       placeholder="+60 12-987 6543"
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
                     />
                   </div>
+                </div>
+
+                <div className="rounded-lg border border-primary/25 bg-primary/5 p-4 space-y-2">
+                  <label className="flex items-start gap-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={formCreateAccount}
+                      onChange={(event) => setFormCreateAccount(event.target.checked)}
+                      disabled={!canManageAccountActions}
+                      className="mt-0.5 h-4 w-4 rounded accent-primary"
+                    />
+                    <span>
+                      <span className="block text-xs font-bold text-primary uppercase tracking-wider">
+                        Create employee login and send setup link
+                      </span>
+                      <span className="mt-1 block text-[11px] text-on-surface-variant">
+                        The employee receives a one-time password setup link by email. No password is stored or shown here.
+                      </span>
+                    </span>
+                  </label>
+                  {!canManageAccountActions && (
+                    <p className="text-[10px] font-semibold text-amber-800">
+                      Only hr.redpoint can provision employee accounts.
+                    </p>
+                  )}
+                  {accountPreviewMode && (
+                    <p className="text-[10px] font-semibold text-amber-800">
+                      Local preview is active. The saved employee will receive copyable handoff links instead of external delivery.
+                    </p>
+                  )}
                 </div>
 
               </div>
@@ -4657,6 +5000,168 @@ export default function EmployeeDirectoryView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {isAccountActionModalOpen && accountActionEmployee && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 overflow-y-auto backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-lg rounded-lg border border-neutral-border bg-white shadow-2xl animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-neutral-border bg-primary p-4 text-white">
+              <div>
+                <h3 className="flex items-center gap-2 text-base font-bold text-[#f7f0e0]">
+                  <KeyRound className="h-5 w-5" />
+                  {accountActionMode === 'provision'
+                    ? 'Create Employee Account'
+                    : accountActionMode === 'reset_password'
+                      ? 'Reset Employee Password'
+                      : 'Share Account Details'}
+                </h3>
+                <p className="mt-1 text-xs text-[#f7f0e0]/75">{accountActionEmployee.name} · {accountActionEmployee.email}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAccountActionModalOpen(false)}
+                className="rounded-full p-1.5 text-white transition-colors hover:bg-white/10"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-5 p-5 text-left">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
+                The employee will receive a one-time setup or recovery link. The existing password is never displayed, stored in the browser, or included in audit history.
+              </div>
+
+              {!accountActionResult && (
+                <>
+                  <div>
+                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Delivery channel</div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      {([
+                        ['email', 'Email', Mail],
+                        ['whatsapp', 'WhatsApp', MessageCircle],
+                        ['both', 'Both', Send],
+                      ] as const).map(([value, label, Icon]) => (
+                        <label
+                          key={value}
+                          className={`flex cursor-pointer items-center gap-2 rounded border p-2.5 text-xs font-semibold ${
+                            accountActionChannel === value
+                              ? 'border-primary bg-primary/5 text-primary'
+                              : 'border-neutral-border bg-white text-on-surface-variant'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="account-delivery-channel"
+                            value={value}
+                            checked={accountActionChannel === value}
+                            onChange={() => setAccountActionChannel(value)}
+                            className="accent-primary"
+                          />
+                          <Icon className="h-3.5 w-3.5" />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {accountActionChannel !== 'email' && (
+                    <div className="rounded border border-neutral-border bg-surface-container-low p-3 text-[11px] text-on-surface-variant">
+                      WhatsApp delivery requires an E.164 contact number such as <span className="font-mono font-bold">+60123456789</span>. Local preview will generate a handoff link when provider credentials are not configured.
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2 border-t border-neutral-border pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setIsAccountActionModalOpen(false)}
+                      className="rounded border border-neutral-border bg-white px-4 py-2 text-xs font-semibold text-on-surface-variant hover:bg-surface-container"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAccountActionSubmit}
+                      disabled={isAccountActionSaving}
+                      className="inline-flex items-center gap-1.5 rounded bg-primary px-4 py-2 text-xs font-bold text-white hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isAccountActionSaving ? 'Working...' : (
+                        <>
+                          <Send className="h-3.5 w-3.5" />
+                          {accountActionMode === 'reset_password' ? 'Generate & Send Reset Link' : 'Generate & Send Link'}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {accountActionResult && (
+                <div className="space-y-3">
+                  <div className={`rounded border p-3 text-xs font-semibold ${
+                    accountActionResult.ok
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : 'border-rose-200 bg-rose-50 text-rose-800'
+                  }`}>
+                    {accountActionResult.message || 'Account action completed.'}
+                  </div>
+                  {accountActionResult.deliveries.map((delivery) => (
+                    <div key={`${delivery.channel}-${delivery.provider}`} className="rounded border border-neutral-border bg-surface-container-low p-3">
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="flex items-center gap-1.5 font-bold text-on-surface">
+                          {delivery.channel === 'email'
+                            ? <Mail className="h-3.5 w-3.5 text-primary" />
+                            : <MessageCircle className="h-3.5 w-3.5 text-emerald-700" />}
+                          {delivery.channel === 'email' ? 'Email' : 'WhatsApp'}
+                        </span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                          delivery.status === 'sent' || delivery.status === 'handoff'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-rose-100 text-rose-800'
+                        }`}>
+                          {delivery.status}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-on-surface-variant">
+                        {delivery.provider}{delivery.recipient ? ` · ${delivery.recipient}` : ''}
+                      </p>
+                      {delivery.error && (
+                        <p className="mt-1 text-[11px] font-semibold text-rose-700">{delivery.error}</p>
+                      )}
+                      {delivery.handoffUrl && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <a
+                            href={delivery.handoffUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 rounded bg-primary px-2.5 py-1.5 text-[10px] font-bold text-white hover:bg-primary-container"
+                          >
+                            <ExternalLink className="h-3 w-3" /> Open handoff
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => copyHandoffUrl(delivery.handoffUrl || '')}
+                            className="inline-flex items-center gap-1 rounded border border-neutral-border bg-white px-2.5 py-1.5 text-[10px] font-bold text-on-surface-variant hover:bg-surface-container"
+                          >
+                            <Copy className="h-3 w-3" /> Copy link
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <div className="flex justify-end border-t border-neutral-border pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setIsAccountActionModalOpen(false)}
+                      className="rounded bg-primary px-4 py-2 text-xs font-bold text-white hover:bg-primary-container"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -3,23 +3,26 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { 
-  Award, 
-  Search, 
-  Star, 
-  ChevronRight, 
-  TrendingUp, 
-  Edit3, 
-  CheckCircle, 
-  AlertCircle,
-  X,
-  Plus,
-  Trash2
+import React, { useMemo, useState } from 'react';
+import {
+  Award,
+  CheckCircle,
+  ChevronRight,
+  Clock,
+  FileCheck2,
+  Search,
+  Star,
+  TrendingUp,
 } from 'lucide-react';
 import { Employee, EmployeePerformance, ReviewCycle } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
 import PerformanceAnalytics from './PerformanceAnalytics';
+import PerformanceAppraisalForm from './PerformanceAppraisalForm';
+import {
+  calculateAppraisalScores,
+  loadAppraisalDraft,
+  PerformanceAppraisalDraft,
+} from '../lib/performanceAppraisalDraft';
 
 interface PerformanceViewProps {
   employees: Employee[];
@@ -29,176 +32,188 @@ interface PerformanceViewProps {
   onShowNotification: (title: string, message: string) => void;
 }
 
+const FALLBACK_REVIEW_CYCLE: ReviewCycle = {
+  id: 'cycle-2026-annual',
+  name: 'Annual Review 2026',
+  period: 'Jan 1 - Feb 28, 2026',
+  status: 'In Progress',
+};
+
+const statusTone = (status: PerformanceAppraisalDraft['status']) => {
+  if (status === 'Finalised') return 'bg-green-100 text-green-700';
+  if (status === 'Agreed') return 'bg-emerald-100 text-emerald-700';
+  if (status === 'Employee Submitted' || status === 'Pending Manager Review') return 'bg-blue-100 text-blue-700';
+  if (status === 'Pending Employee Input') return 'bg-amber-100 text-amber-700';
+  return 'bg-gray-100 text-gray-700';
+};
+
+const matchesPerformanceEmployee = (performance: EmployeePerformance, employee: Employee) => {
+  const perfEmployeeId = String(performance.employeeId || '').toLowerCase();
+  return perfEmployeeId === String(employee.id || '').toLowerCase() ||
+    perfEmployeeId === String(employee.email || '').toLowerCase();
+};
+
+const createEmptyPerformance = (employee: Employee, reviewCycleId: string): EmployeePerformance => ({
+  employeeId: employee.id,
+  reviewCycleId,
+  managerName: 'Manager',
+  reviewStatus: 'Not Started',
+  rating: 0,
+  teamworkScore: 1,
+  communicationScore: 1,
+  problemSolvingScore: 1,
+  selfEvaluation: '',
+  managerComments: '',
+  goals: [],
+});
+
 export default function PerformanceView({
   employees,
   performances,
   reviewCycles,
   onSavePerformance,
-  onShowNotification
+  onShowNotification,
 }: PerformanceViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'pending' | 'cycles' | 'analytics'>('pending');
+  const availableReviewCycles = reviewCycles.length > 0 ? reviewCycles : [FALLBACK_REVIEW_CYCLE];
+  const [activeSubTab, setActiveSubTab] = useState<'appraisals' | 'cycles' | 'analytics'>('appraisals');
   const [searchQuery, setSearchQuery] = useState('');
   const [deptFilter, setDeptFilter] = useState('All Departments');
-  
-  // Selected cycle state
-  const [selectedCycleId, setSelectedCycleId] = useState('cycle-2026-annual');
+  const [selectedCycleId, setSelectedCycleId] = useState(availableReviewCycles[0]?.id || FALLBACK_REVIEW_CYCLE.id);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [draftRefreshKey, setDraftRefreshKey] = useState(0);
 
-  // Modal evaluation state
-  const [editingPerformance, setEditingPerformance] = useState<EmployeePerformance | null>(null);
+  const selectedCycle = availableReviewCycles.find((cycle) => cycle.id === selectedCycleId) || availableReviewCycles[0] || FALLBACK_REVIEW_CYCLE;
+  const departments = useMemo(() => (
+    ['All Departments', ...Array.from(new Set(employees.map((employee) => employee.department).filter(Boolean))).sort()]
+  ), [employees]);
 
-  // Form states for the modal
-  const [formRating, setFormRating] = useState(0);
-  const [formTeamwork, setFormTeamwork] = useState(1);
-  const [formCommunication, setFormCommunication] = useState(1);
-  const [formProblemSolving, setFormProblemSolving] = useState(1);
-  const [formSelfEval, setFormSelfEval] = useState('');
-  const [formComments, setFormComments] = useState('');
-  const [formGoals, setFormGoals] = useState<string[]>([]);
-  const [newGoalInput, setNewGoalInput] = useState('');
+  const evaluationList = useMemo(() => employees.map((employee) => {
+    const performance = performances.find((item) =>
+      item.reviewCycleId === selectedCycle.id && matchesPerformanceEmployee(item, employee)
+    ) || createEmptyPerformance(employee, selectedCycle.id);
+    const draft = loadAppraisalDraft(employee, selectedCycle, performance);
+    const scores = calculateAppraisalScores(draft);
+    return { employee, performance, draft, scores };
+  }), [employees, performances, selectedCycle, draftRefreshKey]);
 
-  // Calculations
-  const targetPerformances = performances.filter(p => p.reviewCycleId === selectedCycleId);
-  const totalReviews = employees.length;
-  const completedReviewsCount = targetPerformances.filter(p => p.reviewStatus === 'Completed' && employees.some(e => e.id === p.employeeId)).length;
-  const pendingReviewsCount = Math.max(0, totalReviews - completedReviewsCount);
-  const completionRate = totalReviews > 0 ? Math.round((completedReviewsCount / totalReviews) * 100) : 0;
-
-  // Build rows: Join employees with performance
-  const evaluationList = employees.map(emp => {
-    const perf = performances.find(p => p.employeeId === emp.id && p.reviewCycleId === selectedCycleId) || {
-      employeeId: emp.id,
-      reviewCycleId: selectedCycleId,
-      managerName: 'David Brent',
-      reviewStatus: 'Not Started' as const,
-      rating: 0,
-      teamworkScore: 1,
-      communicationScore: 1,
-      problemSolvingScore: 1,
-      selfEvaluation: '',
-      managerComments: '',
-      goals: []
-    };
-    return { emp, perf };
-  });
-
-  // Filter rows
-  const filteredList = evaluationList.filter(({ emp, perf }) => {
-    const matchesDept = deptFilter === 'All Departments' || emp.department === deptFilter;
-    const matchesSearch = emp.name.toLowerCase().includes(searchQuery.toLowerCase()) || emp.id.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredList = evaluationList.filter(({ employee }) => {
+    const normalizedSearch = searchQuery.toLowerCase();
+    const matchesDept = deptFilter === 'All Departments' || employee.department === deptFilter;
+    const matchesSearch =
+      employee.name.toLowerCase().includes(normalizedSearch) ||
+      employee.id.toLowerCase().includes(normalizedSearch) ||
+      employee.email.toLowerCase().includes(normalizedSearch);
     return matchesDept && matchesSearch;
   });
 
-  // Open modal for evaluation
-  const handleOpenEvaluate = (perf: EmployeePerformance) => {
-    setEditingPerformance(perf);
-    setFormRating(perf.rating);
-    setFormTeamwork(perf.teamworkScore);
-    setFormCommunication(perf.communicationScore);
-    setFormProblemSolving(perf.problemSolvingScore);
-    setFormSelfEval(perf.selfEvaluation || '');
-    setFormComments(perf.managerComments || '');
-    setFormGoals([...perf.goals]);
-    setNewGoalInput('');
-  };
+  const selectedRecord = selectedEmployeeId
+    ? evaluationList.find(({ employee }) => employee.id === selectedEmployeeId || employee.email === selectedEmployeeId) || null
+    : null;
 
-  const handleAddGoal = () => {
-    if (newGoalInput.trim()) {
-      setFormGoals(prev => [...prev, newGoalInput.trim()]);
-      setNewGoalInput('');
-    }
-  };
+  const totalReviews = evaluationList.length;
+  const finalisedReviews = evaluationList.filter(({ draft }) => draft.status === 'Finalised').length;
+  const pendingEmployeeInput = evaluationList.filter(({ draft }) => draft.status === 'Pending Employee Input').length;
+  const managerReviewQueue = evaluationList.filter(({ draft }) => draft.status === 'Employee Submitted' || draft.status === 'Pending Manager Review').length;
+  const completionRate = totalReviews > 0 ? Math.round((finalisedReviews / totalReviews) * 100) : 0;
+  const finalisedScores = evaluationList
+    .filter(({ draft, scores }) => draft.status === 'Finalised' && scores.finalRating > 0)
+    .map(({ scores }) => scores.finalRating);
+  const averageRating = finalisedScores.length > 0
+    ? finalisedScores.reduce((sum, rating) => sum + rating, 0) / finalisedScores.length
+    : 0;
 
-  const handleRemoveGoal = (idx: number) => {
-    setFormGoals(prev => prev.filter((_, i) => i !== idx));
-  };
-
-  const handleSaveEvaluation = () => {
-    if (!editingPerformance) return;
-
-    const saved: EmployeePerformance = {
-      ...editingPerformance,
-      reviewStatus: 'Completed',
-      rating: formRating,
-      teamworkScore: formTeamwork,
-      communicationScore: formCommunication,
-      problemSolvingScore: formProblemSolving,
-      selfEvaluation: formSelfEval,
-      managerComments: formComments,
-      goals: formGoals
-    };
-
-    onSavePerformance(saved);
-    setEditingPerformance(null);
-    onShowNotification(
-      'Evaluation Saved',
-      `Successfully completed performance evaluation for employee: ${employees.find(e => e.id === saved.employeeId)?.name}.`
+  if (selectedRecord) {
+    return (
+      <div className="mx-auto max-w-7xl animate-in fade-in duration-200">
+        <PerformanceAppraisalForm
+          employee={selectedRecord.employee}
+          reviewCycle={selectedCycle}
+          performance={selectedRecord.performance}
+          mode="manager"
+          onBack={() => setSelectedEmployeeId(null)}
+          onDraftSaved={() => setDraftRefreshKey((key) => key + 1)}
+          onSavePerformance={onSavePerformance}
+          onShowNotification={onShowNotification}
+        />
+      </div>
     );
-  };
+  }
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto animate-in fade-in duration-200">
-      
-      {/* Title & Banner */}
-      <div>
-        <h1 className="text-3xl font-bold text-on-background tracking-tight">HR Portal - Performance Management</h1>
-        <p className="text-on-surface-variant mt-1">Pending Evaluation Metrics · {pendingReviewsCount} Reviews remaining this quarter</p>
+    <div className="mx-auto max-w-7xl space-y-8 animate-in fade-in duration-200">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-on-background">Performance & Appraisal</h1>
+          <p className="mt-1 text-on-surface-variant">
+            Admin/manager view for active entity employees, self-appraisal routing, scoring, and finalisation.
+          </p>
+        </div>
+        <label className="min-w-64">
+          <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">Review Cycle</span>
+          <select
+            value={selectedCycleId}
+            onChange={(event) => setSelectedCycleId(event.target.value)}
+            className="w-full rounded border border-neutral-border bg-white px-3 py-2 text-sm font-semibold text-on-background outline-none focus:border-primary"
+          >
+            {availableReviewCycles.map((cycle) => (
+              <option key={cycle.id} value={cycle.id}>{cycle.name}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
-      {/* Metrics board */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-surface-container-lowest p-5 rounded-lg border border-neutral-border shadow-sm">
-          <span className="text-on-surface-variant text-sm font-medium">Total Evaluations</span>
-          <div className="text-3xl font-bold text-on-background mt-2">{totalReviews}</div>
-          <div className="text-xs text-on-surface-variant mt-1.5 flex items-center gap-1 font-semibold">
-            All registered FTE personnel
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
+        <div className="rounded-lg border border-neutral-border bg-surface-container-lowest p-5 shadow-sm">
+          <span className="text-sm font-medium text-on-surface-variant">Total Appraisals</span>
+          <div className="mt-2 text-3xl font-bold text-on-background">{totalReviews}</div>
+          <div className="mt-1.5 text-xs font-semibold text-on-surface-variant">Active entity employees</div>
+        </div>
+
+        <div className="rounded-lg border border-neutral-border bg-surface-container-lowest p-5 shadow-sm">
+          <span className="text-sm font-medium text-on-surface-variant">Finalised</span>
+          <div className="mt-2 text-3xl font-bold text-green-600">{finalisedReviews}</div>
+          <div className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-green-600">
+            <CheckCircle className="h-3 w-3" /> {completionRate}% completed
           </div>
         </div>
 
-        <div className="bg-surface-container-lowest p-5 rounded-lg border border-neutral-border shadow-sm">
-          <span className="text-on-surface-variant text-sm font-medium">Completed Evaluations</span>
-          <div className="text-3xl font-bold text-green-600 mt-2">{completedReviewsCount}</div>
-          <div className="text-xs text-green-600 mt-1.5 flex items-center gap-1 font-semibold">
-            <CheckCircle className="w-3 h-3" /> {completionRate}% Completed ({pendingReviewsCount} remaining)
+        <div className="rounded-lg border border-neutral-border bg-surface-container-lowest p-5 shadow-sm">
+          <span className="text-sm font-medium text-on-surface-variant">Employee Input</span>
+          <div className="mt-2 text-3xl font-bold text-amber-600">{pendingEmployeeInput}</div>
+          <div className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-amber-700">
+            <Clock className="h-3.5 w-3.5" /> Awaiting self appraisal
           </div>
         </div>
 
-        <div className="bg-surface-container-lowest p-5 rounded-lg border border-neutral-border shadow-sm">
-          <span className="text-on-surface-variant text-sm font-medium">Global Average Rating</span>
-          <div className="text-3xl font-bold text-primary mt-2">
-            {(() => {
-              const ratedPerfs = targetPerformances.filter(p => p.reviewStatus === 'Completed' && p.rating > 0);
-              if (ratedPerfs.length === 0) return '0.0';
-              const avg = ratedPerfs.reduce((acc, p) => acc + p.rating, 0) / ratedPerfs.length;
-              return avg.toFixed(1);
-            })()} / 5.0
-          </div>
-          <div className="text-xs text-on-surface-variant mt-1.5 flex items-center gap-1 font-semibold">
-            <TrendingUp className="w-3.5 h-3.5 text-primary" /> Steady professional alignment
+        <div className="rounded-lg border border-neutral-border bg-surface-container-lowest p-5 shadow-sm">
+          <span className="text-sm font-medium text-on-surface-variant">Avg Final Rating</span>
+          <div className="mt-2 text-3xl font-bold text-primary">{averageRating.toFixed(1)} / 5.0</div>
+          <div className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-on-surface-variant">
+            <TrendingUp className="h-3.5 w-3.5 text-primary" /> {managerReviewQueue} in manager queue
           </div>
         </div>
       </div>
 
-      {/* Inner Sub-navigation Tabs */}
-      <div className="border-b border-neutral-border flex gap-6">
-        <button 
-          onClick={() => setActiveSubTab('pending')}
-          className={`pb-3 text-sm font-bold border-b-2 transition-colors ${
-            activeSubTab === 'pending' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
+      <div className="flex gap-6 border-b border-neutral-border">
+        <button
+          onClick={() => setActiveSubTab('appraisals')}
+          className={`pb-3 text-sm font-bold transition-colors border-b-2 ${
+            activeSubTab === 'appraisals' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
           }`}
         >
-          Pending Actions & List
+          Appraisal Queue
         </button>
-        <button 
+        <button
           onClick={() => setActiveSubTab('cycles')}
-          className={`pb-3 text-sm font-bold border-b-2 transition-colors ${
+          className={`pb-3 text-sm font-bold transition-colors border-b-2 ${
             activeSubTab === 'cycles' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
           }`}
         >
-          Review Cycles ({reviewCycles.length})
+          Review Cycles ({availableReviewCycles.length})
         </button>
-        <button 
+        <button
           onClick={() => setActiveSubTab('analytics')}
-          className={`pb-3 text-sm font-bold border-b-2 transition-colors ${
+          className={`pb-3 text-sm font-bold transition-colors border-b-2 ${
             activeSubTab === 'analytics' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
           }`}
         >
@@ -206,115 +221,96 @@ export default function PerformanceView({
         </button>
       </div>
 
-      {activeSubTab === 'pending' && (
-        <div className="bg-white border border-neutral-border rounded-lg shadow-sm overflow-hidden">
-          {/* Filters Bar */}
-          <div className="p-4 bg-surface-container-low border-b border-neutral-border flex flex-col md:flex-row gap-4 justify-between items-center text-sm">
-            <div className="flex flex-1 gap-3 w-full">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-outline" />
+      {activeSubTab === 'appraisals' && (
+        <div className="overflow-hidden rounded-lg border border-neutral-border bg-white shadow-sm">
+          <div className="flex flex-col gap-4 border-b border-neutral-border bg-surface-container-low p-4 text-sm md:flex-row md:items-center md:justify-between">
+            <div className="flex w-full flex-1 gap-3">
+              <div className="relative max-w-sm flex-1">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-outline" />
                 <input
                   type="text"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search Employee by Name or ID..."
-                  className="w-full pl-9 pr-4 py-1.5 bg-white border border-neutral-border rounded text-xs focus:ring-1 focus:ring-primary outline-none"
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search employee by name, ID, or email..."
+                  className="w-full rounded border border-neutral-border bg-white py-1.5 pl-9 pr-4 text-xs outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
               <select
                 value={deptFilter}
-                onChange={(e) => setDeptFilter(e.target.value)}
+                onChange={(event) => setDeptFilter(event.target.value)}
                 className="rounded border border-neutral-border bg-white p-1.5 text-xs outline-none"
               >
-                <option>All Departments</option>
-                <option>Product & Engineering</option>
-                <option>Engineering</option>
-                <option>Product</option>
-                <option>Human Resources</option>
+                {departments.map((department) => (
+                  <option key={department} value={department}>{department}</option>
+                ))}
               </select>
             </div>
-            
+
             <div className="text-xs font-semibold text-on-surface-variant">
               Showing {filteredList.length} of {employees.length} employee records
             </div>
           </div>
 
-          {/* Table list */}
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
+            <table className="w-full border-collapse text-left text-xs">
               <thead>
-                <tr className="bg-surface border-b border-neutral-border text-on-surface-variant font-bold uppercase tracking-wider">
-                  <th className="p-4">Employee Details</th>
-                  <th className="p-4">Department</th>
-                  <th className="p-4">Review Status</th>
-                  <th className="p-4">Current Score</th>
-                  <th className="p-4 text-right">Actions</th>
+                <tr className="border-b border-neutral-border bg-surface text-on-surface-variant">
+                  <th className="p-4 font-bold uppercase tracking-wider">Employee Details</th>
+                  <th className="p-4 font-bold uppercase tracking-wider">Department</th>
+                  <th className="p-4 font-bold uppercase tracking-wider">Draft Status</th>
+                  <th className="p-4 font-bold uppercase tracking-wider">Total Score</th>
+                  <th className="p-4 font-bold uppercase tracking-wider">Final Rating</th>
+                  <th className="p-4 text-right font-bold uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-border/50">
-                {filteredList.map(({ emp, perf }) => {
-                  const isCompleted = perf.reviewStatus === 'Completed';
-                  const isInProgress = perf.reviewStatus === 'In Progress';
-                  
-                  return (
-                    <tr key={emp.id} className="hover:bg-surface-container-low/50 transition-colors">
-                      <td className="p-4 flex items-center gap-3">
-                        <EmployeeAvatar employee={emp} className="w-8 h-8 rounded-full" />
-                        <div>
-                          <div className="font-bold text-sm text-on-surface">{emp.name}</div>
-                          <div className="text-xs text-on-surface-variant mt-0.5">{emp.designation} · <span className="font-mono font-medium text-[10px]">{emp.id}</span></div>
+                {filteredList.map(({ employee, draft, scores }) => (
+                  <tr key={employee.id} className="transition-colors hover:bg-surface-container-low/50">
+                    <td className="flex items-center gap-3 p-4">
+                      <EmployeeAvatar employee={employee} className="h-8 w-8 rounded-full" />
+                      <div>
+                        <div className="text-sm font-bold text-on-surface">{employee.name}</div>
+                        <div className="mt-0.5 text-xs text-on-surface-variant">
+                          {employee.designation} - <span className="font-mono text-[10px] font-medium">{employee.id}</span>
                         </div>
-                      </td>
-                      <td className="p-4 text-on-surface font-medium">{emp.department}</td>
-                      <td className="p-4">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-semibold text-[10px] ${
-                          isCompleted 
-                            ? 'bg-green-100 text-green-700' 
-                            : isInProgress 
-                            ? 'bg-blue-100 text-primary' 
-                            : 'bg-gray-100 text-gray-600'
-                        }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${
-                            isCompleted ? 'bg-green-600' : isInProgress ? 'bg-blue-500' : 'bg-gray-400'
-                          }`} />
-                          {perf.reviewStatus}
-                        </span>
-                      </td>
-                      <td className="p-4">
-                        {perf.rating > 0 ? (
-                          <div className="flex items-center gap-1">
-                            {Array.from({ length: 5 }).map((_, i) => (
-                              <Star 
-                                key={i} 
-                                className={`w-3.5 h-3.5 ${
-                                  i < Math.floor(perf.rating) 
-                                    ? 'fill-amber-400 text-amber-400' 
-                                    : 'text-gray-300'
-                                }`} 
-                              />
-                            ))}
-                            <span className="font-semibold text-on-surface ml-1">{perf.rating.toFixed(1)}</span>
-                          </div>
-                        ) : (
-                          <span className="text-on-surface-variant italic text-[11px]">Unrated</span>
-                        )}
-                      </td>
-                      <td className="p-4 text-right">
-                        <button
-                          onClick={() => handleOpenEvaluate(perf)}
-                          className={`text-xs font-semibold py-1.5 px-3 rounded inline-flex items-center gap-1 cursor-pointer transition-colors ${
-                            isCompleted
-                              ? 'bg-surface border border-neutral-border text-on-surface hover:bg-surface-container'
-                              : 'bg-primary text-white hover:bg-primary-container'
-                          }`}
-                        >
-                          <Edit3 className="w-3 h-3" />
-                          {isCompleted ? 'View Review' : 'Evaluate'}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                      </div>
+                    </td>
+                    <td className="p-4 font-medium text-on-surface">{employee.department}</td>
+                    <td className="p-4">
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${statusTone(draft.status)}`}>
+                        <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                        {draft.status}
+                      </span>
+                    </td>
+                    <td className="p-4 font-bold text-on-surface">{scores.totalPoints.toFixed(2)}</td>
+                    <td className="p-4">
+                      {scores.finalRating > 0 ? (
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: 5 }).map((_, index) => (
+                            <Star
+                              key={index}
+                              className={`h-3.5 w-3.5 ${
+                                index < scores.finalRating ? 'fill-amber-400 text-amber-400' : 'text-gray-300'
+                              }`}
+                            />
+                          ))}
+                          <span className="ml-1 font-semibold text-on-surface">{scores.finalRating}.0</span>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] italic text-on-surface-variant">Unrated</span>
+                      )}
+                    </td>
+                    <td className="p-4 text-right">
+                      <button
+                        onClick={() => setSelectedEmployeeId(employee.id)}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded bg-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-container"
+                      >
+                        <FileCheck2 className="h-3 w-3" />
+                        Open Appraisal
+                      </button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -322,25 +318,32 @@ export default function PerformanceView({
       )}
 
       {activeSubTab === 'cycles' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {reviewCycles.map(cycle => (
-            <div key={cycle.id} className="bg-white p-6 border border-neutral-border rounded-lg shadow-sm flex flex-col justify-between">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+          {availableReviewCycles.map((cycle) => (
+            <div key={cycle.id} className="flex flex-col justify-between rounded-lg border border-neutral-border bg-white p-6 shadow-sm">
               <div className="space-y-3">
-                <div className="flex justify-between items-start">
-                  <span className={`text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full font-bold ${
+                <div className="flex items-start justify-between">
+                  <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                     cycle.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-primary'
                   }`}>
                     {cycle.status}
                   </span>
-                  <Award className="w-5 h-5 text-primary-container" />
+                  <Award className="h-5 w-5 text-primary-container" />
                 </div>
-                <h3 className="font-bold text-lg text-on-surface">{cycle.name}</h3>
-                <p className="text-xs text-on-surface-variant leading-relaxed">Evaluation active period: <span className="font-semibold">{cycle.period}</span></p>
+                <h3 className="text-lg font-bold text-on-surface">{cycle.name}</h3>
+                <p className="text-xs leading-relaxed text-on-surface-variant">
+                  Evaluation active period: <span className="font-semibold">{cycle.period}</span>
+                </p>
               </div>
-              <div className="mt-6 pt-4 border-t border-neutral-border/50 flex justify-between items-center text-xs">
-                <span className="text-on-surface-variant">Self-Evaluations active</span>
-                <span className="font-bold text-primary cursor-pointer hover:underline flex items-center gap-1">Details <ChevronRight className="w-3.5 h-3.5" /></span>
-              </div>
+              <button
+                onClick={() => {
+                  setSelectedCycleId(cycle.id);
+                  setActiveSubTab('appraisals');
+                }}
+                className="mt-6 flex items-center justify-between border-t border-neutral-border/50 pt-4 text-xs font-bold text-primary hover:underline"
+              >
+                Open queue for this cycle <ChevronRight className="h-3.5 w-3.5" />
+              </button>
             </div>
           ))}
         </div>
@@ -350,170 +353,10 @@ export default function PerformanceView({
         <PerformanceAnalytics
           employees={employees}
           performances={performances}
-          reviewCycles={reviewCycles}
+          reviewCycles={availableReviewCycles}
           selectedCycleId={selectedCycleId}
         />
       )}
-
-      {/* Interactive Modal: Evaluation & Review Form */}
-      {editingPerformance && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto backdrop-blur-xs">
-          <div className="bg-white border border-neutral-border rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-150">
-            {/* Modal Header */}
-            <div className="p-4 border-b border-neutral-border flex justify-between items-center bg-surface-container-low">
-              <div>
-                <h3 className="font-bold text-base text-primary">Performance Evaluation Form</h3>
-                <p className="text-xs text-on-surface-variant mt-0.5">Employee Name: <span className="font-bold text-on-surface">{employees.find(e => e.id === editingPerformance.employeeId)?.name}</span> (ID: {editingPerformance.employeeId})</p>
-              </div>
-              <button 
-                onClick={() => setEditingPerformance(null)}
-                className="p-1.5 rounded-full hover:bg-neutral-200 transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Modal Body (Scrollable) */}
-            <div className="p-6 overflow-y-auto space-y-6 text-sm text-left">
-              {/* Rating Section */}
-              <div className="space-y-2">
-                <label className="block font-bold text-on-surface">Overall Rating Rating</label>
-                <div className="flex items-center gap-1.5">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      onClick={() => setFormRating(star)}
-                      className="text-amber-400 hover:scale-115 transition-transform"
-                    >
-                      <Star className={`w-7 h-7 ${star <= formRating ? 'fill-amber-400 text-amber-400' : 'text-gray-300'}`} />
-                    </button>
-                  ))}
-                  <span className="font-bold text-on-surface-variant ml-2 font-mono text-base">{formRating}.0 / 5.0</span>
-                </div>
-              </div>
-
-              {/* Slider Core Skills Scores */}
-              <div className="space-y-4 pt-2 border-t border-neutral-border/30">
-                <h4 className="font-bold text-primary">Performance Criteria Grades</h4>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Teamwork */}
-                  <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-on-surface-variant uppercase">Teamwork ({formTeamwork}/5)</label>
-                    <input 
-                      type="range" min="1" max="5" 
-                      value={formTeamwork} 
-                      onChange={(e) => setFormTeamwork(Number(e.target.value))}
-                      className="w-full accent-primary"
-                    />
-                  </div>
-                  {/* Communication */}
-                  <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-on-surface-variant uppercase">Communication ({formCommunication}/5)</label>
-                    <input 
-                      type="range" min="1" max="5" 
-                      value={formCommunication} 
-                      onChange={(e) => setFormCommunication(Number(e.target.value))}
-                      className="w-full accent-primary"
-                    />
-                  </div>
-                  {/* Problem Solving */}
-                  <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-on-surface-variant uppercase">Problem Solving ({formProblemSolving}/5)</label>
-                    <input 
-                      type="range" min="1" max="5" 
-                      value={formProblemSolving} 
-                      onChange={(e) => setFormProblemSolving(Number(e.target.value))}
-                      className="w-full accent-primary"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Text Area Inputs */}
-              <div className="space-y-4 pt-2 border-t border-neutral-border/30">
-                <div>
-                  <label className="block font-bold text-on-surface mb-1">Self-Evaluation Statement</label>
-                  <textarea
-                    rows={3}
-                    value={formSelfEval}
-                    onChange={(e) => setFormSelfEval(e.target.value)}
-                    placeholder="Describe achievements, skills shown, and areas of improvements from employee perspective..."
-                    className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-on-surface mb-1">Manager Feedback Comments</label>
-                  <textarea
-                    rows={3}
-                    value={formComments}
-                    onChange={(e) => setFormComments(e.target.value)}
-                    placeholder="Provide authoritative developmental reviews, highlighting strengths and concrete growth vectors..."
-                    className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Goals list */}
-              <div className="space-y-3 pt-2 border-t border-neutral-border/30">
-                <label className="block font-bold text-on-surface">Target Professional Goals (Nov 2026 - Oct 2027)</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newGoalInput}
-                    onChange={(e) => setNewGoalInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAddGoal()}
-                    placeholder="E.g. Transition React frontend to TS strict-mode, lead product design..."
-                    className="flex-1 bg-white border border-neutral-border rounded px-2.5 py-1.5 text-xs outline-none"
-                  />
-                  <button 
-                    onClick={handleAddGoal}
-                    className="bg-primary text-white p-1.5 rounded hover:bg-primary-container shrink-0"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {formGoals.length > 0 ? (
-                  <ul className="space-y-1.5">
-                    {formGoals.map((goal, index) => (
-                      <li key={index} className="flex justify-between items-center p-2 bg-surface-container-low rounded border border-neutral-border/50 text-xs">
-                        <span className="font-medium text-on-surface">{goal}</span>
-                        <button 
-                          onClick={() => handleRemoveGoal(index)}
-                          className="text-error hover:text-red-700"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-xs text-on-surface-variant italic">No target goals specified. Add some above.</p>
-                )}
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-neutral-border flex justify-end gap-2 bg-surface-container-low">
-              <button
-                onClick={() => setEditingPerformance(null)}
-                className="px-4 py-2 bg-white border border-neutral-border hover:bg-surface-container rounded text-xs font-semibold"
-              >
-                Close Without Saving
-              </button>
-              <button
-                onClick={handleSaveEvaluation}
-                className="px-4 py-2 bg-primary text-white rounded text-xs font-semibold hover:bg-primary-container"
-              >
-                Save Evaluation
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }

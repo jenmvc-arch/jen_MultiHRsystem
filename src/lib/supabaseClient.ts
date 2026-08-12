@@ -2,11 +2,29 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_SUPABASE_URL : process.env.VITE_SUPABASE_URL) || '';
 const supabaseAnonKey = (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_SUPABASE_ANON_KEY : process.env.VITE_SUPABASE_ANON_KEY) || '';
+const employeeSupabaseUrl = (
+  typeof import.meta !== 'undefined' && import.meta.env
+    ? import.meta.env.VITE_EMPLOYEE_SUPABASE_URL
+    : process.env.VITE_EMPLOYEE_SUPABASE_URL
+) || supabaseUrl;
+const employeeSupabaseAnonKey = (
+  typeof import.meta !== 'undefined' && import.meta.env
+    ? import.meta.env.VITE_EMPLOYEE_SUPABASE_ANON_KEY
+    : process.env.VITE_EMPLOYEE_SUPABASE_ANON_KEY
+) || supabaseAnonKey;
 
 export const isSupabaseConfigured = !!supabaseUrl && !!supabaseAnonKey && !supabaseUrl.includes('placeholder');
+export const isEmployeeSupabaseConfigured = (
+  !!employeeSupabaseUrl
+  && !!employeeSupabaseAnonKey
+  && !employeeSupabaseUrl.includes('placeholder')
+);
 
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
+  : null;
+export const employeeSupabase: SupabaseClient | null = isEmployeeSupabaseConfigured
+  ? createClient(employeeSupabaseUrl, employeeSupabaseAnonKey)
   : null;
 
 if (!isSupabaseConfigured) {
@@ -81,13 +99,12 @@ export const supabaseClient = {
     }
     console.log('[Supabase Client] Fetching all tables...');
 
-    const [entitiesRes, employeesRes, candidatesRes, performancesRes, payrollRes, usersRes, logsRes] = await Promise.all([
+    const [entitiesRes, employeesRes, candidatesRes, performancesRes, payrollRes, logsRes] = await Promise.all([
       supabase.from('corporate_entities').select('*'),
       supabase.from('employees').select('*'),
       supabase.from('candidates').select('*'),
       supabase.from('performances').select('*'),
       supabase.from('payroll_records_2026').select('*'),
-      supabase.from('users').select('*'),
       supabase.from('audit_logs').select('*')
     ]);
 
@@ -100,7 +117,9 @@ export const supabaseClient = {
       candidates: (candidatesRes.data || []).map(toCamelCase),
       performances: (performancesRes.data || []).map(toCamelCase),
       payroll_records_2026: (payrollRes.data || []).map(toCamelCase),
-      users: (usersRes.data || []).map(toCamelCase),
+      // Credentials are server-only. LoginView uses the secure admin session
+      // endpoint or employee Auth instead of loading public.users.password.
+      users: [],
       audit_logs: (logsRes.data || []).map(toCamelCase)
     };
   },

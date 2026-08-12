@@ -38,6 +38,7 @@ import {
 import { Employee, EmployeePerformance, CorporateEntity, PayrollRecord2026, ReviewCycle } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
 import PayslipDocumentView from './PayslipDocumentView';
+import PerformanceAppraisalForm from './PerformanceAppraisalForm';
 import { formatToDDMMMYYYY, getGmt8DateString, getGmt8LongDateString, getGmt8Timestamp } from '../lib/dateUtils';
 import { calculatePayslip, getPayrollDocumentProfile } from '../data';
 import { DEFAULT_LEAVE_CONFIGS, LeaveRequest, LeaveConfig } from './LeaveManagementView';
@@ -73,6 +74,7 @@ interface EmployeePortalViewProps {
   currentUserRole?: string | null;
   onShowNotification: (title: string, message: string) => void;
   onUpdateEmployee: (id: string, updates: Partial<Employee>) => Promise<void>;
+  onSavePerformance: (performance: EmployeePerformance) => void;
   onSignOut: () => void;
   isPreviewMode?: boolean;
   previewEmployeeId?: string;
@@ -87,7 +89,7 @@ const PORTAL_NAV_ITEMS: Array<{
   { id: 'profile', label: 'My Profile', icon: User },
   { id: 'payslips', label: 'Payslips', icon: Wallet },
   { id: 'leave', label: 'Leave', icon: CalendarDays },
-  { id: 'growth', label: 'Growth', icon: TrendingUp },
+  { id: 'growth', label: 'Performance & Appraisal', icon: TrendingUp },
   { id: 'documents', label: 'Documents', icon: FileText },
   { id: 'support', label: 'Support', icon: LifeBuoy },
 ];
@@ -134,6 +136,7 @@ export default function EmployeePortalView({
   currentUserRole,
   onShowNotification,
   onUpdateEmployee,
+  onSavePerformance,
   onSignOut,
   isPreviewMode = false,
   previewEmployeeId = '',
@@ -472,10 +475,10 @@ export default function EmployeePortalView({
   const currentSectionTitle = PORTAL_NAV_ITEMS.find((item) => item.id === activeSection)?.label || 'Home';
 
   const tabButtonClass = (section: PortalSection) => [
-    'w-full flex items-center gap-3 rounded-xl px-4 py-3 text-left transition-all duration-200',
+    'w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-left border transition-all duration-200',
     activeSection === section
-      ? 'bg-white text-primary shadow-[0_12px_30px_rgba(163,38,38,0.08)] border border-primary/10'
-      : 'text-on-surface-variant hover:bg-white/70 hover:text-on-surface',
+      ? 'border-white/70 bg-white text-primary shadow-[0_14px_30px_rgba(163,38,38,0.12)]'
+      : 'border-white/10 bg-white/5 text-white/85 hover:bg-white/12 hover:text-white',
   ].join(' ');
 
   const cardClass = 'rounded-3xl border border-neutral-border bg-white/90 shadow-[0_18px_40px_rgba(53,24,18,0.05)] backdrop-blur-sm';
@@ -508,8 +511,8 @@ export default function EmployeePortalView({
   }
 
   const sidebarContent = (
-    <div className="flex h-full flex-col bg-[#7f1d1d] text-[#fff6ec] p-5">
-      <div className="mb-6 rounded-2xl border border-white/10 bg-white/8 p-4">
+    <div className="flex h-full flex-col bg-gradient-to-b from-[#7f1d1d] via-[#842323] to-[#6f1919] text-[#fff6ec] p-5">
+      <div className="mb-6 rounded-2xl border border-white/10 bg-white/8 p-4 shadow-[0_12px_24px_rgba(0,0,0,0.08)]">
         <div className="flex items-center gap-3">
           <div className="h-12 w-12 overflow-hidden rounded-2xl bg-white">
             <img src="/redpoint-logo.png" alt="RedPoint" className="h-full w-full object-contain p-1.5" />
@@ -521,7 +524,7 @@ export default function EmployeePortalView({
         </div>
       </div>
 
-      <div className="mb-5 rounded-2xl border border-white/10 bg-white/8 p-4">
+      <div className="mb-5 rounded-2xl border border-white/10 bg-white/8 p-4 shadow-[0_12px_24px_rgba(0,0,0,0.08)]">
         <div className="flex items-center gap-3">
           <EmployeeAvatar employee={selectedEmployee} className="h-12 w-12 rounded-2xl" />
           <div className="min-w-0">
@@ -535,7 +538,7 @@ export default function EmployeePortalView({
         </div>
       </div>
 
-      <nav className="space-y-1">
+      <nav className="space-y-2">
         {PORTAL_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           return (
@@ -547,8 +550,8 @@ export default function EmployeePortalView({
               }}
               className={tabButtonClass(item.id)}
             >
-              <Icon className="h-4 w-4" />
-              <span className="text-sm font-medium">{item.label}</span>
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="text-sm font-semibold tracking-[0.01em]">{item.label}</span>
             </button>
           );
         })}
@@ -1158,93 +1161,79 @@ export default function EmployeePortalView({
     </div>
   );
 
-  const renderGrowth = () => (
-    <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-      <section className={`${cardClass} p-6`}>
-        <div className="flex items-center justify-between border-b border-neutral-border/70 pb-4">
-          <div>
-            <h2 className="text-xl font-bold text-on-background">Growth</h2>
-            <p className="text-xs text-on-surface-variant">Track reviews, goals, and your career timeline.</p>
-          </div>
-          <TrendingUp className="h-5 w-5 text-primary" />
-        </div>
+  const renderGrowth = () => {
+    const effectiveReviewCycle = activeReviewCycle || {
+      id: 'cycle-2026-annual',
+      name: 'Annual Review 2026',
+      period: 'Jan 1 - Feb 28, 2026',
+      status: 'In Progress' as const,
+    };
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl bg-[#fff8f1] p-4">
-            <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-on-surface-variant">Current cycle</p>
-            <p className="mt-2 text-lg font-bold text-on-background">{activeReviewCycle?.name || 'No review cycle'}</p>
-            <p className="mt-1 text-xs text-on-surface-variant">{activeReviewCycle?.period || 'Nothing scheduled yet'}</p>
-          </div>
-          <div className="rounded-2xl bg-[#fff8f1] p-4">
-            <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-on-surface-variant">Latest rating</p>
-            <p className="mt-2 text-lg font-bold text-on-background">{performanceRating}</p>
-            <p className="mt-1 text-xs text-on-surface-variant">{selectedPerformance?.reviewStatus || 'Not started'}</p>
-          </div>
-        </div>
+    return (
+      <div className="space-y-6">
+        <PerformanceAppraisalForm
+          employee={selectedEmployee}
+          reviewCycle={effectiveReviewCycle}
+          performance={selectedPerformance}
+          mode="employee"
+          currentUserName={currentUserName || selectedEmployee.name}
+          onSavePerformance={onSavePerformance}
+          onShowNotification={onShowNotification}
+        />
 
-        {selectedPerformance ? (
-          <div className="mt-6 rounded-3xl border border-neutral-border bg-[#fffaf4] p-5">
-            <div className="flex items-center gap-2 text-primary">
-              <MessageSquareText className="h-4 w-4" />
-              <span className="text-[10px] font-bold uppercase tracking-[0.35em]">Manager feedback</span>
+        <div className="grid gap-6 xl:grid-cols-[1fr_0.85fr]">
+          <section className={`${cardClass} p-6`}>
+            <div className="flex items-center justify-between border-b border-neutral-border/70 pb-4">
+              <div>
+                <h2 className="text-lg font-bold text-on-background">Career timeline</h2>
+                <p className="text-xs text-on-surface-variant">Employment changes and progression history for appraisal context.</p>
+              </div>
+              <TrendingUp className="h-5 w-5 text-primary" />
             </div>
-            <p className="mt-3 text-sm leading-6 text-on-surface-variant">
-              {selectedPerformance.managerComments || 'No manager comments captured yet.'}
-            </p>
-          </div>
-        ) : (
-          <div className="mt-6 rounded-3xl border border-dashed border-neutral-border bg-white p-8 text-center text-sm text-on-surface-variant">
-            No performance record found for the selected review cycle.
-          </div>
-        )}
-      </section>
-
-      <section className="space-y-6">
-        <div className={`${cardClass} p-6`}>
-          <h3 className="text-base font-bold text-on-background">Career timeline</h3>
-          <div className="mt-5 space-y-3">
-            {selectedCareerHistory.length > 0 ? selectedCareerHistory.map((entry) => (
-              <div key={entry.id} className="rounded-2xl border border-neutral-border bg-[#fff8f1] p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-semibold text-on-background">{entry.type}</p>
-                  <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-primary">
-                    {formatToDDMMMYYYY(entry.date)}
-                  </span>
+            <div className="mt-5 space-y-3">
+              {selectedCareerHistory.length > 0 ? selectedCareerHistory.map((entry) => (
+                <div key={entry.id} className="rounded-2xl border border-neutral-border bg-[#fff8f1] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold text-on-background">{entry.type}</p>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-primary">
+                      {formatToDDMMMYYYY(entry.date)}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-on-surface-variant">{entry.notes}</p>
+                  <p className="mt-2 text-xs text-on-surface-variant">
+                    {entry.previousValue} - {entry.newValue}
+                  </p>
                 </div>
-                <p className="mt-2 text-xs text-on-surface-variant">{entry.notes}</p>
-                <p className="mt-2 text-xs text-on-surface-variant">
-                  {entry.previousValue} → {entry.newValue}
-                </p>
-              </div>
-            )) : (
-              <div className="rounded-3xl border border-dashed border-neutral-border bg-white p-8 text-center text-sm text-on-surface-variant">
-                No career history is available yet.
-              </div>
-            )}
-          </div>
-        </div>
+              )) : (
+                <div className="rounded-3xl border border-dashed border-neutral-border bg-white p-8 text-center text-sm text-on-surface-variant">
+                  No career history is available yet.
+                </div>
+              )}
+            </div>
+          </section>
 
-        <div className={`${cardClass} p-6`}>
-          <h3 className="text-base font-bold text-on-background">Focus areas</h3>
-          <div className="mt-4 space-y-3">
-            {[
-              selectedPerformance?.reviewStatus === 'Completed'
-                ? 'Keep building on the strengths noted in your last review.'
-                : 'Complete your next performance review when it opens.',
-              profileCompleteness < 100
-                ? 'Update missing contact or emergency details in My Profile.'
-                : 'Your profile details are complete.',
-              'Open the Documents tab to review handbook and policy references.',
-            ].map((item) => (
-              <div key={item} className="rounded-2xl border border-neutral-border bg-[#fffaf4] p-4 text-sm text-on-surface-variant">
-                {item}
-              </div>
-            ))}
-          </div>
+          <section className={`${cardClass} p-6`}>
+            <h3 className="text-base font-bold text-on-background">Appraisal reminders</h3>
+            <div className="mt-4 space-y-3">
+              {[
+                selectedPerformance?.reviewStatus === 'Completed'
+                  ? 'Review your final manager feedback and agreed score.'
+                  : 'Complete your self scores, evidence, and acknowledgement before submitting.',
+                profileCompleteness < 100
+                  ? 'Update missing contact or emergency details in My Profile.'
+                  : 'Your profile details are complete.',
+                'Use evidence links for documents, approvals, or analytics screenshots that support each KPI.',
+              ].map((item) => (
+                <div key={item} className="rounded-2xl border border-neutral-border bg-[#fffaf4] p-4 text-sm text-on-surface-variant">
+                  {item}
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
-      </section>
-    </div>
-  );
+      </div>
+    );
+  };
 
   const renderDocuments = () => (
     <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">

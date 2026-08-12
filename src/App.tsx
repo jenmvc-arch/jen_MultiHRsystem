@@ -44,6 +44,7 @@ import {
 import { getGmt8Timestamp, getGmt8DateString } from './lib/dateUtils';
 import { formatNricOrPassport } from './lib/employeeInput';
 import { getAppTabFromPath, getPathForAppTab } from './lib/appRoutes';
+import { isAdminPortalRole, isEmployeePortalRole } from './lib/userRoles';
 
 import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
@@ -61,13 +62,19 @@ import HireOnboardingView from './components/HireOnboardingView';
 import DepartmentRoleView from './components/DepartmentRoleView';
 import SocsoConfigAdminView from './components/SocsoConfigAdminView';
 import EmployeePortalView from './components/EmployeePortalView';
+import AppAccessSettingsPreview from './components/AppAccessSettingsPreview';
 import LoginView from './components/LoginView';
 import JobApplicationForm from './components/JobApplicationForm';
 import OnboardingForm from './components/OnboardingForm';
 import { EntityContextProvider } from './context/EntityContext';
 
 import { googleSheetsClient, isGoogleConfigured, SheetsDataPayload } from './lib/googleSheetsClient';
-import { supabase, supabaseClient, isSupabaseConfigured } from './lib/supabaseClient';
+import {
+  employeeSupabase,
+  supabase,
+  supabaseClient,
+  isSupabaseConfigured,
+} from './lib/supabaseClient';
 
 const parseOptionalJson = <T,>(value: unknown): T | undefined => {
   if (value === undefined || value === null || value === '') {
@@ -168,8 +175,9 @@ export default function App() {
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [currentUserNickname, setCurrentUserNickname] = useState<string | null>(null);
+  const [currentUserMustChangePassword, setCurrentUserMustChangePassword] = useState(false);
   const isEmployeePortalDemoPath = window.location.pathname.startsWith('/employee-portal/demo');
-  const isEmployeeAccount = String(currentUserRole || '').toLowerCase().includes('employee');
+  const isEmployeeAccount = isEmployeePortalRole(currentUserRole);
   const employeePortalQueryEmployeeId = new URLSearchParams(window.location.search).get('employeeId') || 'EMP-84729';
 
   const handleLoginSuccess = (user: UserAccount) => {
@@ -182,18 +190,23 @@ export default function App() {
     } else {
       localStorage.removeItem('hr-nexus-user-nickname');
     }
+    localStorage.setItem(
+      'hr-nexus-user-must-change-password',
+      String(Boolean(user.mustChangePassword))
+    );
     setIsAuthenticated(true);
     setCurrentUserEmail(user.email);
     setCurrentUserName(user.name);
     setCurrentUserRole(user.role);
     setCurrentUserNickname(user.nickname || null);
+    setCurrentUserMustChangePassword(Boolean(user.mustChangePassword));
 
-    if (String(user.role || '').toLowerCase().includes('employee')) {
+    if (isEmployeePortalRole(user.role)) {
       setCurrentTab('employee-portal');
       if (!window.location.pathname.startsWith('/employee-portal')) {
         window.history.replaceState({ tab: 'employee-portal' }, '', '/employee-portal');
       }
-    } else if (window.location.pathname.startsWith('/employee-portal')) {
+    } else if (isAdminPortalRole(user.role) && window.location.pathname.startsWith('/employee-portal')) {
       setCurrentTab('dashboard');
       window.history.replaceState({ tab: 'dashboard' }, '', '/dashboard');
     }
@@ -220,15 +233,18 @@ export default function App() {
 
   const handleSignOut = () => {
     void supabase?.auth.signOut({ scope: 'local' });
+    void employeeSupabase?.auth.signOut({ scope: 'local' });
     localStorage.removeItem('hr-nexus-auth');
     localStorage.removeItem('hr-nexus-user-email');
     localStorage.removeItem('hr-nexus-user-name');
     localStorage.removeItem('hr-nexus-user-role');
+    localStorage.removeItem('hr-nexus-user-must-change-password');
     setIsAuthenticated(false);
     setCurrentUserEmail(null);
     setCurrentUserName(null);
     setCurrentUserRole(null);
     setCurrentUserNickname(null);
+    setCurrentUserMustChangePassword(false);
     setCurrentTab('dashboard');
     window.history.replaceState({}, '', '/');
   };
@@ -587,26 +603,79 @@ export default function App() {
 
   // Load session from local storage on mount
   useEffect(() => {
-    const auth = localStorage.getItem('hr-nexus-auth');
-    if (auth === 'true') {
-      setIsAuthenticated(true);
-      const email = localStorage.getItem('hr-nexus-user-email');
-      setCurrentUserEmail(email);
-      setCurrentUserName(localStorage.getItem('hr-nexus-user-name'));
-      setCurrentUserRole(localStorage.getItem('hr-nexus-user-role'));
-      setCurrentUserNickname(localStorage.getItem('hr-nexus-user-nickname'));
+    let cancelled = false;
+    const restoreSession = async () => {
+      if (localStorage.getItem('hr-nexus-auth') !== 'true') return;
 
-      // Preferences are managed strictly by active_corporate_entity_id state
-    }
+      const storedEmail = localStorage.getItem('hr-nexus-user-email');
+      const storedRole = localStorage.getItem('hr-nexus-user-role');
+      const accountPreview = new URLSearchParams(window.location.search).get('accountPreview') === '1';
+
+      if (storedRole && isAdminPortalRole(storedRole)) {
+        try {
+          const response = await fetch('/api/auth/session', {
+            credentials: 'include',
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (response.ok && payload.user) {
+            if (cancelled) return;
+            const user = payload.user;
+            setIsAuthenticated(true);
+            setCurrentUserEmail(user.username || user.email || storedEmail);
+            setCurrentUserName(user.name || localStorage.getItem('hr-nexus-user-name'));
+            setCurrentUserRole(user.role || storedRole);
+            setCurrentUserNickname(user.nickname || localStorage.getItem('hr-nexus-user-nickname'));
+            setCurrentUserMustChangePassword(false);
+            return;
+          }
+
+          if (!import.meta.env.DEV && !accountPreview) {
+            localStorage.removeItem('hr-nexus-auth');
+            return;
+          }
+        } catch (error) {
+          console.warn('[Admin Session] Secure session validation unavailable:', error);
+          if (!import.meta.env.DEV && !accountPreview) {
+            localStorage.removeItem('hr-nexus-auth');
+            return;
+          }
+        }
+      }
+
+      if (storedRole && isEmployeePortalRole(storedRole)) {
+        const employeeAuthClient = employeeSupabase || supabase;
+        if (employeeAuthClient && !isEmployeePortalDemoPath) {
+          const { data } = await employeeAuthClient.auth.getUser();
+          if (!data.user && !import.meta.env.DEV && !accountPreview) {
+            localStorage.removeItem('hr-nexus-auth');
+            return;
+          }
+        }
+      }
+
+      if (cancelled) return;
+      setIsAuthenticated(true);
+      setCurrentUserEmail(storedEmail);
+      setCurrentUserName(localStorage.getItem('hr-nexus-user-name'));
+      setCurrentUserRole(storedRole);
+      setCurrentUserNickname(localStorage.getItem('hr-nexus-user-nickname'));
+      setCurrentUserMustChangePassword(
+        localStorage.getItem('hr-nexus-user-must-change-password') === 'true'
+      );
+    };
+
+    void restoreSession();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (!isAuthenticated || !currentUserRole) return;
 
-    const role = String(currentUserRole).toLowerCase();
     const onEmployeePortalPath = window.location.pathname.startsWith('/employee-portal');
 
-    if (role.includes('employee')) {
+    if (isEmployeePortalRole(currentUserRole)) {
       if (!onEmployeePortalPath) {
         setCurrentTab('employee-portal');
         window.history.replaceState({ tab: 'employee-portal' }, '', '/employee-portal');
@@ -614,7 +683,7 @@ export default function App() {
       return;
     }
 
-    if (onEmployeePortalPath) {
+    if (isAdminPortalRole(currentUserRole) && onEmployeePortalPath) {
       setCurrentTab('dashboard');
       window.history.replaceState({ tab: 'dashboard' }, '', '/dashboard');
     }
@@ -1908,9 +1977,8 @@ export default function App() {
   const employeePortalLiveEmployee = isEmployeeAccount
     ? (
       employees.find(employee => employee.email.toLowerCase() === employeePortalSessionEmail) ||
-      (!isSupabaseConfigured && !isGoogleConfigured
-        ? SEED_EMPLOYEES.find(employee => employee.email.toLowerCase() === employeePortalSessionEmail)
-        : null)
+      SEED_EMPLOYEES.find(employee => employee.email.toLowerCase() === employeePortalSessionEmail) ||
+      null
     )
     : null;
   const employeePortalEmployee = isEmployeePortalPreview
@@ -2078,6 +2146,7 @@ export default function App() {
           currentUserRole={isEmployeePortalPreview ? 'Employee' : currentUserRole}
           onShowNotification={triggerNotification}
           onUpdateEmployee={isEmployeePortalPreview ? async () => {} : handleEmployeePortalUpdateEmployee}
+          onSavePerformance={isEmployeePortalPreview ? () => {} : handleSavePerformance}
           onSignOut={handleSignOut}
           isPreviewMode={isEmployeePortalPreview}
           previewEmployeeId={isEmployeePortalPreview ? employeePortalEmployee?.id || employeePortalQueryEmployeeId : undefined}
@@ -2090,7 +2159,12 @@ export default function App() {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
 
-  if (isAuthenticated && !currentUserNickname) {
+  const needsProfileSetup = isAuthenticated && (
+    !currentUserNickname
+    || (isEmployeeAccount && currentUserMustChangePassword)
+  );
+
+  if (needsProfileSetup) {
     return (
       <div className="min-h-screen bg-neutral-900 flex items-center justify-center p-4 font-sans relative overflow-hidden">
         <div className="absolute top-0 left-0 w-64 h-full pointer-events-none opacity-20">
@@ -2105,16 +2179,73 @@ export default function App() {
         </div>
         <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm text-center relative z-10 border border-[#E5E5E5]">
           <h2 className="text-xl font-bold text-[#333333] mb-2">Welcome, {currentUserName}!</h2>
-          <p className="text-sm text-gray-500 mb-6">Please choose a nickname for your profile before continuing.</p>
-          <form onSubmit={(e) => {
+          <p className="text-sm text-gray-500 mb-6">
+            {isEmployeeAccount && currentUserMustChangePassword
+              ? 'Set your nickname and a new password before entering the employee portal.'
+              : 'Please choose a nickname for your profile before continuing.'}
+          </p>
+          <form onSubmit={async (e) => {
             e.preventDefault();
             const form = e.target as HTMLFormElement;
             const input = form.elements.namedItem('nickname') as HTMLInputElement;
             const val = input.value.trim();
-            if (val) {
-              localStorage.setItem('hr-nexus-user-nickname', val);
-              setCurrentUserNickname(val);
+            const newPassword = (form.elements.namedItem('newPassword') as HTMLInputElement | null)?.value || '';
+            const confirmPassword = (form.elements.namedItem('confirmPassword') as HTMLInputElement | null)?.value || '';
+            if (!val) return;
+
+            if (isEmployeeAccount && currentUserMustChangePassword) {
+              if (newPassword.length < 8) {
+                triggerNotification('Password Required', 'Your new password must be at least 8 characters.', 'info');
+                return;
+              }
+              if (newPassword !== confirmPassword) {
+                triggerNotification('Password Mismatch', 'The new password and confirmation do not match.', 'info');
+                return;
+              }
+
+              const employeeAuthClient = employeeSupabase || supabase;
+              if (employeeAuthClient) {
+                const { error: passwordError } = await employeeAuthClient.auth.updateUser({
+                  password: newPassword,
+                  data: {
+                    nickname: val,
+                    must_change_password: false,
+                  },
+                });
+                if (passwordError) {
+                  triggerNotification('Setup Failed', passwordError.message, 'info');
+                  return;
+                }
+
+                const {
+                  data: { session },
+                } = await employeeAuthClient.auth.getSession();
+                if (session?.access_token) {
+                  const setupResponse = await fetch('/api/employee-auth/complete-setup', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Authorization: `Bearer ${session.access_token}`,
+                    },
+                    body: JSON.stringify({ nickname: val }),
+                  });
+                  if (!setupResponse.ok) {
+                    const setupPayload = await setupResponse.json().catch(() => ({}));
+                    triggerNotification(
+                      'Setup Sync Failed',
+                      setupPayload.error || 'Your password was updated, but the employee account status could not be synchronized.',
+                      'info'
+                    );
+                    return;
+                  }
+                }
+              }
             }
+
+            localStorage.setItem('hr-nexus-user-nickname', val);
+            localStorage.setItem('hr-nexus-user-must-change-password', 'false');
+            setCurrentUserNickname(val);
+            setCurrentUserMustChangePassword(false);
           }}>
             <input 
               name="nickname"
@@ -2123,6 +2254,26 @@ export default function App() {
               placeholder="e.g. Jenny"
               className="w-full h-12 px-4 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] mb-4 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all text-center"
             />
+            {isEmployeeAccount && currentUserMustChangePassword && (
+              <>
+                <input
+                  name="newPassword"
+                  type="password"
+                  required
+                  minLength={8}
+                  placeholder="New password"
+                  className="w-full h-12 px-4 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] mb-3 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all text-center"
+                />
+                <input
+                  name="confirmPassword"
+                  type="password"
+                  required
+                  minLength={8}
+                  placeholder="Confirm new password"
+                  className="w-full h-12 px-4 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] mb-4 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all text-center"
+                />
+              </>
+            )}
             <button type="submit" className="w-full h-12 bg-[#A32626] hover:bg-[#8F1F1F] text-white font-semibold rounded-xl shadow-md shadow-[#A32626]/20 transition-all focus:outline-none focus:ring-2 focus:ring-[#A32626]/50">
               Save Nickname
             </button>
@@ -2348,6 +2499,7 @@ export default function App() {
               onUpdateEmployee={handleUpdateEmployeeSalary}
               onShowNotification={triggerNotification}
               activeEntityId={activeEntityId}
+              currentUserEmail={currentUserEmail}
             />
           )}
 
@@ -2586,6 +2738,12 @@ export default function App() {
                   </button>
                 </div>
               </div>
+
+              <AppAccessSettingsPreview
+                employees={employees}
+                currentUserEmail={currentUserEmail}
+                onShowNotification={triggerNotification}
+              />
 
               {/* Card 2: PERKESO Statutory Configuration */}
               <div className="max-w-6xl mx-auto bg-white border border-neutral-border rounded-lg p-6 shadow-sm space-y-4">

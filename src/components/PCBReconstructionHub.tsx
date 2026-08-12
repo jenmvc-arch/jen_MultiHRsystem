@@ -22,7 +22,7 @@ import {
   HistoricalPCBResult, 
   PCBProcessingMode 
 } from '../types';
-import { 
+import {
   reconstructPCBHistory, 
   recalculatePCBFromMonth,
   getEffectiveProfileForMonth,
@@ -30,6 +30,7 @@ import {
   calculateAccumulatedPCBHistory,
   recalculatePCBForward
 } from '../data';
+import { hasGlobalAdminPrivileges } from '../lib/userRoles';
 
 interface PCBReconstructionHubProps {
   employees: Employee[];
@@ -291,7 +292,7 @@ export default function PCBReconstructionHub({
   const handleAddAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
     const userRole = localStorage.getItem('hr-nexus-user-role') || 'Employee';
-    const isApprover = userRole === 'Global Administrator' || userRole === 'Payroll Tax Approver' || userRole === 'Administrator';
+    const isApprover = hasGlobalAdminPrivileges(userRole) || userRole === 'Payroll Tax Approver' || userRole === 'Administrator';
     if (!isApprover) {
       onShowNotification('Permission Denied', 'Only a Payroll Tax Approver or Global Administrator can authorize manual adjustments.', 'error');
       return;
@@ -346,7 +347,7 @@ export default function PCBReconstructionHub({
 
   const handleReverseLedger = async (item: any) => {
     const userRole = localStorage.getItem('hr-nexus-user-role') || 'Employee';
-    const isApprover = userRole === 'Global Administrator' || userRole === 'Payroll Tax Approver' || userRole === 'Administrator';
+    const isApprover = hasGlobalAdminPrivileges(userRole) || userRole === 'Payroll Tax Approver' || userRole === 'Administrator';
     if (!isApprover) {
       onShowNotification('Permission Denied', 'Only a Payroll Tax Approver or Global Administrator can authorize reversals.', 'error');
       return;

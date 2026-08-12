@@ -2954,6 +2954,7 @@ export interface UserAccount {
   name: string;
   role: string;
   nickname?: string;
+  mustChangePassword?: boolean;
 }
 
 export const MOCK_USERS: UserAccount[] = [
@@ -2967,7 +2968,7 @@ export const MOCK_USERS: UserAccount[] = [
     email: 'hr.redpoint',
     password: 'admin123#',
     name: 'HR Admin',
-    role: 'Global Administrator'
+    role: 'Master User'
   },
   {
     email: 'manager.redpoint',

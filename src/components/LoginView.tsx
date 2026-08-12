@@ -1,14 +1,34 @@
 import React, { useEffect, useState } from 'react';
-import { Mail, Lock, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import {
+  Mail,
+  Lock,
+  AlertCircle,
+  CheckCircle,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  UserRound,
+} from 'lucide-react';
 import { MOCK_USERS, UserAccount } from '../data';
 import { googleSheetsClient, isGoogleConfigured } from '../lib/googleSheetsClient';
-import { supabase, supabaseClient, isSupabaseConfigured } from '../lib/supabaseClient';
+import {
+  employeeSupabase,
+  supabase,
+  supabaseClient,
+  isSupabaseConfigured,
+} from '../lib/supabaseClient';
+import {
+  isEmployeeSignerRole,
+  isRoleAllowedForLoginPortal,
+  LoginPortal,
+} from '../lib/userRoles';
 
 interface LoginViewProps {
   onLoginSuccess: (user: UserAccount) => void;
 }
 
 export default function LoginView({ onLoginSuccess }: LoginViewProps) {
+  const [loginPortal, setLoginPortal] = useState<LoginPortal>('admin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -18,18 +38,66 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [isLoading, setIsLoading] = useState(false);
 
   const isEmployeeSigner = (user: Pick<UserAccount, 'role'>) => {
-    const role = String(user.role || '').toLowerCase();
-    return role.includes('employee') || role.includes('candidate');
+    return isEmployeeSignerRole(user.role);
+  };
+
+  const accountMatchesSelectedPortal = (user: Pick<UserAccount, 'role'>) =>
+    isRoleAllowedForLoginPortal(user.role, loginPortal);
+
+  const selectedPortalLabel = loginPortal === 'admin' ? 'Admin User' : 'Employee';
+
+  const getPortalMismatchMessage = (role: string) => {
+    const accountType = isEmployeeSignerRole(role) ? 'Employee' : 'Admin User';
+    return `This account belongs to the ${accountType} login. Switch to ${accountType} to continue.`;
+  };
+
+  const loadEmployeeAccountProfile = async (
+    client: any,
+    fallback: UserAccount
+  ): Promise<UserAccount> => {
+    try {
+      const {
+        data: { session },
+      } = await client.auth.getSession();
+      if (!session?.access_token) return fallback;
+      const response = await fetch('/api/employee-auth/profile', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      if (!response.ok) return fallback;
+      const profile = await response.json();
+      return {
+        ...fallback,
+        nickname: String(profile.nickname || ''),
+        mustChangePassword: Boolean(profile.mustChangePassword),
+      };
+    } catch {
+      return fallback;
+    }
+  };
+
+  const handlePortalChange = (portal: LoginPortal) => {
+    setLoginPortal(portal);
+    setError(null);
+    setAuthNotice(null);
   };
 
   useEffect(() => {
-    if (!supabase) return;
+    const employeeAuthClient = employeeSupabase || supabase;
+    if (!employeeAuthClient) return;
     let cancelled = false;
 
-    void supabase.auth.getUser().then(async ({ data, error: authError }) => {
+    void employeeAuthClient.auth.getUser().then(async ({ data, error: authError }) => {
       if (cancelled || authError || !data.user?.email) return;
 
       setIsLoading(true);
+      if (!supabase) {
+        await employeeAuthClient.auth.signOut({ scope: 'local' });
+        setIsLoading(false);
+        setError('The employee directory database is not configured for this sign-in.');
+        return;
+      }
       const [
         { data: employee, error: employeeError },
         { data: candidate, error: candidateError },
@@ -50,18 +118,19 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       setIsLoading(false);
       const signer = employee || candidate;
       if (employeeError || candidateError || !signer) {
-        await supabase.auth.signOut({ scope: 'local' });
+        await employeeAuthClient.auth.signOut({ scope: 'local' });
         setError('This secure sign-in link is not connected to an employee onboarding account.');
         return;
       }
 
-      onLoginSuccess({
+      const signedInUser = await loadEmployeeAccountProfile(employeeAuthClient, {
         email: signer.email,
         password: '',
         name: signer.name,
         role: employee ? 'Employee' : 'Candidate',
-        nickname: String(signer.name || '').trim().split(/\s+/)[0] || 'Employee',
+        nickname: '',
       });
+      onLoginSuccess(signedInUser);
     });
 
     return () => {
@@ -70,7 +139,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   }, []);
 
   const completeLogin = async (matchedUser: UserAccount) => {
-    if (supabase && isEmployeeSigner(matchedUser)) {
+    const employeeAuthClient = employeeSupabase || supabase;
+    if (employeeAuthClient && isEmployeeSigner(matchedUser)) {
       const signerEmail = String(matchedUser.email || '').trim().toLowerCase();
       if (!signerEmail.includes('@')) {
         setIsLoading(false);
@@ -80,14 +150,14 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
       const {
         data: { user: authenticatedUser },
-      } = await supabase.auth.getUser();
+      } = await employeeAuthClient.auth.getUser();
       if (authenticatedUser?.email?.toLowerCase() === signerEmail) {
         setIsLoading(false);
-        onLoginSuccess(matchedUser);
+        onLoginSuccess(await loadEmployeeAccountProfile(employeeAuthClient, matchedUser));
         return;
       }
 
-      const { error: otpError } = await supabase.auth.signInWithOtp({
+      const { error: otpError } = await employeeAuthClient.auth.signInWithOtp({
         email: signerEmail,
         options: {
           shouldCreateUser: false,
@@ -103,8 +173,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       return;
     }
 
-    if (supabase) {
-      await supabase.auth.signOut({ scope: 'local' });
+    if (employeeAuthClient) {
+      await employeeAuthClient.auth.signOut({ scope: 'local' });
     }
     setIsLoading(false);
     onLoginSuccess(matchedUser);
@@ -123,12 +193,51 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
     setIsLoading(true);
 
+    if (loginPortal === 'admin') {
+      try {
+        const secureResponse = await fetch('/api/auth/admin-login', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: email.trim(),
+            password,
+          }),
+        });
+        const securePayload = await secureResponse.json().catch(() => ({}));
+        if (secureResponse.ok && securePayload.user) {
+          setIsLoading(false);
+          onLoginSuccess({
+            email: securePayload.user.email,
+            password: '',
+            name: securePayload.user.name,
+            role: securePayload.user.role,
+            nickname: securePayload.user.nickname || '',
+            mustChangePassword: Boolean(securePayload.user.mustChangePassword),
+          });
+          return;
+        }
+        if (secureResponse.status === 401 || secureResponse.status === 403) {
+          setIsLoading(false);
+          setError(securePayload.error || 'Invalid username or password.');
+          return;
+        }
+        // A missing local API server is allowed to use the existing offline
+        // demo accounts so the localhost preview remains usable.
+      } catch (secureError) {
+        console.warn('[Admin Auth] Secure session endpoint unavailable:', secureError);
+      }
+    }
+
     const performLocalFallback = async () => {
-      const matchedUser = MOCK_USERS.find(
+      const credentialMatch = MOCK_USERS.find(
         u => u.email === email.trim().toLowerCase() && u.password === password
       );
-      if (matchedUser) {
-        await completeLogin(matchedUser);
+      if (credentialMatch && accountMatchesSelectedPortal(credentialMatch)) {
+        await completeLogin(credentialMatch);
+      } else if (credentialMatch) {
+        setIsLoading(false);
+        setError(getPortalMismatchMessage(credentialMatch.role));
       } else {
         setIsLoading(false);
         setError('Invalid username or password. Please try again.');
@@ -137,17 +246,51 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
     const performRemoteAuth = async (client: any, sourceName: string) => {
       try {
+        if (loginPortal === 'employee' && supabase) {
+          const [
+            { data: employee, error: employeeError },
+            { data: candidate, error: candidateError },
+          ] = await Promise.all([
+            supabase
+              .from('employees')
+              .select('email, name')
+              .ilike('email', email.trim())
+              .maybeSingle(),
+            supabase
+              .from('candidates')
+              .select('email, name')
+              .ilike('email', email.trim())
+              .maybeSingle(),
+          ]);
+          const matchedSigner = employee || candidate;
+          if (matchedSigner && !employeeError && !candidateError) {
+            await completeLogin({
+              email: matchedSigner.email,
+              password: '',
+              name: matchedSigner.name,
+              role: employee ? 'Employee' : 'Candidate',
+              nickname: '',
+            });
+          } else {
+            await performLocalFallback();
+          }
+          return;
+        }
+
         const payload = await client.loadData();
         const users = payload.users || [];
-        let matched = users.find(
+        const credentialMatch = users.find(
           (u: any) => String(u.email).toLowerCase() === email.trim().toLowerCase() && String(u.password) === password
         );
+        let matched = credentialMatch && accountMatchesSelectedPortal(credentialMatch)
+          ? credentialMatch
+          : undefined;
 
         if (!matched && users.length === 0) {
           const fallbackUser = MOCK_USERS.find(
             u => u.email === email.trim().toLowerCase() && u.password === password
           );
-          if (fallbackUser) {
+          if (fallbackUser && accountMatchesSelectedPortal(fallbackUser)) {
             matched = fallbackUser;
           }
         }
@@ -162,7 +305,11 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           });
         } else {
           setIsLoading(false);
-          setError('Invalid username or password. Please try again.');
+          setError(
+            credentialMatch
+              ? getPortalMismatchMessage(String(credentialMatch.role || ''))
+              : 'Invalid username or password. Please try again.'
+          );
         }
       } catch (err) {
         console.error(`[${sourceName} Auth Error] Falling back to local accounts:`, err);
@@ -220,8 +367,59 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         <div className="w-full bg-[#FFFFFF] rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-[#E5E5E5] p-8">
           
           <div className="text-center mb-8">
-            <h2 className="text-xl font-bold text-[#333333]">Welcome! Please sign in</h2>
-            <p className="text-sm text-gray-500 mt-1">Internal HRMS Portal</p>
+            <h2 className="text-xl font-bold text-[#333333]">
+              {loginPortal === 'admin' ? 'Admin User Sign In' : 'Employee Sign In'}
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              {loginPortal === 'admin'
+                ? 'Access the RedPoint HRMS administration console'
+                : 'Access your personal employee workspace'}
+            </p>
+          </div>
+
+          {/* Login Portal Switch */}
+          <div className="mb-6 rounded-2xl border border-[#EBDCCB] bg-[#FFF8EF] p-1.5">
+            <div className="grid grid-cols-2 gap-1.5">
+              {([
+                {
+                  id: 'admin' as const,
+                  label: 'Admin User',
+                  description: 'HRMS console',
+                  Icon: ShieldCheck,
+                },
+                {
+                  id: 'employee' as const,
+                  label: 'Employee',
+                  description: 'Self-service portal',
+                  Icon: UserRound,
+                },
+              ]).map(({ id, label, description, Icon }) => {
+                const isActive = loginPortal === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => handlePortalChange(id)}
+                    className={`flex min-h-[66px] items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all ${
+                      isActive
+                        ? 'bg-white text-[#A32626] shadow-sm ring-1 ring-[#A32626]/15'
+                        : 'text-[#7A625A] hover:bg-white/70'
+                    }`}
+                    aria-pressed={isActive}
+                  >
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                      isActive ? 'bg-[#A32626]/10' : 'bg-white/70'
+                    }`}>
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-bold">{label}</span>
+                      <span className="mt-0.5 block text-[11px] opacity-75">{description}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Error Notification HUD */}
@@ -305,7 +503,11 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                 href="#forgot" 
                 onClick={(e) => {
                   e.preventDefault();
-                  alert('Default credentials are:\nUsername: jennylaw.hr\nPassword: admin123#\n\nFallback Admin Email: admin@acme.com\nPassword: password123');
+                  alert(
+                    loginPortal === 'admin'
+                      ? 'Admin accounts are provisioned by HR.\n\nDemo Admin Username: hr.redpoint\nPassword: admin123#'
+                      : 'Employee accounts use the company-issued username and temporary password.\n\nIf you do not have your credentials, please contact HR.'
+                  );
                 }}
                 className="text-sm text-[#A32626] hover:text-[#8F1F1F] font-semibold transition-colors"
               >
@@ -334,12 +536,14 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
               )}
             </button>
 
-            <a
-              href="/employee-portal/demo?employeeId=EMP-84729"
-              className="mt-3 w-full h-11 inline-flex items-center justify-center rounded-xl border border-[#A32626]/20 bg-[#FFF8EF] text-sm font-semibold text-[#A32626] hover:bg-[#F9EBDD] transition-colors"
-            >
-              Open employee demo
-            </a>
+            {loginPortal === 'employee' && (
+              <a
+                href="/employee-portal/demo?employeeId=EMP-84729"
+                className="mt-3 w-full h-11 inline-flex items-center justify-center rounded-xl border border-[#A32626]/20 bg-[#FFF8EF] text-sm font-semibold text-[#A32626] hover:bg-[#F9EBDD] transition-colors"
+              >
+                Open employee demo
+              </a>
+            )}
           </form>
 
         </div>

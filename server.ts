@@ -1,10 +1,38 @@
 import express from 'express';
 import puppeteer from 'puppeteer';
+import {
+  handleAdminLogin,
+  handleAdminLogout,
+  handleAdminSession,
+  handleEmployeeAuthProfile,
+  handleEmployeeAuthSetup,
+  handleEmployeeAccountAction,
+  handleEmployeeAccountEvents,
+  handleEmployeeAccountList,
+} from './api/_lib/employeeAccountHandlers';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(express.json());
+
+// Secure admin session and employee-account management routes.
+app.post('/api/auth/admin-login', handleAdminLogin);
+app.post('/api/auth/logout', handleAdminLogout);
+app.get('/api/auth/session', handleAdminSession);
+app.get('/api/employee-auth/profile', handleEmployeeAuthProfile);
+app.post('/api/employee-auth/complete-setup', handleEmployeeAuthSetup);
+app.get('/api/admin/employee-accounts', handleEmployeeAccountList);
+app.get('/api/admin/employee-accounts/events', handleEmployeeAccountEvents);
+app.post('/api/admin/employee-accounts/provision', (req, res) => (
+  handleEmployeeAccountAction(req, res, 'provision')
+));
+app.post('/api/admin/employee-accounts/reset-password', (req, res) => (
+  handleEmployeeAccountAction(req, res, 'reset_password')
+));
+app.post('/api/admin/employee-accounts/share', (req, res) => (
+  handleEmployeeAccountAction(req, res, 'share')
+));
 
 // API Endpoint to generate PDF from the payslip client view
 app.get('/api/generate-pdf', async (req, res) => {

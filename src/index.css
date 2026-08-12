@@ -220,6 +220,18 @@
   animation: spin-reverse 10s linear infinite;
 }
 
+@media print {
+  .appraisal-no-print {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
 /* Custom View Transition Page cross-fade timings and reduction behavior */
 ::view-transition-old(root),
 ::view-transition-new(root) {
