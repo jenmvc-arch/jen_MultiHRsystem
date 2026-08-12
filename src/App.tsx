@@ -725,13 +725,13 @@ export default function App() {
             return;
           }
 
-          if (!import.meta.env.DEV && !accountPreview) {
+          if (!accountPreview) {
             localStorage.removeItem('hr-nexus-auth');
             return;
           }
         } catch (error) {
           console.warn('[Admin Session] Secure session validation unavailable:', error);
-          if (!import.meta.env.DEV && !accountPreview) {
+          if (!accountPreview) {
             localStorage.removeItem('hr-nexus-auth');
             return;
           }
@@ -742,7 +742,7 @@ export default function App() {
         const employeeAuthClient = employeeSupabase || supabase;
         if (employeeAuthClient && !isEmployeePortalDemoPath) {
           const { data } = await employeeAuthClient.auth.getUser();
-          if (!data.user && !import.meta.env.DEV && !accountPreview) {
+          if (!data.user && !accountPreview) {
             localStorage.removeItem('hr-nexus-auth');
             return;
           }
@@ -781,7 +781,7 @@ export default function App() {
               }
             } catch (error) {
               console.warn('[Employee Profile] Secure profile restore unavailable:', error);
-              if (!import.meta.env.DEV && !accountPreview) {
+              if (!accountPreview) {
                 localStorage.removeItem('hr-nexus-auth');
                 return;
               }

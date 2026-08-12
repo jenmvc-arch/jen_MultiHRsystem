@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "./node_modules/.bin/vite --port=3000 --host=0.0.0.0",
+    "dev": "node scripts/dev-local.mjs",
     "build": "./node_modules/.bin/vite build",
     "preview": "./node_modules/.bin/vite preview",
     "clean": "rm -rf dist server.js",
