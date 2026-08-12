@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/auth/profile",
+      "destination": "/api/auth/session"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
