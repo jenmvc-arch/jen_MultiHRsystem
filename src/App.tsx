@@ -690,6 +690,9 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     const restoreSession = async () => {
+      // The demo portal is intentionally isolated from every real account.
+      // Do not restore a stale admin or employee session into preview mode.
+      if (isEmployeePortalDemoPath) return;
       if (localStorage.getItem('hr-nexus-auth') !== 'true') return;
 
       const storedEmail = localStorage.getItem('hr-nexus-user-email');
@@ -802,7 +805,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isEmployeePortalDemoPath]);
 
   useEffect(() => {
     if (!isAuthenticated || !currentUserRole) return;
@@ -2107,7 +2110,9 @@ export default function App() {
     );
   };
 
-  const isEmployeePortalPreview = isEmployeePortalDemoPath && !isAuthenticated;
+  // The demo URL is always a local preview, even if another tab left a real
+  // account session in localStorage.
+  const isEmployeePortalPreview = isEmployeePortalDemoPath;
   const employeePortalSessionEmail = String(currentUserEmail || '').toLowerCase();
   const employeePortalDemoEmployee = getCurrentActiveEmployees(SEED_EMPLOYEES).find(employee =>
     employee.id === employeePortalQueryEmployeeId ||

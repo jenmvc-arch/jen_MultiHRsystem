@@ -119,6 +119,21 @@ const saveJson = (key: string, value: unknown) => {
   localStorage.setItem(key, JSON.stringify(value));
 };
 
+interface PreviewEmployeeOverrides extends Partial<Employee> {
+  nickname?: string;
+}
+
+const readPreviewEmployeeOverrides = (employeeId: string): PreviewEmployeeOverrides =>
+  readJson<PreviewEmployeeOverrides>(`employee_portal_demo_employee_${employeeId}`, {});
+
+const savePreviewEmployeeOverrides = (employeeId: string, updates: PreviewEmployeeOverrides) => {
+  const key = `employee_portal_demo_employee_${employeeId}`;
+  saveJson(key, {
+    ...readPreviewEmployeeOverrides(employeeId),
+    ...updates,
+  });
+};
+
 const sortPayrollRecords = (records: PayrollRecord2026[]) =>
   [...records].sort((left, right) =>
     (right.payrollYear - left.payrollYear) || (right.payrollMonth - left.payrollMonth)
@@ -174,7 +189,15 @@ export default function EmployeePortalView({
 
   const selectedEmployee = useMemo(() => {
     if (isPreviewMode) {
-      return employees.find((employee) => employee.id === selectedEmployeeId) || employeeFromSession || employees[0] || null;
+      const previewEmployee = employees.find((employee) => employee.id === selectedEmployeeId)
+        || employeeFromSession
+        || employees[0]
+        || null;
+      if (!previewEmployee) return null;
+      return {
+        ...previewEmployee,
+        ...readPreviewEmployeeOverrides(previewEmployee.id),
+      };
     }
     return employeeFromSession || null;
   }, [employees, employeeFromSession, isPreviewMode, selectedEmployeeId]);
@@ -281,15 +304,18 @@ export default function EmployeePortalView({
 
   useEffect(() => {
     if (!selectedEmployee?.id) return;
+    const previewOverrides = isPreviewMode
+      ? readPreviewEmployeeOverrides(selectedEmployee.id)
+      : {};
     setProfileDraft({
-      nickname: currentUserNickname || '',
+      nickname: currentUserNickname || previewOverrides.nickname || '',
       contactNumber: selectedEmployee.contactNumber || '',
       emergencyContactName: selectedEmployee.emergencyContactName || '',
       emergencyContactRelation: selectedEmployee.emergencyContactRelation || '',
       emergencyContactPhone: selectedEmployee.emergencyContactPhone || '',
       avatarUrl: selectedEmployee.avatarUrl || '',
     });
-  }, [currentUserNickname, selectedEmployee?.id]);
+  }, [currentUserNickname, isPreviewMode, selectedEmployee?.id]);
 
   useEffect(() => {
     if (!selectedEmployee) return;
@@ -395,13 +421,21 @@ export default function EmployeePortalView({
       if (!isPreviewMode) {
         await onSaveNickname(nickname);
       }
-      await onUpdateEmployee(selectedEmployee.id, {
+      const profileUpdates: Partial<Employee> = {
         contactNumber: profileDraft.contactNumber.trim(),
         emergencyContactName: profileDraft.emergencyContactName.trim(),
         emergencyContactRelation: profileDraft.emergencyContactRelation.trim(),
         emergencyContactPhone: profileDraft.emergencyContactPhone.trim(),
         avatarUrl: profileDraft.avatarUrl.trim(),
-      });
+      };
+      if (isPreviewMode) {
+        savePreviewEmployeeOverrides(selectedEmployee.id, {
+          ...profileUpdates,
+          nickname,
+        });
+      } else {
+        await onUpdateEmployee(selectedEmployee.id, profileUpdates);
+      }
       onShowNotification('Profile Updated', 'Your nickname and contact details were saved.');
     } catch (error) {
       console.error('[Employee Portal] Profile save failed:', error);
