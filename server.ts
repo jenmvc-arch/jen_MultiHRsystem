@@ -3,6 +3,7 @@ import puppeteer from 'puppeteer';
 import {
   handleAdminLogin,
   handleAdminLogout,
+  handleAdminProfile,
   handleAdminSession,
   handleEmployeeAuthProfile,
   handleEmployeeAuthSetup,
@@ -20,6 +21,7 @@ app.use(express.json());
 app.post('/api/auth/admin-login', handleAdminLogin);
 app.post('/api/auth/logout', handleAdminLogout);
 app.get('/api/auth/session', handleAdminSession);
+app.post('/api/auth/profile', handleAdminProfile);
 app.get('/api/employee-auth/profile', handleEmployeeAuthProfile);
 app.post('/api/employee-auth/complete-setup', handleEmployeeAuthSetup);
 app.get('/api/admin/employee-accounts', handleEmployeeAccountList);

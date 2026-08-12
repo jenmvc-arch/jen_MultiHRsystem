@@ -12,6 +12,8 @@ import {
   setAdminSessionCookie,
   toChannel,
   toEmployeeAccountTarget,
+  updateAdminProfile,
+  updateEmployeeAuthProfile,
 } from './employeeAccountServer';
 
 const sendError = (res: any, error: any) => {
@@ -62,6 +64,19 @@ export async function handleAdminSession(req: any, res: any) {
   try {
     const actor = await requireAdminSession(req);
     res.status(200).json({ user: actor });
+  } catch (error) {
+    sendError(res, error);
+  }
+}
+
+export async function handleAdminProfile(req: any, res: any) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    res.status(405).json({ error: 'Method not allowed.' });
+    return;
+  }
+  try {
+    res.status(200).json(await updateAdminProfile(req, res));
   } catch (error) {
     sendError(res, error);
   }
@@ -129,13 +144,17 @@ export async function handleEmployeeAccountAction(
 }
 
 export async function handleEmployeeAuthProfile(req: any, res: any) {
-  if (req.method !== 'GET') {
-    res.setHeader('Allow', 'GET');
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    res.setHeader('Allow', 'GET, POST');
     res.status(405).json({ error: 'Method not allowed.' });
     return;
   }
   try {
-    res.status(200).json(await loadEmployeeAuthProfile(req));
+    res.status(200).json(
+      req.method === 'POST'
+        ? await updateEmployeeAuthProfile(req)
+        : await loadEmployeeAuthProfile(req)
+    );
   } catch (error) {
     sendError(res, error);
   }

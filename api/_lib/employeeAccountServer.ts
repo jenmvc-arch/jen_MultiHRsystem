@@ -305,6 +305,38 @@ export const requireMasterUser = async (req: any): Promise<AdminSessionActor> =>
   return actor;
 };
 
+export const updateAdminProfile = async (req: any, res: any) => {
+  const actor = await requireAdminSession(req);
+  const nickname = String(req.body?.nickname || '').trim();
+  if (nickname.length < 2 || nickname.length > 40) {
+    throw Object.assign(new Error('Nickname must be between 2 and 40 characters.'), { statusCode: 400 });
+  }
+
+  const admin = createMainAdminClient();
+  const { data, error } = await admin
+    .from('users')
+    .update({ nickname })
+    .eq('email', actor.username)
+    .select('email,name,role,nickname')
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Admin profile could not be updated: ${error.message}`);
+  }
+  if (!data) {
+    throw Object.assign(new Error('The signed-in admin account could not be found.'), { statusCode: 404 });
+  }
+
+  const updatedActor: AdminSessionActor = {
+    username: data.email,
+    name: data.name,
+    role: data.role,
+    nickname: data.nickname,
+  };
+  setAdminSessionCookie(res, updatedActor);
+  return { user: updatedActor };
+};
+
 export const normalizePhoneNumber = (value: string | undefined): string | null => {
   const phone = String(value || '').trim().replace(/[^\d+]/g, '');
   if (!/^\+\d{8,15}$/.test(phone)) return null;
@@ -847,5 +879,42 @@ export const completeEmployeeAuthSetup = async (req: any) => {
     nickname,
     mustChangePassword: false,
     employeeId,
+  };
+};
+
+export const updateEmployeeAuthProfile = async (req: any) => {
+  const { user } = await getEmployeeAuthUser(req);
+  const nickname = String(req.body?.nickname || '').trim();
+  if (nickname.length < 2 || nickname.length > 40) {
+    throw Object.assign(new Error('Nickname must be between 2 and 40 characters.'), { statusCode: 400 });
+  }
+
+  const employeeAdmin = createEmployeeAdminClient();
+  const updatedUser = await employeeAdmin.auth.admin.updateUserById(user.id, {
+    user_metadata: {
+      ...(user.user_metadata || {}),
+      nickname,
+    },
+  });
+  if (updatedUser.error) {
+    throw new Error(`Employee Auth profile could not be updated: ${updatedUser.error.message}`);
+  }
+
+  const { data: account, error: accountError } = await employeeAdmin
+    .from('employee_accounts')
+    .select('must_change_password,employee_id')
+    .eq('auth_user_id', user.id)
+    .maybeSingle();
+  if (accountError) {
+    throw new Error(`Employee account profile lookup failed: ${accountError.message}`);
+  }
+
+  return {
+    email: user.email || '',
+    nickname,
+    mustChangePassword: Boolean(
+      account?.must_change_password ?? user.user_metadata?.must_change_password
+    ),
+    employeeId: account?.employee_id || user.user_metadata?.employee_id || '',
   };
 };

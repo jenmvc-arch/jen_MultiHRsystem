@@ -2955,6 +2955,7 @@ export interface UserAccount {
   role: string;
   nickname?: string;
   mustChangePassword?: boolean;
+  profileLoadedFromServer?: boolean;
 }
 
 export const MOCK_USERS: UserAccount[] = [

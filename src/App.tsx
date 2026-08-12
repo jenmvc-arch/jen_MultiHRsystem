@@ -77,6 +77,17 @@ import {
   isSupabaseConfigured,
 } from './lib/supabaseClient';
 
+const getNicknameStorageKey = (email: string | null | undefined) => (
+  `hr-nexus-user-nickname:${String(email || '').trim().toLowerCase()}`
+);
+
+const getStoredNickname = (email: string | null | undefined) => {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  return normalizedEmail
+    ? localStorage.getItem(getNicknameStorageKey(normalizedEmail))
+    : null;
+};
+
 const parseOptionalJson = <T,>(value: unknown): T | undefined => {
   if (value === undefined || value === null || value === '') {
     return undefined;
@@ -182,13 +193,19 @@ export default function App() {
   const employeePortalQueryEmployeeId = new URLSearchParams(window.location.search).get('employeeId') || 'EMP-84729';
 
   const handleLoginSuccess = (user: UserAccount) => {
+    const serverNickname = String(user.nickname || '').trim();
+    const nickname = serverNickname || (
+      user.profileLoadedFromServer ? '' : String(getStoredNickname(user.email) || '').trim()
+    );
     localStorage.setItem('hr-nexus-auth', 'true');
     localStorage.setItem('hr-nexus-user-email', user.email);
     localStorage.setItem('hr-nexus-user-name', user.name);
     localStorage.setItem('hr-nexus-user-role', user.role);
-    if (user.nickname) {
-      localStorage.setItem('hr-nexus-user-nickname', user.nickname);
+    if (nickname) {
+      localStorage.setItem(getNicknameStorageKey(user.email), nickname);
+      localStorage.setItem('hr-nexus-user-nickname', nickname);
     } else {
+      localStorage.removeItem(getNicknameStorageKey(user.email));
       localStorage.removeItem('hr-nexus-user-nickname');
     }
     localStorage.setItem(
@@ -199,7 +216,7 @@ export default function App() {
     setCurrentUserEmail(user.email);
     setCurrentUserName(user.name);
     setCurrentUserRole(user.role);
-    setCurrentUserNickname(user.nickname || null);
+    setCurrentUserNickname(nickname || null);
     setCurrentUserMustChangePassword(Boolean(user.mustChangePassword));
 
     if (isEmployeePortalRole(user.role)) {
@@ -240,6 +257,7 @@ export default function App() {
     localStorage.removeItem('hr-nexus-user-name');
     localStorage.removeItem('hr-nexus-user-role');
     localStorage.removeItem('hr-nexus-user-must-change-password');
+    localStorage.removeItem('hr-nexus-user-nickname');
     setIsAuthenticated(false);
     setCurrentUserEmail(null);
     setCurrentUserName(null);
@@ -248,6 +266,63 @@ export default function App() {
     setCurrentUserMustChangePassword(false);
     setCurrentTab('dashboard');
     window.history.replaceState({}, '', '/');
+  };
+
+  const handleSaveNickname = async (nickname: string) => {
+    const normalizedNickname = nickname.trim();
+    if (normalizedNickname.length < 2 || normalizedNickname.length > 40) {
+      throw new Error('Nickname must be between 2 and 40 characters.');
+    }
+
+    if (isEmployeeAccount) {
+      const employeeAuthClient = employeeSupabase || supabase;
+      const {
+        data: { session },
+      } = await employeeAuthClient?.auth.getSession() || { data: { session: null } };
+      if (session?.access_token) {
+        try {
+          const response = await fetch('/api/employee-auth/profile', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ nickname: normalizedNickname }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok && !import.meta.env.DEV) {
+            throw new Error(payload.error || 'Your nickname could not be saved.');
+          }
+        } catch (error) {
+          if (!import.meta.env.DEV) throw error;
+          console.warn('[Employee Profile] Local development fallback:', error);
+        }
+      } else if (!import.meta.env.DEV) {
+        throw new Error('Your employee session is not available.');
+      }
+    } else {
+      try {
+        const response = await fetch('/api/auth/profile', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nickname: normalizedNickname }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok && !import.meta.env.DEV) {
+          throw new Error(payload.error || 'Your nickname could not be saved.');
+        }
+      } catch (error) {
+        if (!import.meta.env.DEV) throw error;
+        console.warn('[Admin Profile] Local development fallback:', error);
+      }
+    }
+
+    if (currentUserEmail) {
+      localStorage.setItem(getNicknameStorageKey(currentUserEmail), normalizedNickname);
+    }
+    localStorage.setItem('hr-nexus-user-nickname', normalizedNickname);
+    setCurrentUserNickname(normalizedNickname);
   };
 
   // Core Database States
@@ -634,7 +709,15 @@ export default function App() {
             setCurrentUserEmail(user.username || user.email || storedEmail);
             setCurrentUserName(user.name || localStorage.getItem('hr-nexus-user-name'));
             setCurrentUserRole(user.role || storedRole);
-            setCurrentUserNickname(user.nickname || localStorage.getItem('hr-nexus-user-nickname'));
+            const nickname = String(user.nickname || '').trim();
+            if (nickname) {
+              localStorage.setItem(getNicknameStorageKey(user.username || user.email || storedEmail), nickname);
+              localStorage.setItem('hr-nexus-user-nickname', nickname);
+            } else {
+              localStorage.removeItem(getNicknameStorageKey(user.username || user.email || storedEmail));
+              localStorage.removeItem('hr-nexus-user-nickname');
+            }
+            setCurrentUserNickname(nickname || null);
             setCurrentUserMustChangePassword(false);
             return;
           }
@@ -660,6 +743,47 @@ export default function App() {
             localStorage.removeItem('hr-nexus-auth');
             return;
           }
+          if (data.user?.email) {
+            try {
+              const {
+                data: { session },
+              } = await employeeAuthClient.auth.getSession();
+              if (session?.access_token) {
+                const profileResponse = await fetch('/api/employee-auth/profile', {
+                  headers: { Authorization: `Bearer ${session.access_token}` },
+                });
+                if (profileResponse.ok) {
+                  const profile = await profileResponse.json();
+                  const nickname = String(profile.nickname || '').trim();
+                  if (nickname) {
+                    localStorage.setItem(getNicknameStorageKey(data.user.email), nickname);
+                    localStorage.setItem('hr-nexus-user-nickname', nickname);
+                  } else {
+                    localStorage.removeItem(getNicknameStorageKey(data.user.email));
+                    localStorage.removeItem('hr-nexus-user-nickname');
+                  }
+                  localStorage.setItem(
+                    'hr-nexus-user-must-change-password',
+                    String(Boolean(profile.mustChangePassword))
+                  );
+                  if (cancelled) return;
+                  setIsAuthenticated(true);
+                  setCurrentUserEmail(data.user.email);
+                  setCurrentUserName(localStorage.getItem('hr-nexus-user-name'));
+                  setCurrentUserRole(storedRole);
+                  setCurrentUserNickname(nickname || null);
+                  setCurrentUserMustChangePassword(Boolean(profile.mustChangePassword));
+                  return;
+                }
+              }
+            } catch (error) {
+              console.warn('[Employee Profile] Secure profile restore unavailable:', error);
+              if (!import.meta.env.DEV && !accountPreview) {
+                localStorage.removeItem('hr-nexus-auth');
+                return;
+              }
+            }
+          }
         }
       }
 
@@ -668,7 +792,7 @@ export default function App() {
       setCurrentUserEmail(storedEmail);
       setCurrentUserName(localStorage.getItem('hr-nexus-user-name'));
       setCurrentUserRole(storedRole);
-      setCurrentUserNickname(localStorage.getItem('hr-nexus-user-nickname'));
+      setCurrentUserNickname(getStoredNickname(storedEmail));
       setCurrentUserMustChangePassword(
         localStorage.getItem('hr-nexus-user-must-change-password') === 'true'
       );
@@ -1262,6 +1386,7 @@ export default function App() {
   const [companyEpfReferenceNo, setCompanyEpfReferenceNo] = useState('');
   const [companySocsoReferenceNo, setCompanySocsoReferenceNo] = useState('');
   const [isSavingCompanySettings, setIsSavingCompanySettings] = useState(false);
+  const [adminNicknameDraft, setAdminNicknameDraft] = useState('');
 
   const [taxRate, setTaxRate] = useState(() => {
     const saved = localStorage.getItem('company_tax_rate');
@@ -1281,6 +1406,10 @@ export default function App() {
 
     }
   }, [activeEntityId, activeEntity]);
+
+  useEffect(() => {
+    setAdminNicknameDraft(currentUserNickname || '');
+  }, [currentUserNickname]);
 
   // Restore persisted tab per-entity on entity switch
   useEffect(() => {
@@ -2142,30 +2271,7 @@ export default function App() {
     );
   }
 
-  if (shouldRenderEmployeePortal) {
-    return (
-      <ErrorBoundary onError={(err) => setGlobalError({ message: err.message, stack: err.stack })}>
-        <EmployeePortalView
-          employees={employeePortalEmployees}
-          payrollRecords2026={employeePortalPayrollRecords}
-          entities={employeePortalEntities}
-          performances={employeePortalPerformances}
-          reviewCycles={employeePortalReviewCycles}
-          currentUserName={isEmployeePortalPreview ? employeePortalEmployee?.name || 'Employee' : currentUserName}
-          currentUserEmail={isEmployeePortalPreview ? employeePortalEmployee?.email || 'employee@redpoint.com' : currentUserEmail}
-          currentUserRole={isEmployeePortalPreview ? 'Employee' : currentUserRole}
-          onShowNotification={triggerNotification}
-          onUpdateEmployee={isEmployeePortalPreview ? async () => {} : handleEmployeePortalUpdateEmployee}
-          onSavePerformance={isEmployeePortalPreview ? () => {} : handleSavePerformance}
-          onSignOut={handleSignOut}
-          isPreviewMode={isEmployeePortalPreview}
-          previewEmployeeId={isEmployeePortalPreview ? employeePortalEmployee?.id || employeePortalQueryEmployeeId : undefined}
-        />
-      </ErrorBoundary>
-    );
-  }
-
-  if (!isAuthenticated) {
+  if (!isAuthenticated && !isEmployeePortalPreview) {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
 
@@ -2252,6 +2358,17 @@ export default function App() {
               }
             }
 
+            if (isEmployeeAccount) {
+              // The password setup flow already writes the nickname. For
+              // nickname-only first login, persist it through the profile API.
+              if (!currentUserMustChangePassword) {
+                await handleSaveNickname(val);
+              } else {
+                localStorage.setItem(getNicknameStorageKey(currentUserEmail), val);
+              }
+            } else {
+              await handleSaveNickname(val);
+            }
             localStorage.setItem('hr-nexus-user-nickname', val);
             localStorage.setItem('hr-nexus-user-must-change-password', 'false');
             setCurrentUserNickname(val);
@@ -2290,6 +2407,31 @@ export default function App() {
           </form>
         </div>
       </div>
+    );
+  }
+
+  if (shouldRenderEmployeePortal) {
+    return (
+      <ErrorBoundary onError={(err) => setGlobalError({ message: err.message, stack: err.stack })}>
+        <EmployeePortalView
+          employees={employeePortalEmployees}
+          payrollRecords2026={employeePortalPayrollRecords}
+          entities={employeePortalEntities}
+          performances={employeePortalPerformances}
+          reviewCycles={employeePortalReviewCycles}
+          currentUserName={isEmployeePortalPreview ? employeePortalEmployee?.name || 'Employee' : currentUserName}
+          currentUserEmail={isEmployeePortalPreview ? employeePortalEmployee?.email || 'employee@redpoint.com' : currentUserEmail}
+          currentUserNickname={isEmployeePortalPreview ? '' : currentUserNickname}
+          currentUserRole={isEmployeePortalPreview ? 'Employee' : currentUserRole}
+          onShowNotification={triggerNotification}
+          onUpdateEmployee={isEmployeePortalPreview ? async () => {} : handleEmployeePortalUpdateEmployee}
+          onSaveNickname={isEmployeePortalPreview ? async () => {} : handleSaveNickname}
+          onSavePerformance={isEmployeePortalPreview ? () => {} : handleSavePerformance}
+          onSignOut={handleSignOut}
+          isPreviewMode={isEmployeePortalPreview}
+          previewEmployeeId={isEmployeePortalPreview ? employeePortalEmployee?.id || employeePortalQueryEmployeeId : undefined}
+        />
+      </ErrorBoundary>
     );
   }
 
@@ -2590,6 +2732,46 @@ export default function App() {
                 </div>
 
                 <div className="space-y-4 text-sm">
+                  <div className="rounded-lg border border-neutral-border bg-surface-container-low p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-xs font-bold text-primary uppercase">Your Profile</h3>
+                        <p className="text-[11px] text-on-surface-variant mt-1">Change the nickname shown in your admin console. This does not change your login username.</p>
+                      </div>
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
+                        {currentUserEmail || 'Signed-in user'}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <label className="flex-1">
+                        <span className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Nickname</span>
+                        <input
+                          type="text"
+                          value={adminNicknameDraft}
+                          onChange={(e) => setAdminNicknameDraft(e.target.value)}
+                          minLength={2}
+                          maxLength={40}
+                          placeholder="e.g. Jenny"
+                          className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await handleSaveNickname(adminNicknameDraft);
+                            triggerNotification('Profile Saved', 'Your admin nickname has been updated.');
+                          } catch (err: any) {
+                            triggerNotification('Profile Save Failed', err.message || 'Your nickname could not be saved.', 'info');
+                          }
+                        }}
+                        className="bg-primary text-white text-xs font-semibold py-2 px-4 rounded hover:bg-primary-container"
+                      >
+                        Save nickname
+                      </button>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Company Legal Entity Name</label>
                     <input 

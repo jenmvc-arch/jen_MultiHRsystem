@@ -71,6 +71,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         ...fallback,
         nickname: String(profile.nickname || ''),
         mustChangePassword: Boolean(profile.mustChangePassword),
+        profileLoadedFromServer: true,
       };
     } catch {
       return fallback;
@@ -214,6 +215,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             role: securePayload.user.role,
             nickname: securePayload.user.nickname || '',
             mustChangePassword: Boolean(securePayload.user.mustChangePassword),
+            profileLoadedFromServer: true,
           });
           return;
         }
