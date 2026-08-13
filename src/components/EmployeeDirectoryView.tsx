@@ -100,6 +100,7 @@ const isSeparationStatus = (status: Employee['status']) =>
   status === 'Resigned' || status === 'Terminated';
 
 const toUppercase = (value: string) => value.toUpperCase();
+const withoutHyphens = (value: string) => value.replace(/-/g, '');
 
 type EmployeeAllowanceKey =
   | 'allowanceGeneral'
@@ -349,6 +350,9 @@ export default function EmployeeDirectoryView({
   const [editDateOfConfirmation, setEditDateOfConfirmation] = useState('');
   const [editEpfRateEmployee, setEditEpfRateEmployee] = useState(11);
   const [editEpfRateEmployer, setEditEpfRateEmployer] = useState(13);
+  const [editTaxNumber, setEditTaxNumber] = useState('');
+  const [editEpfNumber, setEditEpfNumber] = useState('');
+  const [editSocsoNumber, setEditSocsoNumber] = useState('');
   const [editEmergencyContactName, setEditEmergencyContactName] = useState('');
   const [editEmergencyContactRelation, setEditEmergencyContactRelation] = useState('');
   const [editEmergencyContactPhone, setEditEmergencyContactPhone] = useState('');
@@ -401,6 +405,12 @@ export default function EmployeeDirectoryView({
     setEditOptInEis(selectedEmployee.optInEis !== false);
     setEditOptInPcb(selectedEmployee.optInPcb !== false);
     setEditEnableLindung24(!!selectedEmployee.enableLindung24);
+    setEditTaxNumber(toUppercase(selectedEmployee.taxNumber || ''));
+    setEditEpfNumber(toUppercase(selectedEmployee.epfNumber || ''));
+    setEditSocsoNumber(toUppercase(
+      selectedEmployee.socsoProfile?.socsoRegistrationNumber
+      || withoutHyphens(selectedEmployee.nricPassport || '')
+    ));
     setEditDateOfJoined(selectedEmployee.dateOfJoined || '');
     setEditDateOfConfirmation(selectedEmployee.dateOfConfirmation || '');
     setEditEpfRateEmployee(selectedEmployee.epfRateEmployee !== undefined ? selectedEmployee.epfRateEmployee : 11);
@@ -437,6 +447,17 @@ export default function EmployeeDirectoryView({
 
   const handleRemoveEditAllowance = (id: string) => {
     setEditAllowances((previous) => previous.filter((allowance) => allowance.id !== id));
+  };
+
+  const handleEditNricPassportChange = (value: string) => {
+    const nextNric = formatNricOrPassport(value);
+    const previousNricWithoutHyphens = withoutHyphens(editNricPassport);
+    setEditNricPassport(nextNric);
+    setEditSocsoNumber((currentSocsoNumber) => (
+      !currentSocsoNumber || currentSocsoNumber === previousNricWithoutHyphens
+        ? withoutHyphens(nextNric)
+        : currentSocsoNumber
+    ));
   };
 
   const handleSaveGeneralInfoUpdates = async () => {
@@ -479,6 +500,8 @@ export default function EmployeeDirectoryView({
       allowancePhone: Number(allowanceTotals.allowancePhone || 0),
       epfRateEmployee: Number(editEpfRateEmployee),
       epfRateEmployer: Number(editEpfRateEmployer),
+      taxNumber: editTaxNumber,
+      nricPassport: editNricPassport,
       eligibleForStatutory: updatedDocumentProfile.statutoryEnabled ? 'Yes' : 'No',
       contractStatutoryTreatment: contractTreatment,
       dateOfJoined: editDateOfJoined,
@@ -530,6 +553,29 @@ export default function EmployeeDirectoryView({
       dateOfConfirmation: editEmploymentType === 'Confirmation' ? editDateOfConfirmation : '',
       epfRateEmployee: Number(editEpfRateEmployee),
       epfRateEmployer: Number(editEpfRateEmployer),
+      taxNumber: editTaxNumber,
+      epfNumber: editEpfNumber,
+      socsoProfile: {
+        ...(selectedEmployee.socsoProfile || {}),
+        employeeId: selectedEmployee.email || selectedEmployee.id,
+        nationality: editNationality || selectedEmployee.nationality || 'Malaysian',
+        identityNumber: withoutHyphens(editNricPassport || selectedEmployee.nricPassport || ''),
+        dateOfBirth: selectedEmployee.socsoProfile?.dateOfBirth || '',
+        employmentStartDate: editDateOfJoined || selectedEmployee.dateOfJoined || '',
+        contractType: isContractEmploymentType(editEmploymentType) ? 'Contract' : 'Permanent',
+        isUnderContractOfService: true,
+        socsoRegistrationNumber: editSocsoNumber || withoutHyphens(editNricPassport || selectedEmployee.nricPassport || ''),
+        socsoRegistered: true,
+        socsoCoverageStatus: selectedEmployee.socsoProfile?.socsoCoverageStatus || 'Covered',
+        hasPreviousSocsoContribution: selectedEmployee.socsoProfile?.hasPreviousSocsoContribution || false,
+        contributionCategory: selectedEmployee.socsoProfile?.contributionCategory || 'FIRST_CATEGORY',
+        multipleEmployerStatus: selectedEmployee.socsoProfile?.multipleEmployerStatus || 'Single Employer',
+        selectedEmployerForLindung24: selectedEmployee.socsoProfile?.selectedEmployerForLindung24 || false,
+        foreignWorkerStatus: selectedEmployee.socsoProfile?.foreignWorkerStatus || 'Local',
+        domesticWorkerStatus: selectedEmployee.socsoProfile?.domesticWorkerStatus || false,
+        effectiveFrom: selectedEmployee.socsoProfile?.effectiveFrom || editDateOfJoined || getGmt8DateString(),
+        effectiveTo: selectedEmployee.socsoProfile?.effectiveTo || '9999-12-31',
+      },
       optInEpf: updatedDocumentProfile.statutoryEnabled ? editOptInEpf : false,
       optInSocso: updatedDocumentProfile.statutoryEnabled ? editOptInSocso : false,
       optInEis: updatedDocumentProfile.statutoryEnabled ? editOptInEis : false,
@@ -652,8 +698,6 @@ export default function EmployeeDirectoryView({
   const [editOptInEis, setEditOptInEis] = useState<boolean>(true);
   const [editOptInPcb, setEditOptInPcb] = useState<boolean>(true);
   const [editEnableLindung24, setEditEnableLindung24] = useState<boolean>(false);
-  const [editTaxNumber, setEditTaxNumber] = useState('');
-  const [editEpfNumber, setEditEpfNumber] = useState('');
 
   // Temp dependant fields for detail editor
   const [detailTempDepName, setDetailTempDepName] = useState('');
@@ -1024,8 +1068,6 @@ export default function EmployeeDirectoryView({
       ...dependant,
       name: toUppercase(dependant.name || '')
     })));
-    setEditTaxNumber(toUppercase(selectedEmployee.taxNumber || ''));
-    setEditEpfNumber(toUppercase(selectedEmployee.epfNumber || ''));
     setIsEditingFamily(true);
   };
 
@@ -1052,8 +1094,6 @@ export default function EmployeeDirectoryView({
     
     const updates: Partial<Employee> = {
       maritalStatus: editMaritalStatus,
-      taxNumber: editTaxNumber,
-      epfNumber: editEpfNumber,
       eligibleForStatutory: editEligibleForStatutory,
       hasDependants: finalHasDependants,
       dependants: finalHasDependants === 'Yes' ? finalDependants : []
@@ -3236,7 +3276,7 @@ export default function EmployeeDirectoryView({
                           <input
                             type="text"
                             value={editNricPassport}
-                            onChange={(e) => setEditNricPassport(formatNricOrPassport(e.target.value))}
+                            onChange={(e) => handleEditNricPassportChange(e.target.value)}
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           />
                         </div>
@@ -3352,6 +3392,34 @@ export default function EmployeeDirectoryView({
                             type="number"
                             value={editEpfRateEmployer}
                             onChange={(e) => setEditEpfRateEmployer(Number(e.target.value))}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">TIN Number (Tax Number)</label>
+                          <input
+                            type="text"
+                            value={editTaxNumber}
+                            onChange={(e) => setEditTaxNumber(toUppercase(e.target.value))}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">KWSP Number (EPF)</label>
+                          <input
+                            type="text"
+                            value={editEpfNumber}
+                            onChange={(e) => setEditEpfNumber(toUppercase(e.target.value))}
+                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">SOCSO Number</label>
+                          <input
+                            type="text"
+                            value={editSocsoNumber}
+                            onChange={(e) => setEditSocsoNumber(toUppercase(withoutHyphens(e.target.value)))}
+                            placeholder={withoutHyphens(editNricPassport)}
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           />
                         </div>
@@ -3815,30 +3883,6 @@ export default function EmployeeDirectoryView({
                           <option value="Widowed">Widowed</option>
                         </select>
                       </div>
-
-                      {/* Statutory Numbers */}
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Income Tax Number</label>
-                          <input
-                            type="text"
-                            value={editTaxNumber}
-                            onChange={(e) => setEditTaxNumber(toUppercase(e.target.value))}
-                            className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">EPF Member Number</label>
-                          <input
-                            type="text"
-                            value={editEpfNumber}
-                            onChange={(e) => setEditEpfNumber(toUppercase(e.target.value))}
-                            className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
-                          />
-                        </div>
-                      </div>
-
-
 
                       {/* Married -> Spouse Details */}
                       {editMaritalStatus === 'Married' && (

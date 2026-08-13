@@ -1818,6 +1818,7 @@ export default function App() {
         if (updates.tp1Declarations !== undefined) payloadUpdates.tp1Declarations = JSON.stringify(updates.tp1Declarations);
         if (updates.tp3Data !== undefined) payloadUpdates.tp3Data = JSON.stringify(updates.tp3Data);
         if (updates.salaryAdjustments !== undefined) payloadUpdates.salaryAdjustments = JSON.stringify(updates.salaryAdjustments);
+        if (updates.socsoProfile !== undefined) payloadUpdates.socsoProfile = JSON.stringify(updates.socsoProfile);
 
         const lookupKey = oldEmp?.email || oldEmp?.name || oldEmp?.id || id;
         const keyField = oldEmp?.email ? 'email' : (oldEmp?.name ? 'name' : 'id');
