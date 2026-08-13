@@ -220,7 +220,7 @@ export default function EmployeePortalView({
   const latestPayrollMonth = latestPayrollRecord?.payrollMonth || new Date().getMonth() + 1;
   const latestPayrollYear = latestPayrollRecord?.payrollYear || new Date().getFullYear();
   const latestPayrollBreakdown = selectedEmployee
-    ? calculatePayslip(selectedEmployee, latestPayrollMonth, latestPayrollYear)
+    ? calculatePayslip(selectedEmployee, latestPayrollMonth, latestPayrollYear, { companyEmployees: employees })
     : null;
   const latestPayrollDate = latestPayrollRecord?.paymentDate || selectedEmployee?.paymentDate || `${latestPayrollYear}-${String(latestPayrollMonth).padStart(2, '0')}-28`;
 
@@ -970,7 +970,7 @@ export default function EmployeePortalView({
 
         <div className="mt-6 space-y-3">
           {employeePayrollHistory.length > 0 ? employeePayrollHistory.map((record) => {
-            const breakdown = calculatePayslip(selectedEmployee, record.payrollMonth, record.payrollYear);
+            const breakdown = calculatePayslip(selectedEmployee, record.payrollMonth, record.payrollYear, { companyEmployees: employees });
             const documentProfile = getPayrollDocumentProfile(selectedEmployee);
             return (
               <button
@@ -1022,7 +1022,7 @@ export default function EmployeePortalView({
           {[
             { label: 'Basic salary', value: latestPayrollBreakdown?.grossEarnings ? `RM ${currency(latestPayrollBreakdown.grossEarnings - (latestPayrollBreakdown.allowancesSum + latestPayrollBreakdown.reimbursementsSum + latestPayrollBreakdown.netPay ? 0 : 0))}` : '—' },
             { label: 'Total deductions', value: latestPayrollBreakdown ? `RM ${currency(latestPayrollBreakdown.totalDeductions)}` : '—' },
-            { label: 'Employer contributions', value: latestPayrollBreakdown ? `RM ${currency(latestPayrollBreakdown.totalEmployerContributions)}` : '—' },
+            { label: 'Visible employer contributions', value: latestPayrollBreakdown ? `RM ${currency(latestPayrollBreakdown.totalEmployerContributions - latestPayrollBreakdown.hrdCorpVal)}` : '—' },
             { label: 'Tax / PCB', value: latestPayrollBreakdown ? `RM ${currency(latestPayrollBreakdown.taxPcbVal)}` : '—' },
           ].map((item) => (
             <div key={item.label} className="rounded-2xl border border-neutral-border bg-[#fff8f1] p-4">

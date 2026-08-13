@@ -1421,7 +1421,7 @@ export default function EmployeeDirectoryView({
 
   if (viewMode === 'self-service' && previewEmployee) {
     const activeSub = entities.find(e => e.id === previewEmployee.entityId) || entities[0];
-    const payslipBreakdown = calculatePayslip(previewEmployee, currentMonth, currentYear);
+    const payslipBreakdown = calculatePayslip(previewEmployee, currentMonth, currentYear, { companyEmployees: employees });
     
     const isEligible = 
       previewEmployee.employmentType === 'Probationary' || 
@@ -2121,7 +2121,7 @@ export default function EmployeeDirectoryView({
           ];
           const monthIndexVal = monthsList.indexOf(monthName) + 1;
           const modalEmployee = getEmployeeForMonth(previewEmployee, monthIndexVal, yearVal);
-          const modalBreakdown = calculatePayslip(previewEmployee, monthIndexVal, yearVal);
+          const modalBreakdown = calculatePayslip(previewEmployee, monthIndexVal, yearVal, { companyEmployees: employees });
 
           const modalSalaryProration = getSalaryProration(previewEmployee, monthIndexVal, yearVal);
           const modalActualBasic = getPayrollBasicSalary(previewEmployee, monthIndexVal, yearVal);
@@ -2468,10 +2468,6 @@ export default function EmployeeDirectoryView({
                       <div>
                         <span className="text-on-surface-variant text-[10px] uppercase block mb-1">EIS</span>
                         <span>RM {modalBreakdown.eisEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
-                      </div>
-                      <div>
-                        <span className="text-on-surface-variant text-[10px] uppercase block mb-1">HRD Corp</span>
-                        <span>RM {modalBreakdown.hrdCorpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
                       </div>
                     </div>
                   </div>

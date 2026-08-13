@@ -966,13 +966,6 @@ export const PayslipPDFDocument = ({ employee: sourceEmployee, entity, month = 1
               <Text style={[styles.detailLabel, { color: '#6b7280' }]}>EIS</Text>
               <Text style={[styles.detailValue, { color: '#333333' }]}>{formatCurrency(breakdown.eisEmployerVal)}</Text>
             </View>
-
-            <View style={styles.contributionDivider} />
-
-            <View style={styles.contributionCol}>
-              <Text style={[styles.detailLabel, { color: '#6b7280' }]}>HRD Corp</Text>
-              <Text style={[styles.detailValue, { color: '#333333' }]}>{formatCurrency(breakdown.hrdCorpVal)}</Text>
-            </View>
           </View>
         </View>
         )}

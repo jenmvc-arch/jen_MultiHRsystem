@@ -850,13 +850,6 @@ export default function PayslipDocumentView({
                 <p className="text-[9px] text-[#6B6B6B] uppercase font-bold mb-1">EIS</p>
                 <p className="font-mono font-bold">RM {breakdown.eisEmployerVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
               </div>
-
-              <div className="hidden md:block w-[2px] h-7 bg-[#D8CFC4]" />
-
-              <div className="flex-1 min-w-[80px] text-center flex flex-col justify-center items-center">
-                <p className="text-[9px] text-[#6B6B6B] uppercase font-bold mb-1">HRD Corp</p>
-                <p className="font-mono font-bold">RM {breakdown.hrdCorpVal.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
-              </div>
             </div>
           </div>
           )}

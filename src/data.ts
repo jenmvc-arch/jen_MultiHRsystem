@@ -135,6 +135,7 @@ export interface PayslipCalculationOptions {
   statutoryEligibilityOverride?: boolean;
   statutoryOverrides?: PayslipStatutoryOverrides;
   ignoreSavedStatutory?: boolean;
+  companyEmployees?: Employee[];
 }
 
 export interface PayrollDocumentProfile {
@@ -2711,8 +2712,16 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
        : mergedEmployee.taxPcb)
     : 0;
   const taxPcbVal = appliedStatutoryOverrides.taxPcb ?? autoTaxPcbVal;
+  const hrdLevyWages = basicSalary + allowancesSum;
+  const hrdCorpDateStr = `${actYear}-${String(actMonth).padStart(2, '0')}-${String(new Date(actYear, actMonth, 0).getDate()).padStart(2, '0')}`;
+  const autoHrdCorpVal = calculateHrdCorpLevy(
+    mergedEmployee,
+    hrdLevyWages,
+    options.companyEmployees,
+    hrdCorpDateStr
+  );
   const hrdCorpVal = isEligible
-    ? appliedStatutoryOverrides.hrdCorp ?? (mergedEmployee.hrdCorp || 0)
+    ? appliedStatutoryOverrides.hrdCorp ?? autoHrdCorpVal
     : 0;
 
   // Total Deductions
@@ -3433,6 +3442,53 @@ export function getCurrentActiveEmployees(
   targetDateStr = getGmt8DateString()
 ): Employee[] {
   return employees.filter((employee) => isCurrentActiveEmployee(employee, targetDateStr));
+}
+
+const NRIC_FORMAT_PATTERN = /^\d{6}-?\d{2}-?\d{4}$/;
+
+export function isLocalWorkerForHrdCorp(employee: Employee): boolean {
+  const nationality = (employee.nationality || '').trim().toLowerCase();
+  if (['malaysian', 'malaysia', 'local'].includes(nationality)) {
+    return true;
+  }
+
+  return !nationality && NRIC_FORMAT_PATTERN.test((employee.nricPassport || '').trim());
+}
+
+export function getHrdCorpLocalWorkerCount(
+  companyEmployees: Employee[],
+  entityId: string,
+  targetDateStr = getGmt8DateString()
+): number {
+  return companyEmployees.filter((employee) => (
+    employee.entityId === entityId
+    && isCurrentActiveEmployee(employee, targetDateStr)
+    && isLocalWorkerForHrdCorp(employee)
+  )).length;
+}
+
+export function getHrdCorpLevyRate(localWorkerCount: number): number {
+  if (localWorkerCount >= 10) return 0.01;
+  if (localWorkerCount >= 5) return 0.005;
+  return 0;
+}
+
+export function calculateHrdCorpLevy(
+  employee: Employee,
+  levyWages: number,
+  companyEmployees?: Employee[],
+  targetDateStr = getGmt8DateString()
+): number {
+  if (!isLocalWorkerForHrdCorp(employee)) {
+    return 0;
+  }
+
+  const workerCount = companyEmployees?.length
+    ? getHrdCorpLocalWorkerCount(companyEmployees, employee.entityId, targetDateStr)
+    : (employee.hrdCorp && employee.hrdCorp > 0 ? 10 : 0);
+  const levyRate = getHrdCorpLevyRate(workerCount);
+
+  return levyRate > 0 ? Number((levyWages * levyRate).toFixed(2)) : 0;
 }
 
 export function getEffectiveProfileForMonth(employee: Employee, month: number, year: number): EmployeeTaxProfile {

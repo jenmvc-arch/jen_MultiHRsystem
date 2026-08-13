@@ -167,9 +167,15 @@ const DEFAULT_DESCRIPTION_OVERRIDES: PayslipDescriptionOverrides = {
   taxPcb: 'Income Tax (PCB)'
 };
 
-const getInitialDraft = (employee: Employee, month: number, year: number, payoutKind?: Exclude<PayrollPayoutKind, 'regular'> | null): MockupDraft => {
+const getInitialDraft = (
+  employee: Employee,
+  month: number,
+  year: number,
+  payoutKind?: Exclude<PayrollPayoutKind, 'regular'> | null,
+  companyEmployees?: Employee[]
+): MockupDraft => {
   const effectiveEmployee = getEmployeeForMonth(employee, month, year);
-  const breakdown = calculatePayslip(employee, month, year);
+  const breakdown = calculatePayslip(employee, month, year, { companyEmployees });
   const documentProfile = getPayrollDocumentProfile(effectiveEmployee);
   const separatePayoutConfig = payoutKind ? getSeparatePayoutConfig(payoutKind) : null;
   const separatePayoutAmount = separatePayoutConfig
@@ -466,7 +472,7 @@ export default function PayrollEditorMockupView({
   }
 
   const draftKey = getDraftKey(rawActiveEmployee, payMonth, payYear, separatePayoutKind);
-  const currentDraft = demoDrafts[draftKey] || getInitialDraft(rawActiveEmployee, payMonth, payYear, separatePayoutKind);
+  const currentDraft = demoDrafts[draftKey] || getInitialDraft(rawActiveEmployee, payMonth, payYear, separatePayoutKind, employees);
   const activeDraft = editingDraft || currentDraft;
   const effectiveEmployee = getEmployeeForMonth(rawActiveEmployee, payMonth, payYear);
   const selectedPayoutAmount = getDraftPayoutAmount(activeDraft, separatePayoutKind);
@@ -506,7 +512,8 @@ export default function PayrollEditorMockupView({
     return calculatePayslip(employeeForCalc, payMonth, payYear, {
       basicSalaryOverride: isSeparatePayoutMode ? 0 : draft.basicSalary,
       statutorySalaryOverride: isSeparatePayoutMode ? draftStatutoryBasis : undefined,
-      ignoreSavedStatutory: true
+      ignoreSavedStatutory: true,
+      companyEmployees: employees
     });
   };
   const getDefaultStatutoryDraftValues = (draft: MockupDraft, treatment: ContractStatutoryTreatment) => {
@@ -549,6 +556,7 @@ export default function PayrollEditorMockupView({
     basicSalaryOverride: isSeparatePayoutMode ? 0 : activeDraft.basicSalary,
     statutorySalaryOverride: isSeparatePayoutMode ? statutoryBasis : undefined,
     ignoreSavedStatutory: true,
+    companyEmployees: employees,
     statutoryOverrides: {
       epfEmployee: activeDraft.epfEmployee,
       epfEmployer: activeDraft.epfEmployer,
@@ -665,6 +673,7 @@ export default function PayrollEditorMockupView({
         basicSalaryOverride: isSeparatePayoutMode ? 0 : draft.basicSalary,
         statutorySalaryOverride: isSeparatePayoutMode ? getDraftPayoutAmount(draft, separatePayoutKind) : undefined,
         ignoreSavedStatutory: true,
+        companyEmployees: employees,
         statutoryOverrides: {
           epfEmployee: draft.epfEmployee,
           epfEmployer: draft.epfEmployer,
@@ -1384,7 +1393,6 @@ export default function PayrollEditorMockupView({
 	              {renderEmployerLine(`EPF (${effectiveEmployee.epfRateEmployer || 13}%)`, 'epfEmployer', breakdown.epfEmployerValue)}
 	              {renderEmployerLine('SOCSO', 'socsoEmployer', breakdown.socsoEmployerVal)}
 	              {renderEmployerLine('EIS', 'eisEmployer', breakdown.eisEmployerVal)}
-	              {renderEmployerLine('HRD Corp', 'hrdCorp', breakdown.hrdCorpVal)}
 	            </div>
 	          </section>
 	        )}

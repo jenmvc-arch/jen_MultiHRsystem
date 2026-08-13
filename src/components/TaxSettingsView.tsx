@@ -72,7 +72,7 @@ export default function TaxSettingsView({
   }
 
   // Calculate values
-  const payslip = calculatePayslip(activeEmployee);
+  const payslip = calculatePayslip(activeEmployee, undefined, undefined, { companyEmployees: employees });
   const currentPeriod = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const ytd = calculateYtd(activeEmployee, currentPeriod);
 
