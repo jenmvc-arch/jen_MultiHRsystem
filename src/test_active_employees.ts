@@ -46,6 +46,8 @@ const employee = (
 
 const currentEmployees = getCurrentActiveEmployees([
   employee('active', 'Active'),
+  employee('probation', 'Active - Probation'),
+  employee('confirmation', 'Active - Confirmation'),
   employee('leave', 'On Leave'),
   employee('resigned', 'Resigned'),
   employee('terminated', 'Terminated'),
@@ -54,12 +56,20 @@ const currentEmployees = getCurrentActiveEmployees([
   employee('past-termination', 'Active', { dateOfTermination: '2026-01-31' }),
 ], '2026-08-12');
 
-if (currentEmployees.map((item) => item.id).join(',') !== 'active') {
-  throw new Error('Current employee filtering should keep only Active records.');
+if (currentEmployees.map((item) => item.id).join(',') !== 'active,probation,confirmation') {
+  throw new Error('Current employee filtering should keep Active, Active - Probation, and Active - Confirmation records.');
 }
 
 if (!isCurrentActiveEmployee(employee('active', 'Active'), '2026-08-12')) {
   throw new Error('Active employees should remain visible.');
+}
+
+if (!isCurrentActiveEmployee(employee('probation', 'Active - Probation'), '2026-08-12')) {
+  throw new Error('Active - Probation employees should remain visible.');
+}
+
+if (!isCurrentActiveEmployee(employee('confirmation', 'Active - Confirmation'), '2026-08-12')) {
+  throw new Error('Active - Confirmation employees should remain visible.');
 }
 
 if (isCurrentActiveEmployee(employee('leave', 'On Leave'), '2026-08-12')) {

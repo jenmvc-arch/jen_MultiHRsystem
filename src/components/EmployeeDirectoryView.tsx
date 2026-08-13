@@ -86,11 +86,14 @@ import {
   getEffectiveEmploymentStatusForDate,
   getEffectiveProfileForDate,
   getEffectiveTerminationDateForDate,
-  getPayrollDocumentProfile
+  getPayrollDocumentProfile,
+  isCurrentEmploymentStatus
 } from '../data';
 
 const EMPLOYEE_STATUS_OPTIONS: Exclude<Employee['status'], 'On Leave'>[] = [
   'Active',
+  'Active - Probation',
+  'Active - Confirmation',
   'Resigned',
   'Terminated',
   'Suspended'
@@ -101,6 +104,28 @@ const isSeparationStatus = (status: Employee['status']) =>
 
 const toUppercase = (value: string) => value.toUpperCase();
 const withoutHyphens = (value: string) => value.replace(/-/g, '');
+const isPendingEmail = (value?: string) => (
+  Boolean(value && /^pending-email-\d+@redpoint\.local$/i.test(value.trim()))
+);
+const getEmployeeDisplayEmail = (employee: Pick<Employee, 'email'>) => (
+  isPendingEmail(employee.email) ? 'Fill up later' : employee.email
+);
+
+const addMonthsToDateString = (dateString: string, monthsToAdd: number): string => {
+  if (!dateString) return '';
+  const [year, month, day] = dateString.split('-').map(Number);
+  if (!year || !month || !day) return '';
+
+  const target = new Date(year, month - 1 + monthsToAdd, 1);
+  const lastDayOfTargetMonth = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(day, lastDayOfTargetMonth));
+
+  return [
+    target.getFullYear(),
+    String(target.getMonth() + 1).padStart(2, '0'),
+    String(target.getDate()).padStart(2, '0')
+  ].join('-');
+};
 
 type EmployeeAllowanceKey =
   | 'allowanceGeneral'
@@ -134,6 +159,8 @@ const getNextAllowanceType = (allowances: EmployeeAllowanceDraft[]): EmployeeAll
 const getEmployeeStatusClasses = (status: Employee['status']) => {
   switch (status) {
     case 'Active':
+    case 'Active - Probation':
+    case 'Active - Confirmation':
       return {
         badge: 'bg-green-100 text-green-700',
         dot: 'bg-green-600'
@@ -278,6 +305,7 @@ export default function EmployeeDirectoryView({
 
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
+  const [formEmailFillLater, setFormEmailFillLater] = useState(false);
   const [formDesignation, setFormDesignation] = useState('');
   const [formDepartment, setFormDepartment] = useState('Engineering');
   const [formStatus, setFormStatus] = useState<Employee['status']>('Active');
@@ -291,6 +319,7 @@ export default function EmployeeDirectoryView({
   const [formNricPassport, setFormNricPassport] = useState('');
   const [formNationality, setFormNationality] = useState('Malaysian');
   const [formContactNumber, setFormContactNumber] = useState('');
+  const [formContactFillLater, setFormContactFillLater] = useState(false);
   const [formTaxNumber, setFormTaxNumber] = useState('');
   const [formEpfNumber, setFormEpfNumber] = useState('');
   const [formEmploymentType, setFormEmploymentType] = useState<Employee['employmentType']>('Confirmation');
@@ -305,8 +334,12 @@ export default function EmployeeDirectoryView({
   const [formEmergencyContactName, setFormEmergencyContactName] = useState('');
   const [formEmergencyContactRelation, setFormEmergencyContactRelation] = useState('');
   const [formEmergencyContactPhone, setFormEmergencyContactPhone] = useState('');
+  const [formEmergencyFillLater, setFormEmergencyFillLater] = useState(false);
   const [formDateOfJoined, setFormDateOfJoined] = useState(getGmt8DateString());
   const [formDateOfConfirmation, setFormDateOfConfirmation] = useState('');
+  const [formProbationDurationMonths, setFormProbationDurationMonths] = useState(3);
+  const [formProbationExtended, setFormProbationExtended] = useState(false);
+  const [formProbationExtensionMonths, setFormProbationExtensionMonths] = useState(0);
 
   // Spouse details form states
   const [formSpouseName, setFormSpouseName] = useState('');
@@ -720,7 +753,7 @@ export default function EmployeeDirectoryView({
     || {
       employeeId: employee.id,
       employeeEmail: employee.email.trim().toLowerCase(),
-      username: employee.email.trim().toLowerCase(),
+      username: isPendingEmail(employee.email) ? '' : employee.email.trim().toLowerCase(),
       accountStatus: 'not_created',
       mustChangePassword: false,
     }
@@ -857,6 +890,32 @@ export default function EmployeeDirectoryView({
       : undefined
   });
 
+  const isFormProbationStatus = formStatus === 'Active - Probation';
+  const isFormConfirmationStatus = formStatus === 'Active - Confirmation';
+  const isFormConfirmationDateVisible = isFormProbationStatus || isFormConfirmationStatus;
+
+  useEffect(() => {
+    if (formStatus === 'Active - Probation') {
+      setFormEmploymentType('Probation');
+    } else if (formStatus === 'Active - Confirmation') {
+      setFormEmploymentType('Confirmation');
+    }
+  }, [formStatus]);
+
+  useEffect(() => {
+    if (!isFormProbationStatus) return;
+    const totalMonths = Number(formProbationDurationMonths || 0) + (
+      formProbationExtended ? Number(formProbationExtensionMonths || 0) : 0
+    );
+    setFormDateOfConfirmation(addMonthsToDateString(formDateOfJoined, totalMonths));
+  }, [
+    formDateOfJoined,
+    formProbationDurationMonths,
+    formProbationExtended,
+    formProbationExtensionMonths,
+    isFormProbationStatus
+  ]);
+
   // Sync with selectedEmployee changes
   useEffect(() => {
     if (selectedEmployee) {
@@ -920,11 +979,13 @@ export default function EmployeeDirectoryView({
   const filteredEmployees = employees.filter(emp => {
     const matchesDept = deptFilter === 'All Departments' || emp.department === deptFilter;
     const displayedStatus = getEffectiveEmploymentStatusForDate(emp, todayIsoDate);
-    const matchesStatus = statusFilter === 'All Statuses' || displayedStatus === statusFilter;
+    const matchesStatus = statusFilter === 'All Statuses'
+      || displayedStatus === statusFilter
+      || (statusFilter === 'Active' && isCurrentEmploymentStatus(displayedStatus));
     const matchesEntity = entityFilter === 'All Subsidiaries' || emp.entityId === entityFilter;
     const matchesSearch = emp.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           emp.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          emp.email.toLowerCase().includes(searchQuery.toLowerCase());
+                          getEmployeeDisplayEmail(emp).toLowerCase().includes(searchQuery.toLowerCase());
     return matchesDept && matchesStatus && matchesEntity && matchesSearch;
   });
   const selectedEmployeeStatus = selectedEmployee
@@ -935,6 +996,7 @@ export default function EmployeeDirectoryView({
     setFormEntityId(activeEntityId || entities[0]?.id || 'ENT-92');
     setFormName('');
     setFormEmail('');
+    setFormEmailFillLater(false);
     setFormDesignation(availableRoles[0] || 'Software Engineer');
     setFormDepartment(availableDepartments[0] || 'Product & Engineering');
     setFormStatus('Active');
@@ -946,6 +1008,7 @@ export default function EmployeeDirectoryView({
     setFormNricPassport('');
     setFormNationality('MALAYSIAN');
     setFormContactNumber('');
+    setFormContactFillLater(false);
     setFormTaxNumber('');
     setFormEpfNumber('');
     setFormEmploymentType('Permanent');
@@ -955,7 +1018,13 @@ export default function EmployeeDirectoryView({
     setFormEmergencyContactName('');
     setFormEmergencyContactRelation('');
     setFormEmergencyContactPhone('');
-    setFormDateOfJoined(getGmt8DateString());
+    setFormEmergencyFillLater(false);
+    const todayDate = getGmt8DateString();
+    setFormDateOfJoined(todayDate);
+    setFormDateOfConfirmation('');
+    setFormProbationDurationMonths(3);
+    setFormProbationExtended(false);
+    setFormProbationExtensionMonths(0);
 
     // Reset spouse/dependant form states
     setFormSpouseName('');
@@ -1133,8 +1202,34 @@ export default function EmployeeDirectoryView({
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName || !formEmail || !formDesignation || !formBank.trim() || !formAccount || !formNricPassport) {
+    const cleanEmail = formEmail.trim().toLowerCase();
+    const shouldDeferEmail = formEmailFillLater || !cleanEmail;
+    const finalEmployeeId = shouldDeferEmail
+      ? `pending-email-${Date.now()}@redpoint.local`
+      : cleanEmail;
+    const finalEmployeeEmail = shouldDeferEmail ? finalEmployeeId : cleanEmail;
+    const finalEmploymentType: Employee['employmentType'] = formStatus === 'Active - Probation'
+      ? 'Probation'
+      : formStatus === 'Active - Confirmation'
+        ? 'Confirmation'
+        : formEmploymentType;
+    const finalConfirmationDate = isFormConfirmationDateVisible ? formDateOfConfirmation : '';
+
+    if (!formName || (!cleanEmail && !formEmailFillLater) || !formDesignation || !formBank.trim() || !formAccount || !formNricPassport) {
       onShowNotification('Form Error', 'Please fill in all required corporate, banking, and NRIC/Passport fields.');
+      return;
+    }
+
+    if (!formContactFillLater && !formContactNumber.trim()) {
+      onShowNotification('Form Error', 'Please provide the contact number or tick Fill up later.');
+      return;
+    }
+
+    if (
+      !formEmergencyFillLater &&
+      (!formEmergencyContactName.trim() || !formEmergencyContactRelation.trim() || !formEmergencyContactPhone.trim())
+    ) {
+      onShowNotification('Form Error', 'Please complete emergency contact details or tick Fill up later.');
       return;
     }
 
@@ -1181,8 +1276,8 @@ export default function EmployeeDirectoryView({
     }
 
     const newEmployeeDocumentProfile = getPayrollDocumentProfile({
-      employmentType: formEmploymentType,
-      contractStatutoryTreatment: isContractEmploymentType(formEmploymentType)
+      employmentType: finalEmploymentType,
+      contractStatutoryTreatment: isContractEmploymentType(finalEmploymentType)
         ? formContractStatutoryTreatment
         : undefined
     });
@@ -1202,10 +1297,10 @@ export default function EmployeeDirectoryView({
     );
 
     const newEmp: Employee = {
-      id: formEmail,
+      id: finalEmployeeId,
       entityId: formEntityId || activeEntityId || entities[0]?.id || 'ENT-92',
       name: toUppercase(formName),
-      email: formEmail,
+      email: finalEmployeeEmail,
       designation: formDesignation,
       department: formDepartment,
       status: formStatus,
@@ -1238,23 +1333,23 @@ export default function EmployeeDirectoryView({
       // New fields mapping
       nricPassport: formatNricOrPassport(formNricPassport),
       nationality: toUppercase(formNationality),
-      contactNumber: formContactNumber,
+      contactNumber: formContactFillLater ? '' : formContactNumber,
       taxNumber: toUppercase(formTaxNumber || `TX-${Math.floor(100000000 + Math.random() * 900000000)}`),
       epfNumber: toUppercase(formEpfNumber || `EP-${Math.floor(100000000 + Math.random() * 900000000)}`),
-      employmentType: formEmploymentType,
+      employmentType: finalEmploymentType,
       maritalStatus: formMaritalStatus,
       eligibleForStatutory: newEmployeeDocumentProfile.statutoryEnabled ? 'Yes' : 'No',
-      contractStatutoryTreatment: isContractEmploymentType(formEmploymentType) ? formContractStatutoryTreatment : undefined,
+      contractStatutoryTreatment: isContractEmploymentType(finalEmploymentType) ? formContractStatutoryTreatment : undefined,
       optInEpf: newEmployeeDocumentProfile.statutoryEnabled ? formOptInEpf : false,
       optInSocso: newEmployeeDocumentProfile.statutoryEnabled ? formOptInSocso : false,
       optInEis: newEmployeeDocumentProfile.statutoryEnabled ? formOptInEis : false,
       optInPcb: newEmployeeDocumentProfile.statutoryEnabled ? formOptInPcb : false,
       enableLindung24: newEmployeeDocumentProfile.statutoryEnabled ? formEnableLindung24 : false,
-      emergencyContactName: toUppercase(formEmergencyContactName || 'N/A'),
-      emergencyContactRelation: toUppercase(formEmergencyContactRelation || 'Spouse'),
-      emergencyContactPhone: toUppercase(formEmergencyContactPhone || 'N/A'),
+      emergencyContactName: formEmergencyFillLater ? '' : toUppercase(formEmergencyContactName),
+      emergencyContactRelation: formEmergencyFillLater ? '' : toUppercase(formEmergencyContactRelation),
+      emergencyContactPhone: formEmergencyFillLater ? '' : toUppercase(formEmergencyContactPhone),
       dateOfJoined: formDateOfJoined,
-      dateOfConfirmation: formEmploymentType === 'Confirmation' ? formDateOfConfirmation : '',
+      dateOfConfirmation: finalConfirmationDate,
       
       ...spouseAndDependantFields,
       
@@ -1265,7 +1360,7 @@ export default function EmployeeDirectoryView({
           date: formDateOfJoined,
           type: 'Hired',
           previousValue: '-',
-          newValue: `${formDesignation} (${formEmploymentType})`,
+          newValue: `${formDesignation} (${finalEmploymentType})`,
           notes: 'Employee successfully registered and allocated staff records.'
         }
       ]
@@ -1279,7 +1374,7 @@ export default function EmployeeDirectoryView({
           'Employee Registered',
           `${formName} has been onboarded into Workforce records.`
         );
-        if (formCreateAccount && canManageAccountActions) {
+        if (formCreateAccount && canManageAccountActions && !shouldDeferEmail) {
           try {
             const accountResult = await runEmployeeAccountAction(newEmp, 'provision', 'email');
             saveAccountSummary(accountResult.account);
@@ -2658,10 +2753,9 @@ export default function EmployeeDirectoryView({
                   className="rounded border border-neutral-border bg-white p-1.5 text-xs outline-none"
                 >
                   <option>All Statuses</option>
-                  <option>Active</option>
-                  <option>Resigned</option>
-                  <option>Terminated</option>
-                  <option>Suspended</option>
+                  {EMPLOYEE_STATUS_OPTIONS.map(status => (
+                    <option key={status}>{status}</option>
+                  ))}
                 </select>
               </div>
 
@@ -2726,7 +2820,7 @@ export default function EmployeeDirectoryView({
                           <div>
                             <div className="font-bold text-sm text-on-surface">{emp.name}</div>
                             <div className="text-xs text-on-surface-variant flex items-center gap-1 mt-0.5">
-                              <Mail className="w-3 h-3 text-outline" /> {emp.email}
+                              <Mail className="w-3 h-3 text-outline" /> {getEmployeeDisplayEmail(emp)}
                             </div>
                           </div>
                         </td>
@@ -2958,7 +3052,7 @@ export default function EmployeeDirectoryView({
                           selectedEmployee,
                           selectedAccountSummary.accountStatus === 'not_created' ? 'provision' : 'share'
                         )}
-                        disabled={!canManageAccountActions}
+                        disabled={!canManageAccountActions || isPendingEmail(selectedEmployee.email)}
                         className="inline-flex items-center gap-1.5 rounded bg-primary px-3 py-1.5 text-[11px] font-bold text-white hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {selectedAccountSummary.accountStatus === 'not_created'
@@ -2971,7 +3065,7 @@ export default function EmployeeDirectoryView({
                       <button
                         type="button"
                         onClick={() => openAccountAction(selectedEmployee, 'reset_password')}
-                        disabled={!canManageAccountActions}
+                        disabled={!canManageAccountActions || isPendingEmail(selectedEmployee.email)}
                         className="inline-flex items-center gap-1.5 rounded border border-primary/30 bg-white px-3 py-1.5 text-[11px] font-bold text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <RotateCw className="w-3.5 h-3.5" /> Reset Password
@@ -2995,6 +3089,11 @@ export default function EmployeeDirectoryView({
                     {!canManageAccountActions && (
                       <p className="text-[10px] font-semibold text-on-surface-variant">
                         Read-only: only hr.redpoint can manage employee accounts.
+                      </p>
+                    )}
+                    {isPendingEmail(selectedEmployee.email) && (
+                      <p className="text-[10px] font-semibold text-amber-800">
+                        Fill in the corporate email before creating, sharing, or resetting employee account access.
                       </p>
                     )}
 
@@ -3093,9 +3192,11 @@ export default function EmployeeDirectoryView({
                         </div>
                       </div>
 
-                      {selectedEmployee.employmentType === 'Confirmation' && (
+                      {selectedEmployee.dateOfConfirmation && (
                         <div className="p-3 bg-surface-container-low rounded border border-neutral-border">
-                          <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">Date of Confirmation</div>
+                          <div className="text-on-surface-variant font-bold text-[10px] uppercase tracking-wider mb-0.5">
+                            {selectedEmployee.employmentType === 'Probation' ? 'Estimated Date of Confirmation' : 'Date of Confirmation'}
+                          </div>
                           <div className="font-mono text-sm font-semibold text-on-surface flex items-center gap-1.5">
                             <Calendar className="w-3.5 h-3.5 text-primary" /> {formatToDDMMMYYYY(selectedEmployee.dateOfConfirmation)}
                           </div>
@@ -3206,8 +3307,9 @@ export default function EmployeeDirectoryView({
                           <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Email Address</label>
                           <input
                             type="email"
-                            value={editEmail}
+                            value={isPendingEmail(editEmail) ? '' : editEmail}
                             onChange={(e) => setEditEmail(e.target.value)}
+                            placeholder={isPendingEmail(editEmail) ? 'Fill up later' : 'employee@enterprise.com'}
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           />
                         </div>
@@ -4375,6 +4477,36 @@ export default function EmployeeDirectoryView({
                     />
                   </div>
                   <div>
+                    <div className="flex items-center justify-between gap-3 mb-1">
+                      <label className="block text-xs font-bold text-on-surface-variant uppercase">Corporate Email Address</label>
+                      <label className="flex items-center gap-1.5 text-[10px] font-bold text-primary uppercase cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formEmailFillLater}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setFormEmailFillLater(checked);
+                            if (checked) {
+                              setFormEmail('');
+                              setFormCreateAccount(false);
+                            }
+                          }}
+                          className="h-3.5 w-3.5 rounded accent-primary"
+                        />
+                        Fill up later
+                      </label>
+                    </div>
+                    <input
+                      type="email"
+                      required={!formEmailFillLater}
+                      disabled={formEmailFillLater}
+                      value={formEmail}
+                      onChange={(e) => setFormEmail(e.target.value)}
+                      placeholder={formEmailFillLater ? 'To be filled later' : 'j.cooper@enterprise.com'}
+                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none disabled:bg-neutral-100 disabled:text-on-surface-variant"
+                    />
+                  </div>
+                  <div>
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">NRIC / Passport Number *</label>
                     <input 
                       type="text" required
@@ -4396,12 +4528,29 @@ export default function EmployeeDirectoryView({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Contact Number *</label>
+                    <div className="flex items-center justify-between gap-3 mb-1">
+                      <label className="block text-xs font-bold text-on-surface-variant uppercase">Contact Number</label>
+                      <label className="flex items-center gap-1.5 text-[10px] font-bold text-primary uppercase cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formContactFillLater}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setFormContactFillLater(checked);
+                            if (checked) setFormContactNumber('');
+                          }}
+                          className="h-3.5 w-3.5 rounded accent-primary"
+                        />
+                        Fill up later
+                      </label>
+                    </div>
                     <input 
-                      type="text" required
+                      type="text"
+                      required={!formContactFillLater}
+                      disabled={formContactFillLater}
                       value={formContactNumber} onChange={(e) => setFormContactNumber(e.target.value)}
-                      placeholder="+60 12-345 6789"
-                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                      placeholder={formContactFillLater ? 'To be filled later' : '+60 12-345 6789'}
+                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none disabled:bg-neutral-100 disabled:text-on-surface-variant"
                     />
                   </div>
                   <div>
@@ -4588,36 +4737,6 @@ export default function EmployeeDirectoryView({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Corporate Email Address *</label>
-                    <input 
-                      type="email" required
-                      value={formEmail} onChange={(e) => setFormEmail(e.target.value)}
-                      placeholder="j.cooper@enterprise.com"
-                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Tax PCB Income Number</label>
-                    <input 
-                      type="text"
-                      value={formTaxNumber} onChange={(e) => setFormTaxNumber(toUppercase(e.target.value))}
-                      placeholder="SG 29481729010 (or auto-gen)"
-                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">EPF Member Number</label>
-                    <input 
-                      type="text"
-                      value={formEpfNumber} onChange={(e) => setFormEpfNumber(toUppercase(e.target.value))}
-                      placeholder="EP-29481729010 (or auto-gen)"
-                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div style={{ display: 'none' }}>
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Company Subsidiary *</label>
                     <select
@@ -4653,11 +4772,12 @@ export default function EmployeeDirectoryView({
                   </div>
                 </div>
 
-                <div className={`grid grid-cols-1 ${formEmploymentType === 'Confirmation' ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-4`}>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Type of Employment</label>
                     <select
                       value={formEmploymentType} onChange={(e) => setFormEmploymentType(e.target.value as any)}
+                      disabled={isFormProbationStatus || isFormConfirmationStatus}
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold text-primary"
                     >
 	                      <option value="Internship">Internship</option>
@@ -4668,6 +4788,11 @@ export default function EmployeeDirectoryView({
 	                      <option value="Independent Contractor">Independent Contractor</option>
 	                      <option value="Part Time">Part Time</option>
 	                    </select>
+                    {(isFormProbationStatus || isFormConfirmationStatus) && (
+                      <p className="mt-1 text-[10px] font-semibold text-primary">
+                        Synced from initial status.
+                      </p>
+                    )}
 	                  </div>
                   <div>
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Date Joined</label>
@@ -4677,16 +4802,6 @@ export default function EmployeeDirectoryView({
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
                     />
                   </div>
-                  {formEmploymentType === 'Confirmation' && (
-                    <div>
-                      <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Date of Confirmation</label>
-                      <input 
-                        type="date"
-                        value={formDateOfConfirmation} onChange={(e) => setFormDateOfConfirmation(e.target.value)}
-                        className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
-                      />
-                    </div>
-                  )}
                   <div>
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Initial Status</label>
                     <select
@@ -4699,6 +4814,80 @@ export default function EmployeeDirectoryView({
                     </select>
 	                  </div>
 	                </div>
+
+                {isFormConfirmationDateVisible && (
+                  <div className="rounded-lg border border-primary/25 bg-primary/5 p-3 space-y-3 animate-in fade-in duration-200">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-primary uppercase tracking-wider">
+                        {isFormProbationStatus ? 'Probation Timeline' : 'Confirmation Details'}
+                      </span>
+                      {isFormProbationStatus && (
+                        <span className="text-[10px] font-semibold text-primary">
+                          Date auto-estimates from join date, duration, and extension.
+                        </span>
+                      )}
+                    </div>
+                    <div className={`grid grid-cols-1 gap-3 ${isFormProbationStatus ? 'sm:grid-cols-3' : 'sm:grid-cols-1'}`}>
+                      {isFormProbationStatus && (
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Duration of Probation</label>
+                          <select
+                            value={formProbationDurationMonths}
+                            onChange={(e) => setFormProbationDurationMonths(Number(e.target.value))}
+                            className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
+                          >
+                            {[1, 2, 3, 4, 5, 6, 9, 12].map(months => (
+                              <option key={months} value={months}>
+                                {months} {months === 1 ? 'month' : 'months'}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      <div>
+                        <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">
+                          {isFormProbationStatus ? 'Estimated Date of Confirmation' : 'Date of Confirmation'}
+                        </label>
+                        <input
+                          type="date"
+                          value={formDateOfConfirmation}
+                          onChange={(e) => setFormDateOfConfirmation(e.target.value)}
+                          className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                        />
+                      </div>
+                      {isFormProbationStatus && (
+                        <div className="space-y-2">
+                          <label className="flex items-center gap-2 text-[10px] font-bold text-on-surface-variant uppercase cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={formProbationExtended}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setFormProbationExtended(checked);
+                                if (!checked) setFormProbationExtensionMonths(0);
+                              }}
+                              className="h-3.5 w-3.5 rounded accent-primary"
+                            />
+                            Probation Extend
+                          </label>
+                          {formProbationExtended && (
+                            <select
+                              value={formProbationExtensionMonths}
+                              onChange={(e) => setFormProbationExtensionMonths(Number(e.target.value))}
+                              className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none font-semibold"
+                            >
+                              {[1, 2, 3, 4, 5, 6].map(months => (
+                                <option key={months} value={months}>
+                                  + {months} {months === 1 ? 'month' : 'months'}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
 	                {isContractEmploymentType(formEmploymentType) && (
 	                  <div className="p-3 bg-primary/5 border border-primary/25 rounded-md animate-in slide-in-from-top-1 duration-150">
@@ -4808,6 +4997,26 @@ export default function EmployeeDirectoryView({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
+                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">TIN Number (Tax Number)</label>
+                    <input
+                      type="text"
+                      value={formTaxNumber}
+                      onChange={(e) => setFormTaxNumber(toUppercase(e.target.value))}
+                      placeholder="SG 29481729010 (or auto-gen)"
+                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">KWSP Number (EPF)</label>
+                    <input
+                      type="text"
+                      value={formEpfNumber}
+                      onChange={(e) => setFormEpfNumber(toUppercase(e.target.value))}
+                      placeholder="EP-29481729010 (or auto-gen)"
+                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                    />
+                  </div>
+                  <div>
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Recipient Bank Name</label>
                     <input
                       type="text"
@@ -4908,35 +5117,60 @@ export default function EmployeeDirectoryView({
 
                 {/* SECTION 4: Emergency Contacts */}
                 <div className="border-b border-neutral-border pb-2 pt-2">
-                  <span className="text-xs font-bold text-primary uppercase tracking-wider block">4. STATUTORY EMERGENCY CONTACT</span>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-xs font-bold text-primary uppercase tracking-wider block">4. STATUTORY EMERGENCY CONTACT</span>
+                    <label className="flex items-center gap-1.5 text-[10px] font-bold text-primary uppercase cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formEmergencyFillLater}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setFormEmergencyFillLater(checked);
+                          if (checked) {
+                            setFormEmergencyContactName('');
+                            setFormEmergencyContactRelation('');
+                            setFormEmergencyContactPhone('');
+                          }
+                        }}
+                        className="h-3.5 w-3.5 rounded accent-primary"
+                      />
+                      Fill up later
+                    </label>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Emergency Name *</label>
+                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Emergency Name</label>
                     <input 
-                      type="text" required
+                      type="text"
+                      required={!formEmergencyFillLater}
+                      disabled={formEmergencyFillLater}
                       value={formEmergencyContactName} onChange={(e) => setFormEmergencyContactName(toUppercase(e.target.value))}
-                      placeholder="Emma Jenkins"
-                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                      placeholder={formEmergencyFillLater ? 'To be filled later' : 'Emma Jenkins'}
+                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none disabled:bg-neutral-100 disabled:text-on-surface-variant"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Relationship *</label>
+                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Relationship</label>
                     <input 
-                      type="text" required
+                      type="text"
+                      required={!formEmergencyFillLater}
+                      disabled={formEmergencyFillLater}
                       value={formEmergencyContactRelation} onChange={(e) => setFormEmergencyContactRelation(toUppercase(e.target.value))}
-                      placeholder="e.g. Spouse / Mother"
-                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                      placeholder={formEmergencyFillLater ? 'To be filled later' : 'e.g. Spouse / Mother'}
+                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none disabled:bg-neutral-100 disabled:text-on-surface-variant"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Emergency Phone *</label>
+                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Emergency Phone</label>
                     <input 
-                      type="text" required
+                      type="text"
+                      required={!formEmergencyFillLater}
+                      disabled={formEmergencyFillLater}
                       value={formEmergencyContactPhone} onChange={(e) => setFormEmergencyContactPhone(toUppercase(e.target.value))}
-                      placeholder="+60 12-987 6543"
-                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                      placeholder={formEmergencyFillLater ? 'To be filled later' : '+60 12-987 6543'}
+                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none disabled:bg-neutral-100 disabled:text-on-surface-variant"
                     />
                   </div>
                 </div>
@@ -4947,7 +5181,7 @@ export default function EmployeeDirectoryView({
                       type="checkbox"
                       checked={formCreateAccount}
                       onChange={(event) => setFormCreateAccount(event.target.checked)}
-                      disabled={!canManageAccountActions}
+                      disabled={!canManageAccountActions || formEmailFillLater}
                       className="mt-0.5 h-4 w-4 rounded accent-primary"
                     />
                     <span>
@@ -4962,6 +5196,11 @@ export default function EmployeeDirectoryView({
                   {!canManageAccountActions && (
                     <p className="text-[10px] font-semibold text-amber-800">
                       Only hr.redpoint can provision employee accounts.
+                    </p>
+                  )}
+                  {formEmailFillLater && (
+                    <p className="text-[10px] font-semibold text-amber-800">
+                      Account setup will be available after the corporate email is filled in.
                     </p>
                   )}
                   {accountPreviewMode && (
@@ -5012,7 +5251,7 @@ export default function EmployeeDirectoryView({
                       ? 'Reset Employee Password'
                       : 'Share Account Details'}
                 </h3>
-                <p className="mt-1 text-xs text-[#f7f0e0]/75">{accountActionEmployee.name} · {accountActionEmployee.email}</p>
+                <p className="mt-1 text-xs text-[#f7f0e0]/75">{accountActionEmployee.name} · {getEmployeeDisplayEmail(accountActionEmployee)}</p>
               </div>
               <button
                 type="button"

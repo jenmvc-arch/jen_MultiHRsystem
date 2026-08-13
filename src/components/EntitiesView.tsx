@@ -24,7 +24,8 @@ import {
   getCurrentActiveEmployees,
   getDirectLogoUrl,
   compressLogoFile,
-  getEffectiveEmploymentStatusForDate
+  getEffectiveEmploymentStatusForDate,
+  isCurrentEmploymentStatus
 } from '../data';
 import { getGmt8DateString } from '../lib/dateUtils';
 import { FilePond, registerPlugin } from 'react-filepond';
@@ -392,7 +393,7 @@ export default function EntitiesView({
                           const currentStatus = getEffectiveEmploymentStatusForDate(emp, todayIsoDate);
                           return (
                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                              currentStatus === 'Active' || currentStatus === 'On Leave'
+                              isCurrentEmploymentStatus(currentStatus) || currentStatus === 'On Leave'
                             ? 'bg-green-100 text-green-700' 
                             : currentStatus === 'Resigned'
                             ? 'bg-amber-100 text-amber-700' 

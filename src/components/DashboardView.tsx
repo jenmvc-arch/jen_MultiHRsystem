@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { Employee, ReviewCycle, CorporateEntity, EmployeePerformance, PayrollRecord2026 } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
-import { getEffectiveEmploymentStatusForDate } from '../data';
+import { getEffectiveEmploymentStatusForDate, isCurrentEmploymentStatus } from '../data';
 import { getGmt8DateString } from '../lib/dateUtils';
 
 interface DashboardViewProps {
@@ -71,7 +71,7 @@ export default function DashboardView({
   const totalEmployees = filteredEmployees.length;
   const todayIsoDate = getGmt8DateString();
   const activeEmployees = filteredEmployees.filter(
-    e => getEffectiveEmploymentStatusForDate(e, todayIsoDate) === 'Active'
+    e => isCurrentEmploymentStatus(getEffectiveEmploymentStatusForDate(e, todayIsoDate))
   ).length;
   const onLeaveEmployees = filteredEmployees.filter(
     e => getEffectiveEmploymentStatusForDate(e, todayIsoDate) === 'On Leave'

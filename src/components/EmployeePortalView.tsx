@@ -205,7 +205,11 @@ export default function EmployeePortalView({
     if (!selectedEmployee) return [];
     const directHistory = selectedEmployee.historicalPayrollRecords || [];
     const fallbackHistory = sortPayrollRecords(
-      payrollRecords2026.filter((record) => record.employeeEmail.toLowerCase() === selectedEmployee.email.toLowerCase())
+      payrollRecords2026.filter((record) => (
+        selectedEmployee.email &&
+        !/^pending-email-\d+@redpoint\.local$/i.test(selectedEmployee.email) &&
+        record.employeeEmail.toLowerCase() === selectedEmployee.email.toLowerCase()
+      ))
     );
     const merged = [...directHistory];
     fallbackHistory.forEach((record) => {
@@ -230,6 +234,8 @@ export default function EmployeePortalView({
         performance.reviewCycleId === activeReviewCycle.id &&
         (
           performance.employeeId.toLowerCase() === selectedEmployee.id.toLowerCase() ||
+          selectedEmployee.email &&
+          !/^pending-email-\d+@redpoint\.local$/i.test(selectedEmployee.email) &&
           performance.employeeId.toLowerCase() === selectedEmployee.email.toLowerCase()
         )
       ) || null

@@ -341,6 +341,7 @@ export default function PayrollView({
       .filter(record => (
         record?.employeeEmail &&
         activeEmployee.email &&
+        !/^pending-email-\d+@redpoint\.local$/i.test(activeEmployee.email) &&
         record.employeeEmail.toLowerCase() === activeEmployee.email.toLowerCase()
       ))
       .sort((a, b) => {

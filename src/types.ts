@@ -110,7 +110,7 @@ export interface Employee {
   email: string;
   designation: string;
   department: string;
-  status: 'Active' | 'On Leave' | 'Resigned' | 'Terminated' | 'Suspended';
+  status: 'Active' | 'Active - Probation' | 'Active - Confirmation' | 'On Leave' | 'Resigned' | 'Terminated' | 'Suspended';
   bankName: string;
   accountNo: string;
   basicSalary: number;

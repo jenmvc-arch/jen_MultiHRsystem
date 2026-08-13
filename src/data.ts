@@ -2104,6 +2104,8 @@ const getSortedEffectiveProfiles = (employee: Employee) =>
 const getCareerHistoryStatus = (value?: string): Employee['status'] | null => {
   switch (value) {
     case 'Active':
+    case 'Active - Probation':
+    case 'Active - Confirmation':
     case 'On Leave':
     case 'Resigned':
     case 'Terminated':
@@ -3418,7 +3420,15 @@ export function getEffectiveEmploymentStatus(
   return getEffectiveEmploymentStatusForDate(employee, targetDateStr);
 }
 
-export const CURRENT_EMPLOYMENT_STATUSES: Employee['status'][] = ['Active'];
+export const CURRENT_EMPLOYMENT_STATUSES: Employee['status'][] = [
+  'Active',
+  'Active - Probation',
+  'Active - Confirmation'
+];
+
+export function isCurrentEmploymentStatus(status?: Employee['status']): boolean {
+  return Boolean(status && CURRENT_EMPLOYMENT_STATUSES.includes(status));
+}
 
 export function isCurrentActiveEmployee(
   employee: Employee,
@@ -3433,9 +3443,7 @@ export function isCurrentActiveEmployee(
     return false;
   }
 
-  return CURRENT_EMPLOYMENT_STATUSES.includes(
-    getEffectiveEmploymentStatusForDate(employee, targetDateStr)
-  );
+  return isCurrentEmploymentStatus(getEffectiveEmploymentStatusForDate(employee, targetDateStr));
 }
 
 export function getCurrentActiveEmployees(

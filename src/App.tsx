@@ -91,6 +91,10 @@ const parseOptionalJson = <T,>(value: unknown): T | undefined => {
   return value as T;
 };
 
+const isPendingEmployeeEmail = (value?: string) => (
+  Boolean(value && /^pending-email-\d+@redpoint\.local$/i.test(value.trim()))
+);
+
 const REMOTE_DATA_LOAD_TIMEOUT_MS = import.meta.env.DEV ? 7000 : 30000;
 
 const withRemoteLoadTimeout = async <T,>(
@@ -327,7 +331,13 @@ export default function App() {
 
   const employeesWithHistory = React.useMemo(() => {
     return employees.map(emp => {
-      const records = (payrollRecords2026 || []).filter(r => r && r.employeeEmail && emp.email && r.employeeEmail.toLowerCase() === emp.email.toLowerCase());
+      const records = (payrollRecords2026 || []).filter(r => (
+        r &&
+        r.employeeEmail &&
+        emp.email &&
+        !isPendingEmployeeEmail(emp.email) &&
+        r.employeeEmail.toLowerCase() === emp.email.toLowerCase()
+      ));
       const employeeRecords = emp.historicalPayrollRecords || [];
       const mapped = records.map(r => {
         const existing = employeeRecords.find(history => (
@@ -435,7 +445,11 @@ export default function App() {
   }, [candidates, activeEntityId]);
 
   const filteredPayrollRecords2026 = React.useMemo(() => {
-    return payrollRecords2026.filter(r => filteredEmployees.some(e => e.email.toLowerCase() === r.employeeEmail.toLowerCase()));
+    return payrollRecords2026.filter(r => filteredEmployees.some(e => (
+      e.email &&
+      !isPendingEmployeeEmail(e.email) &&
+      e.email.toLowerCase() === r.employeeEmail.toLowerCase()
+    )));
   }, [payrollRecords2026, filteredEmployees]);
 
   // Reset selectedEmployeeId if the employee doesn't belong to the active entity
@@ -862,7 +876,7 @@ export default function App() {
         }
 
         // Deduplicate using Map to ensure zero overlap/duplicate keys
-        const uniqueEmployees = Array.from(new Map(allRawEmployees.map(e => [String(e.email || '').toLowerCase(), e])).values());
+        const uniqueEmployees = Array.from(new Map(allRawEmployees.map(e => [String(e.id || e.email || '').toLowerCase(), e])).values());
         const uniquePerformances = Array.from(new Map(allRawPerformances.map(p => [`${String(p.employeeEmail || p.employeeId || '').toLowerCase()}_${p.reviewCycleId}`, p])).values());
         const uniquePayrollRecords = Array.from(new Map(allRawPayrollRecords.map(r => [r.id || `${r.employeeEmail}_${r.payrollMonth}_${r.payrollYear}`, r])).values());
         const uniqueCandidates = Array.from(new Map(allRawCandidates.map(c => [c.id || c.email || c.name, c])).values());
@@ -997,7 +1011,7 @@ export default function App() {
           }
 
           return {
-            id: e.email || '',
+            id: e.id || e.email || '',
             entityId: resolvedEntityId,
             name: e.name || '',
             email: e.email || '',
@@ -1507,14 +1521,18 @@ export default function App() {
     const normalizedEmail = employeeInput.email.trim().toLowerCase();
     const newEmployee: Employee = {
       ...employeeInput,
-      id: employeeInput.id === employeeInput.email ? normalizedEmail : employeeInput.id,
+      id: normalizedEmail && employeeInput.id === employeeInput.email ? normalizedEmail : employeeInput.id,
       email: normalizedEmail,
       bankName: employeeInput.bankName.trim(),
       nricPassport: formatNricOrPassport(employeeInput.nricPassport),
       entityId: employeeInput.entityId || activeEntityId || 'ENT-92'
     };
 
-    if (employees.some(employee => employee.email.toLowerCase() === newEmployee.email)) {
+    if (
+      newEmployee.email &&
+      !isPendingEmployeeEmail(newEmployee.email) &&
+      employees.some(employee => employee.email.toLowerCase() === newEmployee.email)
+    ) {
       throw new Error('An employee with this email address already exists.');
     }
 
@@ -2043,12 +2061,18 @@ export default function App() {
   const employeePortalSessionEmail = String(currentUserEmail || '').toLowerCase();
   const employeePortalDemoEmployee = getCurrentActiveEmployees(SEED_EMPLOYEES).find(employee =>
     employee.id === employeePortalQueryEmployeeId ||
-    employee.email.toLowerCase() === employeePortalQueryEmployeeId.toLowerCase()
+    (!isPendingEmployeeEmail(employee.email) && employee.email.toLowerCase() === employeePortalQueryEmployeeId.toLowerCase())
   ) || getCurrentActiveEmployees(SEED_EMPLOYEES)[0] || null;
   const employeePortalLiveEmployee = isEmployeeAccount
     ? (
-      currentActiveEmployees.find(employee => employee.email.toLowerCase() === employeePortalSessionEmail) ||
-      getCurrentActiveEmployees(SEED_EMPLOYEES).find(employee => employee.email.toLowerCase() === employeePortalSessionEmail) ||
+      currentActiveEmployees.find(employee => (
+        !isPendingEmployeeEmail(employee.email) &&
+        employee.email.toLowerCase() === employeePortalSessionEmail
+      )) ||
+      getCurrentActiveEmployees(SEED_EMPLOYEES).find(employee => (
+        !isPendingEmployeeEmail(employee.email) &&
+        employee.email.toLowerCase() === employeePortalSessionEmail
+      )) ||
       null
     )
     : null;
@@ -2068,7 +2092,10 @@ export default function App() {
     : null;
   const employeePortalEntities = employeePortalEntity ? [employeePortalEntity] : employeePortalEntitiesSource;
   const employeePortalPayrollRecords = employeePortalEmployeeEmail
-    ? payrollRecords2026.filter(record => record.employeeEmail.toLowerCase() === employeePortalEmployeeEmail)
+    ? payrollRecords2026.filter(record => (
+      !isPendingEmployeeEmail(employeePortalEmployeeEmail) &&
+      record.employeeEmail.toLowerCase() === employeePortalEmployeeEmail
+    ))
     : [];
   const employeePortalEmployeeKeys = new Set(
     [employeePortalEmployee?.id, employeePortalEmployee?.email]
@@ -2085,7 +2112,7 @@ export default function App() {
     const normalizedId = id.toLowerCase();
     const existingEmployee = employees.find(employee =>
       employee.id.toLowerCase() === normalizedId ||
-      employee.email.toLowerCase() === normalizedId
+      (!isPendingEmployeeEmail(employee.email) && employee.email.toLowerCase() === normalizedId)
     );
     if (existingEmployee) {
       await handleUpdateEmployeeSalary(id, updates);
@@ -2094,7 +2121,7 @@ export default function App() {
 
     const fallbackEmployee = getCurrentActiveEmployees(SEED_EMPLOYEES).find(employee =>
       employee.id.toLowerCase() === normalizedId ||
-      employee.email.toLowerCase() === normalizedId
+      (!isPendingEmployeeEmail(employee.email) && employee.email.toLowerCase() === normalizedId)
     );
     if (!fallbackEmployee) {
       throw new Error('The employee record could not be found.');
