@@ -101,6 +101,35 @@ const isSeparationStatus = (status: Employee['status']) =>
 
 const toUppercase = (value: string) => value.toUpperCase();
 
+type EmployeeAllowanceKey =
+  | 'allowanceGeneral'
+  | 'allowanceTransport'
+  | 'allowanceParking'
+  | 'allowanceMeal'
+  | 'allowanceAccommodation'
+  | 'allowancePhone';
+
+interface EmployeeAllowanceDraft {
+  id: string;
+  type: EmployeeAllowanceKey;
+  amount: number;
+}
+
+const EMPLOYEE_ALLOWANCE_OPTIONS: Array<{ value: EmployeeAllowanceKey; label: string }> = [
+  { value: 'allowanceGeneral', label: 'General Allowance' },
+  { value: 'allowanceTransport', label: 'Transport Allowance' },
+  { value: 'allowanceParking', label: 'Parking Allowance' },
+  { value: 'allowanceMeal', label: 'Meal Allowance' },
+  { value: 'allowanceAccommodation', label: 'Accommodation Allowance' },
+  { value: 'allowancePhone', label: 'Phone Allowance' },
+];
+
+const getNextAllowanceType = (allowances: EmployeeAllowanceDraft[]): EmployeeAllowanceKey => (
+  EMPLOYEE_ALLOWANCE_OPTIONS.find((option) => (
+    !allowances.some((allowance) => allowance.type === option.value)
+  ))?.value || 'allowanceGeneral'
+);
+
 const getEmployeeStatusClasses = (status: Employee['status']) => {
   switch (status) {
     case 'Active':
@@ -254,8 +283,7 @@ export default function EmployeeDirectoryView({
   const [formBank, setFormBank] = useState('Maybank Berhad');
   const [formAccount, setFormAccount] = useState('');
   const [formSalary, setFormSalary] = useState(5000);
-  const [formHousing, setFormHousing] = useState(500);
-  const [formTransport, setFormTransport] = useState(300);
+  const [formAllowances, setFormAllowances] = useState<EmployeeAllowanceDraft[]>([]);
   const [formCreateAccount, setFormCreateAccount] = useState(true);
 
   // New specific compliance form states
@@ -862,8 +890,7 @@ export default function EmployeeDirectoryView({
     setFormBank('MAYBANK BERHAD');
     setFormAccount('');
     setFormSalary(5000);
-    setFormHousing(500);
-    setFormTransport(300);
+    setFormAllowances([]);
     setFormCreateAccount(canManageAccountActions);
     setFormNricPassport('');
     setFormNationality('MALAYSIAN');
@@ -892,6 +919,32 @@ export default function EmployeeDirectoryView({
     setTempDepDob('2018-01-01');
 
     setIsAddModalOpen(true);
+  };
+
+  const handleAddFormAllowance = () => {
+    setFormAllowances((previous) => [
+      ...previous,
+      {
+        id: `allowance-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        type: getNextAllowanceType(previous),
+        amount: 0,
+      },
+    ]);
+  };
+
+  const handleUpdateFormAllowance = (
+    id: string,
+    updates: Partial<Omit<EmployeeAllowanceDraft, 'id'>>
+  ) => {
+    setFormAllowances((previous) => previous.map((allowance) => (
+      allowance.id === id
+        ? { ...allowance, ...updates }
+        : allowance
+    )));
+  };
+
+  const handleRemoveFormAllowance = (id: string) => {
+    setFormAllowances((previous) => previous.filter((allowance) => allowance.id !== id));
   };
 
   const handleAddFormDependant = () => {
@@ -1117,6 +1170,20 @@ export default function EmployeeDirectoryView({
         ? formContractStatutoryTreatment
         : undefined
     });
+    const allowanceTotals = formAllowances.reduce(
+      (totals, allowance) => ({
+        ...totals,
+        [allowance.type]: Number(totals[allowance.type] || 0) + Number(allowance.amount || 0),
+      }),
+      {
+        allowanceGeneral: 0,
+        allowanceTransport: 0,
+        allowanceParking: 0,
+        allowanceMeal: 0,
+        allowanceAccommodation: 0,
+        allowancePhone: 0,
+      } as Record<EmployeeAllowanceKey, number>
+    );
 
     const newEmp: Employee = {
       id: formEmail,
@@ -1129,8 +1196,14 @@ export default function EmployeeDirectoryView({
       bankName: toUppercase(formBank),
       accountNo: toUppercase(formAccount),
       basicSalary: Number(formSalary),
-      housingAllowance: Number(formHousing),
-      transportAllowance: Number(formTransport),
+      housingAllowance: Number(allowanceTotals.allowanceAccommodation || 0),
+      transportAllowance: Number(allowanceTotals.allowanceTransport || 0),
+      allowanceGeneral: Number(allowanceTotals.allowanceGeneral || 0),
+      allowanceTransport: Number(allowanceTotals.allowanceTransport || 0),
+      allowanceParking: Number(allowanceTotals.allowanceParking || 0),
+      allowanceMeal: Number(allowanceTotals.allowanceMeal || 0),
+      allowanceAccommodation: Number(allowanceTotals.allowanceAccommodation || 0),
+      allowancePhone: Number(allowanceTotals.allowancePhone || 0),
       overtime: 0,
       performanceBonus: 0,
       epfRateEmployee: 11,
@@ -4877,8 +4950,8 @@ export default function EmployeeDirectoryView({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
+                <div className="space-y-3">
+                  <div className="max-w-xs">
                     <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Basic Salary *</label>
                     <div className="relative">
                       <span className="absolute left-2 top-2 text-[10px] text-outline">RM</span>
@@ -4889,27 +4962,66 @@ export default function EmployeeDirectoryView({
                       />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Housing</label>
-                    <div className="relative">
-                      <span className="absolute left-2 top-2 text-[10px] text-outline">RM</span>
-                      <input 
-                        type="number" min="0"
-                        value={formHousing} onChange={(e) => setFormHousing(Number(e.target.value))}
-                        className="w-full bg-white border border-neutral-border rounded pl-8 pr-2 py-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
-                      />
+
+                  <div className="rounded-lg border border-neutral-border bg-surface-container-low p-3 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-on-surface-variant uppercase">Additional Allowances</label>
+                        <p className="mt-0.5 text-[10px] text-on-surface-variant">Add only the allowances that apply to this employee.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddFormAllowance}
+                        className="inline-flex items-center gap-1.5 rounded bg-primary px-3 py-1.5 text-[11px] font-bold text-white hover:bg-primary-container"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add allowance
+                      </button>
                     </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Transport</label>
-                    <div className="relative">
-                      <span className="absolute left-2 top-2 text-[10px] text-outline">RM</span>
-                      <input 
-                        type="number" min="0"
-                        value={formTransport} onChange={(e) => setFormTransport(Number(e.target.value))}
-                        className="w-full bg-white border border-neutral-border rounded pl-8 pr-2 py-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
-                      />
-                    </div>
+
+                    {formAllowances.length === 0 ? (
+                      <div className="rounded border border-dashed border-neutral-border bg-white px-3 py-4 text-center text-[11px] font-semibold text-on-surface-variant">
+                        No allowances added yet.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {formAllowances.map((allowance) => (
+                          <div key={allowance.id} className="grid grid-cols-1 gap-2 rounded border border-neutral-border bg-white p-2 sm:grid-cols-[1fr_160px_auto] sm:items-end">
+                            <label>
+                              <span className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Allowance type</span>
+                              <select
+                                value={allowance.type}
+                                onChange={(e) => handleUpdateFormAllowance(allowance.id, { type: e.target.value as EmployeeAllowanceKey })}
+                                className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                              >
+                                {EMPLOYEE_ALLOWANCE_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              <span className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Amount</span>
+                              <div className="relative">
+                                <span className="absolute left-2 top-2 text-[10px] text-outline">RM</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={allowance.amount}
+                                  onChange={(e) => handleUpdateFormAllowance(allowance.id, { amount: Number(e.target.value) })}
+                                  className="w-full bg-white border border-neutral-border rounded pl-8 pr-2 py-1.5 text-xs focus:ring-1 focus:ring-primary outline-none"
+                                />
+                              </div>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFormAllowance(allowance.id)}
+                              className="inline-flex items-center justify-center rounded border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-bold text-red-700 hover:bg-red-100"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
