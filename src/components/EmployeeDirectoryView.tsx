@@ -339,12 +339,7 @@ export default function EmployeeDirectoryView({
   const [editBankName, setEditBankName] = useState('');
   const [editAccountNo, setEditAccountNo] = useState('');
   const [editBasicSalary, setEditBasicSalary] = useState(0);
-  const [editHousingAllowance, setEditHousingAllowance] = useState(0);
-  const [editTransportAllowance, setEditTransportAllowance] = useState(0);
-  const [editAllowanceGeneral, setEditAllowanceGeneral] = useState(0);
-  const [editAllowanceParking, setEditAllowanceParking] = useState(0);
-  const [editAllowanceMeal, setEditAllowanceMeal] = useState(0);
-  const [editAllowancePhone, setEditAllowancePhone] = useState(0);
+  const [editAllowances, setEditAllowances] = useState<EmployeeAllowanceDraft[]>([]);
   const [editNricPassport, setEditNricPassport] = useState('');
   const [editNationality, setEditNationality] = useState('');
   const [editContactNumber, setEditContactNumber] = useState('');
@@ -354,7 +349,6 @@ export default function EmployeeDirectoryView({
   const [editDateOfConfirmation, setEditDateOfConfirmation] = useState('');
   const [editEpfRateEmployee, setEditEpfRateEmployee] = useState(11);
   const [editEpfRateEmployer, setEditEpfRateEmployer] = useState(13);
-  const [editTaxPcb, setEditTaxPcb] = useState(0);
   const [editEmergencyContactName, setEditEmergencyContactName] = useState('');
   const [editEmergencyContactRelation, setEditEmergencyContactRelation] = useState('');
   const [editEmergencyContactPhone, setEditEmergencyContactPhone] = useState('');
@@ -371,12 +365,28 @@ export default function EmployeeDirectoryView({
     setEditBankName(toUppercase(selectedEmployee.bankName || ''));
     setEditAccountNo(toUppercase(selectedEmployee.accountNo || ''));
     setEditBasicSalary(selectedEmployee.basicSalary);
-    setEditHousingAllowance(selectedEmployee.allowanceAccommodation !== undefined ? selectedEmployee.allowanceAccommodation : selectedEmployee.housingAllowance || 0);
-    setEditTransportAllowance(selectedEmployee.allowanceTransport !== undefined ? selectedEmployee.allowanceTransport : selectedEmployee.transportAllowance || 0);
-    setEditAllowanceGeneral(selectedEmployee.allowanceGeneral || 0);
-    setEditAllowanceParking(selectedEmployee.allowanceParking || 0);
-    setEditAllowanceMeal(selectedEmployee.allowanceMeal || 0);
-    setEditAllowancePhone(selectedEmployee.allowancePhone || 0);
+    setEditAllowances(
+      EMPLOYEE_ALLOWANCE_OPTIONS
+        .map((option) => {
+          const amount = option.value === 'allowanceAccommodation'
+            ? (selectedEmployee.allowanceAccommodation !== undefined
+              ? selectedEmployee.allowanceAccommodation
+              : selectedEmployee.housingAllowance || 0)
+            : option.value === 'allowanceTransport'
+              ? (selectedEmployee.allowanceTransport !== undefined
+                ? selectedEmployee.allowanceTransport
+                : selectedEmployee.transportAllowance || 0)
+              : Number(selectedEmployee[option.value] || 0);
+          return amount > 0
+            ? {
+              id: `edit-${option.value}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              type: option.value,
+              amount
+            }
+            : null;
+        })
+        .filter((allowance): allowance is EmployeeAllowanceDraft => allowance !== null)
+    );
     setEditNricPassport(formatNricOrPassport(selectedEmployee.nricPassport || ''));
     setEditNationality(toUppercase(selectedEmployee.nationality || ''));
     setEditContactNumber(selectedEmployee.contactNumber || '');
@@ -386,16 +396,47 @@ export default function EmployeeDirectoryView({
       getPayrollDocumentProfile(selectedEmployee).contractStatutoryTreatment ||
       'without_statutory'
     );
+    setEditOptInEpf(selectedEmployee.optInEpf !== false);
+    setEditOptInSocso(selectedEmployee.optInSocso !== false);
+    setEditOptInEis(selectedEmployee.optInEis !== false);
+    setEditOptInPcb(selectedEmployee.optInPcb !== false);
+    setEditEnableLindung24(!!selectedEmployee.enableLindung24);
     setEditDateOfJoined(selectedEmployee.dateOfJoined || '');
     setEditDateOfConfirmation(selectedEmployee.dateOfConfirmation || '');
     setEditEpfRateEmployee(selectedEmployee.epfRateEmployee !== undefined ? selectedEmployee.epfRateEmployee : 11);
     setEditEpfRateEmployer(selectedEmployee.epfRateEmployer !== undefined ? selectedEmployee.epfRateEmployer : 13);
-    setEditTaxPcb(selectedEmployee.taxPcb || 0);
     setEditEmergencyContactName(toUppercase(selectedEmployee.emergencyContactName || ''));
     setEditEmergencyContactRelation(toUppercase(selectedEmployee.emergencyContactRelation || ''));
     setEditEmergencyContactPhone(toUppercase(selectedEmployee.emergencyContactPhone || ''));
     setEditEntityId(selectedEmployee.entityId || entities[0]?.id || '');
     setIsEditingGeneralInfo(true);
+  };
+
+  const handleAddEditAllowance = () => {
+    if (editAllowances.length >= EMPLOYEE_ALLOWANCE_OPTIONS.length) return;
+    setEditAllowances((previous) => [
+      ...previous,
+      {
+        id: `edit-allowance-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        type: getNextAllowanceType(previous),
+        amount: 0
+      }
+    ]);
+  };
+
+  const handleUpdateEditAllowance = (
+    id: string,
+    updates: Partial<Omit<EmployeeAllowanceDraft, 'id'>>
+  ) => {
+    setEditAllowances((previous) => previous.map((allowance) => (
+      allowance.id === id
+        ? { ...allowance, ...updates }
+        : allowance
+    )));
+  };
+
+  const handleRemoveEditAllowance = (id: string) => {
+    setEditAllowances((previous) => previous.filter((allowance) => allowance.id !== id));
   };
 
   const handleSaveGeneralInfoUpdates = async () => {
@@ -409,19 +450,33 @@ export default function EmployeeDirectoryView({
     });
     const currentEffectiveStatus = getEffectiveEmploymentStatusForDate(selectedEmployee, todayIsoDate);
     const currentProfile = getEffectiveProfileForDate(selectedEmployee, todayIsoDate);
+    const allowanceTotals = editAllowances.reduce(
+      (totals, allowance) => ({
+        ...totals,
+        [allowance.type]: Number(totals[allowance.type] || 0) + Number(allowance.amount || 0)
+      }),
+      {
+        allowanceGeneral: 0,
+        allowanceTransport: 0,
+        allowanceParking: 0,
+        allowanceMeal: 0,
+        allowanceAccommodation: 0,
+        allowancePhone: 0
+      } as Record<EmployeeAllowanceKey, number>
+    );
     const statusProfile: EmployeeTaxProfile = {
       ...currentProfile,
       effectiveDate: todayIsoDate,
       basicSalary: Number(editBasicSalary),
       employmentStatus: editStatus,
-      housingAllowance: Number(editHousingAllowance),
-      transportAllowance: Number(editTransportAllowance),
-      allowanceAccommodation: Number(editHousingAllowance),
-      allowanceTransport: Number(editTransportAllowance),
-      allowanceGeneral: Number(editAllowanceGeneral),
-      allowanceParking: Number(editAllowanceParking),
-      allowanceMeal: Number(editAllowanceMeal),
-      allowancePhone: Number(editAllowancePhone),
+      housingAllowance: Number(allowanceTotals.allowanceAccommodation || 0),
+      transportAllowance: Number(allowanceTotals.allowanceTransport || 0),
+      allowanceAccommodation: Number(allowanceTotals.allowanceAccommodation || 0),
+      allowanceTransport: Number(allowanceTotals.allowanceTransport || 0),
+      allowanceGeneral: Number(allowanceTotals.allowanceGeneral || 0),
+      allowanceParking: Number(allowanceTotals.allowanceParking || 0),
+      allowanceMeal: Number(allowanceTotals.allowanceMeal || 0),
+      allowancePhone: Number(allowanceTotals.allowancePhone || 0),
       epfRateEmployee: Number(editEpfRateEmployee),
       epfRateEmployer: Number(editEpfRateEmployer),
       eligibleForStatutory: updatedDocumentProfile.statutoryEnabled ? 'Yes' : 'No',
@@ -457,14 +512,14 @@ export default function EmployeeDirectoryView({
       bankName: editBankName,
       accountNo: editAccountNo,
       basicSalary: Number(editBasicSalary),
-      housingAllowance: Number(editHousingAllowance),
-      allowanceAccommodation: Number(editHousingAllowance),
-      transportAllowance: Number(editTransportAllowance),
-      allowanceTransport: Number(editTransportAllowance),
-      allowanceGeneral: Number(editAllowanceGeneral),
-      allowanceParking: Number(editAllowanceParking),
-      allowanceMeal: Number(editAllowanceMeal),
-      allowancePhone: Number(editAllowancePhone),
+      housingAllowance: Number(allowanceTotals.allowanceAccommodation || 0),
+      allowanceAccommodation: Number(allowanceTotals.allowanceAccommodation || 0),
+      transportAllowance: Number(allowanceTotals.allowanceTransport || 0),
+      allowanceTransport: Number(allowanceTotals.allowanceTransport || 0),
+      allowanceGeneral: Number(allowanceTotals.allowanceGeneral || 0),
+      allowanceParking: Number(allowanceTotals.allowanceParking || 0),
+      allowanceMeal: Number(allowanceTotals.allowanceMeal || 0),
+      allowancePhone: Number(allowanceTotals.allowancePhone || 0),
       nricPassport: editNricPassport,
       nationality: editNationality,
       contactNumber: editContactNumber,
@@ -475,7 +530,11 @@ export default function EmployeeDirectoryView({
       dateOfConfirmation: editEmploymentType === 'Confirmation' ? editDateOfConfirmation : '',
       epfRateEmployee: Number(editEpfRateEmployee),
       epfRateEmployer: Number(editEpfRateEmployer),
-      taxPcb: Number(editTaxPcb),
+      optInEpf: updatedDocumentProfile.statutoryEnabled ? editOptInEpf : false,
+      optInSocso: updatedDocumentProfile.statutoryEnabled ? editOptInSocso : false,
+      optInEis: updatedDocumentProfile.statutoryEnabled ? editOptInEis : false,
+      optInPcb: updatedDocumentProfile.statutoryEnabled ? editOptInPcb : false,
+      enableLindung24: updatedDocumentProfile.statutoryEnabled ? editEnableLindung24 : false,
       emergencyContactName: editEmergencyContactName,
       emergencyContactRelation: editEmergencyContactRelation,
       emergencyContactPhone: editEmergencyContactPhone,
@@ -595,7 +654,6 @@ export default function EmployeeDirectoryView({
   const [editEnableLindung24, setEditEnableLindung24] = useState<boolean>(false);
   const [editTaxNumber, setEditTaxNumber] = useState('');
   const [editEpfNumber, setEditEpfNumber] = useState('');
-  const [isEditingStatutorySettings, setIsEditingStatutorySettings] = useState(false);
 
   // Temp dependant fields for detail editor
   const [detailTempDepName, setDetailTempDepName] = useState('');
@@ -607,12 +665,6 @@ export default function EmployeeDirectoryView({
   const [progressionValue, setProgressionValue] = useState('');
   const [progressionNotes, setProgressionNotes] = useState('');
   const [progressionDate, setProgressionDate] = useState(getGmt8DateString());
-
-  // Salary Adjustment form states
-  const [adjStartDate, setAdjStartDate] = useState(getGmt8DateString());
-  const [adjEffectiveDate, setAdjEffectiveDate] = useState(getGmt8DateString());
-  const [adjSalary, setAdjSalary] = useState(0);
-  const [adjReason, setAdjReason] = useState('');
 
   // Selected Employee object (synchronized with parent state in real time)
   const selectedEmployee = employees.find(e => e.id === selectedEmployeeId) || null;
@@ -748,7 +800,6 @@ export default function EmployeeDirectoryView({
   const [localStatus, setLocalStatus] = useState<Employee['status']>('Active');
   const [localEmploymentType, setLocalEmploymentType] = useState<Employee['employmentType']>('Confirmation');
   const [localBasicSalary, setLocalBasicSalary] = useState(0);
-  const [localTaxPcb, setLocalTaxPcb] = useState(0);
   const [localEntityId, setLocalEntityId] = useState('');
   const [localEffectiveDatedProfiles, setLocalEffectiveDatedProfiles] = useState<EmployeeTaxProfile[]>([]);
 
@@ -774,7 +825,6 @@ export default function EmployeeDirectoryView({
       );
       setLocalEmploymentType(selectedEmployee.employmentType);
       setLocalBasicSalary(selectedEmployee.basicSalary);
-      setLocalTaxPcb(selectedEmployee.taxPcb || 0);
       setLocalEntityId(selectedEmployee.entityId);
       setLocalEffectiveDatedProfiles(selectedEmployee.effectiveDatedProfiles || []);
     }
@@ -787,48 +837,6 @@ export default function EmployeeDirectoryView({
     ...profiles.filter(existing => existing.effectiveDate !== profile.effectiveDate),
     profile
   ].sort((left, right) => left.effectiveDate.localeCompare(right.effectiveDate));
-
-  const handleSalaryAdjustmentSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedEmployee) return;
-    if (adjSalary <= 0) {
-      onShowNotification('Validation Error', 'Adjusted salary must be greater than RM 0.');
-      return;
-    }
-    if (!adjStartDate || !adjEffectiveDate) {
-      onShowNotification('Validation Error', 'Start date and Effective date are required.');
-      return;
-    }
-
-    const newAdj = {
-      id: `adj-${Date.now()}`,
-      startDate: adjStartDate,
-      effectiveDate: adjEffectiveDate,
-      adjustedSalary: adjSalary,
-      reason: adjReason || 'Salary Adjustment',
-      createdAt: new Date().toISOString()
-    };
-
-    const updatedAdjustments = [...localSalaryAdjustments, newAdj].sort((a, b) => new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime());
-    setLocalSalaryAdjustments(updatedAdjustments);
-
-    onShowNotification(
-      'Salary Staged',
-      `New salary of RM ${adjSalary.toLocaleString()} is staged. Click the Save button at the bottom to write changes to database.`
-    );
-
-    // Reset inputs
-    setAdjSalary(0);
-    setAdjReason('');
-  };
-
-  const handleRemoveSalaryAdjustment = (adjId: string) => {
-    if (window.confirm('Are you sure you want to delete this salary adjustment from staged updates?')) {
-      const updatedAdjustments = localSalaryAdjustments.filter(adj => adj.id !== adjId);
-      setLocalSalaryAdjustments(updatedAdjustments);
-      onShowNotification('Staged Deleted', 'Salary adjustment removed from staged updates.');
-    }
-  };
 
   const handleSaveCareerChanges = async () => {
     if (!selectedEmployee) return;
@@ -847,7 +855,6 @@ export default function EmployeeDirectoryView({
         status: currentStatus,
         employmentType: localEmploymentType,
         basicSalary: localBasicSalary,
-        taxPcb: localTaxPcb,
         entityId: localEntityId,
         salaryAdjustments: localSalaryAdjustments,
         careerHistory: localCareerHistory,
@@ -1022,37 +1029,6 @@ export default function EmployeeDirectoryView({
     setIsEditingFamily(true);
   };
 
-  const handleStartEditStatutorySettings = () => {
-    if (!selectedEmployee) return;
-    setEditOptInEpf(selectedEmployee.optInEpf !== false);
-    setEditOptInSocso(selectedEmployee.optInSocso !== false);
-    setEditOptInEis(selectedEmployee.optInEis !== false);
-    setEditOptInPcb(selectedEmployee.optInPcb !== false);
-    setEditEnableLindung24(!!selectedEmployee.enableLindung24);
-    setIsEditingStatutorySettings(true);
-  };
-
-  const handleSaveStatutorySettings = async () => {
-    if (!selectedEmployee) return;
-    const updates: Partial<Employee> = {
-      optInEpf: editOptInEpf,
-      optInSocso: editOptInSocso,
-      optInEis: editOptInEis,
-      optInPcb: editOptInPcb,
-      enableLindung24: editEnableLindung24,
-    };
-    setSavingAction('statutory');
-    try {
-      await onUpdateEmployee(selectedEmployee.id, updates);
-      setIsEditingStatutorySettings(false);
-      onShowNotification('Statutory Settings Saved', 'Statutory opt-in/opt-out preferences updated and saved.');
-    } catch (error) {
-      console.error('[Statutory Save] Failed:', error);
-    } finally {
-      setSavingAction(null);
-    }
-  };
-
   const handleSaveFamilyUpdates = async () => {
     if (!selectedEmployee) return;
 
@@ -1214,7 +1190,7 @@ export default function EmployeeDirectoryView({
       skbbkEmployer: 17.15,
       eisEmployee: 7.90,
       eisEmployer: 7.90,
-      taxPcb: Math.round(Number(formSalary) * 0.1),
+      taxPcb: 0,
       unpaidLeave: 0,
       hrdCorp: 103,
       avatarUrl: formAvatarUrl || '',
@@ -1376,7 +1352,6 @@ export default function EmployeeDirectoryView({
           return;
         }
         setLocalBasicSalary(numericSalary);
-        setLocalTaxPcb(Math.round(numericSalary * 0.1));
         newVal = `RM ${numericSalary.toLocaleString()}`;
         break;
       case 'Subsidiary Transfer':
@@ -1421,7 +1396,10 @@ export default function EmployeeDirectoryView({
 
   if (viewMode === 'self-service' && previewEmployee) {
     const activeSub = entities.find(e => e.id === previewEmployee.entityId) || entities[0];
-    const payslipBreakdown = calculatePayslip(previewEmployee, currentMonth, currentYear, { companyEmployees: employees });
+    const payslipBreakdown = calculatePayslip(previewEmployee, currentMonth, currentYear, {
+      companyEmployees: employees,
+      ignoreSavedPcb: true
+    });
     
     const isEligible = 
       previewEmployee.employmentType === 'Probationary' || 
@@ -2121,7 +2099,10 @@ export default function EmployeeDirectoryView({
           ];
           const monthIndexVal = monthsList.indexOf(monthName) + 1;
           const modalEmployee = getEmployeeForMonth(previewEmployee, monthIndexVal, yearVal);
-          const modalBreakdown = calculatePayslip(previewEmployee, monthIndexVal, yearVal, { companyEmployees: employees });
+          const modalBreakdown = calculatePayslip(previewEmployee, monthIndexVal, yearVal, {
+            companyEmployees: employees,
+            ignoreSavedPcb: true
+          });
 
           const modalSalaryProration = getSalaryProration(previewEmployee, monthIndexVal, yearVal);
           const modalActualBasic = getPayrollBasicSalary(previewEmployee, monthIndexVal, yearVal);
@@ -3133,18 +3114,21 @@ export default function EmployeeDirectoryView({
                           <span className="text-outline text-[9px] block uppercase font-bold">Basic Monthly Base</span>
                           <span className="font-mono font-bold text-sm text-primary">RM {selectedEmployee.basicSalary.toLocaleString()}</span>
                         </div>
-                        <div>
-                          <span className="text-outline text-[9px] block uppercase font-bold">Housing Allowance</span>
-                          <span className="font-mono text-on-surface">RM {selectedEmployee.housingAllowance.toLocaleString()}</span>
-                        </div>
-                        <div>
-                          <span className="text-outline text-[9px] block uppercase font-bold">Transport Allowance</span>
-                          <span className="font-mono text-on-surface">RM {selectedEmployee.transportAllowance.toLocaleString()}</span>
-                        </div>
-                        <div>
-                          <span className="text-outline text-[9px] block uppercase font-bold">Statutory Tax PCB</span>
-                          <span className="font-mono text-on-surface">RM {selectedEmployee.taxPcb.toLocaleString()}</span>
-                        </div>
+                        {[
+                          { label: 'Housing Allowance', amount: selectedEmployee.allowanceAccommodation ?? selectedEmployee.housingAllowance },
+                          { label: 'Transport Allowance', amount: selectedEmployee.allowanceTransport ?? selectedEmployee.transportAllowance },
+                          { label: 'General Allowance', amount: selectedEmployee.allowanceGeneral },
+                          { label: 'Parking Allowance', amount: selectedEmployee.allowanceParking },
+                          { label: 'Meal Allowance', amount: selectedEmployee.allowanceMeal },
+                          { label: 'Phone Allowance', amount: selectedEmployee.allowancePhone }
+                        ]
+                          .filter(({ amount }) => Number(amount || 0) > 0)
+                          .map(({ label, amount }) => (
+                            <div key={label}>
+                              <span className="text-outline text-[9px] block uppercase font-bold">{label}</span>
+                              <span className="font-mono text-on-surface">RM {Number(amount).toLocaleString()}</span>
+                            </div>
+                          ))}
                       </div>
                     </div>
                   </>
@@ -3354,69 +3338,6 @@ export default function EmployeeDirectoryView({
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Housing Allowance (RM)</label>
-                          <input
-                            type="number"
-                            value={editHousingAllowance}
-                            onChange={(e) => setEditHousingAllowance(Number(e.target.value))}
-                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Transport Allowance (RM)</label>
-                          <input
-                            type="number"
-                            value={editTransportAllowance}
-                            onChange={(e) => setEditTransportAllowance(Number(e.target.value))}
-                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">General Allowance (RM)</label>
-                          <input
-                            type="number"
-                            value={editAllowanceGeneral}
-                            onChange={(e) => setEditAllowanceGeneral(Number(e.target.value))}
-                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Parking Allowance (RM)</label>
-                          <input
-                            type="number"
-                            value={editAllowanceParking}
-                            onChange={(e) => setEditAllowanceParking(Number(e.target.value))}
-                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Meal Allowance (RM)</label>
-                          <input
-                            type="number"
-                            value={editAllowanceMeal}
-                            onChange={(e) => setEditAllowanceMeal(Number(e.target.value))}
-                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Phone Allowance (RM)</label>
-                          <input
-                            type="number"
-                            value={editAllowancePhone}
-                            onChange={(e) => setEditAllowancePhone(Number(e.target.value))}
-                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Tax PCB override (RM)</label>
-                          <input
-                            type="number"
-                            value={editTaxPcb}
-                            onChange={(e) => setEditTaxPcb(Number(e.target.value))}
-                            className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
-                          />
-                        </div>
-                        <div>
                           <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Employee EPF Rate (%)</label>
                           <input
                             type="number"
@@ -3457,6 +3378,61 @@ export default function EmployeeDirectoryView({
                             className="w-full bg-white border border-neutral-border rounded p-1.5 focus:ring-1 focus:ring-primary outline-none text-xs"
                           />
                         </div>
+                        {editAllowances.map((allowance) => {
+                          const selectedOption = EMPLOYEE_ALLOWANCE_OPTIONS.find((option) => option.value === allowance.type);
+                          const availableOptions = EMPLOYEE_ALLOWANCE_OPTIONS.filter((option) => (
+                            option.value === allowance.type
+                            || !editAllowances.some((item) => item.id !== allowance.id && item.type === option.value)
+                          ));
+                          return (
+                            <div key={allowance.id} className="rounded border border-primary/20 bg-primary/5 p-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">
+                                  {selectedOption?.label || 'Allowance'} (RM)
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveEditAllowance(allowance.id)}
+                                  className="text-[10px] font-bold text-error hover:text-red-700"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                              <select
+                                value={allowance.type}
+                                onChange={(event) => handleUpdateEditAllowance(allowance.id, {
+                                  type: event.target.value as EmployeeAllowanceKey
+                                })}
+                                className="mb-1.5 w-full rounded border border-neutral-border bg-white p-1.5 text-[10px] font-semibold outline-none focus:ring-1 focus:ring-primary"
+                              >
+                                {availableOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </select>
+                              <input
+                                type="number"
+                                value={allowance.amount}
+                                onChange={(event) => handleUpdateEditAllowance(allowance.id, {
+                                  amount: Number(event.target.value)
+                                })}
+                                className="w-full rounded border border-neutral-border bg-white p-1.5 text-xs outline-none focus:ring-1 focus:ring-primary"
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="flex items-center justify-between gap-3 rounded border border-dashed border-primary/30 bg-white p-2">
+                        <p className="text-[10px] font-semibold text-on-surface-variant">
+                          Only applicable allowances are shown. Add another when needed.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleAddEditAllowance}
+                          disabled={editAllowances.length >= EMPLOYEE_ALLOWANCE_OPTIONS.length}
+                          className="inline-flex shrink-0 items-center gap-1 rounded bg-primary/10 px-2.5 py-1.5 text-[10px] font-bold text-primary hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Plus className="h-3.5 w-3.5" /> Add allowance
+                        </button>
                       </div>
                     </div>
 
@@ -3502,36 +3478,10 @@ export default function EmployeeDirectoryView({
                     <h4 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5">
                       <ShieldCheck className="w-4 h-4 text-primary" /> Statutory Settings
                     </h4>
-	                    {!selectedPayrollDocumentProfile?.statutoryEnabled ? (
-	                      <span className="rounded bg-amber-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-800">
-	                        Not applicable
-	                      </span>
-	                    ) : !isEditingStatutorySettings ? (
-	                      <button
-                        type="button"
-                        onClick={handleStartEditStatutorySettings}
-                        className="text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors text-xs font-semibold cursor-pointer border border-primary/20"
-                      >
-                        Edit Statutory Settings
-                      </button>
-                    ) : (
-                      <div className="flex gap-1.5">
-                        <button 
-                          type="button"
-                          onClick={() => setIsEditingStatutorySettings(false)}
-                          className="text-on-surface-variant hover:bg-surface-container px-2 py-1 rounded transition-colors text-xs font-semibold cursor-pointer border border-neutral-border"
-                        >
-                          Cancel
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={handleSaveStatutorySettings}
-                          disabled={savingAction === 'statutory'}
-                          className="bg-primary text-white hover:bg-primary-container px-2 py-1 rounded transition-colors text-xs font-semibold cursor-pointer"
-                        >
-                          {savingAction === 'statutory' ? 'Saving...' : 'Save'}
-                        </button>
-                      </div>
+                    {!selectedPayrollDocumentProfile?.statutoryEnabled && (
+                      <span className="rounded bg-amber-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                        Not applicable
+                      </span>
                     )}
                   </div>
 
@@ -3539,7 +3489,7 @@ export default function EmployeeDirectoryView({
 	                    <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
 	                      Not applicable for this employment type. Statutory deductions and employer contributions will remain RM 0.00.
 	                    </div>
-	                  ) : !isEditingStatutorySettings ? (
+	                  ) : !isEditingGeneralInfo ? (
                     /* VIEW MODE: Tick box for opt in, Cross box for opt out */
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                       <div className="flex justify-between items-center bg-white p-2 rounded border border-neutral-border/50 shadow-xs">
@@ -4081,116 +4031,7 @@ export default function EmployeeDirectoryView({
                             {/* Right Column: Career Progression Form & Historic Timeline */}
               <div className="lg:col-span-5 p-6 flex flex-col justify-between space-y-6">
                 
-                {/* Section 1: Salary Adjustment History & Administration */}
-                <div className="bg-surface-container-low border border-neutral-border p-4 rounded-lg space-y-4">
-                  <div className="border-b border-neutral-border pb-2">
-                    <h4 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5">
-                      <DollarSign className="w-4 h-4 text-primary" /> Salary Adjustment Registry
-                    </h4>
-                    <p className="text-[10px] text-on-surface-variant">Schedule baseline salary modifications with start dates and effective dates.</p>
-                  </div>
-
-                  {/* Add adjustment sub-form */}
-                  <form onSubmit={handleSalaryAdjustmentSubmit} className="space-y-3 text-xs">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Start Date</label>
-                        <input 
-                          type="date" 
-                          required
-                          value={adjStartDate} 
-                          onChange={(e) => setAdjStartDate(e.target.value)}
-                          className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Effective Date</label>
-                        <input 
-                          type="date" 
-                          required
-                          value={adjEffectiveDate} 
-                          onChange={(e) => setAdjEffectiveDate(e.target.value)}
-                          className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Adjusted Salary (RM)</label>
-                        <input 
-                          type="number" 
-                          required 
-                          min="1"
-                          value={adjSalary || ''} 
-                          onChange={(e) => setAdjSalary(Number(e.target.value))}
-                          placeholder="e.g. 6200"
-                          className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-on-surface-variant uppercase mb-1">Reason / Notes</label>
-                        <input 
-                          type="text" 
-                          value={adjReason} 
-                          onChange={(e) => setAdjReason(e.target.value)}
-                          placeholder="e.g. Promotion revision"
-                          className="w-full bg-white border border-neutral-border rounded p-1.5 text-xs outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <button 
-                      type="submit"
-                      className="w-full bg-primary text-white py-1.5 rounded text-xs font-semibold hover:bg-primary-container transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Add Salary Adjustment
-                    </button>
-                  </form>
-
-                  {/* List of adjustments */}
-                  <div className="pt-2 border-t border-neutral-border/40">
-                    <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider block mb-2">Logged Adjustments History</span>
-                    {localSalaryAdjustments && localSalaryAdjustments.length > 0 ? (
-                      <div className="bg-white border border-neutral-border rounded overflow-hidden max-h-[140px] overflow-y-auto">
-                        <table className="w-full text-left text-[10px]">
-                          <thead className="bg-surface-container-low border-b border-neutral-border text-[8px] uppercase text-on-surface-variant font-bold">
-                            <tr>
-                              <th className="p-1.5">Start</th>
-                              <th className="p-1.5">Effective</th>
-                              <th className="p-1.5 text-right">Salary (RM)</th>
-                              <th className="p-1.5">Reason</th>
-                              <th className="p-1.5 w-8"></th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-neutral-border/40 font-medium">
-                            {localSalaryAdjustments.map((adj) => (
-                              <tr key={adj.id} className="hover:bg-zinc-50/50">
-                                <td className="p-1.5 font-mono">{adj.startDate}</td>
-                                <td className="p-1.5 font-mono font-bold text-primary">{adj.effectiveDate}</td>
-                                <td className="p-1.5 font-mono text-right font-bold text-on-surface">RM {adj.adjustedSalary.toLocaleString()}</td>
-                                <td className="p-1.5 truncate max-w-[80px]" title={adj.reason}>{adj.reason}</td>
-                                <td className="p-1.5 text-right">
-                                  <button
-                                    onClick={() => handleRemoveSalaryAdjustment(adj.id)}
-                                    className="text-red-600 hover:text-red-800 font-bold px-1"
-                                    title="Delete adjustment"
-                                  >
-                                    ×
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p className="text-[10px] italic text-on-surface-variant text-center py-2">No adjustments scheduled. Basic salary baseline applies.</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Section 2: Change Employment Status (The Action) */}
+	                {/* Section 1: Change Employment Status (The Action) */}
                 <div className="bg-surface-container-low border border-neutral-border p-4 rounded-lg space-y-4">
                   <div className="border-b border-neutral-border pb-2">
                     <h4 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5">

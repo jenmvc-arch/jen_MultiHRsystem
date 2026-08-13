@@ -135,6 +135,7 @@ export interface PayslipCalculationOptions {
   statutoryEligibilityOverride?: boolean;
   statutoryOverrides?: PayslipStatutoryOverrides;
   ignoreSavedStatutory?: boolean;
+  ignoreSavedPcb?: boolean;
   companyEmployees?: Employee[];
 }
 
@@ -2591,7 +2592,7 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
     lindung24Employee: savedRecord.lindung24Employee,
     eisEmployee: savedRecord.eisEmployee,
     eisEmployer: savedRecord.eisEmployer,
-    taxPcb: savedRecord.actualPCBDeducted,
+    taxPcb: options.ignoreSavedPcb ? undefined : savedRecord.actualPCBDeducted,
     hrdCorp: savedRecord.hrdCorp
   } : {};
   const statutoryOverrides = { ...savedStatutory, ...options.statutoryOverrides };
@@ -2707,7 +2708,7 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
   const baseEmp = INITIAL_EMPLOYEES.find(e => e.id === mergedEmployee.id);
   const isSalaryChanged = baseEmp ? baseEmp.basicSalary !== basicSalary : false;
   const autoTaxPcbVal = (isEligible && optInPcb)
-    ? (isSalaryChanged || mergedEmployee.taxPcb === undefined
+    ? (options.ignoreSavedPcb || isSalaryChanged || mergedEmployee.taxPcb === undefined
        ? calculatePcb2026(statutorySalary, mergedEmployee.maritalStatus || 'Single', mergedEmployee.spouseIsWorking || 'No', mergedEmployee.dependants?.length || 0, autoEpfEmployeeValue, actMonth)
        : mergedEmployee.taxPcb)
     : 0;
