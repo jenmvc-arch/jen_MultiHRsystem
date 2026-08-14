@@ -4477,6 +4477,24 @@ export default function EmployeeDirectoryView({
                     />
                   </div>
                   <div>
+                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Nationality *</label>
+                    <input 
+                      type="text" required
+                      value={formNationality} onChange={(e) => setFormNationality(toUppercase(e.target.value))}
+                      placeholder="e.g. Malaysian"
+                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">NRIC / Passport Number *</label>
+                    <input 
+                      type="text" required
+                      value={formNricPassport} onChange={(e) => setFormNricPassport(formatNricOrPassport(e.target.value))}
+                      placeholder="950124-14-5226 / Passport ID"
+                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
+                    />
+                  </div>
+                  <div>
                     <div className="flex items-center justify-between gap-3 mb-1">
                       <label className="block text-xs font-bold text-on-surface-variant uppercase">Corporate Email Address</label>
                       <label className="flex items-center gap-1.5 text-[10px] font-bold text-primary uppercase cursor-pointer">
@@ -4504,27 +4522,6 @@ export default function EmployeeDirectoryView({
                       onChange={(e) => setFormEmail(e.target.value)}
                       placeholder={formEmailFillLater ? 'To be filled later' : 'j.cooper@enterprise.com'}
                       className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none disabled:bg-neutral-100 disabled:text-on-surface-variant"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">NRIC / Passport Number *</label>
-                    <input 
-                      type="text" required
-                      value={formNricPassport} onChange={(e) => setFormNricPassport(formatNricOrPassport(e.target.value))}
-                      placeholder="950124-14-5226 / Passport ID"
-                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-on-surface-variant uppercase mb-1">Nationality *</label>
-                    <input 
-                      type="text" required
-                      value={formNationality} onChange={(e) => setFormNationality(toUppercase(e.target.value))}
-                      placeholder="e.g. Malaysian"
-                      className="w-full bg-white border border-neutral-border rounded p-2 text-xs focus:ring-1 focus:ring-primary outline-none"
                     />
                   </div>
                   <div>
