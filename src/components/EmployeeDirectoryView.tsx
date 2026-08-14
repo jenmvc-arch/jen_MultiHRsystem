@@ -2766,18 +2766,18 @@ export default function EmployeeDirectoryView({
 
             {/* Directory spreadsheet grid */}
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
+              <table className="min-w-[1500px] w-full table-fixed text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-surface-container-low border-b border-neutral-border text-on-surface-variant font-bold uppercase tracking-wider select-none">
-                    <th className="p-4">Personnel Info</th>
-                    <th className="p-4">Subsidiary</th>
-                    <th className="p-4">Type & NRIC/Passport</th>
-                    <th className="p-4">Department & Designation</th>
-                    <th className="p-4 min-w-[140px]">Salary Base (RM)</th>
-                    <th className="p-4">Date of Joined</th>
-                    <th className="p-4">Status</th>
-                    <th className="p-4">Account Access</th>
-                    <th className="p-4 text-right">Administrative</th>
+                  <tr className="bg-surface-container-low border-b border-neutral-border text-on-surface-variant font-bold uppercase tracking-wider select-none whitespace-nowrap">
+                    <th className="w-[330px] p-4">Personnel Info</th>
+                    <th className="w-[180px] p-4">Subsidiary</th>
+                    <th className="w-[280px] p-4">Type & NRIC/Passport</th>
+                    <th className="w-[230px] p-4">Department & Designation</th>
+                    <th className="w-[170px] p-4">Salary Base (RM)</th>
+                    <th className="w-[150px] p-4">Date of Joined</th>
+                    <th className="w-[150px] p-4">Status</th>
+                    <th className="w-[170px] p-4">Account Access</th>
+                    <th className="w-[160px] p-4 text-right">Administrative</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-border/50">
@@ -2815,12 +2815,14 @@ export default function EmployeeDirectoryView({
                       >
                         
                         {/* Column 1: Personnel Info */}
-                        <td className="p-4 flex items-center gap-3">
-                          <EmployeeAvatar employee={emp} className="w-9 h-9 rounded-full shrink-0" />
-                          <div>
-                            <div className="font-bold text-sm text-on-surface">{emp.name}</div>
-                            <div className="text-xs text-on-surface-variant flex items-center gap-1 mt-0.5">
-                              <Mail className="w-3 h-3 text-outline" /> {getEmployeeDisplayEmail(emp)}
+                        <td className="p-4 whitespace-nowrap">
+                          <div className="flex items-center gap-3">
+                            <EmployeeAvatar employee={emp} className="w-9 h-9 rounded-full shrink-0" />
+                            <div className="min-w-0">
+                              <div className="font-bold text-sm text-on-surface truncate">{emp.name}</div>
+                              <div className="text-xs text-on-surface-variant flex items-center gap-1 mt-0.5 truncate">
+                                <Mail className="w-3 h-3 text-outline" /> {getEmployeeDisplayEmail(emp)}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -2828,44 +2830,46 @@ export default function EmployeeDirectoryView({
 
 
                         {/* Column 2b: Subsidiary */}
-                        <td className="p-4">
-                          <span className="font-semibold text-xs text-primary bg-primary/10 border border-primary/20 px-2 py-1 rounded shadow-xs block w-fit truncate max-w-[140px]" title={entities.find(e => e.id === emp.entityId)?.name || emp.entityId}>
+                        <td className="p-4 whitespace-nowrap">
+                          <span className="inline-flex max-w-[150px] items-center font-semibold text-xs text-primary bg-primary/10 border border-primary/20 px-2 py-1 rounded shadow-xs truncate" title={entities.find(e => e.id === emp.entityId)?.name || emp.entityId}>
                             {entities.find(e => e.id === emp.entityId)?.name || emp.entityId}
                           </span>
                         </td>
 
                         {/* Column 3: Type & NRIC */}
-                        <td className="p-4">
-                          <span className="text-[10px] font-bold text-secondary uppercase bg-surface-container-high px-1.5 py-0.5 rounded block w-fit mb-1">
-                            {emp.employmentType || 'Full-Time'}
-                          </span>
-                          <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded block w-fit mb-1 ${
-                            documentProfile.isPaymentVoucher ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
-                          }`}>
-                            {documentProfile.documentType}
-                          </span>
-                          <div className="text-[10px] font-semibold text-on-surface-variant mb-1">{documentProfile.compensationLabel}</div>
-                          <div className="font-mono text-xs font-semibold text-on-surface">{emp.nricPassport || 'N/A'}</div>
+                        <td className="p-4 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-secondary uppercase bg-surface-container-high px-1.5 py-0.5 rounded">
+                              {emp.employmentType || 'Full-Time'}
+                            </span>
+                            <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                              documentProfile.isPaymentVoucher ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                            }`}>
+                              {documentProfile.documentType}
+                            </span>
+                            <span className="text-[10px] font-semibold text-on-surface-variant">{documentProfile.compensationLabel}</span>
+                          </div>
+                          <div className="mt-1 font-mono text-xs font-semibold text-on-surface">{emp.nricPassport || 'N/A'}</div>
                         </td>
 
                         {/* Column 4: Department */}
-                        <td className="p-4">
-                          <div className="font-semibold text-on-surface">{emp.designation}</div>
-                          <div className="text-[10px] text-on-surface-variant mt-0.5">{emp.department}</div>
+                        <td className="p-4 whitespace-nowrap">
+                          <div className="font-semibold text-on-surface truncate">{emp.designation}</div>
+                          <div className="text-[10px] text-on-surface-variant mt-0.5 truncate">{emp.department}</div>
                         </td>
 
                         {/* Column 5: Base Salary */}
-                        <td className="p-4 min-w-[140px] whitespace-nowrap font-mono font-semibold text-primary">
+                        <td className="p-4 whitespace-nowrap font-mono font-semibold text-primary">
                           RM {formatCurrencyAmount(displayedBasicSalary)}
                         </td>
 
                         {/* Column 6: Date Joined */}
-                        <td className="p-4 text-on-surface-variant font-mono">
+                        <td className="p-4 whitespace-nowrap text-on-surface-variant font-mono">
                           {formatToDDMMMYYYY(emp.dateOfJoined)}
                         </td>
 
                         {/* Column 7: Status */}
-                        <td className="p-4">
+                        <td className="p-4 whitespace-nowrap">
                           <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${statusClasses.badge}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${statusClasses.dot}`} />
                             {displayedStatus}
@@ -2873,7 +2877,7 @@ export default function EmployeeDirectoryView({
                         </td>
 
                         {/* Column 8: Employee Account */}
-                        <td className="p-4 min-w-[150px]" onClick={(event) => event.stopPropagation()}>
+                        <td className="p-4 whitespace-nowrap" onClick={(event) => event.stopPropagation()}>
                           <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${accountClasses}`}>
                             <KeyRound className="w-3 h-3" />
                             {accountLabel}
@@ -2891,7 +2895,7 @@ export default function EmployeeDirectoryView({
                         </td>
 
                         {/* Column 9: Delete / Admin */}
-                        <td className="p-4 text-right">
+                        <td className="p-4 text-right whitespace-nowrap">
                           <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                             <button 
                               onClick={() => {
