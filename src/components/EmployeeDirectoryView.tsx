@@ -2776,7 +2776,7 @@ export default function EmployeeDirectoryView({
                     <th className="min-w-[170px] p-4">Type of Employment</th>
                     <th className="min-w-[170px] p-4">Type of Payslip</th>
                     <th className="min-w-[170px] p-4">Basic Salary</th>
-                    <th className="min-w-[430px] p-4">Allowances</th>
+                    <th className="min-w-[170px] p-4">Allowances</th>
                     <th className="min-w-[150px] p-4">Date of Joined</th>
                     <th className="min-w-[150px] p-4">Status</th>
                     <th className="min-w-[170px] p-4">Account Access</th>
