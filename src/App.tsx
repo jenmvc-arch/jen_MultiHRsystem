@@ -2607,6 +2607,7 @@ export default function App() {
               employees={filteredEmployees}
               onShowNotification={triggerNotification}
               activeEntityId={activeEntityId}
+              onUpdateEmployee={handleUpdateEmployeeSalary}
             />
           )}
 

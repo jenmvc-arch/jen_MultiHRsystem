@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { Employee } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
-import { LeaveRequest } from './LeaveManagementView';
+import { LeaveRequest } from '../lib/leaveDomain';
 import { formatToDDMMMYYYY } from '../lib/dateUtils';
 import { isCurrentEmploymentStatus } from '../data';
 

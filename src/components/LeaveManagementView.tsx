@@ -34,262 +34,61 @@ import EmployeeAvatar from './EmployeeAvatar';
 import LeaveCalendar from './LeaveCalendar';
 import { getGmt8DateString, formatToDDMMMYYYY } from '../lib/dateUtils';
 import { isCurrentActiveEmployee } from '../data';
+import {
+  addOneMonth,
+  calculateLeaveBalances,
+  calculateLeaveDateDays,
+  calculatePayrollDeduction,
+  calculateWorkingHours,
+  consumeReplacementLeaveFIFO,
+  CarryOverLeaveBalanceSettings,
+  DEFAULT_CARRY_OVER_SETTINGS,
+  DEFAULT_LEAVE_CONDITIONING_POLICIES,
+  DEFAULT_LEAVE_CONFIGS,
+  DEFAULT_LEAVE_GROUPS,
+  eligibleOffInLieuDays,
+  findDuplicateAssignedLeaveTypes,
+  getGroupItems,
+  LeaveBalanceLedgerEntry,
+  LeaveConfig,
+  LeaveConditioningPolicy,
+  LeaveGroup,
+  LeaveGroupItem,
+  LeavePayrollDeduction,
+  LeaveRequest,
+  LeaveRequestStatus,
+  OffInLieuEntry,
+  OffInLieuRequest,
+  OffInLieuSubmissionMode,
+  OffInLieuStatus,
+  roundToHalfDay,
+  splitLeaveDaysAcrossPayrollMonths,
+  STANDARD_CARRY_OVER_ID,
+  STANDARD_POLICY_ID,
+  REPLACEMENT_LEAVE_TYPE_ID,
+} from '../lib/leaveDomain';
+import { loadLeaveWorkspace, persistLeaveWorkspace } from '../lib/leaveService';
 
-export type LeaveRequestStatus = 'Pending' | 'Approved' | 'Rejected';
-
-export interface LeaveRequest {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  leaveType: string;
-  startDate: string;
-  endDate: string;
-  totalDays: number;
-  reason: string;
-  status: LeaveRequestStatus;
-  appliedDate: string;
-}
-
-export type LeaveDeductionRule =
-  | 'calendar_days'
-  | 'working_days'
-  | 'working_days_excluding_holidays';
-
-export type LeaveRoundingRule =
-  | 'exact'
-  | 'nearest_half_day'
-  | 'round_up_half_day';
-
-export type LeaveProrationRule =
-  | 'none'
-  | 'joiner_proration'
-  | 'monthly_accrual';
-
-export type LeaveEntitlementRule =
-  | 'calendar_year'
-  | 'anniversary_year'
-  | 'monthly_accrual';
-
-export interface LeaveConditioningPolicy {
-  id: string;
-  name: string;
-  deductionRule: LeaveDeductionRule;
-  roundingRule: LeaveRoundingRule;
-  prorationRule: LeaveProrationRule;
-  entitlementRule: LeaveEntitlementRule;
-  excludeWeekends: boolean;
-  excludePublicHolidays: boolean;
-  notes: string;
-}
-
-export type CarryForwardRule = 'none' | 'full_balance' | 'capped';
-export type CarryOverExpiryRule = 'no_expiry' | 'fixed_date' | 'months_after_year_end';
-
-export interface CarryOverLeaveBalanceSettings {
-  id: string;
-  name: string;
-  carryForwardRule: CarryForwardRule;
-  maxCarryForwardDays: number;
-  expiryRule: CarryOverExpiryRule;
-  expiryDate: string;
-  expiryMonths: number;
-  notes: string;
-}
-
-export interface LeaveConfig {
-  id: string;
-  leaveType: string;
-  daysEntitled: number;
-  leaveGroup: string;
-  condition: string;
-  code?: string;
-  isDefault?: boolean;
-  enabled?: boolean;
-  policyId?: string;
-  carryOverId?: string;
-}
-
-export interface LeaveGroup {
-  id: string;
-  name: string;
-  description: string;
-  policyId: string;
-  carryOverId: string;
-  leaveTypeIds: string[];
-  assignedEmployeeIds: string[];
-  enabled: boolean;
-}
-
-export interface OffInLieuEntry {
-  id: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  workingHours: number;
-  eligibleDays: number;
-}
-
-export type OffInLieuSubmissionMode = 'single' | 'bulk';
-export type OffInLieuStatus = 'Draft' | 'Pending' | 'Approved' | 'Rejected';
-
-export interface OffInLieuRequest {
-  id: string;
-  employeeIds: string[];
-  employeeNames: string[];
-  entries: OffInLieuEntry[];
-  expiryDate: string;
-  totalDaysPerEmployee: number;
-  totalDays: number;
-  status: OffInLieuStatus;
-  submissionMode: OffInLieuSubmissionMode;
-  appliedDate: string;
-  submittedBy: string;
-}
-
-const STANDARD_POLICY_ID = 'leave-policy-standard';
-const STANDARD_CARRY_OVER_ID = 'leave-carry-over-standard';
-
-export const DEFAULT_LEAVE_CONDITIONING_POLICIES: LeaveConditioningPolicy[] = [
-  {
-    id: STANDARD_POLICY_ID,
-    name: 'Standard Malaysia Leave Policy',
-    deductionRule: 'working_days_excluding_holidays',
-    roundingRule: 'nearest_half_day',
-    prorationRule: 'joiner_proration',
-    entitlementRule: 'calendar_year',
-    excludeWeekends: true,
-    excludePublicHolidays: true,
-    notes: 'Use for the standard full-time employee population. Half-day requests are supported.'
-  }
-];
-
-export const DEFAULT_CARRY_OVER_SETTINGS: CarryOverLeaveBalanceSettings[] = [
-  {
-    id: STANDARD_CARRY_OVER_ID,
-    name: 'Standard Annual Carry Over',
-    carryForwardRule: 'capped',
-    maxCarryForwardDays: 5,
-    expiryRule: 'fixed_date',
-    expiryDate: '2027-03-31',
-    expiryMonths: 3,
-    notes: 'Unused carried-forward days expire at the end of the first quarter.'
-  }
-];
-
-export const DEFAULT_LEAVE_CONFIGS: LeaveConfig[] = [
-  {
-    id: 'annual-leave',
-    code: 'AL',
-    leaveType: 'Annual Leave',
-    daysEntitled: 18,
-    leaveGroup: 'Full-Time Standard',
-    condition: 'Paid leave',
-    isDefault: true,
-    enabled: true,
-    policyId: STANDARD_POLICY_ID,
-    carryOverId: STANDARD_CARRY_OVER_ID
-  },
-  {
-    id: 'sick-leave',
-    code: 'SL',
-    leaveType: 'Sick Leave',
-    daysEntitled: 14,
-    leaveGroup: 'All Staff',
-    condition: 'Paid leave',
-    isDefault: true,
-    enabled: true,
-    policyId: STANDARD_POLICY_ID,
-    carryOverId: STANDARD_CARRY_OVER_ID
-  },
-  {
-    id: 'hospitalisation-leave',
-    code: 'HL',
-    leaveType: 'Hospitalisation Leave',
-    daysEntitled: 60,
-    leaveGroup: 'All Staff',
-    condition: 'Paid leave',
-    isDefault: true,
-    enabled: true,
-    policyId: STANDARD_POLICY_ID,
-    carryOverId: STANDARD_CARRY_OVER_ID
-  },
-  {
-    id: 'maternity-leave',
-    code: 'ML',
-    leaveType: 'Maternity Leave',
-    daysEntitled: 98,
-    leaveGroup: 'Full-Time Standard',
-    condition: 'Paid leave',
-    isDefault: true,
-    enabled: true,
-    policyId: STANDARD_POLICY_ID,
-    carryOverId: STANDARD_CARRY_OVER_ID
-  },
-  {
-    id: 'paternity-leave',
-    code: 'PL',
-    leaveType: 'Paternity Leave',
-    daysEntitled: 7,
-    leaveGroup: 'Full-Time Standard',
-    condition: 'Paid leave',
-    isDefault: true,
-    enabled: true,
-    policyId: STANDARD_POLICY_ID,
-    carryOverId: STANDARD_CARRY_OVER_ID
-  },
-  {
-    id: 'compassionate-leave',
-    code: 'CL',
-    leaveType: 'Compassionate Leave',
-    daysEntitled: 3,
-    leaveGroup: 'All Staff',
-    condition: 'Paid leave',
-    isDefault: true,
-    enabled: true,
-    policyId: STANDARD_POLICY_ID,
-    carryOverId: STANDARD_CARRY_OVER_ID
-  },
-  {
-    id: 'unpaid-leave',
-    code: 'UL',
-    leaveType: 'Unpaid Leave',
-    daysEntitled: 30,
-    leaveGroup: 'All Staff',
-    condition: 'Unpaid leave',
-    isDefault: true,
-    enabled: true,
-    policyId: STANDARD_POLICY_ID,
-    carryOverId: STANDARD_CARRY_OVER_ID
-  }
-];
-
-export const DEFAULT_LEAVE_GROUPS: LeaveGroup[] = [
-  {
-    id: 'full-time-standard',
-    name: 'Full-Time Standard',
-    description: 'Standard leave package for permanent and fixed-term employees.',
-    policyId: STANDARD_POLICY_ID,
-    carryOverId: STANDARD_CARRY_OVER_ID,
-    leaveTypeIds: ['annual-leave', 'sick-leave', 'hospitalisation-leave', 'maternity-leave', 'paternity-leave', 'compassionate-leave', 'unpaid-leave'],
-    assignedEmployeeIds: [],
-    enabled: true
-  },
-  {
-    id: 'all-staff',
-    name: 'All Staff',
-    description: 'Shared leave package available to every active employee.',
-    policyId: STANDARD_POLICY_ID,
-    carryOverId: STANDARD_CARRY_OVER_ID,
-    leaveTypeIds: ['sick-leave', 'hospitalisation-leave', 'compassionate-leave', 'unpaid-leave'],
-    assignedEmployeeIds: [],
-    enabled: true
-  }
-];
+export {
+  DEFAULT_CARRY_OVER_SETTINGS,
+  DEFAULT_LEAVE_CONDITIONING_POLICIES,
+  DEFAULT_LEAVE_CONFIGS,
+  DEFAULT_LEAVE_GROUPS,
+} from '../lib/leaveDomain';
+export type {
+  LeaveConditioningPolicy,
+  LeaveConfig,
+  LeaveGroup,
+  LeaveRequest,
+  OffInLieuEntry,
+  OffInLieuRequest,
+} from '../lib/leaveDomain';
 
 interface LeaveManagementViewProps {
   employees: Employee[];
   onShowNotification: (title: string, message: string) => void;
   activeEntityId: string;
+  onUpdateEmployee?: (id: string, updates: Partial<Employee>) => Promise<void>;
 }
 
 type LeaveWorkspaceSection = 'overview' | 'policy' | 'types' | 'groups' | 'off-in-lieu';
@@ -329,53 +128,6 @@ function writeScopedJson<T>(key: string, value: T) {
   } catch {
     // Local preview storage can be unavailable in restricted browser contexts.
   }
-}
-
-function roundToHalfDay(value: number) {
-  return Math.round(value * 2) / 2;
-}
-
-function calculateLeaveDateDays(startDate: string, endDate: string, policy?: LeaveConditioningPolicy) {
-  const start = new Date(`${startDate}T00:00:00`);
-  const end = new Date(`${endDate}T00:00:00`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0;
-
-  let count = 0;
-  const cursor = new Date(start);
-  while (cursor <= end) {
-    const day = cursor.getDay();
-    const isWeekend = day === 0 || day === 6;
-    if (policy?.deductionRule === 'calendar_days' || !policy?.excludeWeekends || !isWeekend) {
-      count += 1;
-    }
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
-  if (policy?.roundingRule === 'nearest_half_day') return roundToHalfDay(count);
-  if (policy?.roundingRule === 'round_up_half_day') return Math.ceil(count * 2) / 2;
-  return count;
-}
-
-function calculateWorkingHours(startTime: string, endTime: string) {
-  const [startHours, startMinutes] = startTime.split(':').map(Number);
-  const [endHours, endMinutes] = endTime.split(':').map(Number);
-  if ([startHours, startMinutes, endHours, endMinutes].some(Number.isNaN)) return 0;
-
-  let start = startHours * 60 + startMinutes;
-  let end = endHours * 60 + endMinutes;
-  if (end <= start) end += 24 * 60;
-  return Math.round(((end - start) / 60) * 100) / 100;
-}
-
-function eligibleOffInLieuDays(hours: number) {
-  if (hours <= 0) return 0;
-  return hours > 6 ? 1 : 0.5;
-}
-
-function addOneMonth(dateString: string) {
-  const date = new Date(`${dateString}T00:00:00`);
-  date.setMonth(date.getMonth() + 1);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 function buildCalendarDays(year: number, month: number) {
@@ -433,7 +185,8 @@ function normalizeLeaveConfig(config: LeaveConfig, index: number): LeaveConfig {
 export default function LeaveManagementView({
   employees,
   onShowNotification,
-  activeEntityId
+  activeEntityId,
+  onUpdateEmployee
 }: LeaveManagementViewProps) {
   const [activeSection, setActiveSection] = useState<LeaveWorkspaceSection>('overview');
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
@@ -442,6 +195,8 @@ export default function LeaveManagementView({
   const [carryOverSettings, setCarryOverSettings] = useState<CarryOverLeaveBalanceSettings[]>(DEFAULT_CARRY_OVER_SETTINGS);
   const [leaveGroups, setLeaveGroups] = useState<LeaveGroup[]>(DEFAULT_LEAVE_GROUPS);
   const [offInLieuRequests, setOffInLieuRequests] = useState<OffInLieuRequest[]>([]);
+  const [ledgerEntries, setLedgerEntries] = useState<LeaveBalanceLedgerEntry[]>([]);
+  const [payrollDeductions, setPayrollDeductions] = useState<LeavePayrollDeduction[]>([]);
 
   const activeEmployees = useMemo(
     () => employees.filter((employee) => isCurrentActiveEmployee(employee)),
@@ -480,33 +235,26 @@ export default function LeaveManagementView({
   });
 
   useEffect(() => {
-    if (!activeEntityId) return;
+    let cancelled = false;
+    if (!activeEntityId) return () => {
+      cancelled = true;
+    };
 
-    const savedRequests = readScopedJson<LeaveRequest[]>(`leave_requests_${activeEntityId}`, []);
-    const savedConfigs = readScopedJson<LeaveConfig[]>(`leave_configs_${activeEntityId}`, DEFAULT_LEAVE_CONFIGS);
-    const savedPolicies = readScopedJson<LeaveConditioningPolicy[]>(
-      `leave_conditioning_policies_${activeEntityId}`,
-      DEFAULT_LEAVE_CONDITIONING_POLICIES
-    );
-    const savedCarryOver = readScopedJson<CarryOverLeaveBalanceSettings[]>(
-      `leave_carry_over_settings_${activeEntityId}`,
-      DEFAULT_CARRY_OVER_SETTINGS
-    );
-    const savedGroups = readScopedJson<LeaveGroup[]>(
-      `leave_groups_${activeEntityId}`,
-      DEFAULT_LEAVE_GROUPS
-    );
-    const savedOffInLieu = readScopedJson<OffInLieuRequest[]>(
-      `off_in_lieu_requests_${activeEntityId}`,
-      []
-    );
+    void loadLeaveWorkspace(activeEntityId).then((workspace) => {
+      if (cancelled) return;
+      setRequests(workspace.requests);
+      setLeaveConfigs(workspace.configs.map(normalizeLeaveConfig));
+      setConditioningPolicies(workspace.policies.length > 0 ? workspace.policies : DEFAULT_LEAVE_CONDITIONING_POLICIES);
+      setCarryOverSettings(workspace.carryOverSettings.length > 0 ? workspace.carryOverSettings : DEFAULT_CARRY_OVER_SETTINGS);
+      setLeaveGroups(workspace.groups.length > 0 ? workspace.groups : DEFAULT_LEAVE_GROUPS);
+      setOffInLieuRequests(workspace.offInLieuRequests);
+      setLedgerEntries(workspace.ledgerEntries);
+      setPayrollDeductions(workspace.payrollDeductions);
+    });
 
-    setRequests(savedRequests);
-    setLeaveConfigs(savedConfigs.map(normalizeLeaveConfig));
-    setConditioningPolicies(savedPolicies.length > 0 ? savedPolicies : DEFAULT_LEAVE_CONDITIONING_POLICIES);
-    setCarryOverSettings(savedCarryOver.length > 0 ? savedCarryOver : DEFAULT_CARRY_OVER_SETTINGS);
-    setLeaveGroups(savedGroups.length > 0 ? savedGroups : DEFAULT_LEAVE_GROUPS);
-    setOffInLieuRequests(savedOffInLieu);
+    return () => {
+      cancelled = true;
+    };
   }, [activeEntityId]);
 
   useEffect(() => {
@@ -528,35 +276,77 @@ export default function LeaveManagementView({
   const saveRequests = (next: LeaveRequest[]) => {
     setRequests(next);
     if (activeEntityId) writeScopedJson(`leave_requests_${activeEntityId}`, next);
+    persistWorkspace({ requests: next });
   };
 
   const saveConfigs = (next: LeaveConfig[]) => {
     setLeaveConfigs(next);
     if (activeEntityId) writeScopedJson(`leave_configs_${activeEntityId}`, next);
+    persistWorkspace({ configs: next });
   };
 
   const savePolicies = (next: LeaveConditioningPolicy[]) => {
     setConditioningPolicies(next);
     if (activeEntityId) writeScopedJson(`leave_conditioning_policies_${activeEntityId}`, next);
+    persistWorkspace({ policies: next });
   };
 
   const saveCarryOver = (next: CarryOverLeaveBalanceSettings[]) => {
     setCarryOverSettings(next);
     if (activeEntityId) writeScopedJson(`leave_carry_over_settings_${activeEntityId}`, next);
+    persistWorkspace({ carryOverSettings: next });
   };
 
   const saveGroups = (next: LeaveGroup[]) => {
     setLeaveGroups(next);
     if (activeEntityId) writeScopedJson(`leave_groups_${activeEntityId}`, next);
+    persistWorkspace({ groups: next });
   };
 
   const saveOffInLieuRequests = (next: OffInLieuRequest[]) => {
     setOffInLieuRequests(next);
     if (activeEntityId) writeScopedJson(`off_in_lieu_requests_${activeEntityId}`, next);
+    persistWorkspace({ offInLieuRequests: next });
+  };
+
+  const persistWorkspace = (overrides: Partial<{
+    configs: LeaveConfig[];
+    policies: LeaveConditioningPolicy[];
+    carryOverSettings: CarryOverLeaveBalanceSettings[];
+    groups: LeaveGroup[];
+    requests: LeaveRequest[];
+    offInLieuRequests: OffInLieuRequest[];
+    ledgerEntries: LeaveBalanceLedgerEntry[];
+    payrollDeductions: LeavePayrollDeduction[];
+  }> = {}) => {
+    if (!activeEntityId) return;
+    const workspace = {
+      configs: overrides.configs || leaveConfigs,
+      policies: overrides.policies || conditioningPolicies,
+      carryOverSettings: overrides.carryOverSettings || carryOverSettings,
+      groups: overrides.groups || leaveGroups,
+      assignments: [],
+      requests: overrides.requests || requests,
+      offInLieuRequests: overrides.offInLieuRequests || offInLieuRequests,
+      ledgerEntries: overrides.ledgerEntries || ledgerEntries,
+      payrollDeductions: overrides.payrollDeductions || payrollDeductions,
+      source: 'local' as const
+    };
+    void persistLeaveWorkspace(activeEntityId, workspace).catch((error) => {
+      console.warn('[Leave Management] Supabase save failed; local fallback remains active:', error);
+    });
   };
 
   const currentEmployee = activeEmployees.find((employee) => employee.id === selectedEmployeeId);
   const enabledLeaveConfigs = leaveConfigs.filter((config) => config.enabled !== false);
+  const selectedEmployeeBalances = calculateLeaveBalances({
+    employeeId: selectedEmployeeId,
+    configs: leaveConfigs,
+    groups: leaveGroups,
+    requests,
+    ledgerEntries,
+    employee: currentEmployee,
+  });
   const policyForLeaveType = conditioningPolicies.find(
     (policy) => policy.id === leaveConfigs.find((config) => config.leaveType === leaveType)?.policyId
   ) || conditioningPolicies[0];
@@ -588,7 +378,7 @@ export default function LeaveManagementView({
   const updatePolicy = (
     id: string,
     field: keyof LeaveConditioningPolicy,
-    value: string | boolean
+    value: string | boolean | number
   ) => {
     savePolicies(conditioningPolicies.map((policy) => policy.id === id ? { ...policy, [field]: value } : policy));
   };
@@ -611,14 +401,19 @@ export default function LeaveManagementView({
             : group.assignedEmployeeIds.filter((id) => id !== employeeId)
         };
       }
-      if (checked) {
-        return {
-          ...group,
-          assignedEmployeeIds: group.assignedEmployeeIds.filter((id) => id !== employeeId)
-        };
-      }
       return group;
     });
+    const duplicates = findDuplicateAssignedLeaveTypes(next, employeeId);
+    if (checked && duplicates.length > 0) {
+      const duplicateNames = duplicates
+        .map((id) => leaveConfigs.find((config) => config.id === id)?.leaveType || id)
+        .join(', ');
+      onShowNotification(
+        'Leave Group Conflict',
+        `This employee already has an active group containing: ${duplicateNames}. Remove the duplicate leave type before assigning this group.`,
+      );
+      return;
+    }
     saveGroups(next);
   };
 
@@ -640,8 +435,10 @@ export default function LeaveManagementView({
 
     const newRequest: LeaveRequest = {
       id: `LR-${Date.now()}`,
+      entityId: activeEntityId,
       employeeId: employee.id,
       employeeName: employee.name,
+      leaveTypeId: leaveConfigs.find((config) => config.leaveType === leaveType)?.id,
       leaveType,
       startDate,
       endDate,
@@ -657,7 +454,136 @@ export default function LeaveManagementView({
   };
 
   const updateLeaveRequestStatus = (id: string, status: Exclude<LeaveRequestStatus, 'Pending'>) => {
-    saveRequests(requests.map((request) => request.id === id ? { ...request, status } : request));
+    const request = requests.find((item) => item.id === id);
+    if (!request) return;
+    const updatedRequest = {
+      ...request,
+      status,
+      approvedAt: status === 'Approved' ? new Date().toISOString() : undefined,
+      approvedBy: status === 'Approved' ? 'HR Admin' : undefined,
+    };
+    const nextRequests = requests.map((item) => item.id === id ? updatedRequest : item);
+    let nextLedgerEntries = ledgerEntries;
+    let nextPayrollDeductions = payrollDeductions;
+
+    if (status === 'Approved' && !ledgerEntries.some((entry) => entry.sourceId === request.id)) {
+      const config = leaveConfigs.find((item) => item.id === request.leaveTypeId || item.leaveType === request.leaveType);
+      const policy = conditioningPolicies.find((item) => item.id === config?.policyId) || conditioningPolicies[0];
+      const employee = activeEmployees.find((item) => item.id === request.employeeId);
+      const approvedPreviously = requests
+        .filter((item) => item.employeeId === request.employeeId && item.leaveType === request.leaveType && item.status === 'Approved')
+        .reduce((sum, item) => sum + item.totalDays, 0);
+      const entitlement = config?.daysEntitled || 0;
+      const excessDays = Math.max(0, approvedPreviously + request.totalDays - entitlement);
+      if (excessDays > 0 && policy?.excessLeaveHandling === 'reject') {
+        onShowNotification(
+          'Leave Exceeds Entitlement',
+          `This request exceeds the ${entitlement}-day entitlement by ${excessDays} day(s) and the active policy rejects excess leave.`,
+        );
+        return;
+      }
+      const isReplacementLeave = config?.systemManaged === true || request.leaveType === 'Replacement Leave';
+      if (isReplacementLeave) {
+        const consumption = consumeReplacementLeaveFIFO(
+          ledgerEntries.filter((entry) => entry.employeeId === request.employeeId && entry.leaveTypeId === (config?.id || request.leaveTypeId)),
+          request.totalDays,
+          request.appliedDate,
+        );
+        if (consumption.remaining > 0) {
+          onShowNotification(
+            'Insufficient Replacement Leave',
+            `This request needs ${request.totalDays} day(s), but only ${consumption.consumed} day(s) of unexpired Replacement Leave credit are available.`,
+          );
+          return;
+        }
+        nextLedgerEntries = [
+          ...ledgerEntries,
+          ...consumption.debits.map((debit) => ({
+            ...debit,
+            entityId: activeEntityId,
+            sourceId: request.id,
+            leaveTypeId: config?.id || request.leaveTypeId || REPLACEMENT_LEAVE_TYPE_ID,
+            leaveType: 'Replacement Leave',
+          })),
+        ];
+      }
+      const deductionDays = isReplacementLeave
+        ? 0
+        : policy?.paidTreatment === 'unpaid' || policy?.payrollDeductionBehavior === 'deduct_all'
+        ? request.totalDays
+        : policy?.payrollDeductionBehavior === 'deduct_excess'
+          ? excessDays
+          : 0;
+      const leaveTypeId = config?.id || request.leaveTypeId || request.leaveType;
+      if (!isReplacementLeave) {
+        const debit: LeaveBalanceLedgerEntry = {
+          id: `LBD-${request.id}`,
+          entityId: activeEntityId,
+          employeeId: request.employeeId,
+          leaveTypeId,
+          leaveType: request.leaveType,
+          entryType: 'debit',
+          sourceType: 'leave_request',
+          sourceId: request.id,
+          quantity: request.totalDays,
+          occurredAt: request.appliedDate,
+          notes: `Approved by HR Admin${excessDays > 0 ? `; ${excessDays} excess day(s)` : ''}`,
+        };
+        nextLedgerEntries = [...ledgerEntries, debit];
+      }
+
+      if (deductionDays > 0 && employee) {
+        const appliedDate = new Date(`${request.appliedDate}T00:00:00`);
+        const fallbackMonth = request.payrollMonth || (Number.isNaN(appliedDate.getTime()) ? new Date().getMonth() + 1 : appliedDate.getMonth() + 1);
+        const fallbackYear = request.payrollYear || (Number.isNaN(appliedDate.getTime()) ? new Date().getFullYear() : appliedDate.getFullYear());
+        const periods = splitLeaveDaysAcrossPayrollMonths({
+          startDate: request.startDate,
+          endDate: request.endDate,
+          totalDays: deductionDays,
+        });
+        const effectivePeriods = periods.length > 0
+          ? periods
+          : [{ payrollMonth: fallbackMonth, payrollYear: fallbackYear, leaveDays: deductionDays }];
+        const deductions = effectivePeriods.map((period, index) => {
+          const deductionBase = calculatePayrollDeduction({
+            employee,
+            leaveDays: period.leaveDays,
+            payrollMonth: period.payrollMonth,
+            payrollYear: period.payrollYear,
+          });
+          return {
+            ...deductionBase,
+            id: `LPD-${request.id}-${index + 1}`,
+            entityId: activeEntityId,
+            employeeId: request.employeeId,
+            leaveRequestId: request.id,
+            reason: policy?.paidTreatment === 'unpaid' ? 'Approved unpaid leave' : 'Approved excess leave',
+          };
+        });
+        const deductionAmount = deductions.reduce((sum, deduction) => sum + deduction.amount, 0);
+        nextPayrollDeductions = [
+          ...payrollDeductions.filter((item) => item.leaveRequestId !== request.id),
+          ...deductions,
+        ];
+        void onUpdateEmployee?.(employee.id, {
+          unpaidLeave: Math.round(((employee.unpaidLeave || 0) + deductionAmount) * 100) / 100,
+        });
+      }
+    }
+
+    setRequests(nextRequests);
+    setLedgerEntries(nextLedgerEntries);
+    setPayrollDeductions(nextPayrollDeductions);
+    if (activeEntityId) {
+      writeScopedJson(`leave_requests_${activeEntityId}`, nextRequests);
+      writeScopedJson(`leave_balance_ledger_${activeEntityId}`, nextLedgerEntries);
+      writeScopedJson(`leave_payroll_deductions_${activeEntityId}`, nextPayrollDeductions);
+    }
+    persistWorkspace({
+      requests: nextRequests,
+      ledgerEntries: nextLedgerEntries,
+      payrollDeductions: nextPayrollDeductions,
+    });
     onShowNotification(`Request ${status}`, `Leave request ${id} has been marked as ${status.toLowerCase()}.`);
   };
 
@@ -810,6 +736,7 @@ export default function LeaveManagementView({
     const names = selectedOffInLieuEmployees.map((employee) => employee.name);
     const request: OffInLieuRequest = {
       id: `OIL-${Date.now()}`,
+      entityId: activeEntityId,
       employeeIds: [...offInLieuEmployeeIds],
       employeeNames: names,
       entries: offInLieuEntries.map((entry) => ({ ...entry })),
@@ -831,7 +758,39 @@ export default function LeaveManagementView({
   };
 
   const updateOffInLieuStatus = (id: string, status: Exclude<OffInLieuStatus, 'Draft' | 'Pending'>) => {
-    saveOffInLieuRequests(offInLieuRequests.map((request) => request.id === id ? { ...request, status } : request));
+    const request = offInLieuRequests.find((item) => item.id === id);
+    if (!request) return;
+    const nextRequests = offInLieuRequests.map((item) => item.id === id ? {
+      ...item,
+      status,
+      approvedAt: status === 'Approved' ? new Date().toISOString() : undefined,
+      approvedBy: status === 'Approved' ? 'HR Admin' : undefined,
+    } : item);
+    let nextLedgerEntries = ledgerEntries;
+    if (status === 'Approved' && !ledgerEntries.some((entry) => entry.sourceId === request.id)) {
+      const credits = request.employeeIds.map((employeeId) => ({
+        id: `LBC-${request.id}-${employeeId}`,
+        entityId: activeEntityId,
+        employeeId,
+        leaveTypeId: REPLACEMENT_LEAVE_TYPE_ID,
+        leaveType: 'Replacement Leave',
+        entryType: 'credit' as const,
+        sourceType: 'off_in_lieu' as const,
+        sourceId: request.id,
+        quantity: request.totalDaysPerEmployee,
+        expiresAt: request.expiryDate,
+        occurredAt: request.appliedDate,
+        notes: 'Approved Off in Lieu credit',
+      }));
+      nextLedgerEntries = [...ledgerEntries, ...credits];
+    }
+    setOffInLieuRequests(nextRequests);
+    setLedgerEntries(nextLedgerEntries);
+    if (activeEntityId) {
+      writeScopedJson(`off_in_lieu_requests_${activeEntityId}`, nextRequests);
+      writeScopedJson(`leave_balance_ledger_${activeEntityId}`, nextLedgerEntries);
+    }
+    persistWorkspace({ offInLieuRequests: nextRequests, ledgerEntries: nextLedgerEntries });
     onShowNotification(`Off in Lieu ${status}`, `${id} has been marked as ${status.toLowerCase()}.`);
   };
 
@@ -847,12 +806,40 @@ export default function LeaveManagementView({
   const changeGroupLeaveType = (groupId: string, leaveTypeId: string, checked: boolean) => {
     saveGroups(leaveGroups.map((group) => {
       if (group.id !== groupId) return group;
+      const currentItems = getGroupItems(group, leaveConfigs);
+      const nextItems = checked
+        ? [...currentItems.filter((item) => item.leaveTypeId !== leaveTypeId), {
+          id: `${group.id}-${leaveTypeId}`,
+          groupId,
+          leaveTypeId,
+          policyId: group.policyId,
+          carryOverId: group.carryOverId,
+          entitlementDays: leaveConfigs.find((config) => config.id === leaveTypeId)?.daysEntitled || 0,
+          enabled: true,
+        }]
+        : currentItems.filter((item) => item.leaveTypeId !== leaveTypeId);
       return {
         ...group,
         leaveTypeIds: checked
           ? [...new Set([...group.leaveTypeIds, leaveTypeId])]
-          : group.leaveTypeIds.filter((id) => id !== leaveTypeId)
+          : group.leaveTypeIds.filter((id) => id !== leaveTypeId),
+        items: nextItems,
       };
+    }));
+  };
+
+  const updateGroupLeaveItem = (
+    groupId: string,
+    leaveTypeId: string,
+    field: keyof Pick<LeaveGroupItem, 'policyId' | 'carryOverId' | 'entitlementDays'>,
+    value: string | number,
+  ) => {
+    saveGroups(leaveGroups.map((group) => {
+      if (group.id !== groupId) return group;
+      const items = getGroupItems(group, leaveConfigs).map((item) => item.leaveTypeId === leaveTypeId
+        ? { ...item, [field]: value }
+        : item);
+      return { ...group, items };
     }));
   };
 
@@ -1014,16 +1001,14 @@ export default function LeaveManagementView({
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {enabledLeaveConfigs.slice(0, 8).map((config) => {
-            const approvedDays = requests
-              .filter((request) => request.employeeId === selectedEmployeeId && request.leaveType === config.leaveType && request.status === 'Approved')
-              .reduce((total, request) => total + request.totalDays, 0);
-            const remaining = Math.max(0, config.daysEntitled - approvedDays);
+            const balance = selectedEmployeeBalances.find((item) => item.leaveTypeId === config.id);
+            const remaining = balance?.remaining ?? config.daysEntitled;
             return (
               <div key={config.id} className="rounded-lg border border-neutral-border/60 bg-neutral-50 p-3">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">{config.leaveType}</span>
                 <div className="mt-2 flex items-end justify-between">
                   <span className="font-mono text-2xl font-bold text-primary">{remaining}</span>
-                  <span className="text-[10px] text-on-surface-variant">/ {config.daysEntitled} days</span>
+                  <span className="text-[10px] text-on-surface-variant">/ {(balance?.entitlement ?? config.daysEntitled) + (balance?.carryOver ?? 0)} days</span>
                 </div>
                 <span className="mt-2 block text-[10px] text-on-surface-variant">{config.condition}</span>
               </div>
@@ -1076,6 +1061,20 @@ export default function LeaveManagementView({
                 ['calendar_year', 'Calendar year'],
                 ['anniversary_year', 'Employment anniversary'],
                 ['monthly_accrual', 'Monthly accrual period']
+              ]} />
+              <SelectField label="Paid / Unpaid Treatment" value={policy.paidTreatment || 'paid'} onChange={(value) => updatePolicy(policy.id, 'paidTreatment', value)} options={[
+                ['paid', 'Paid leave'],
+                ['unpaid', 'Unpaid leave']
+              ]} />
+              <SelectField label="Excess Leave Handling" value={policy.excessLeaveHandling || 'payroll_deduction'} onChange={(value) => updatePolicy(policy.id, 'excessLeaveHandling', value)} options={[
+                ['allow', 'Allow excess leave'],
+                ['reject', 'Reject excess leave'],
+                ['payroll_deduction', 'Send excess to payroll']
+              ]} />
+              <SelectField label="Payroll Deduction Behavior" value={policy.payrollDeductionBehavior || 'deduct_excess'} onChange={(value) => updatePolicy(policy.id, 'payrollDeductionBehavior', value)} options={[
+                ['none', 'No payroll deduction'],
+                ['deduct_excess', 'Deduct excess days'],
+                ['deduct_all', 'Deduct all days']
               ]} />
             </div>
 
@@ -1147,8 +1146,12 @@ export default function LeaveManagementView({
               )}
             </div>
             <div className="mt-5">
+              <label className={labelClass}>Carry Forward Rule Details</label>
+              <textarea rows={2} value={setting.ruleDetails || ''} onChange={(event) => updateCarryOver(setting.id, 'ruleDetails', event.target.value)} className={inputClass} placeholder="Explain how unused balances move into the next period." />
+            </div>
+            <div className="mt-3">
               <label className={labelClass}>Rule Notes</label>
-              <textarea rows={3} value={setting.notes} onChange={(event) => updateCarryOver(setting.id, 'notes', event.target.value)} className={inputClass} />
+              <textarea rows={2} value={setting.notes} onChange={(event) => updateCarryOver(setting.id, 'notes', event.target.value)} className={inputClass} />
             </div>
           </div>
         ))}
@@ -1297,13 +1300,32 @@ export default function LeaveManagementView({
 
             <div className="mt-4">
               <p className={labelClass}>Type of Leave in this group</p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {leaveConfigs.map((config) => (
-                  <label key={config.id} className="flex items-center gap-2 rounded-md border border-neutral-border/60 px-2.5 py-2 text-xs">
-                    <input type="checkbox" checked={group.leaveTypeIds.includes(config.id)} onChange={(event) => changeGroupLeaveType(group.id, config.id, event.target.checked)} className="h-3.5 w-3.5 accent-[#b42318]" />
-                    <span className="font-semibold text-on-surface">{config.leaveType}</span>
-                  </label>
-                ))}
+              <div className="space-y-2">
+                {leaveConfigs.filter((config) => !config.systemManaged).map((config) => {
+                  const selected = group.leaveTypeIds.includes(config.id);
+                  const item = getGroupItems(group, leaveConfigs).find((groupItem) => groupItem.leaveTypeId === config.id);
+                  return (
+                    <div key={config.id} className="grid grid-cols-1 gap-2 rounded-md border border-neutral-border/60 px-2.5 py-2 text-xs md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_100px] md:items-center">
+                      <label className="flex items-center gap-2">
+                        <input type="checkbox" checked={selected} onChange={(event) => changeGroupLeaveType(group.id, config.id, event.target.checked)} className="h-3.5 w-3.5 accent-[#b42318]" />
+                        <span className="font-semibold text-on-surface">{config.leaveType}</span>
+                      </label>
+                      {selected ? (
+                        <>
+                          <select value={item?.policyId || group.policyId} onChange={(event) => updateGroupLeaveItem(group.id, config.id, 'policyId', event.target.value)} className={inputClass}>
+                            {conditioningPolicies.map((policy) => <option key={policy.id} value={policy.id}>{policy.name}</option>)}
+                          </select>
+                          <select value={item?.carryOverId || group.carryOverId} onChange={(event) => updateGroupLeaveItem(group.id, config.id, 'carryOverId', event.target.value)} className={inputClass}>
+                            {carryOverSettings.map((setting) => <option key={setting.id} value={setting.id}>{setting.name}</option>)}
+                          </select>
+                          <input type="number" min={0} value={item?.entitlementDays ?? config.daysEntitled} onChange={(event) => updateGroupLeaveItem(group.id, config.id, 'entitlementDays', Number(event.target.value))} className={`${inputClass} font-mono`} title="Entitlement days for this group row" />
+                        </>
+                      ) : (
+                        <span className="text-[10px] text-on-surface-variant md:col-span-3">Not included in this group</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
