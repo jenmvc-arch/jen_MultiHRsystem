@@ -2892,10 +2892,15 @@ export default function EmployeeDirectoryView({
                               {allowanceEntries.map(({ label, amount }) => (
                                 <span
                                   key={label}
-                                  className="inline-flex items-center rounded bg-surface-container-high px-1.5 py-0.5 text-[10px] font-semibold text-on-surface-variant"
+                                  className="inline-flex min-w-[92px] flex-col items-start rounded bg-surface-container-high px-2 py-1 text-[10px] text-on-surface-variant"
                                   title={`${label} Allowance`}
                                 >
-                                  {label}: RM {formatCurrencyAmount(amount)}
+                                  <span className="whitespace-nowrap font-mono font-bold text-on-surface">
+                                    RM {formatCurrencyAmount(amount)}
+                                  </span>
+                                  <span className="whitespace-nowrap text-[9px] font-semibold uppercase tracking-tight text-on-surface-variant">
+                                    ({label} Allowance)
+                                  </span>
                                 </span>
                               ))}
                             </div>
