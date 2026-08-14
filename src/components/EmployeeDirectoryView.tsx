@@ -2766,18 +2766,21 @@ export default function EmployeeDirectoryView({
 
             {/* Directory spreadsheet grid */}
             <div className="overflow-x-auto">
-              <table className="min-w-[1500px] w-full table-fixed text-left border-collapse text-xs">
+              <table className="min-w-[2250px] w-max table-auto text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-surface-container-low border-b border-neutral-border text-on-surface-variant font-bold uppercase tracking-wider select-none whitespace-nowrap">
-                    <th className="w-[330px] p-4">Personnel Info</th>
-                    <th className="w-[180px] p-4">Subsidiary</th>
-                    <th className="w-[280px] p-4">Type & NRIC/Passport</th>
-                    <th className="w-[230px] p-4">Department & Designation</th>
-                    <th className="w-[170px] p-4">Salary Base (RM)</th>
-                    <th className="w-[150px] p-4">Date of Joined</th>
-                    <th className="w-[150px] p-4">Status</th>
-                    <th className="w-[170px] p-4">Account Access</th>
-                    <th className="w-[160px] p-4 text-right">Administrative</th>
+                    <th className="min-w-[330px] p-4">Personnel Info</th>
+                    <th className="min-w-[180px] p-4">Subsidiary</th>
+                    <th className="min-w-[180px] p-4">NRIC/Passport</th>
+                    <th className="min-w-[230px] p-4">Department & Designation</th>
+                    <th className="min-w-[170px] p-4">Type of Employment</th>
+                    <th className="min-w-[170px] p-4">Type of Payslip</th>
+                    <th className="min-w-[170px] p-4">Basic Salary</th>
+                    <th className="min-w-[430px] p-4">Allowances</th>
+                    <th className="min-w-[150px] p-4">Date of Joined</th>
+                    <th className="min-w-[150px] p-4">Status</th>
+                    <th className="min-w-[170px] p-4">Account Access</th>
+                    <th className="min-w-[160px] p-4 text-right">Administrative</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-border/50">
@@ -2786,6 +2789,20 @@ export default function EmployeeDirectoryView({
                     const statusClasses = getEmployeeStatusClasses(displayedStatus);
                     const displayedBasicSalary = getDisplayedMonthlyBasicSalary(emp);
                     const documentProfile = getPayrollDocumentProfile(emp);
+                    const allowanceEntries = [
+                      { label: 'General', amount: Number(emp.allowanceGeneral || 0) },
+                      {
+                        label: 'Transport',
+                        amount: Number(emp.allowanceTransport !== undefined ? emp.allowanceTransport : emp.transportAllowance || 0)
+                      },
+                      { label: 'Parking', amount: Number(emp.allowanceParking || 0) },
+                      { label: 'Meal', amount: Number(emp.allowanceMeal || 0) },
+                      {
+                        label: 'Housing',
+                        amount: Number(emp.allowanceAccommodation !== undefined ? emp.allowanceAccommodation : emp.housingAllowance || 0)
+                      },
+                      { label: 'Phone', amount: Number(emp.allowancePhone || 0) }
+                    ].filter(({ amount }) => amount > 0);
                     const accountSummary = getAccountSummary(emp);
                     const accountLabel = accountSummary.accountStatus === 'must_change_password'
                       ? 'Setup required'
@@ -2836,20 +2853,9 @@ export default function EmployeeDirectoryView({
                           </span>
                         </td>
 
-                        {/* Column 3: Type & NRIC */}
+                        {/* Column 3: NRIC / Passport */}
                         <td className="p-4 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-bold text-secondary uppercase bg-surface-container-high px-1.5 py-0.5 rounded">
-                              {emp.employmentType || 'Full-Time'}
-                            </span>
-                            <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                              documentProfile.isPaymentVoucher ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
-                            }`}>
-                              {documentProfile.documentType}
-                            </span>
-                            <span className="text-[10px] font-semibold text-on-surface-variant">{documentProfile.compensationLabel}</span>
-                          </div>
-                          <div className="mt-1 font-mono text-xs font-semibold text-on-surface">{emp.nricPassport || 'N/A'}</div>
+                          <span className="font-mono text-xs font-semibold text-on-surface">{emp.nricPassport || 'N/A'}</span>
                         </td>
 
                         {/* Column 4: Department */}
@@ -2858,17 +2864,52 @@ export default function EmployeeDirectoryView({
                           <div className="text-[10px] text-on-surface-variant mt-0.5 truncate">{emp.department}</div>
                         </td>
 
-                        {/* Column 5: Base Salary */}
+                        {/* Column 5: Type of Employment */}
+                        <td className="p-4 whitespace-nowrap">
+                          <span className="inline-flex items-center text-[10px] font-bold text-secondary uppercase bg-surface-container-high px-1.5 py-0.5 rounded">
+                            {emp.employmentType || 'Full-Time'}
+                          </span>
+                        </td>
+
+                        {/* Column 6: Type of Payslip */}
+                        <td className="p-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                            documentProfile.isPaymentVoucher ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                          }`}>
+                            {documentProfile.documentType}
+                          </span>
+                        </td>
+
+                        {/* Column 7: Basic Salary */}
                         <td className="p-4 whitespace-nowrap font-mono font-semibold text-primary">
                           RM {formatCurrencyAmount(displayedBasicSalary)}
                         </td>
 
-                        {/* Column 6: Date Joined */}
+                        {/* Column 8: Allowances */}
+                        <td className="p-4 whitespace-nowrap">
+                          {allowanceEntries.length > 0 ? (
+                            <div className="inline-flex items-center gap-1.5">
+                              {allowanceEntries.map(({ label, amount }) => (
+                                <span
+                                  key={label}
+                                  className="inline-flex items-center rounded bg-surface-container-high px-1.5 py-0.5 text-[10px] font-semibold text-on-surface-variant"
+                                  title={`${label} Allowance`}
+                                >
+                                  {label}: RM {formatCurrencyAmount(amount)}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] font-semibold text-outline">None</span>
+                          )}
+                        </td>
+
+                        {/* Column 9: Date Joined */}
                         <td className="p-4 whitespace-nowrap text-on-surface-variant font-mono">
                           {formatToDDMMMYYYY(emp.dateOfJoined)}
                         </td>
 
-                        {/* Column 7: Status */}
+                        {/* Column 10: Status */}
                         <td className="p-4 whitespace-nowrap">
                           <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${statusClasses.badge}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${statusClasses.dot}`} />
@@ -2876,7 +2917,7 @@ export default function EmployeeDirectoryView({
                           </span>
                         </td>
 
-                        {/* Column 8: Employee Account */}
+                        {/* Column 11: Employee Account */}
                         <td className="p-4 whitespace-nowrap" onClick={(event) => event.stopPropagation()}>
                           <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${accountClasses}`}>
                             <KeyRound className="w-3 h-3" />
@@ -2894,7 +2935,7 @@ export default function EmployeeDirectoryView({
                           </button>
                         </td>
 
-                        {/* Column 9: Delete / Admin */}
+                        {/* Column 12: Delete / Admin */}
                         <td className="p-4 text-right whitespace-nowrap">
                           <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                             <button 
