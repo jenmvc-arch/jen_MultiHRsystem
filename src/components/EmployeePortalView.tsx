@@ -191,14 +191,20 @@ export default function EmployeePortalView({
   isPreviewMode = false,
   previewEmployeeId = '',
 }: EmployeePortalViewProps) {
+  const initialActiveSectionKey = isPreviewMode
+    ? 'employee_portal_demo_active_section'
+    : 'employee_portal_active_section';
   const [activeSection, setActiveSection] = useState<PortalSection>(() => {
-    const saved = localStorage.getItem('employee_portal_active_section');
-    return (saved as PortalSection) || 'home';
+    const saved = localStorage.getItem(initialActiveSectionKey);
+    return PORTAL_NAV_ITEMS.some((item) => item.id === saved)
+      ? saved as PortalSection
+      : 'home';
   });
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(previewEmployeeId);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileRevision, setProfileRevision] = useState(0);
   const [selectedPayslip, setSelectedPayslip] = useState<{ month: number; year: number; record?: PayrollRecord2026 } | null>(null);
   const [leaveConfigs, setLeaveConfigs] = useState<LeaveConfig[]>(DEFAULT_LEAVE_CONFIGS);
   const [leavePolicies, setLeavePolicies] = useState<LeaveConditioningPolicy[]>([]);
@@ -236,7 +242,7 @@ export default function EmployeePortalView({
       };
     }
     return employeeFromSession || null;
-  }, [employees, employeeFromSession, isPreviewMode, selectedEmployeeId]);
+  }, [employees, employeeFromSession, isPreviewMode, profileRevision, selectedEmployeeId]);
 
   const employeeEntity = useMemo(
     () => entities.find((entity) => entity.id === selectedEmployee?.entityId) || entities[0] || null,
@@ -377,7 +383,7 @@ export default function EmployeePortalView({
     setProfileDraft(getEmployeeProfileDraft(selectedEmployee));
     setDependantsDraft((selectedEmployee.dependants || []).map((dependant) => ({ ...dependant })));
     setIsEditingProfile(false);
-  }, [isPreviewMode, selectedEmployee]);
+  }, [selectedEmployee?.id]);
 
   useEffect(() => {
     if (!selectedEmployee) return;
@@ -519,6 +525,7 @@ export default function EmployeePortalView({
         savePreviewEmployeeOverrides(selectedEmployee.id, {
           ...profileUpdates,
         });
+        setProfileRevision((revision) => revision + 1);
       } else {
         await onUpdateEmployee(selectedEmployee.id, profileUpdates);
       }
