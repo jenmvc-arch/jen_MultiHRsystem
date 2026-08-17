@@ -69,11 +69,11 @@ export default function Sidebar({
   const activeEntity = entities.find(e => e.id === activeEntityId) || entities[0];
 
   const SidebarContent = () => (
-    <div className="flex flex-col h-full bg-primary text-[#f7f0e0] py-6" style={{ viewTransitionName: 'sidebar-container' } as any}>
+    <div className="flex flex-col h-full bg-primary text-[#f7f0e0] py-5" style={{ viewTransitionName: 'sidebar-container' } as any}>
       {/* Brand Header with Corporate Selector */}
-      <div className="px-5 mb-6 flex flex-col items-center gap-3 bg-white/5 p-4 rounded-lg mx-3 border border-white/10" style={{ viewTransitionName: 'sidebar-brand' } as any}>
+      <div className="px-4 mb-5 mx-3 rounded-2xl border border-white/10 bg-black/10 p-4" style={{ viewTransitionName: 'sidebar-brand' } as any}>
         {/* Company Logo */}
-        <div className="w-36 h-12 flex items-center justify-center overflow-hidden shrink-0 relative" style={{ viewTransitionName: 'corporate-logo' } as any}>
+        <div className="w-full h-12 flex items-center justify-center overflow-hidden shrink-0 relative" style={{ viewTransitionName: 'corporate-logo' } as any}>
           <img 
             src="/redpoint-logo.png" 
             alt="RedPoint Logo" 
@@ -81,13 +81,42 @@ export default function Sidebar({
           />
         </div>
 
+        <div className="mt-4 border-t border-white/10 pt-3">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#f7f0e0]/45">
+              Workspace
+            </span>
+            <Building2 className="h-3.5 w-3.5 text-[#f7f0e0]/50" aria-hidden="true" />
+          </div>
+          {entities.length > 1 && onChangeActiveEntity ? (
+            <select
+              value={activeEntity?.id || ''}
+              onChange={(event) => onChangeActiveEntity(event.target.value)}
+              aria-label="Select company workspace"
+              className="w-full cursor-pointer appearance-none rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-left text-[11px] font-bold text-[#f7f0e0] outline-none transition-colors hover:bg-white/15 focus:border-[#f7f0e0]/60 focus:ring-2 focus:ring-[#f7f0e0]/20"
+            >
+              {entities.filter(entity => entity.isActive).map(entity => (
+                <option key={entity.id} value={entity.id} className="bg-primary text-[#f7f0e0]">
+                  {entity.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="truncate text-[12px] font-bold text-[#f7f0e0]">
+              {activeEntity?.name || 'Employer Console'}
+            </div>
+          )}
+          <div className="mt-1 truncate text-[9px] uppercase tracking-wider text-[#f7f0e0]/45">
+            Admin workspace
+          </div>
+        </div>
       </div>
 
       {/* Action Button */}
-      <div className="px-4 mb-6">
+      <div className="px-4 mb-5">
         <button 
           onClick={onNewRequest}
-          className="w-full bg-[#f7f0e0] text-primary font-medium text-sm py-2 px-4 rounded shadow-sm hover:bg-[#f7f0e0]/90 transition-colors flex items-center justify-center gap-2"
+          className="w-full rounded-xl bg-[#f7f0e0] px-4 py-2.5 text-sm font-bold text-primary shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f7f0e0]/50 flex items-center justify-center gap-2"
           id="btn-sidebar-new-request"
         >
           <Plus className="w-4 h-4" />
@@ -98,7 +127,7 @@ export default function Sidebar({
       <nav className="flex-1 px-2 space-y-4 overflow-y-auto style-scrollbar">
         {/* Core Operations Section */}
         <div>
-          <div className="px-4 py-1 text-[9px] font-bold text-[#f7f0e0]/40 uppercase tracking-widest mb-1">
+          <div className="px-4 py-1 text-[9px] font-bold text-[#f7f0e0]/45 uppercase tracking-[0.18em] mb-1">
             Core Operations
           </div>
           <div className="space-y-0.5">
@@ -115,10 +144,10 @@ export default function Sidebar({
                     onTabChange(item.id);
                     onMobileClose();
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-2 rounded text-[11px] font-semibold transition-all duration-150 ${
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-[11px] font-semibold transition-all duration-150 ${
                     isActive 
-                      ? 'bg-white/10 text-[#f7f0e0] border-l-4 border-[#f7f0e0]' 
-                      : 'text-[#f7f0e0]/75 hover:bg-white/5 hover:text-[#f7f0e0]'
+                      ? 'bg-white/12 text-[#f7f0e0] shadow-inner border-l-2 border-[#f7f0e0]'
+                      : 'text-[#f7f0e0]/75 hover:bg-white/7 hover:text-[#f7f0e0]'
                   }`}
                   id={`nav-item-${item.id}`}
                 >
@@ -132,7 +161,7 @@ export default function Sidebar({
 
         {/* Setup & Compliance Section */}
         <div>
-          <div className="px-4 py-1 text-[9px] font-bold text-[#f7f0e0]/40 uppercase tracking-widest mb-1">
+          <div className="px-4 py-1 text-[9px] font-bold text-[#f7f0e0]/45 uppercase tracking-[0.18em] mb-1">
             Setup & Compliance
           </div>
           <div className="space-y-0.5">
@@ -149,10 +178,10 @@ export default function Sidebar({
                     onTabChange(item.id);
                     onMobileClose();
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-2 rounded text-[11px] font-semibold transition-all duration-150 ${
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-[11px] font-semibold transition-all duration-150 ${
                     isActive 
-                      ? 'bg-white/10 text-[#f7f0e0] border-l-4 border-[#f7f0e0]' 
-                      : 'text-[#f7f0e0]/75 hover:bg-white/5 hover:text-[#f7f0e0]'
+                      ? 'bg-white/12 text-[#f7f0e0] shadow-inner border-l-2 border-[#f7f0e0]'
+                      : 'text-[#f7f0e0]/75 hover:bg-white/7 hover:text-[#f7f0e0]'
                   }`}
                   id={`nav-item-${item.id}`}
                 >
@@ -180,10 +209,10 @@ export default function Sidebar({
                 onTabChange(item.id);
                 onMobileClose();
               }}
-              className={`w-full flex items-center gap-3 px-4 py-2 rounded text-sm font-medium transition-all duration-150 ${
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-[11px] font-semibold transition-all duration-150 ${
                 isActive 
-                  ? 'bg-white/10 text-[#f7f0e0] border-l-4 border-[#f7f0e0]' 
-                  : 'text-[#f7f0e0]/70 hover:bg-white/5 hover:text-[#f7f0e0]'
+                  ? 'bg-white/12 text-[#f7f0e0] shadow-inner border-l-2 border-[#f7f0e0]'
+                  : 'text-[#f7f0e0]/70 hover:bg-white/7 hover:text-[#f7f0e0]'
               }`}
               id={`nav-item-${item.id}`}
             >

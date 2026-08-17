@@ -35,7 +35,7 @@ import {
   ExternalLink,
   ClipboardList,
 } from 'lucide-react';
-import { Employee, EmployeePerformance, CorporateEntity, PayrollRecord2026, ReviewCycle } from '../types';
+import { Candidate, Dependant, Employee, EmployeePerformance, CorporateEntity, PayrollRecord2026, ReviewCycle } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
 import PayslipDocumentView from './PayslipDocumentView';
 import PerformanceAppraisalForm from './PerformanceAppraisalForm';
@@ -54,11 +54,14 @@ import {
 } from '../lib/leaveDomain';
 import { loadLeaveWorkspace, persistLeaveWorkspace } from '../lib/leaveService';
 
+const OnboardingPortalView = React.lazy(() => import('./OnboardingPortalView'));
+
 type PortalSection =
   | 'home'
   | 'profile'
   | 'payslips'
   | 'leave'
+  | 'onboarding'
   | 'growth'
   | 'documents'
   | 'support';
@@ -76,6 +79,7 @@ interface SupportRequest {
 
 interface EmployeePortalViewProps {
   employees: Employee[];
+  candidates: Candidate[];
   payrollRecords2026: PayrollRecord2026[];
   entities: CorporateEntity[];
   performances: EmployeePerformance[];
@@ -100,6 +104,7 @@ const PORTAL_NAV_ITEMS: Array<{
   { id: 'profile', label: 'My Profile', icon: User },
   { id: 'payslips', label: 'Payslips', icon: Wallet },
   { id: 'leave', label: 'Leave', icon: CalendarDays },
+  { id: 'onboarding', label: 'Onboarding', icon: ClipboardList },
   { id: 'growth', label: 'Performance & Appraisal', icon: TrendingUp },
   { id: 'documents', label: 'Documents', icon: FileText },
   { id: 'support', label: 'Support', icon: LifeBuoy },
@@ -151,6 +156,7 @@ const currency = (value: number) =>
 
 export default function EmployeePortalView({
   employees,
+  candidates,
   payrollRecords2026,
   entities,
   performances,
@@ -257,7 +263,11 @@ export default function EmployeePortalView({
     : null;
 
   const selectedCareerHistory = selectedEmployee?.careerHistory || [];
-  const selectedDependants = selectedEmployee?.dependants || [];
+  const selectedEmployeeCandidates = useMemo(() => {
+    const employeeEmail = String(selectedEmployee?.email || '').toLowerCase();
+    if (!employeeEmail || /^pending-email-\d+@redpoint\.local$/i.test(employeeEmail)) return [];
+    return candidates.filter((candidate) => String(candidate.email || '').toLowerCase() === employeeEmail);
+  }, [candidates, selectedEmployee?.email]);
 
   const storagePrefix = isPreviewMode ? 'employee_portal_demo_' : 'employee_portal_';
   const leaveStorageKey = selectedEmployee?.entityId ? `${storagePrefix}leave_requests_${selectedEmployee.entityId}` : '';
@@ -327,7 +337,19 @@ export default function EmployeePortalView({
     emergencyContactRelation: '',
     emergencyContactPhone: '',
     avatarUrl: '',
+    bankName: '',
+    accountNo: '',
+    taxNumber: '',
+    epfNumber: '',
+    maritalStatus: 'Single' as Employee['maritalStatus'],
+    spouseName: '',
+    spouseNric: '',
+    spouseIsWorking: 'No' as NonNullable<Employee['spouseIsWorking']>,
+    spouseCompany: '',
+    spousePosition: '',
+    hasDependants: 'No' as NonNullable<Employee['hasDependants']>,
   });
+  const [dependantsDraft, setDependantsDraft] = useState<Dependant[]>([]);
 
   useEffect(() => {
     if (!selectedEmployee?.id) return;
@@ -340,8 +362,20 @@ export default function EmployeePortalView({
       emergencyContactRelation: selectedEmployee.emergencyContactRelation || '',
       emergencyContactPhone: selectedEmployee.emergencyContactPhone || '',
       avatarUrl: selectedEmployee.avatarUrl || '',
+      bankName: selectedEmployee.bankName || '',
+      accountNo: selectedEmployee.accountNo || '',
+      taxNumber: selectedEmployee.taxNumber || '',
+      epfNumber: selectedEmployee.epfNumber || '',
+      maritalStatus: selectedEmployee.maritalStatus || 'Single',
+      spouseName: selectedEmployee.spouseName || '',
+      spouseNric: selectedEmployee.spouseNric || '',
+      spouseIsWorking: selectedEmployee.spouseIsWorking || 'No',
+      spouseCompany: selectedEmployee.spouseCompany || '',
+      spousePosition: selectedEmployee.spousePosition || '',
+      hasDependants: selectedEmployee.hasDependants || (selectedEmployee.dependants?.length ? 'Yes' : 'No'),
     });
-  }, [isPreviewMode, selectedEmployee?.id]);
+    setDependantsDraft((selectedEmployee.dependants || []).map((dependant) => ({ ...dependant })));
+  }, [isPreviewMode, selectedEmployee]);
 
   useEffect(() => {
     if (!selectedEmployee) return;
@@ -442,6 +476,22 @@ export default function EmployeePortalView({
 
   const handleSaveProfile = async () => {
     if (!selectedEmployee) return;
+    const normalizedDependants = dependantsDraft
+      .map((dependant) => ({
+        ...dependant,
+        name: dependant.name.trim(),
+        dob: dependant.dob.trim(),
+      }))
+      .filter((dependant) => dependant.name || dependant.dob);
+
+    if (profileDraft.hasDependants === 'Yes') {
+      const incompleteDependant = normalizedDependants.find((dependant) => !dependant.name || !dependant.dob);
+      if (incompleteDependant) {
+        onShowNotification('Profile Update', 'Please complete each dependant name and date of birth, or remove the empty row.');
+        return;
+      }
+    }
+
     setIsSavingProfile(true);
     try {
       const profileUpdates: Partial<Employee> = {
@@ -450,6 +500,18 @@ export default function EmployeePortalView({
         emergencyContactRelation: profileDraft.emergencyContactRelation.trim(),
         emergencyContactPhone: profileDraft.emergencyContactPhone.trim(),
         avatarUrl: profileDraft.avatarUrl.trim(),
+        bankName: profileDraft.bankName.trim(),
+        accountNo: profileDraft.accountNo.trim(),
+        taxNumber: profileDraft.taxNumber.trim(),
+        epfNumber: profileDraft.epfNumber.trim(),
+        maritalStatus: profileDraft.maritalStatus,
+        spouseName: profileDraft.spouseName.trim(),
+        spouseNric: profileDraft.spouseNric.trim(),
+        spouseIsWorking: profileDraft.spouseIsWorking,
+        spouseCompany: profileDraft.spouseCompany.trim(),
+        spousePosition: profileDraft.spousePosition.trim(),
+        hasDependants: profileDraft.hasDependants,
+        dependants: profileDraft.hasDependants === 'Yes' ? normalizedDependants : [],
       };
       if (isPreviewMode) {
         savePreviewEmployeeOverrides(selectedEmployee.id, {
@@ -458,7 +520,7 @@ export default function EmployeePortalView({
       } else {
         await onUpdateEmployee(selectedEmployee.id, profileUpdates);
       }
-      onShowNotification('Profile Updated', 'Your contact details were saved.');
+      onShowNotification('Profile Updated', 'Your contact, financial, statutory, and family details were saved.');
     } catch (error) {
       console.error('[Employee Portal] Profile save failed:', error);
       onShowNotification('Profile Update Failed', 'We could not save your profile details right now.');
@@ -596,17 +658,13 @@ export default function EmployeePortalView({
   }
 
   const sidebarContent = (
-    <div className="flex h-full flex-col bg-gradient-to-b from-[#7f1d1d] via-[#842323] to-[#6f1919] text-[#fff6ec] p-5">
-      <div className="mb-6 rounded-2xl border border-white/10 bg-white/8 p-4 shadow-[0_12px_24px_rgba(0,0,0,0.08)]">
-        <div className="flex items-center gap-3">
-          <div className="h-12 w-12 overflow-hidden rounded-2xl bg-white">
-            <img src="/redpoint-logo.png" alt="RedPoint" className="h-full w-full object-contain p-1.5" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-[0.35em] text-white/60">Employee Portal</p>
-            <p className="truncate text-sm font-semibold">{employeeEntity?.name || 'Red Point Sdn Bhd'}</p>
-          </div>
+    <div className="flex h-full flex-col bg-gradient-to-b from-[#7f1d1d] via-[#842323] to-[#6f1919] p-4 text-[#fff6ec]">
+      <div className="mb-6 rounded-2xl border border-white/10 bg-white/8 p-4 text-center shadow-[0_12px_24px_rgba(0,0,0,0.08)]">
+        <div className="mx-auto flex h-14 w-32 items-center justify-center overflow-hidden rounded-2xl bg-white">
+          <img src="/redpoint-logo.png" alt="RedPoint" className="h-full w-full object-contain p-2" />
         </div>
+        <p className="mt-3 text-[9px] font-bold uppercase tracking-[0.35em] text-white/55">Employee Portal</p>
+        <p className="mt-1 truncate text-sm font-semibold">{employeeEntity?.name || 'Red Point Sdn Bhd'}</p>
       </div>
 
       <div className="mb-5 rounded-2xl border border-white/10 bg-white/8 p-4 shadow-[0_12px_24px_rgba(0,0,0,0.08)]">
@@ -623,6 +681,9 @@ export default function EmployeePortalView({
         </div>
       </div>
 
+      <p className="mb-2 px-2 text-[10px] font-bold uppercase tracking-[0.22em] text-white/45">
+        Employee Workspace
+      </p>
       <nav className="space-y-2">
         {PORTAL_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
@@ -636,7 +697,7 @@ export default function EmployeePortalView({
               className={tabButtonClass(item.id)}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              <span className="text-sm font-semibold tracking-[0.01em]">{item.label}</span>
+              <span className="text-xs font-semibold tracking-[0.01em]">{item.label}</span>
             </button>
           );
         })}
@@ -911,6 +972,54 @@ export default function EmployeePortalView({
 
           <div className="rounded-3xl border border-neutral-border bg-[#fffaf4] p-5">
             <div className="flex items-center gap-2 text-primary">
+              <Wallet className="h-4 w-4" />
+              <span className="text-[10px] font-bold uppercase tracking-[0.35em]">Financial & statutory details</span>
+            </div>
+            <p className="mt-2 text-xs text-on-surface-variant">
+              Keep your payroll and statutory records current. Changes are saved to your employee profile for HR and payroll review.
+            </p>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="space-y-2">
+                <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Bank name</span>
+                <input
+                  value={profileDraft.bankName}
+                  onChange={(event) => setProfileDraft((prev) => ({ ...prev, bankName: event.target.value }))}
+                  className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Bank account number</span>
+                <input
+                  value={profileDraft.accountNo}
+                  onChange={(event) => setProfileDraft((prev) => ({ ...prev, accountNo: event.target.value }))}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Tax number</span>
+                <input
+                  value={profileDraft.taxNumber}
+                  onChange={(event) => setProfileDraft((prev) => ({ ...prev, taxNumber: event.target.value }))}
+                  autoComplete="off"
+                  className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 font-mono text-sm outline-none transition-colors focus:border-primary"
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">EPF number</span>
+                <input
+                  value={profileDraft.epfNumber}
+                  onChange={(event) => setProfileDraft((prev) => ({ ...prev, epfNumber: event.target.value }))}
+                  autoComplete="off"
+                  className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 font-mono text-sm outline-none transition-colors focus:border-primary"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-neutral-border bg-[#fffaf4] p-5">
+            <div className="flex items-center gap-2 text-primary">
               <BriefcaseBusiness className="h-4 w-4" />
               <span className="text-[10px] font-bold uppercase tracking-[0.35em]">Employment record</span>
             </div>
@@ -923,22 +1032,6 @@ export default function EmployeePortalView({
                 <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">Employment type</p>
                 <p className="mt-1 font-semibold text-on-background">{selectedEmployee.employmentType}</p>
               </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">Bank</p>
-                <p className="mt-1 font-semibold text-on-background">{selectedEmployee.bankName}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">Bank account</p>
-                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{selectedEmployee.accountNo || 'Not provided'}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">Tax number</p>
-                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{selectedEmployee.taxNumber || 'Not provided'}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">EPF number</p>
-                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{selectedEmployee.epfNumber || 'Not provided'}</p>
-              </div>
             </div>
           </div>
         </div>
@@ -946,42 +1039,190 @@ export default function EmployeePortalView({
 
       <section className="space-y-6">
         <div className={`${cardClass} p-6`}>
-          <h3 className="text-base font-bold text-on-background">Family details</h3>
-          <div className="mt-4 space-y-4 text-sm">
-            <div className="flex items-center justify-between rounded-2xl border border-neutral-border bg-[#fffaf4] px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Heart className="h-4 w-4 text-primary" />
+            <h3 className="text-base font-bold text-on-background">Family details</h3>
+          </div>
+          <p className="mt-2 text-xs text-on-surface-variant">
+            Update your marital, spouse, and dependant information, then save all profile changes together.
+          </p>
+
+          <div className="mt-5 space-y-4">
+            <label className="space-y-2">
               <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Marital status</span>
-              <span className="font-semibold text-on-background">{selectedEmployee.maritalStatus}</span>
+              <select
+                value={profileDraft.maritalStatus}
+                onChange={(event) => setProfileDraft((prev) => ({
+                  ...prev,
+                  maritalStatus: event.target.value as Employee['maritalStatus'],
+                }))}
+                className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none focus:border-primary"
+              >
+                <option value="Single">Single</option>
+                <option value="Married">Married</option>
+                <option value="Divorced">Divorced</option>
+                <option value="Widowed">Widowed</option>
+              </select>
+            </label>
+
+            <div className="rounded-2xl border border-neutral-border bg-[#fffaf4] p-4">
+              <div className="mb-4 flex items-center gap-2 text-primary">
+                <Heart className="h-4 w-4" />
+                <span className="text-[10px] font-bold uppercase tracking-[0.35em]">Spouse details</span>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Spouse name</span>
+                  <input
+                    value={profileDraft.spouseName}
+                    onChange={(event) => setProfileDraft((prev) => ({ ...prev, spouseName: event.target.value }))}
+                    className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none focus:border-primary"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Spouse NRIC / passport</span>
+                  <input
+                    value={profileDraft.spouseNric}
+                    onChange={(event) => setProfileDraft((prev) => ({ ...prev, spouseNric: event.target.value }))}
+                    autoComplete="off"
+                    className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 font-mono text-sm outline-none focus:border-primary"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Spouse working</span>
+                  <select
+                    value={profileDraft.spouseIsWorking}
+                    onChange={(event) => setProfileDraft((prev) => ({
+                      ...prev,
+                      spouseIsWorking: event.target.value as NonNullable<Employee['spouseIsWorking']>,
+                    }))}
+                    className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none focus:border-primary"
+                  >
+                    <option value="No">No</option>
+                    <option value="Yes">Yes</option>
+                  </select>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Spouse company</span>
+                  <input
+                    value={profileDraft.spouseCompany}
+                    onChange={(event) => setProfileDraft((prev) => ({ ...prev, spouseCompany: event.target.value }))}
+                    disabled={profileDraft.spouseIsWorking !== 'Yes'}
+                    className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-on-surface-variant"
+                  />
+                </label>
+                <label className="space-y-2 md:col-span-2">
+                  <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Spouse position</span>
+                  <input
+                    value={profileDraft.spousePosition}
+                    onChange={(event) => setProfileDraft((prev) => ({ ...prev, spousePosition: event.target.value }))}
+                    disabled={profileDraft.spouseIsWorking !== 'Yes'}
+                    className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-on-surface-variant"
+                  />
+                </label>
+              </div>
             </div>
-            {selectedEmployee.spouseName ? (
-              <div className="grid gap-3 rounded-2xl border border-neutral-border bg-[#fffaf4] p-4">
-                <div className="flex items-center gap-2 text-primary">
-                  <Heart className="h-4 w-4" />
-                  <span className="text-[10px] font-bold uppercase tracking-[0.35em]">Spouse</span>
+
+            <div className="rounded-2xl border border-neutral-border bg-[#fffaf4] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-primary">Dependants</p>
+                  <p className="mt-1 text-xs text-on-surface-variant">Add or update declared dependants.</p>
                 </div>
-                <p className="font-semibold text-on-background">{selectedEmployee.spouseName}</p>
-                <p className="text-xs text-on-surface-variant">{selectedEmployee.spouseIsWorking === 'Yes' ? `${selectedEmployee.spouseCompany} · ${selectedEmployee.spousePosition}` : 'Not working / home-maker'}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileDraft((prev) => ({ ...prev, hasDependants: 'Yes' }));
+                    setDependantsDraft((prev) => ([
+                      ...prev,
+                      {
+                        id: `dependant-${Date.now()}`,
+                        name: '',
+                        gender: 'Female',
+                        dob: '',
+                      },
+                    ]));
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-primary/15 bg-primary/5 px-3 py-2 text-xs font-semibold text-primary"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add dependant
+                </button>
               </div>
-            ) : (
-              <p className="rounded-2xl border border-dashed border-neutral-border bg-white px-4 py-5 text-center text-sm text-on-surface-variant">
-                No spouse record on file.
-              </p>
-            )}
-            {selectedDependants.length > 0 ? (
-              <div className="space-y-3">
-                {selectedDependants.map((dependant) => (
-                  <div key={dependant.id} className="rounded-2xl border border-neutral-border bg-[#fffaf4] p-4">
-                    <p className="font-semibold text-on-background">{dependant.name}</p>
-                    <p className="mt-1 text-xs text-on-surface-variant">
-                      {dependant.gender} · {formatToDDMMMYYYY(dependant.dob)}
+
+              <label className="mt-4 flex items-center gap-3 rounded-xl border border-neutral-border bg-white px-4 py-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={profileDraft.hasDependants === 'Yes'}
+                  onChange={(event) => setProfileDraft((prev) => ({
+                    ...prev,
+                    hasDependants: event.target.checked ? 'Yes' : 'No',
+                  }))}
+                  className="h-4 w-4 accent-primary"
+                />
+                <span className="font-semibold text-on-background">I have dependants to declare</span>
+              </label>
+
+              {profileDraft.hasDependants === 'Yes' ? (
+                <div className="mt-4 space-y-3">
+                  {dependantsDraft.length > 0 ? dependantsDraft.map((dependant, index) => (
+                    <div key={dependant.id} className="rounded-2xl border border-neutral-border bg-white p-4">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <p className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">
+                          Dependant {index + 1}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setDependantsDraft((prev) => prev.filter((item) => item.id !== dependant.id))}
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-primary"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          Remove
+                        </button>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-[1.4fr_0.8fr_1fr]">
+                        <input
+                          value={dependant.name}
+                          onChange={(event) => setDependantsDraft((prev) => prev.map((item) => (
+                            item.id === dependant.id ? { ...item, name: event.target.value } : item
+                          )))}
+                          placeholder="Full name"
+                          className="w-full rounded-xl border border-neutral-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary"
+                        />
+                        <select
+                          value={dependant.gender}
+                          onChange={(event) => setDependantsDraft((prev) => prev.map((item) => (
+                            item.id === dependant.id
+                              ? { ...item, gender: event.target.value as Dependant['gender'] }
+                              : item
+                          )))}
+                          className="w-full rounded-xl border border-neutral-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary"
+                        >
+                          <option value="Female">Female</option>
+                          <option value="Male">Male</option>
+                        </select>
+                        <input
+                          type="date"
+                          value={dependant.dob}
+                          onChange={(event) => setDependantsDraft((prev) => prev.map((item) => (
+                            item.id === dependant.id ? { ...item, dob: event.target.value } : item
+                          )))}
+                          className="w-full rounded-xl border border-neutral-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary"
+                        />
+                      </div>
+                    </div>
+                  )) : (
+                    <p className="rounded-2xl border border-dashed border-neutral-border bg-white px-4 py-5 text-center text-sm text-on-surface-variant">
+                      No dependants added yet.
                     </p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="rounded-2xl border border-dashed border-neutral-border bg-white px-4 py-5 text-center text-sm text-on-surface-variant">
-                No dependants declared.
-              </p>
-            )}
+                  )}
+                </div>
+              ) : (
+                <p className="mt-4 rounded-2xl border border-dashed border-neutral-border bg-white px-4 py-5 text-center text-sm text-on-surface-variant">
+                  Dependants will be cleared from your profile when you save.
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1247,6 +1488,45 @@ export default function EmployeePortalView({
     </div>
   );
 
+  const renderOnboarding = () => (
+    <section className={`${cardClass} overflow-hidden p-4 sm:p-6`}>
+      <div className="mb-6 flex flex-col justify-between gap-4 border-b border-neutral-border/70 pb-4 lg:flex-row lg:items-end">
+        <div>
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.35em] text-primary">
+            <ClipboardList className="h-3.5 w-3.5" />
+            Employee onboarding
+          </div>
+          <h2 className="text-xl font-bold text-on-background">Onboarding & Handbook</h2>
+          <p className="mt-1 max-w-3xl text-xs text-on-surface-variant">
+            Complete your onboarding journey, employee handbook signatures, compliance quiz, and final completion record without leaving the employee portal.
+          </p>
+        </div>
+        <span className="rounded-full border border-primary/15 bg-primary/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.28em] text-primary">
+          Employee-only view
+        </span>
+      </div>
+
+      <React.Suspense
+        fallback={
+          <div className="flex min-h-64 items-center justify-center rounded-3xl border border-dashed border-neutral-border bg-[#fffaf4] text-sm font-semibold text-on-surface-variant">
+            Loading onboarding workspace...
+          </div>
+        }
+      >
+        <OnboardingPortalView
+          employees={[selectedEmployee]}
+          candidates={selectedEmployeeCandidates}
+          currentUserName={currentUserName || selectedEmployee.name}
+          currentUserEmail={currentUserEmail || selectedEmployee.email}
+          currentUserRole={currentUserRole || 'Employee'}
+          onShowNotification={onShowNotification}
+          onUpdateEmployee={onUpdateEmployee}
+          embeddedEmployeeMode
+        />
+      </React.Suspense>
+    </section>
+  );
+
   const renderGrowth = () => {
     const effectiveReviewCycle = activeReviewCycle || {
       id: 'cycle-2026-annual',
@@ -1344,14 +1624,14 @@ export default function EmployeePortalView({
             <ChevronRight className="h-4 w-4 text-primary" />
           </button>
           <button
-            onClick={() => window.location.assign('/hire-onboarding/onboarding-portal')}
+            onClick={() => setActiveSection('onboarding')}
             className="flex w-full items-center justify-between rounded-2xl border border-neutral-border bg-[#fff8f1] p-4 text-left"
           >
             <div>
               <p className="font-semibold text-on-background">Handbook & compliance</p>
-              <p className="text-xs text-on-surface-variant">Continue to the handbook and quiz workspace.</p>
+              <p className="text-xs text-on-surface-variant">Open the onboarding tab for handbook signing, quiz, and completion records.</p>
             </div>
-            <ExternalLink className="h-4 w-4 text-primary" />
+            <BookOpen className="h-4 w-4 text-primary" />
           </button>
           <div className="rounded-2xl border border-neutral-border bg-[#fff8f1] p-4">
             <p className="font-semibold text-on-background">Tax / HR forms</p>
@@ -1392,8 +1672,16 @@ export default function EmployeePortalView({
             <span className="text-[10px] font-bold uppercase tracking-[0.35em]">Need handbook access?</span>
           </div>
           <p className="mt-3 text-sm text-on-surface-variant">
-            The handbook and compliance quiz open in the onboarding portal. Your current employee session will follow you there.
+            The handbook and compliance quiz now live in the Onboarding tab, alongside your completion record.
           </p>
+          <button
+            type="button"
+            onClick={() => setActiveSection('onboarding')}
+            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+          >
+            <ClipboardList className="h-4 w-4" />
+            Open onboarding
+          </button>
         </div>
       </section>
     </div>
@@ -1520,6 +1808,8 @@ export default function EmployeePortalView({
         return renderPayslips();
       case 'leave':
         return renderLeave();
+      case 'onboarding':
+        return renderOnboarding();
       case 'growth':
         return renderGrowth();
       case 'documents':
@@ -1534,8 +1824,8 @@ export default function EmployeePortalView({
 
   return (
     <div className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(163,38,38,0.08),_transparent_38%),linear-gradient(180deg,_#fffaf4_0%,_#f6eee4_100%)] text-on-background" style={portalTheme}>
-      <div className="mx-auto flex min-h-screen max-w-[1600px]">
-        <aside className="hidden lg:block lg:w-[292px] lg:shrink-0">
+      <div className="flex min-h-screen w-full">
+        <aside className="hidden lg:block lg:w-[240px] lg:shrink-0">
           <div className="sticky top-0 h-screen">
             {sidebarContent}
           </div>
@@ -1549,7 +1839,7 @@ export default function EmployeePortalView({
         )}
 
         <aside
-          className={`fixed inset-y-0 left-0 z-50 w-[292px] transform transition-transform duration-300 lg:hidden ${
+          className={`fixed inset-y-0 left-0 z-50 w-[240px] transform transition-transform duration-300 lg:hidden ${
             isMobileNavOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
@@ -1557,6 +1847,40 @@ export default function EmployeePortalView({
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-30 hidden h-[64px] items-center justify-between border-b border-neutral-border/70 bg-white/90 px-6 backdrop-blur-md lg:flex">
+            <div className="flex min-w-0 items-center gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex rounded-full border border-primary/15 bg-primary/5 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.28em] text-primary">
+                    {employeeEntity?.name || 'Red Point Sdn Bhd'} Employee Site
+                  </span>
+                </div>
+                <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">
+                  {currentSectionTitle}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="hidden text-right xl:block">
+                <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">Kuala Lumpur date</p>
+                <p className="mt-0.5 text-xs font-semibold text-on-background">{getGmt8LongDateString()}</p>
+              </div>
+              <div className="hidden h-8 w-px bg-neutral-border/70 xl:block" />
+              <EmployeeAvatar employee={selectedEmployee} className="h-9 w-9 rounded-full" />
+              <div className="hidden min-w-0 text-left sm:block">
+                <p className="max-w-[220px] truncate text-xs font-bold text-on-background">{selectedEmployee.name}</p>
+                <p className="mt-0.5 max-w-[220px] truncate text-[10px] text-on-surface-variant">{selectedEmployee.designation}</p>
+              </div>
+              <button
+                onClick={onSignOut}
+                className="border-l border-neutral-border/70 pl-3 text-[10px] font-bold uppercase tracking-[0.12em] text-primary transition-colors hover:text-primary-container"
+              >
+                Sign Out
+              </button>
+            </div>
+          </header>
+
           <header className="sticky top-0 z-30 border-b border-neutral-border/70 bg-white/85 px-4 py-4 backdrop-blur-md md:px-6 lg:hidden">
             <div className="flex items-center justify-between gap-3">
               <button
@@ -1579,36 +1903,7 @@ export default function EmployeePortalView({
           </header>
 
           <main className="flex-1 overflow-y-auto px-4 py-5 md:px-6 md:py-6 lg:px-8 lg:py-8">
-            <div className="mx-auto max-w-7xl space-y-6">
-              <div className="hidden items-end justify-between gap-4 rounded-[2rem] border border-neutral-border bg-white/80 p-6 shadow-[0_18px_40px_rgba(53,24,18,0.05)] backdrop-blur-sm lg:flex">
-                <div className="space-y-2">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.4em] text-primary">Employee workspace</p>
-                  <h1 className="text-3xl font-bold text-on-background">{currentSectionTitle}</h1>
-                  <p className="text-sm text-on-surface-variant">{getGmt8LongDateString()}</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  {isPreviewMode && employees.length > 1 && (
-                    <select
-                      value={selectedEmployeeId}
-                      onChange={(event) => setSelectedEmployeeId(event.target.value)}
-                      className="min-w-[220px] rounded-xl border border-neutral-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
-                    >
-                      {employees.map((employee) => (
-                        <option key={employee.id} value={employee.id}>
-                          {employee.name} · {employee.designation}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <button
-                    onClick={onSignOut}
-                    className="inline-flex items-center gap-2 rounded-xl border border-neutral-border bg-white px-4 py-2.5 text-sm font-semibold text-on-surface"
-                  >
-                    Sign out <ArrowUpRight className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
+            <div className="mx-auto w-full max-w-none space-y-6">
               {mainContent()}
             </div>
           </main>

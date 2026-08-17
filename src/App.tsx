@@ -18,7 +18,8 @@ import {
   FileText,
   DollarSign,
   Sun,
-  Moon
+  Moon,
+  Building2
 } from 'lucide-react';
 import { AppTab, Employee, EmployeePerformance, ReviewCycle, CorporateEntity, Candidate, PayrollRecord2026 } from './types';
 import { 
@@ -2097,6 +2098,12 @@ export default function App() {
       record.employeeEmail.toLowerCase() === employeePortalEmployeeEmail
     ))
     : [];
+  const employeePortalCandidates = employeePortalEmployeeEmail
+    ? (isEmployeePortalPreview ? SEED_CANDIDATES : candidates).filter(candidate => (
+      candidate.email.toLowerCase() === employeePortalEmployeeEmail &&
+      (!employeePortalEmployee?.entityId || candidate.entityId === employeePortalEmployee.entityId)
+    ))
+    : [];
   const employeePortalEmployeeKeys = new Set(
     [employeePortalEmployee?.id, employeePortalEmployee?.email]
       .filter(Boolean)
@@ -2338,6 +2345,7 @@ export default function App() {
       <ErrorBoundary onError={(err) => setGlobalError({ message: err.message, stack: err.stack })}>
         <EmployeePortalView
           employees={employeePortalEmployees}
+          candidates={employeePortalCandidates}
           payrollRecords2026={employeePortalPayrollRecords}
           entities={employeePortalEntities}
           performances={employeePortalPerformances}
@@ -2443,28 +2451,39 @@ export default function App() {
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         
         {/* Top bar (for search results & system status indicators) */}
-        <header className="h-16 border-b border-neutral-border bg-surface px-6 flex justify-between items-center shrink-0 z-20">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 h-[72px] border-b border-neutral-border/80 bg-surface/95 px-4 md:px-6 flex justify-between items-center shrink-0 z-20 backdrop-blur">
+          <div className="flex min-w-0 items-center gap-3">
             {/* Mobile Toggle Button */}
             <button 
               onClick={() => setIsMobileSidebarOpen(true)}
-              className="md:hidden p-2 rounded hover:bg-surface-container transition-colors cursor-pointer"
+              aria-label="Open navigation menu"
+              className="md:hidden p-2 rounded-lg hover:bg-surface-container transition-colors cursor-pointer"
             >
               <Menu className="w-5 h-5 text-primary" />
             </button>
-            <span className="text-xs font-bold text-primary bg-primary/10 py-1 px-3 rounded-full hidden sm:inline-block">
-              {companyName} Core Console
-            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="hidden sm:inline-flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Building2 className="h-3.5 w-3.5" aria-hidden="true" />
+                </span>
+                <span className="truncate text-[11px] font-bold uppercase tracking-[0.16em] text-primary">
+                  Employer Console
+                </span>
+              </div>
+              <div className="mt-0.5 truncate text-[11px] font-medium text-on-surface-variant">
+                {activeEntity?.name || companyName || 'Company workspace'}
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center gap-4">
             {/* Clock Date Widget */}
-            <div className="text-right hidden md:block">
-              <span className="text-[10px] text-on-surface-variant uppercase tracking-wider block font-semibold">Local Time (Kuala Lumpur)</span>
-              <span className="text-xs font-mono font-bold text-on-surface">{gmt8TimeStr || 'Loading clock...'}</span>
+            <div className="hidden text-right md:block">
+              <span className="block text-[9px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">Local Time</span>
+              <span className="font-mono text-[11px] font-bold text-on-surface">{gmt8TimeStr || 'Loading clock...'}</span>
             </div>
 
-            <div className="w-px h-8 bg-neutral-border/40 hidden md:block" />
+            <div className="hidden h-8 w-px bg-neutral-border/60 md:block" />
 
             {/* Notifications Alert Bell */}
             <button 
@@ -2474,24 +2493,27 @@ export default function App() {
                 const pendingCount = Math.max(0, employees.length - completedCount);
                 triggerNotification('HR Directives', `You have ${pendingCount} outstanding performance reviews due.`, 'info');
               }}
-              className="p-2 rounded-full hover:bg-surface-container relative transition-colors cursor-pointer"
+              aria-label="View HR notifications"
+              className="relative rounded-xl border border-transparent p-2 transition-colors hover:border-neutral-border hover:bg-surface-container cursor-pointer"
             >
               <Bell className="w-4 h-4 text-on-surface" />
+              <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-primary ring-2 ring-surface" aria-label="Unread notifications" />
             </button>
             {/* User Account context */}
-            <div className="flex items-center gap-2.5 pl-2 border-l border-neutral-border/40">
-              <div className="w-8 h-8 rounded-full bg-primary text-on-primary-container font-bold text-xs flex items-center justify-center border border-neutral-border">
+            <div className="flex items-center gap-2.5 border-l border-neutral-border/60 pl-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-xs font-bold text-on-primary-container shadow-sm ring-4 ring-primary/10">
                 {currentUserName 
                   ? currentUserName.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() 
                   : 'HR'}
               </div>
               <div className="text-left hidden sm:block leading-none">
-                <span className="font-bold text-xs text-on-surface block">{currentUserName || 'Jenny Law'}</span>
-                <span className="text-[10px] text-on-surface-variant mt-0.5 block">{currentUserRole || 'Global Administrator'}</span>
+                <span className="block max-w-[150px] truncate text-xs font-bold text-on-surface">{currentUserName || 'Jenny Law'}</span>
+                <span className="mt-1 block max-w-[150px] truncate text-[10px] text-on-surface-variant">{currentUserRole || 'Global Administrator'}</span>
               </div>
               <button 
                 onClick={handleSignOut}
-                className="text-[10px] font-bold text-primary hover:text-primary-container ml-2.5 pl-2.5 border-l border-neutral-border/40 cursor-pointer uppercase transition-colors"
+                aria-label="Sign out of employer console"
+                className="ml-1 border-l border-neutral-border/60 pl-3 text-[10px] font-bold uppercase text-primary transition-colors hover:text-primary-container cursor-pointer"
                 title="Sign Out of Console"
               >
                 Sign Out
@@ -2501,7 +2523,7 @@ export default function App() {
         </header>
 
         {/* Core Main Scrollable Content Pane */}
-        <main className="flex-1 overflow-y-auto bg-surface-container-low p-6 md:p-8 select-text">
+        <main className="flex-1 overflow-y-auto bg-background p-4 md:p-6 lg:p-8 select-text">
           {currentTab === 'dashboard' && (
             <DashboardView 
               employees={filteredEmployeesWithHistory}

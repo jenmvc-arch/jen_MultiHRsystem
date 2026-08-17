@@ -9,7 +9,6 @@ import {
   CreditCard, 
   Award, 
   ArrowRight, 
-  AlertTriangle, 
   CheckCircle, 
   TrendingUp,
   ChevronRight,
@@ -192,20 +191,24 @@ export default function DashboardView({
   };
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto animate-in fade-in duration-200">
+    <div className="mx-auto max-w-[1440px] space-y-6 animate-in fade-in duration-200">
       
       {/* Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 text-left">
+      <div className="flex flex-col gap-5 text-left md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-on-background tracking-tight">HR Enterprise Dashboard</h1>
-          <p className="text-on-surface-variant mt-1">
-            Welcome back! You have <span className="font-semibold text-primary">{reviewsPendingCount} performance reviews</span> pending for the {currentMonthName} pay period.
+          <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
+            <span className="h-2 w-2 rounded-full bg-green-500 shadow-[0_0_0_4px_rgba(34,197,94,0.12)]" />
+            Live workspace
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight text-on-background md:text-4xl">Employer overview</h1>
+          <p className="mt-1 max-w-2xl text-sm text-on-surface-variant">
+            {activeEntity?.name || 'Your company'} at a glance. You have <span className="font-semibold text-primary">{reviewsPendingCount} performance reviews</span> pending for the {currentMonthName} pay period.
           </p>
         </div>
         <div className="flex gap-3">
           <button 
             onClick={onOpenRequestModal}
-            className="px-4 py-2 bg-primary text-white text-sm font-medium rounded hover:bg-primary-container transition-colors flex items-center gap-2"
+            className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-primary-container"
           >
             <Plus className="w-4 h-4" />
             New Request
@@ -214,19 +217,19 @@ export default function DashboardView({
       </div>
 
       {/* Dynamic Month/Year Slicer Controls */}
-      <div className="bg-white border border-neutral-border p-4 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs text-left">
-        <div className="flex items-center gap-2 text-primary font-bold">
+      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-neutral-border/80 bg-white p-4 text-left shadow-sm sm:flex-row sm:items-center">
+        <div className="flex items-center gap-2 font-bold text-primary">
           <Calendar className="w-4 h-4 text-primary" />
-          <span className="text-xs uppercase tracking-wider">Dashboard View Period</span>
+          <span className="text-[10px] uppercase tracking-[0.18em]">Dashboard view period</span>
         </div>
         
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-on-surface-variant">Month:</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Month</span>
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="bg-neutral-50 hover:bg-neutral-100 text-on-surface border border-neutral-border rounded px-2 py-1 text-xs font-bold outline-none cursor-pointer focus:border-primary transition-all"
+              className="cursor-pointer rounded-lg border border-neutral-border bg-neutral-50 px-2.5 py-1.5 text-xs font-bold text-on-surface outline-none transition-all hover:bg-neutral-100 focus:border-primary"
             >
               {allMonthsFull.map((m, idx) => (
                 <option key={idx} value={idx}>{m}</option>
@@ -235,11 +238,11 @@ export default function DashboardView({
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-on-surface-variant">Year:</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Year</span>
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="bg-neutral-50 hover:bg-neutral-100 text-on-surface border border-neutral-border rounded px-2 py-1 text-xs font-bold outline-none cursor-pointer focus:border-primary transition-all"
+              className="cursor-pointer rounded-lg border border-neutral-border bg-neutral-50 px-2.5 py-1.5 text-xs font-bold text-on-surface outline-none transition-all hover:bg-neutral-100 focus:border-primary"
             >
               {[2024, 2025, 2026, 2027].map(y => (
                 <option key={y} value={y}>{y}</option>
@@ -343,91 +346,91 @@ export default function DashboardView({
         {/* Card 1: Total Workforce */}
         <div 
           onClick={() => onNavigate('directory')}
-          className="bg-surface-container-lowest p-5 rounded-lg border border-neutral-border shadow-sm flex flex-col justify-between hover:border-primary transition-all cursor-pointer group"
+          className="group flex cursor-pointer flex-col justify-between rounded-2xl border border-neutral-border/80 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-md"
           id="stat-card-workforce"
         >
           <div className="flex justify-between items-start">
-            <span className="text-on-surface-variant text-sm font-medium">Workforce Directory</span>
-            <Users className="w-5 h-5 text-primary" />
+            <span className="text-sm font-bold text-on-surface-variant">Active employees</span>
+            <span className="rounded-xl bg-primary/10 p-2 text-primary"><Users className="h-4 w-4" /></span>
           </div>
           <div className="mt-4">
-            <div className="text-3xl font-bold text-on-background">{totalEmployees}</div>
-            <div className="text-xs text-on-surface-variant mt-1">
-              <span className="text-green-600 font-semibold">{activeEmployees} Active</span>
+            <div className="text-3xl font-bold text-on-background">{activeEmployees}</div>
+            <div className="mt-1 text-xs text-on-surface-variant">
+              <span className="font-semibold text-green-600">Current staff</span>
               {onLeaveEmployees > 0 && <> · {onLeaveEmployees} On Leave</>}
             </div>
           </div>
-          <div className="mt-4 flex items-center text-xs text-primary font-semibold group-hover:underline">
-            Manage personnel <ChevronRight className="w-3 h-3 ml-1" />
+          <div className="mt-4 flex items-center text-xs font-bold text-primary group-hover:underline">
+            Open directory <ChevronRight className="ml-1 h-3 w-3" />
           </div>
         </div>
 
         {/* Card 2: Total Payout */}
         <div 
           onClick={() => onNavigate('payroll')}
-          className="bg-surface-container-lowest p-5 rounded-lg border border-neutral-border shadow-sm flex flex-col justify-between hover:border-primary transition-all cursor-pointer group"
+          className="group flex cursor-pointer flex-col justify-between rounded-2xl border border-neutral-border/80 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-md"
           id="stat-card-payroll"
         >
           <div className="flex justify-between items-start">
-            <span className="text-on-surface-variant text-sm font-medium">Monthly {currentMonthAbbr} Payout</span>
-            <CreditCard className="w-5 h-5 text-primary" />
+            <span className="text-sm font-bold text-on-surface-variant">Monthly {currentMonthAbbr} payroll</span>
+            <span className="rounded-xl bg-primary/10 p-2 text-primary"><CreditCard className="h-4 w-4" /></span>
           </div>
           <div className="mt-4">
             <div className="text-3xl font-bold text-on-background">RM {totalPayroll.toLocaleString()}</div>
-            <div className="text-xs text-on-surface-variant mt-1">
+            <div className="mt-1 text-xs text-on-surface-variant">
               Average basic salary: <span className="font-semibold">RM {averageSalary.toLocaleString()}</span>
             </div>
           </div>
-          <div className="mt-4 flex items-center text-xs text-primary font-semibold group-hover:underline">
-            Generate payroll <ChevronRight className="w-3 h-3 ml-1" />
+          <div className="mt-4 flex items-center text-xs font-bold text-primary group-hover:underline">
+            Open payroll center <ChevronRight className="ml-1 h-3 w-3" />
           </div>
         </div>
 
-        {/* Card 3: Reviews Pending */}
+        {/* Card 3: Leave Activity */}
         <div 
-          onClick={() => onNavigate('performance')}
-          className="bg-surface-container-lowest p-5 rounded-lg border border-neutral-border shadow-sm flex flex-col justify-between hover:border-primary transition-all cursor-pointer group"
-          id="stat-card-pending-reviews"
+          onClick={() => onNavigate('leave-management')}
+          className="group flex cursor-pointer flex-col justify-between rounded-2xl border border-neutral-border/80 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-md"
+          id="stat-card-leave-activity"
         >
           <div className="flex justify-between items-start">
-            <span className="text-on-surface-variant text-sm font-medium">Reviews Pending</span>
-            <AlertTriangle className="w-5 h-5 text-error" />
+            <span className="text-sm font-bold text-on-surface-variant">Leave activity</span>
+            <span className="rounded-xl bg-amber-100 p-2 text-amber-700"><Calendar className="h-4 w-4" /></span>
           </div>
           <div className="mt-4">
-            <div className="text-3xl font-bold text-on-background">{reviewsPendingCount}</div>
-            <div className="text-xs text-error font-semibold mt-1 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-error" /> Action required
+            <div className="text-3xl font-bold text-on-background">{onLeaveEmployees}</div>
+            <div className="mt-1 flex items-center gap-1 text-xs font-semibold text-amber-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Currently on leave
             </div>
           </div>
-          <div className="mt-4 flex items-center text-xs text-primary font-semibold group-hover:underline">
-            View pending cycles <ChevronRight className="w-3 h-3 ml-1" />
+          <div className="mt-4 flex items-center text-xs font-bold text-primary group-hover:underline">
+            Review leave requests <ChevronRight className="ml-1 h-3 w-3" />
           </div>
         </div>
 
-        {/* Card 4: Reviews Completed */}
+        {/* Card 4: Performance Progress */}
         <div 
           onClick={() => onNavigate('performance')}
-          className="bg-surface-container-lowest p-5 rounded-lg border border-neutral-border shadow-sm flex flex-col justify-between hover:border-primary transition-all cursor-pointer group"
-          id="stat-card-completed-reviews"
+          className="group flex cursor-pointer flex-col justify-between rounded-2xl border border-neutral-border/80 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-md"
+          id="stat-card-performance-progress"
         >
           <div className="flex justify-between items-start">
-            <span className="text-on-surface-variant text-sm font-medium">Reviews Completed</span>
-            <CheckCircle className="w-5 h-5 text-green-600" />
+            <span className="text-sm font-bold text-on-surface-variant">Performance progress</span>
+            <span className="rounded-xl bg-green-100 p-2 text-green-700"><CheckCircle className="h-4 w-4" /></span>
           </div>
           <div className="mt-4">
             <div className="text-3xl font-bold text-on-background">{reviewsCompletedCount}</div>
-            <div className="text-xs text-green-600 font-semibold mt-1 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-600" /> 88% Completion rate
+            <div className="mt-1 flex items-center gap-1 text-xs font-semibold text-green-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-600" /> {reviewsPendingCount} still pending
             </div>
           </div>
-          <div className="mt-4 flex items-center text-xs text-primary font-semibold group-hover:underline">
-            Analyze analytics <ChevronRight className="w-3 h-3 ml-1" />
+          <div className="mt-4 flex items-center text-xs font-bold text-primary group-hover:underline">
+            Open appraisal cycles <ChevronRight className="ml-1 h-3 w-3" />
           </div>
         </div>
       </div>
 
       {/* Grid: 2 Columns (Main Content & Sidebar widgets) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 text-left">
+      <div className="grid grid-cols-1 gap-6 text-left lg:grid-cols-12">
         
         {/* Left main: Chart & Recent Updates */}
         <div className="lg:col-span-8 space-y-6">
