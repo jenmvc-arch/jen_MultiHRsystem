@@ -34,6 +34,7 @@ import {
   FileDown,
   ExternalLink,
   ClipboardList,
+  Pencil,
 } from 'lucide-react';
 import { Candidate, Dependant, Employee, EmployeePerformance, CorporateEntity, PayrollRecord2026, ReviewCycle } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
@@ -154,6 +155,25 @@ const sortPayrollRecords = (records: PayrollRecord2026[]) =>
 const currency = (value: number) =>
   value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const getEmployeeProfileDraft = (employee: Employee) => ({
+  contactNumber: employee.contactNumber || '',
+  emergencyContactName: employee.emergencyContactName || '',
+  emergencyContactRelation: employee.emergencyContactRelation || '',
+  emergencyContactPhone: employee.emergencyContactPhone || '',
+  avatarUrl: employee.avatarUrl || '',
+  bankName: employee.bankName || '',
+  accountNo: employee.accountNo || '',
+  taxNumber: employee.taxNumber || '',
+  epfNumber: employee.epfNumber || '',
+  maritalStatus: employee.maritalStatus || 'Single' as Employee['maritalStatus'],
+  spouseName: employee.spouseName || '',
+  spouseNric: employee.spouseNric || '',
+  spouseIsWorking: employee.spouseIsWorking || 'No' as NonNullable<Employee['spouseIsWorking']>,
+  spouseCompany: employee.spouseCompany || '',
+  spousePosition: employee.spousePosition || '',
+  hasDependants: employee.hasDependants || (employee.dependants?.length ? 'Yes' : 'No') as NonNullable<Employee['hasDependants']>,
+});
+
 export default function EmployeePortalView({
   employees,
   candidates,
@@ -178,6 +198,7 @@ export default function EmployeePortalView({
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(previewEmployeeId);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [selectedPayslip, setSelectedPayslip] = useState<{ month: number; year: number; record?: PayrollRecord2026 } | null>(null);
   const [leaveConfigs, setLeaveConfigs] = useState<LeaveConfig[]>(DEFAULT_LEAVE_CONFIGS);
   const [leavePolicies, setLeavePolicies] = useState<LeaveConditioningPolicy[]>([]);
@@ -353,28 +374,9 @@ export default function EmployeePortalView({
 
   useEffect(() => {
     if (!selectedEmployee?.id) return;
-    const previewOverrides = isPreviewMode
-      ? readPreviewEmployeeOverrides(selectedEmployee.id)
-      : {};
-    setProfileDraft({
-      contactNumber: selectedEmployee.contactNumber || '',
-      emergencyContactName: selectedEmployee.emergencyContactName || '',
-      emergencyContactRelation: selectedEmployee.emergencyContactRelation || '',
-      emergencyContactPhone: selectedEmployee.emergencyContactPhone || '',
-      avatarUrl: selectedEmployee.avatarUrl || '',
-      bankName: selectedEmployee.bankName || '',
-      accountNo: selectedEmployee.accountNo || '',
-      taxNumber: selectedEmployee.taxNumber || '',
-      epfNumber: selectedEmployee.epfNumber || '',
-      maritalStatus: selectedEmployee.maritalStatus || 'Single',
-      spouseName: selectedEmployee.spouseName || '',
-      spouseNric: selectedEmployee.spouseNric || '',
-      spouseIsWorking: selectedEmployee.spouseIsWorking || 'No',
-      spouseCompany: selectedEmployee.spouseCompany || '',
-      spousePosition: selectedEmployee.spousePosition || '',
-      hasDependants: selectedEmployee.hasDependants || (selectedEmployee.dependants?.length ? 'Yes' : 'No'),
-    });
+    setProfileDraft(getEmployeeProfileDraft(selectedEmployee));
     setDependantsDraft((selectedEmployee.dependants || []).map((dependant) => ({ ...dependant })));
+    setIsEditingProfile(false);
   }, [isPreviewMode, selectedEmployee]);
 
   useEffect(() => {
@@ -475,7 +477,7 @@ export default function EmployeePortalView({
   };
 
   const handleSaveProfile = async () => {
-    if (!selectedEmployee) return;
+    if (!selectedEmployee || !isEditingProfile) return;
     const normalizedDependants = dependantsDraft
       .map((dependant) => ({
         ...dependant,
@@ -520,6 +522,7 @@ export default function EmployeePortalView({
       } else {
         await onUpdateEmployee(selectedEmployee.id, profileUpdates);
       }
+      setIsEditingProfile(false);
       onShowNotification('Profile Updated', 'Your contact, financial, statutory, and family details were saved.');
     } catch (error) {
       console.error('[Employee Portal] Profile save failed:', error);
@@ -527,6 +530,13 @@ export default function EmployeePortalView({
     } finally {
       setIsSavingProfile(false);
     }
+  };
+
+  const handleCancelProfileEdit = () => {
+    if (!selectedEmployee || isSavingProfile) return;
+    setProfileDraft(getEmployeeProfileDraft(selectedEmployee));
+    setDependantsDraft((selectedEmployee.dependants || []).map((dependant) => ({ ...dependant })));
+    setIsEditingProfile(false);
   };
 
   const handleSubmitLeave = (event: React.FormEvent) => {
@@ -629,6 +639,7 @@ export default function EmployeePortalView({
   ].join(' ');
 
   const cardClass = 'rounded-3xl border border-neutral-border bg-white/90 shadow-[0_18px_40px_rgba(53,24,18,0.05)] backdrop-blur-sm';
+  const profileInputClass = 'w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary disabled:cursor-not-allowed';
 
   if (!selectedEmployee) {
     return (
@@ -899,19 +910,39 @@ export default function EmployeePortalView({
         <div className="flex items-start justify-between gap-4 border-b border-neutral-border/70 pb-4">
           <div>
             <h2 className="text-xl font-bold text-on-background">My Profile</h2>
-            <p className="text-xs text-on-surface-variant">Update your contact details and review your employment record.</p>
+            <p className="text-xs text-on-surface-variant">Update your contact, bank, statutory, and family details.</p>
           </div>
-          <button
-            onClick={handleSaveProfile}
-            disabled={isSavingProfile}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-wait disabled:opacity-70"
-          >
-            {isSavingProfile ? 'Saving...' : 'Save changes'}
-          </button>
+          <div className="flex items-center gap-2">
+            {isEditingProfile && (
+              <button
+                type="button"
+                onClick={handleCancelProfileEdit}
+                disabled={isSavingProfile}
+                className="inline-flex items-center gap-2 rounded-xl border border-neutral-border bg-white px-4 py-2.5 text-sm font-semibold text-on-surface transition-colors hover:bg-surface-container disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                Cancel
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (isEditingProfile) {
+                  void handleSaveProfile();
+                } else {
+                  setIsEditingProfile(true);
+                }
+              }}
+              disabled={isSavingProfile}
+              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-container disabled:cursor-wait disabled:opacity-70"
+            >
+              {isSavingProfile ? 'Saving...' : isEditingProfile ? 'Save changes' : 'Edit profile'}
+              {!isSavingProfile && !isEditingProfile && <Pencil className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
 
         <div className="mt-6 space-y-5">
-          <div className="flex items-center gap-4 rounded-3xl border border-neutral-border bg-[#fffaf4] p-5">
+          <div className="flex items-center gap-4 rounded-3xl border border-neutral-border bg-surface-container-low p-5">
             <EmployeeAvatar employee={selectedEmployee} className="h-16 w-16 rounded-3xl" />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
@@ -927,13 +958,16 @@ export default function EmployeePortalView({
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <fieldset
+            disabled={!isEditingProfile}
+            className={`grid min-w-0 gap-4 border-0 p-0 md:grid-cols-2 ${isEditingProfile ? '' : 'opacity-80'}`}
+          >
             <label className="space-y-2">
               <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Mobile number</span>
               <input
                 value={profileDraft.contactNumber}
                 onChange={(event) => setProfileDraft((prev) => ({ ...prev, contactNumber: event.target.value }))}
-                className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary"
+                className={profileInputClass}
               />
             </label>
             <label className="space-y-2">
@@ -941,7 +975,47 @@ export default function EmployeePortalView({
               <input
                 value={profileDraft.avatarUrl}
                 onChange={(event) => setProfileDraft((prev) => ({ ...prev, avatarUrl: event.target.value }))}
-                className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary"
+                className={profileInputClass}
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Bank name</span>
+              <input
+                value={profileDraft.bankName}
+                onChange={(event) => setProfileDraft((prev) => ({ ...prev, bankName: event.target.value }))}
+                className={profileInputClass}
+                placeholder="Bank name"
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Bank account number</span>
+              <input
+                value={profileDraft.accountNo}
+                onChange={(event) => setProfileDraft((prev) => ({ ...prev, accountNo: event.target.value }))}
+                inputMode="numeric"
+                autoComplete="off"
+                className={`${profileInputClass} font-mono`}
+                placeholder="Account number"
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Tax number</span>
+              <input
+                value={profileDraft.taxNumber}
+                onChange={(event) => setProfileDraft((prev) => ({ ...prev, taxNumber: event.target.value }))}
+                autoComplete="off"
+                className={`${profileInputClass} font-mono`}
+                placeholder="TIN / tax number"
+              />
+            </label>
+            <label className="space-y-2">
+              <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">EPF number</span>
+              <input
+                value={profileDraft.epfNumber}
+                onChange={(event) => setProfileDraft((prev) => ({ ...prev, epfNumber: event.target.value }))}
+                autoComplete="off"
+                className={`${profileInputClass} font-mono`}
+                placeholder="EPF member number"
               />
             </label>
             <label className="space-y-2">
@@ -949,7 +1023,7 @@ export default function EmployeePortalView({
               <input
                 value={profileDraft.emergencyContactName}
                 onChange={(event) => setProfileDraft((prev) => ({ ...prev, emergencyContactName: event.target.value }))}
-                className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary"
+                className={profileInputClass}
               />
             </label>
             <label className="space-y-2">
@@ -957,7 +1031,7 @@ export default function EmployeePortalView({
               <input
                 value={profileDraft.emergencyContactRelation}
                 onChange={(event) => setProfileDraft((prev) => ({ ...prev, emergencyContactRelation: event.target.value }))}
-                className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary"
+                className={profileInputClass}
               />
             </label>
             <label className="space-y-2 md:col-span-2">
@@ -965,60 +1039,12 @@ export default function EmployeePortalView({
               <input
                 value={profileDraft.emergencyContactPhone}
                 onChange={(event) => setProfileDraft((prev) => ({ ...prev, emergencyContactPhone: event.target.value }))}
-                className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary"
+                className={profileInputClass}
               />
             </label>
-          </div>
+          </fieldset>
 
-          <div className="rounded-3xl border border-neutral-border bg-[#fffaf4] p-5">
-            <div className="flex items-center gap-2 text-primary">
-              <Wallet className="h-4 w-4" />
-              <span className="text-[10px] font-bold uppercase tracking-[0.35em]">Financial & statutory details</span>
-            </div>
-            <p className="mt-2 text-xs text-on-surface-variant">
-              Keep your payroll and statutory records current. Changes are saved to your employee profile for HR and payroll review.
-            </p>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <label className="space-y-2">
-                <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Bank name</span>
-                <input
-                  value={profileDraft.bankName}
-                  onChange={(event) => setProfileDraft((prev) => ({ ...prev, bankName: event.target.value }))}
-                  className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary"
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Bank account number</span>
-                <input
-                  value={profileDraft.accountNo}
-                  onChange={(event) => setProfileDraft((prev) => ({ ...prev, accountNo: event.target.value }))}
-                  inputMode="numeric"
-                  autoComplete="off"
-                  className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary"
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Tax number</span>
-                <input
-                  value={profileDraft.taxNumber}
-                  onChange={(event) => setProfileDraft((prev) => ({ ...prev, taxNumber: event.target.value }))}
-                  autoComplete="off"
-                  className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 font-mono text-sm outline-none transition-colors focus:border-primary"
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">EPF number</span>
-                <input
-                  value={profileDraft.epfNumber}
-                  onChange={(event) => setProfileDraft((prev) => ({ ...prev, epfNumber: event.target.value }))}
-                  autoComplete="off"
-                  className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 font-mono text-sm outline-none transition-colors focus:border-primary"
-                />
-              </label>
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-neutral-border bg-[#fffaf4] p-5">
+          <div className="rounded-3xl border border-neutral-border bg-surface-container-low p-5">
             <div className="flex items-center gap-2 text-primary">
               <BriefcaseBusiness className="h-4 w-4" />
               <span className="text-[10px] font-bold uppercase tracking-[0.35em]">Employment record</span>
@@ -1032,6 +1058,22 @@ export default function EmployeePortalView({
                 <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">Employment type</p>
                 <p className="mt-1 font-semibold text-on-background">{selectedEmployee.employmentType}</p>
               </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">Bank</p>
+                <p className="mt-1 font-semibold text-on-background">{selectedEmployee.bankName || 'Not provided'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">Bank account</p>
+                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{selectedEmployee.accountNo || 'Not provided'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">Tax number</p>
+                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{selectedEmployee.taxNumber || 'Not provided'}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">EPF number</p>
+                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{selectedEmployee.epfNumber || 'Not provided'}</p>
+              </div>
             </div>
           </div>
         </div>
@@ -1039,15 +1081,18 @@ export default function EmployeePortalView({
 
       <section className="space-y-6">
         <div className={`${cardClass} p-6`}>
-          <div className="flex items-center gap-2">
-            <Heart className="h-4 w-4 text-primary" />
-            <h3 className="text-base font-bold text-on-background">Family details</h3>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-base font-bold text-on-background">Family details</h3>
+              <p className="mt-1 text-xs text-on-surface-variant">Keep marital, spouse, and dependant information current.</p>
+            </div>
+            <Heart className="h-5 w-5 text-primary" />
           </div>
-          <p className="mt-2 text-xs text-on-surface-variant">
-            Update your marital, spouse, and dependant information, then save all profile changes together.
-          </p>
 
-          <div className="mt-5 space-y-4">
+          <fieldset
+            disabled={!isEditingProfile}
+            className={`mt-5 min-w-0 space-y-4 border-0 p-0 text-sm ${isEditingProfile ? '' : 'opacity-80'}`}
+          >
             <label className="space-y-2">
               <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Marital status</span>
               <select
@@ -1056,7 +1101,7 @@ export default function EmployeePortalView({
                   ...prev,
                   maritalStatus: event.target.value as Employee['maritalStatus'],
                 }))}
-                className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none focus:border-primary"
+                className={profileInputClass}
               >
                 <option value="Single">Single</option>
                 <option value="Married">Married</option>
@@ -1065,102 +1110,83 @@ export default function EmployeePortalView({
               </select>
             </label>
 
-            <div className="rounded-2xl border border-neutral-border bg-[#fffaf4] p-4">
-              <div className="mb-4 flex items-center gap-2 text-primary">
-                <Heart className="h-4 w-4" />
-                <span className="text-[10px] font-bold uppercase tracking-[0.35em]">Spouse details</span>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Spouse name</span>
-                  <input
-                    value={profileDraft.spouseName}
-                    onChange={(event) => setProfileDraft((prev) => ({ ...prev, spouseName: event.target.value }))}
-                    className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none focus:border-primary"
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Spouse NRIC / passport</span>
-                  <input
-                    value={profileDraft.spouseNric}
-                    onChange={(event) => setProfileDraft((prev) => ({ ...prev, spouseNric: event.target.value }))}
-                    autoComplete="off"
-                    className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 font-mono text-sm outline-none focus:border-primary"
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Spouse working</span>
-                  <select
-                    value={profileDraft.spouseIsWorking}
-                    onChange={(event) => setProfileDraft((prev) => ({
-                      ...prev,
-                      spouseIsWorking: event.target.value as NonNullable<Employee['spouseIsWorking']>,
-                    }))}
-                    className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none focus:border-primary"
-                  >
-                    <option value="No">No</option>
-                    <option value="Yes">Yes</option>
-                  </select>
-                </label>
-                <label className="space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Spouse company</span>
-                  <input
-                    value={profileDraft.spouseCompany}
-                    onChange={(event) => setProfileDraft((prev) => ({ ...prev, spouseCompany: event.target.value }))}
-                    disabled={profileDraft.spouseIsWorking !== 'Yes'}
-                    className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-on-surface-variant"
-                  />
-                </label>
-                <label className="space-y-2 md:col-span-2">
-                  <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Spouse position</span>
-                  <input
-                    value={profileDraft.spousePosition}
-                    onChange={(event) => setProfileDraft((prev) => ({ ...prev, spousePosition: event.target.value }))}
-                    disabled={profileDraft.spouseIsWorking !== 'Yes'}
-                    className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-on-surface-variant"
-                  />
-                </label>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-neutral-border bg-[#fffaf4] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-primary">Dependants</p>
-                  <p className="mt-1 text-xs text-on-surface-variant">Add or update declared dependants.</p>
+            {profileDraft.maritalStatus === 'Married' && (
+              <div className="space-y-4 rounded-2xl border border-neutral-border bg-surface-container-low p-4">
+                <div className="mb-4 flex items-center gap-2 text-primary">
+                  <Heart className="h-4 w-4" />
+                  <span className="text-[10px] font-bold uppercase tracking-[0.35em]">Spouse details</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setProfileDraft((prev) => ({ ...prev, hasDependants: 'Yes' }));
-                    setDependantsDraft((prev) => ([
-                      ...prev,
-                      {
-                        id: `dependant-${Date.now()}`,
-                        name: '',
-                        gender: 'Female',
-                        dob: '',
-                      },
-                    ]));
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-primary/15 bg-primary/5 px-3 py-2 text-xs font-semibold text-primary"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add dependant
-                </button>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="space-y-2">
+                    <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Spouse name</span>
+                    <input
+                      value={profileDraft.spouseName}
+                      onChange={(event) => setProfileDraft((prev) => ({ ...prev, spouseName: event.target.value }))}
+                      className={profileInputClass}
+                    />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Spouse NRIC / passport</span>
+                    <input
+                      value={profileDraft.spouseNric}
+                      onChange={(event) => setProfileDraft((prev) => ({ ...prev, spouseNric: event.target.value }))}
+                      autoComplete="off"
+                      className={`${profileInputClass} font-mono`}
+                    />
+                  </label>
+                  <label className="space-y-2 md:col-span-2">
+                    <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Spouse working</span>
+                    <select
+                      value={profileDraft.spouseIsWorking}
+                      onChange={(event) => setProfileDraft((prev) => ({
+                        ...prev,
+                        spouseIsWorking: event.target.value as NonNullable<Employee['spouseIsWorking']>,
+                      }))}
+                      className={profileInputClass}
+                    >
+                      <option value="No">No</option>
+                      <option value="Yes">Yes</option>
+                    </select>
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Spouse company</span>
+                    <input
+                      value={profileDraft.spouseCompany}
+                      onChange={(event) => setProfileDraft((prev) => ({ ...prev, spouseCompany: event.target.value }))}
+                      disabled={profileDraft.spouseIsWorking !== 'Yes'}
+                      className={profileInputClass}
+                    />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Spouse position</span>
+                    <input
+                      value={profileDraft.spousePosition}
+                      onChange={(event) => setProfileDraft((prev) => ({ ...prev, spousePosition: event.target.value }))}
+                      disabled={profileDraft.spouseIsWorking !== 'Yes'}
+                      className={profileInputClass}
+                    />
+                  </label>
+                </div>
               </div>
+            )}
 
-              <label className="mt-4 flex items-center gap-3 rounded-xl border border-neutral-border bg-white px-4 py-3 text-sm">
-                <input
-                  type="checkbox"
-                  checked={profileDraft.hasDependants === 'Yes'}
-                  onChange={(event) => setProfileDraft((prev) => ({
-                    ...prev,
-                    hasDependants: event.target.checked ? 'Yes' : 'No',
-                  }))}
-                  className="h-4 w-4 accent-primary"
-                />
-                <span className="font-semibold text-on-background">I have dependants to declare</span>
+            <div className="space-y-4 rounded-2xl border border-neutral-border bg-surface-container-low p-4">
+              <label className="space-y-2">
+                <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Do you have dependants?</span>
+                <select
+                  value={profileDraft.hasDependants}
+                  onChange={(event) => {
+                    const hasDependants = event.target.value as NonNullable<Employee['hasDependants']>;
+                    setProfileDraft((prev) => ({ ...prev, hasDependants }));
+                    if (hasDependants === 'No') {
+                      setDependantsDraft([]);
+                    }
+                  }}
+                  className={profileInputClass}
+                >
+                  <option value="No">No</option>
+                  <option value="Yes">Yes</option>
+                </select>
               </label>
 
               {profileDraft.hasDependants === 'Yes' ? (
@@ -1174,41 +1200,49 @@ export default function EmployeePortalView({
                         <button
                           type="button"
                           onClick={() => setDependantsDraft((prev) => prev.filter((item) => item.id !== dependant.id))}
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-primary"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-primary disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <X className="h-3.5 w-3.5" />
                           Remove
                         </button>
                       </div>
-                      <div className="grid gap-3 md:grid-cols-[1.4fr_0.8fr_1fr]">
-                        <input
-                          value={dependant.name}
-                          onChange={(event) => setDependantsDraft((prev) => prev.map((item) => (
-                            item.id === dependant.id ? { ...item, name: event.target.value } : item
-                          )))}
-                          placeholder="Full name"
-                          className="w-full rounded-xl border border-neutral-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary"
-                        />
-                        <select
-                          value={dependant.gender}
-                          onChange={(event) => setDependantsDraft((prev) => prev.map((item) => (
-                            item.id === dependant.id
-                              ? { ...item, gender: event.target.value as Dependant['gender'] }
-                              : item
-                          )))}
-                          className="w-full rounded-xl border border-neutral-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary"
-                        >
-                          <option value="Female">Female</option>
-                          <option value="Male">Male</option>
-                        </select>
-                        <input
-                          type="date"
-                          value={dependant.dob}
-                          onChange={(event) => setDependantsDraft((prev) => prev.map((item) => (
-                            item.id === dependant.id ? { ...item, dob: event.target.value } : item
-                          )))}
-                          className="w-full rounded-xl border border-neutral-border bg-white px-3 py-2.5 text-sm outline-none focus:border-primary"
-                        />
+                      <div className="grid gap-4 md:grid-cols-3">
+                        <label className="space-y-2 md:col-span-2">
+                          <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Name</span>
+                          <input
+                            value={dependant.name}
+                            onChange={(event) => setDependantsDraft((prev) => prev.map((item) => (
+                              item.id === dependant.id ? { ...item, name: event.target.value } : item
+                            )))}
+                            className={profileInputClass}
+                          />
+                        </label>
+                        <label className="space-y-2">
+                          <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Gender</span>
+                          <select
+                            value={dependant.gender}
+                            onChange={(event) => setDependantsDraft((prev) => prev.map((item) => (
+                              item.id === dependant.id
+                                ? { ...item, gender: event.target.value as Dependant['gender'] }
+                                : item
+                            )))}
+                            className={profileInputClass}
+                          >
+                            <option value="Female">Female</option>
+                            <option value="Male">Male</option>
+                          </select>
+                        </label>
+                        <label className="space-y-2 md:col-span-3">
+                          <span className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">Date of birth</span>
+                          <input
+                            type="date"
+                            value={dependant.dob}
+                            onChange={(event) => setDependantsDraft((prev) => prev.map((item) => (
+                              item.id === dependant.id ? { ...item, dob: event.target.value } : item
+                            )))}
+                            className={profileInputClass}
+                          />
+                        </label>
                       </div>
                     </div>
                   )) : (
@@ -1216,14 +1250,33 @@ export default function EmployeePortalView({
                       No dependants added yet.
                     </p>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (dependantsDraft.length >= 10) return;
+                      setDependantsDraft((prev) => ([
+                        ...prev,
+                        {
+                          id: `dependant-${Date.now()}`,
+                          name: '',
+                          gender: 'Female',
+                          dob: '',
+                        },
+                      ]));
+                    }}
+                    disabled={dependantsDraft.length >= 10}
+                    className="inline-flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add dependant
+                  </button>
+                  <p className="text-xs text-on-surface-variant">You can add up to 10 dependants.</p>
                 </div>
               ) : (
-                <p className="mt-4 rounded-2xl border border-dashed border-neutral-border bg-white px-4 py-5 text-center text-sm text-on-surface-variant">
-                  Dependants will be cleared from your profile when you save.
-                </p>
+                <p className="text-xs text-on-surface-variant">You can add dependant details when needed.</p>
               )}
             </div>
-          </div>
+          </fieldset>
         </div>
 
         <div className={`${cardClass} p-6`}>
