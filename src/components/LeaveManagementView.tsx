@@ -10,6 +10,7 @@ import {
   Calendar,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -227,6 +228,7 @@ export default function LeaveManagementView({
 
   const [offInLieuMode, setOffInLieuMode] = useState<OffInLieuSubmissionMode>('single');
   const [offInLieuEmployeeIds, setOffInLieuEmployeeIds] = useState<string[]>([]);
+  const [isOffInLieuEmployeePickerOpen, setIsOffInLieuEmployeePickerOpen] = useState(false);
   const [offInLieuExpiryDate, setOffInLieuExpiryDate] = useState(addOneMonth(getGmt8DateString()));
   const [offInLieuEntries, setOffInLieuEntries] = useState<OffInLieuEntry[]>([]);
   const [offInLieuCalendarDate, setOffInLieuCalendarDate] = useState(() => {
@@ -1391,7 +1393,7 @@ export default function LeaveManagementView({
             </div>
             <div className="flex rounded-md bg-neutral-100 p-1">
               {(['single', 'bulk'] as const).map((mode) => (
-                <button key={mode} type="button" onClick={() => { setOffInLieuMode(mode); if (mode === 'single') setOffInLieuEmployeeIds((ids) => ids.slice(0, 1)); }} className={`rounded px-3 py-1.5 text-[10px] font-bold uppercase ${offInLieuMode === mode ? 'bg-white text-primary shadow-sm' : 'text-on-surface-variant'}`}>
+                <button key={mode} type="button" onClick={() => { setOffInLieuMode(mode); setIsOffInLieuEmployeePickerOpen(false); if (mode === 'single') setOffInLieuEmployeeIds((ids) => ids.slice(0, 1)); }} className={`rounded px-3 py-1.5 text-[10px] font-bold uppercase ${offInLieuMode === mode ? 'bg-white text-primary shadow-sm' : 'text-on-surface-variant'}`}>
                   {mode === 'single' ? 'Single Submission' : 'Bulk Submission'}
                 </button>
               ))}
@@ -1422,10 +1424,49 @@ export default function LeaveManagementView({
             ) : (
               <>
                 <label className={labelClass}>Employee Names</label>
-                <select multiple value={offInLieuEmployeeIds} onChange={(event) => setOffInLieuEmployeeIds(Array.from(event.target.selectedOptions).map((option) => (option as HTMLOptionElement).value))} className={`${inputClass} min-h-[112px]`}>
-                  {activeEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name} | {employee.department} | {employee.designation}</option>)}
-                </select>
-                <p className="mt-2 text-[10px] text-on-surface-variant">Hold Ctrl/Cmd to select more than one active employee.</p>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsOffInLieuEmployeePickerOpen((open) => !open)}
+                    className={`${inputClass} flex items-center justify-between gap-3 text-left`}
+                    aria-expanded={isOffInLieuEmployeePickerOpen}
+                  >
+                    <span className="min-w-0 truncate">
+                      {selectedOffInLieuEmployees.length === 0
+                        ? 'Select active employees'
+                        : `${selectedOffInLieuEmployees.length} active employee${selectedOffInLieuEmployees.length === 1 ? '' : 's'} selected`}
+                    </span>
+                    <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${isOffInLieuEmployeePickerOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {isOffInLieuEmployeePickerOpen && (
+                    <div className="absolute left-0 right-0 z-30 mt-2 max-h-64 overflow-y-auto rounded-md border border-neutral-border bg-white p-1 shadow-lg">
+                      {activeEmployees.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-on-surface-variant">No active employees available.</p>
+                      ) : activeEmployees.map((employee) => {
+                        const checked = offInLieuEmployeeIds.includes(employee.id);
+                        return (
+                          <label key={employee.id} className="flex cursor-pointer items-start gap-3 rounded-md px-3 py-2.5 text-left transition hover:bg-primary/5">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => setOffInLieuEmployeeIds((ids) => (
+                                checked
+                                  ? ids.filter((id) => id !== employee.id)
+                                  : [...ids, employee.id]
+                              ))}
+                              className="mt-0.5 h-4 w-4 shrink-0 accent-[#b42318]"
+                            />
+                            <span className="min-w-0">
+                              <span className="block truncate text-xs font-semibold text-on-surface">{employee.name}</span>
+                              <span className="mt-0.5 block truncate text-[10px] text-on-surface-variant">{employee.department} | {employee.designation}</span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <p className="mt-2 text-[10px] text-on-surface-variant">Select one or more active employees from the dropdown.</p>
                 {selectedOffInLieuEmployees.length > 0 && <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">{selectedOffInLieuEmployees.map((employee) => <div key={employee.id}><EmployeeDetailsStrip employee={employee} compact /></div>)}</div>}
               </>
             )}
