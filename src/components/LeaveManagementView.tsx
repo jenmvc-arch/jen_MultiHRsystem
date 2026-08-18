@@ -1034,8 +1034,8 @@ export default function LeaveManagementView({
         {conditioningPolicies.map((policy) => (
           <div key={policy.id} className={`${cardClass} p-5`}>
             <div className="mb-5 flex items-start justify-between gap-3 border-b border-neutral-100 pb-4">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Policy Rule Set</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-bold uppercase leading-5 tracking-[0.2em] text-primary">Conditioning Leave Policy Rule Set</p>
                 <input value={policy.name} onChange={(event) => updatePolicy(policy.id, 'name', event.target.value)} className="mt-1 w-full border-0 bg-transparent p-0 text-base font-bold text-on-surface outline-none focus:ring-0" />
               </div>
               <ShieldCheck className="h-5 w-5 text-primary" />
@@ -1121,8 +1121,8 @@ export default function LeaveManagementView({
         {carryOverSettings.map((setting) => (
           <div key={setting.id} className={`${cardClass} p-5`}>
             <div className="mb-5 flex items-start justify-between gap-3 border-b border-neutral-100 pb-4">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-secondary">Carry-Over Rule Set</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-bold uppercase leading-5 tracking-[0.2em] text-secondary">Carry Over Leave Balance Settings</p>
                 <input value={setting.name} onChange={(event) => updateCarryOver(setting.id, 'name', event.target.value)} className="mt-1 w-full border-0 bg-transparent p-0 text-base font-bold text-on-surface outline-none focus:ring-0" />
               </div>
               <RotateCcw className="h-5 w-5 text-secondary" />
@@ -1131,6 +1131,7 @@ export default function LeaveManagementView({
               <SelectField label="Carry Forward Rules" value={setting.carryForwardRule} onChange={(value) => updateCarryOver(setting.id, 'carryForwardRule', value)} options={[
                 ['none', 'Do not carry forward'],
                 ['full_balance', 'Carry full unused balance'],
+                ['half_balance', 'Carry up to 50% balance leaves from last year'],
                 ['capped', 'Carry forward up to a cap']
               ]} />
               <NumberField label="Maximum Carry Forward Days" value={setting.maxCarryForwardDays} onChange={(value) => updateCarryOver(setting.id, 'maxCarryForwardDays', value)} min={0} />
@@ -1188,7 +1189,7 @@ export default function LeaveManagementView({
                 <th className="p-4">Type of Leave</th>
                 <th className="p-4">Entitlement</th>
                 <th className="p-4">Conditioning Policy</th>
-                <th className="p-4">Carry Over</th>
+                <th className="p-4">Able to Carry Forward?</th>
                 <th className="p-4 text-center">Enabled</th>
                 <th className="p-4 text-right">Action</th>
               </tr>
@@ -1218,9 +1219,23 @@ export default function LeaveManagementView({
                     </select>
                   </td>
                   <td className="p-3">
-                    <select value={config.carryOverId} onChange={(event) => updateConfig(config.id, 'carryOverId', event.target.value)} className={inputClass}>
-                      {carryOverSettings.map((setting) => <option key={setting.id} value={setting.id}>{setting.name}</option>)}
-                    </select>
+                    <div className="space-y-2">
+                      <select
+                        value={config.canCarryOver === false ? 'no' : 'yes'}
+                        onChange={(event) => updateConfig(config.id, 'canCarryOver', event.target.value === 'yes')}
+                        className={inputClass}
+                      >
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                      {config.canCarryOver !== false ? (
+                        <select value={config.carryOverId || ''} onChange={(event) => updateConfig(config.id, 'carryOverId', event.target.value)} className={inputClass}>
+                          {carryOverSettings.map((setting) => <option key={setting.id} value={setting.id}>{setting.name}</option>)}
+                        </select>
+                      ) : (
+                        <p className="px-1 text-[10px] text-on-surface-variant">Carry-over policy not applicable.</p>
+                      )}
+                    </div>
                   </td>
                   <td className="p-4 text-center">
                     <input type="checkbox" checked={config.enabled !== false} onChange={(event) => updateConfig(config.id, 'enabled', event.target.checked)} className="h-4 w-4 accent-[#b42318]" />

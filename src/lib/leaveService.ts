@@ -80,6 +80,7 @@ function normalizeConfig(value: LeaveConfig, index: number): LeaveConfig {
     enabled: value.enabled !== false,
     policyId: value.policyId || fallback.policyId,
     carryOverId: value.carryOverId || fallback.carryOverId,
+    canCarryOver: value.canCarryOver !== false,
   };
 }
 
@@ -169,6 +170,7 @@ function mapRowsToWorkspace(entityId: string, rows: Record<string, any[]>): Leav
     isDefault: row.isDefault === true,
     enabled: row.enabled !== false,
     systemManaged: row.systemManaged === true,
+    canCarryOver: row.canCarryOver !== false,
     policyId: row.policyId || undefined,
     carryOverId: row.carryOverId || undefined,
   }));

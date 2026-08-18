@@ -64,7 +64,7 @@ export interface LeaveConditioningPolicy {
   enabled?: boolean;
 }
 
-export type CarryForwardRule = 'none' | 'full_balance' | 'capped';
+export type CarryForwardRule = 'none' | 'full_balance' | 'half_balance' | 'capped';
 export type CarryOverExpiryRule = 'no_expiry' | 'fixed_date' | 'months_after_year_end';
 
 export interface CarryOverLeaveBalanceSettings {
@@ -92,6 +92,7 @@ export interface LeaveConfig {
   isDefault?: boolean;
   enabled?: boolean;
   systemManaged?: boolean;
+  canCarryOver?: boolean;
   policyId?: string;
   carryOverId?: string;
 }
