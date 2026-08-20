@@ -731,6 +731,7 @@ export default function PayrollEditorMockupView({
       employeeEmail: effectiveEmployee.email,
       payrollMonth: payMonth,
       payrollYear: payYear,
+      status: 'Processed',
       paymentDate: draft.paymentDate,
       basicSalary: isSeparatePayoutMode ? 0 : draft.basicSalary,
       allowanceGeneral: isSeparatePayoutMode ? 0 : draft.allowanceGeneral,

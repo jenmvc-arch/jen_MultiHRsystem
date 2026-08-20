@@ -112,35 +112,51 @@ const sumFields = (row: Row, fields: string[]) =>
   fields.reduce((total, field) => total + numericValue(row[field]), 0);
 
 export const buildPayrollFileExportRow = (row: Row, employee: Row | undefined, serialNo: number): Row => {
+  const allowanceFields = [
+    'allowance_general',
+    'allowance_transport',
+    'allowance_parking',
+    'allowance_meal',
+    'allowance_accommodation',
+    'allowance_phone',
+  ];
+  const hasDetailedAllowanceFields = allowanceFields.some(field => row[field] !== undefined && row[field] !== null);
   const allowances = row.allowances !== undefined
     ? numericValue(row.allowances)
-    : sumFields(row, [
-      'allowance_general',
-      'allowance_transport',
-      'allowance_parking',
-      'allowance_meal',
-      'allowance_accommodation',
-      'allowance_phone',
-    ]);
+    : hasDetailedAllowanceFields
+      ? sumFields(row, allowanceFields)
+      : numericValue(row.total_allowance ?? row.totalAllowance);
   const isGrossPayV2 = row.calculation_version === 'gross_pay_v2';
-  const grossPay = row.gross_pay ?? row.gross_salary ?? (isGrossPayV2
+  const hasPersistedGrossPay = row.gross_pay !== undefined && row.gross_pay !== null;
+  const hasLegacyPersistedGrossSalary = row.gross_salary !== undefined
+    && row.gross_salary !== null
+    && (numericValue(row.gross_salary) !== 0 || isGrossPayV2);
+  const calculatedLegacyGross = sumFields(row, [
+    'basic_salary',
+    'allowance_general',
+    'allowance_transport',
+    'allowance_parking',
+    'allowance_meal',
+    'allowance_accommodation',
+    'allowance_phone',
+    'overtime',
+    'bonus_amount',
+    'commission_amount',
+    'back_pay_amount',
+    'aws_amount',
+    'compensation_amount',
+  ]);
+  const grossPay = hasPersistedGrossPay
+    ? numericValue(row.gross_pay)
+    : hasLegacyPersistedGrossSalary
+      ? numericValue(row.gross_salary)
+      : (isGrossPayV2
     ? Math.max(0, numericValue(row.basic_salary) + allowances + numericValue(row.commission_amount) - numericValue(row.unpaid_leave) - numericValue(row.incomplete_month_deduction ?? row.proration_deduction))
+    : calculatedLegacyGross);
+  const persistedNetPay = row.net_pay ?? row.net_salary;
+  const totalDeduction = row.total_deduction ?? (persistedNetPay !== undefined && persistedNetPay !== null
+    ? Math.max(0, grossPay + numericValue(row.reimbursement_amount) - numericValue(persistedNetPay))
     : sumFields(row, [
-      'basic_salary',
-      'allowance_general',
-      'allowance_transport',
-      'allowance_parking',
-      'allowance_meal',
-      'allowance_accommodation',
-      'allowance_phone',
-      'overtime',
-      'bonus_amount',
-      'commission_amount',
-      'back_pay_amount',
-      'aws_amount',
-      'compensation_amount',
-    ]));
-  const totalDeduction = row.total_deduction ?? sumFields(row, [
     'actual_pcb_deducted',
     'epf_employee',
     'socso_employee',
@@ -149,7 +165,7 @@ export const buildPayrollFileExportRow = (row: Row, employee: Row | undefined, s
     'deduction_in_lieu',
     'deduction_cp38',
     'deduction_others',
-  ]) + (isGrossPayV2 ? 0 : numericValue(row.unpaid_leave));
+  ]) + (isGrossPayV2 ? 0 : numericValue(row.unpaid_leave)));
   const paymentDescription = row.payment_description
     || row.payout_description
     || row.payout_title
@@ -178,7 +194,7 @@ export const buildPayrollFileExportRow = (row: Row, employee: Row | undefined, s
     eis_employee: numericValue(row.eis_employee),
     actual_pcb_deducted: numericValue(row.actual_pcb_deducted),
     total_deduction: numericValue(totalDeduction),
-    net_pay: numericValue(row.net_pay),
+    net_pay: numericValue(persistedNetPay),
     epf_employer: numericValue(row.epf_employer),
     socso_employer: numericValue(row.socso_employer),
     eis_employer: numericValue(row.eis_employer),
@@ -215,7 +231,10 @@ async function loadRows(actor: AdminSessionActor, request: ExportRequest, client
       employee_name: employeeByEmail.get(normalize(row.employee_email))?.name || row.employee_email,
       department: employeeByEmail.get(normalize(row.employee_email))?.department || '',
       entity_name: employeeByEmail.get(normalize(row.employee_email))?.entity_id || '',
-    })).filter((row: Row) => employeeByEmail.has(normalize(row.employee_email)));
+    })).filter((row: Row) => (
+      employeeByEmail.has(normalize(row.employee_email))
+      && normalize(row.status) === 'processed'
+    ));
     rows = applyPayrollFilters(rows, filters);
     if (request.scope === 'selected' || request.scope === 'record') {
       rows = rows.filter(row => selected.has(normalize(row.id)) || selected.has(normalize(row.employee_email)));

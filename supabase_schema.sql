@@ -211,6 +211,10 @@ CREATE TABLE IF NOT EXISTS public.payroll_records_2026 (
     hrd_corp NUMERIC(12, 2) DEFAULT 0,
     net_salary NUMERIC(12, 2) DEFAULT 0,
     net_pay NUMERIC(12, 2) DEFAULT 0,
+    incomplete_month_deduction NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    gross_pay NUMERIC(12, 2),
+    calculation_version TEXT NOT NULL DEFAULT 'legacy'
+        CHECK (calculation_version IN ('legacy', 'gross_pay_v2')),
     status TEXT DEFAULT 'Draft',
     payment_date DATE,
     created_at TIMESTAMPTZ DEFAULT NOW(),

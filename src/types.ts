@@ -714,6 +714,7 @@ export interface PayrollRecord2026 {
   employeeEmail: string;
   payrollMonth: number;
   payrollYear: number;
+  status?: 'Draft' | 'Processed';
   paymentDate?: string;
   basicSalary: number;
   allowanceGeneral: number;

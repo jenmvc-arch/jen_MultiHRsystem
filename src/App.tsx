@@ -1173,6 +1173,7 @@ export default function App() {
           employeeEmail: r.employeeEmail || '',
           payrollMonth: Number(r.payrollMonth || 1),
           payrollYear: Number(r.payrollYear || 2026),
+          status: r.status === 'Processed' ? 'Processed' : 'Draft',
           basicSalary: Number(r.basicSalary || 0),
           allowanceGeneral: Number(r.allowanceGeneral || 0),
           allowanceTransport: Number(r.allowanceTransport || 0),
@@ -1212,7 +1213,12 @@ export default function App() {
           documentType: r.documentType || undefined,
           compensationLabel: r.compensationLabel || undefined,
           displaySettingsSnapshot: parseOptionalJson(r.displaySettingsSnapshot),
-          grossPay: r.grossPay === undefined || r.grossPay === '' ? undefined : Number(r.grossPay),
+          // Older payroll schemas expose these persisted totals as gross_salary
+          // and net_salary. Read both names so reloads do not turn saved values
+          // into zero or re-run the calculation from incomplete row data.
+          grossPay: r.grossPay === undefined || r.grossPay === ''
+            ? (r.grossSalary === undefined || r.grossSalary === '' ? undefined : Number(r.grossSalary))
+            : Number(r.grossPay),
           calculationVersion: r.calculationVersion || undefined,
           actualPCBDeducted: Number(r.actualPCBDeducted ?? r.taxPcb ?? 0),
           epfEmployee: Number(r.epfEmployee || 0),
@@ -1223,7 +1229,7 @@ export default function App() {
           eisEmployee: Number(r.eisEmployee || 0),
           eisEmployer: Number(r.eisEmployer || 0),
           hrdCorp: r.hrdCorp === undefined ? undefined : Number(r.hrdCorp || 0),
-          netPay: Number(r.netPay || 0),
+          netPay: Number(r.netPay ?? r.netSalary ?? 0),
           createdAt: r.createdAt || ''
         })));
       } catch (err) {
@@ -1919,10 +1925,22 @@ export default function App() {
 
     if (isSupabaseConfigured) {
       try {
+        const totalAllowance =
+          Number(recordToSave.allowanceGeneral || 0) +
+          Number(recordToSave.allowanceTransport || 0) +
+          Number(recordToSave.allowanceParking || 0) +
+          Number(recordToSave.allowanceMeal || 0) +
+          Number(recordToSave.allowanceAccommodation || 0) +
+          Number(recordToSave.allowancePhone || 0);
         await supabaseClient.upsert('payroll_records_2026', {
           ...recordToSave,
           taxPcb: recordToSave.actualPCBDeducted,
-          netSalary: recordToSave.netPay
+          // Keep summary aliases for deployments that have the original
+          // payroll schema but have not applied the additive migrations yet.
+          totalAllowance,
+          grossSalary: recordToSave.grossPay,
+          netSalary: recordToSave.netPay,
+          status: 'Processed'
         });
         console.log('[Supabase] Saved payroll record successfully:', record.id);
       } catch (err: any) {

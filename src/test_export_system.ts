@@ -83,6 +83,29 @@ assert.equal(payrollExportRow.account_no, '001234567890');
 assert.equal(payrollExportRow.allowances, 300);
 assert.equal(payrollExportRow.payment_description, 'July Payroll');
 
+const legacySchemaPayrollRow = buildPayrollFileExportRow(
+  {
+    employee_email: 'payroll@example.com',
+    payroll_month: 8,
+    payroll_year: 2026,
+    status: 'Processed',
+    basic_salary: 5000,
+    total_allowance: 300,
+    gross_salary: 5180,
+    epf_employee: 570,
+    socso_employee: 20,
+    eis_employee: 10,
+    tax_pcb: 100,
+    net_salary: 4780,
+  },
+  { name: 'Payroll Employee', employment_type: 'Permanent' },
+  1,
+);
+assert.equal(legacySchemaPayrollRow.allowances, 300);
+assert.equal(legacySchemaPayrollRow.gross_pay, 5180);
+assert.equal(legacySchemaPayrollRow.net_pay, 4780);
+assert.equal(legacySchemaPayrollRow.total_deduction, 400);
+
 const payrollBook = XLSX.read(
   workbookBuffer('Jul 2026', [payrollExportRow], PAYROLL_FILE_EXPORT_COLUMNS, 'payroll'),
   { type: 'buffer' },

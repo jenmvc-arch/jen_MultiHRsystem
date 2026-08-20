@@ -183,7 +183,8 @@ export default function PayrollView({
     return payrollRecords2026
       .filter(record => {
         const employee = employeeByEmail.get(record.employeeEmail.toLowerCase());
-        return employee
+        return record.status === 'Processed'
+          && employee
           && record.payrollMonth === payMonthIndex
           && record.payrollYear === payYear
           && (selectedDepartment === 'All Departments' || employee.department === selectedDepartment);
@@ -587,10 +588,10 @@ export default function PayrollView({
                       + Number(record.backPayAmount || 0)
                       + Number(record.awsAmount || 0)
                       + Number(record.compensationAmount || 0);
-                    const grossPay = record.grossPay ?? legacyGross;
+                    const grossPay = record.grossPay ?? (record as PayrollRecord2026 & { grossSalary?: number }).grossSalary ?? legacyGross;
                     const deductions = Math.max(
                       0,
-                      grossPay + Number(record.reimbursementAmount || 0) - Number(record.netPay || 0)
+                      grossPay + Number(record.reimbursementAmount || 0) - Number(record.netPay || (record as PayrollRecord2026 & { netSalary?: number }).netSalary || 0)
                     );
                     return (
                       <tr key={record.id} className="hover:bg-primary/5">
@@ -608,7 +609,7 @@ export default function PayrollView({
                         <td className="p-3">{HISTORY_MONTHS[record.payrollMonth]} {record.payrollYear}</td>
                         <td className="p-3 text-right font-mono">{formatMoney(grossPay)}</td>
                         <td className="p-3 text-right font-mono text-red-700">{formatMoney(deductions)}</td>
-                        <td className="p-3 text-right font-mono font-bold text-green-700">{formatMoney(record.netPay)}</td>
+                        <td className="p-3 text-right font-mono font-bold text-green-700">{formatMoney(record.netPay || (record as PayrollRecord2026 & { netSalary?: number }).netSalary || 0)}</td>
                         <td className="p-3">{record.createdAt || '—'}</td>
                         <td className="p-3 text-right">
                           <button type="button" onClick={() => { setSelectedPayrollRecord(record); setSelectedEmployeeId(employee?.id || selectedEmployeeId); setActiveSubTab('payslip-preview'); }} className="rounded bg-primary/10 px-2.5 py-1.5 font-bold text-primary hover:bg-primary/20">Preview Payslip</button>
