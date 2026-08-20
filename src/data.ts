@@ -110,6 +110,9 @@ export interface PayslipBreakdown {
   skbbkEmpVal: number;
   skbbkEmplyrVal: number;
   hrdCorpVal: number;
+  grossPay: number;
+  grossReductions: number;
+  netDeductions: number;
   totalDeductions: number;
   totalEmployerContributions: number;
   netPay: number;
@@ -132,6 +135,8 @@ export interface PayslipStatutoryOverrides {
 export interface PayslipCalculationOptions {
   basicSalaryOverride?: number;
   statutorySalaryOverride?: number;
+  grossPayOverride?: number;
+  calculationVersion?: import('./types').PayrollCalculationVersion;
   statutoryEligibilityOverride?: boolean;
   statutoryOverrides?: PayslipStatutoryOverrides;
   ignoreSavedStatutory?: boolean;
@@ -2558,6 +2563,10 @@ export function getEmployeeForMonth(employee: Employee, month: number, year?: nu
       histRecord.unpaidLeave !== undefined
         ? histRecord.unpaidLeave
         : effectiveEmployee.unpaidLeave,
+    incompleteMonthDeduction:
+      histRecord.incompleteMonthDeduction !== undefined
+        ? histRecord.incompleteMonthDeduction
+        : effectiveEmployee.incompleteMonthDeduction,
     deductionInLieu:
       histRecord.deductionInLieu !== undefined
         ? histRecord.deductionInLieu
@@ -2598,6 +2607,9 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
     hrdCorp: savedRecord.hrdCorp
   } : {};
   const statutoryOverrides = { ...savedStatutory, ...options.statutoryOverrides };
+  const calculationVersion = options.calculationVersion || savedRecord?.calculationVersion || 'legacy';
+  const isSeparateCalculation = isSeparatePayrollRecord(savedRecord);
+  const useGrossPayFormula = calculationVersion === 'gross_pay_v2' && !isSeparateCalculation;
   const basicSalary = options.basicSalaryOverride !== undefined
     ? options.basicSalaryOverride
     : (month !== undefined && year !== undefined)
@@ -2628,16 +2640,29 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
   // Reimbursements (usually non-taxable)
   const reimbursementsSum = mergedEmployee.reimbursementAmount || 0;
 
-  // Gross Earnings subject to statutory deductions / standard gross
-  const grossEarnings = 
-    basicSalary + 
-    allowancesSum + 
-    overtimeVal + 
-    bonusVal + 
-    commissionVal + 
-    backPayVal + 
-    awsVal + 
+  // Regular payroll uses the explicit gross-pay formula. Separate payouts and
+  // legacy records retain their existing earnings behavior.
+  const unpaidLeaveVal = mergedEmployee.unpaidLeave || 0;
+  const incompleteMonthDeductionVal = mergedEmployee.incompleteMonthDeduction || 0;
+  const legacyGrossEarnings =
+    basicSalary +
+    allowancesSum +
+    overtimeVal +
+    bonusVal +
+    commissionVal +
+    backPayVal +
+    awsVal +
     compensationVal;
+  const calculatedGrossPay = Math.max(
+    0,
+    basicSalary + allowancesSum + commissionVal - unpaidLeaveVal - incompleteMonthDeductionVal,
+  );
+  const grossPay = useGrossPayFormula
+    ? (options.grossPayOverride ?? savedRecord?.grossPay ?? calculatedGrossPay)
+    : legacyGrossEarnings;
+  const grossReductions = useGrossPayFormula
+    ? unpaidLeaveVal + incompleteMonthDeductionVal
+    : 0;
 
   const isEligible = options.statutoryEligibilityOverride ?? getPayrollDocumentProfile(mergedEmployee).statutoryEnabled;
   const appliedStatutoryOverrides = isEligible ? statutoryOverrides : {};
@@ -2648,24 +2673,26 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
   const optInPcb = mergedEmployee.optInPcb !== false;
 
   const epfRateEmp = mergedEmployee.epfRateEmployee || 11;
-  const epfRateEmployerCalculated = statutorySalary <= 5000 ? 13 : 12;
+  const contributionBasis = useGrossPayFormula ? grossPay : statutorySalary;
+  const epfRateEmployerCalculated = contributionBasis <= 5000 ? 13 : 12;
   const epfRateEmployer = mergedEmployee.epfRateEmployer || epfRateEmployerCalculated;
 
-  const autoEpfEmployeeValue = (isEligible && optInEpf) ? Math.round((statutorySalary * epfRateEmp) / 100) : 0;
-  const autoEpfEmployerValue = (isEligible && optInEpf) ? Math.round((statutorySalary * epfRateEmployer) / 100) : 0;
+  const autoEpfEmployeeValue = (isEligible && optInEpf) ? Math.round((contributionBasis * epfRateEmp) / 100) : 0;
+  const autoEpfEmployerValue = (isEligible && optInEpf) ? Math.round((contributionBasis * epfRateEmployer) / 100) : 0;
   const epfEmployeeValue = appliedStatutoryOverrides.epfEmployee ?? autoEpfEmployeeValue;
   const epfEmployerValue = appliedStatutoryOverrides.epfEmployer ?? autoEpfEmployerValue;
 
   // Custom Deductions
-  const unpaidLeaveVal = mergedEmployee.unpaidLeave || 0;
   const deductionInLieuVal = mergedEmployee.deductionInLieu || 0;
   const deductionCp38Val = mergedEmployee.deductionCp38 || 0;
   const deductionOthersVal = mergedEmployee.deductionOthers || 0;
 
   // Calculate 2026 dynamic SOCSO and EIS
-  const stat2026 = getStatutoryDeductions2026(statutorySalary);
+  const stat2026 = getStatutoryDeductions2026(contributionBasis);
   
-  const payrollItems = options.statutorySalaryOverride !== undefined
+  const payrollItems = useGrossPayFormula
+    ? [{ code: 'basic_salary', amount: grossPay }]
+    : options.statutorySalaryOverride !== undefined
     ? [{ code: 'basic_salary', amount: statutorySalary }]
     : [
       { code: 'basic_salary', amount: basicSalary },
@@ -2679,7 +2706,7 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
       { code: 'allowance_phone', amount: allowancePh },
       { code: 'backpay', amount: backPayVal }
     ];
-  if (unpaidLeaveVal > 0) {
+  if (!useGrossPayFormula && unpaidLeaveVal > 0) {
     payrollItems.push({ code: 'unpaid_leave', amount: unpaidLeaveVal });
   }
 
@@ -2706,12 +2733,13 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
   const eisEmployeeVal = appliedStatutoryOverrides.eisEmployee ?? autoEisEmployeeVal;
   const eisEmployerVal = appliedStatutoryOverrides.eisEmployer ?? autoEisEmployerVal;
 
-  // Dynamic 2026 PCB calculation if basicSalary changed from original or if taxPcb is missing
+  // PCB remains a separate tax calculation and keeps its existing basis.
   const baseEmp = INITIAL_EMPLOYEES.find(e => e.id === mergedEmployee.id);
   const isSalaryChanged = baseEmp ? baseEmp.basicSalary !== basicSalary : false;
+  const pcbBasis = useGrossPayFormula ? basicSalary : statutorySalary;
   const autoTaxPcbVal = (isEligible && optInPcb)
     ? (options.ignoreSavedPcb || isSalaryChanged || mergedEmployee.taxPcb === undefined
-       ? calculatePcb2026(statutorySalary, mergedEmployee.maritalStatus || 'Single', mergedEmployee.spouseIsWorking || 'No', mergedEmployee.dependants?.length || 0, autoEpfEmployeeValue, actMonth)
+       ? calculatePcb2026(pcbBasis, mergedEmployee.maritalStatus || 'Single', mergedEmployee.spouseIsWorking || 'No', mergedEmployee.dependants?.length || 0, autoEpfEmployeeValue, actMonth)
        : mergedEmployee.taxPcb)
     : 0;
   const taxPcbVal = appliedStatutoryOverrides.taxPcb ?? autoTaxPcbVal;
@@ -2727,17 +2755,18 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
     ? appliedStatutoryOverrides.hrdCorp ?? autoHrdCorpVal
     : 0;
 
-  // Total Deductions
-  const totalDeductions =
+  const netDeductions =
     epfEmployeeValue +
     socsoEmployeeVal +
     eisEmployeeVal +
     skbbkEmpVal +
     taxPcbVal +
-    unpaidLeaveVal +
     deductionInLieuVal +
     deductionCp38Val +
     deductionOthersVal;
+  const totalDeductions = useGrossPayFormula
+    ? netDeductions
+    : netDeductions + unpaidLeaveVal;
 
   const totalEmployerContributions =
     epfEmployerValue +
@@ -2746,11 +2775,16 @@ export function calculatePayslip(employee: Employee, month?: number, year?: numb
     skbbkEmplyrVal +
     hrdCorpVal;
 
-  // Net Pay = Gross Earnings + Reimbursements - Total Deductions
-  const netPay = grossEarnings + reimbursementsSum - totalDeductions;
+  // Net Pay does not subtract unpaid leave or incomplete-month deductions twice.
+  const netPay = useGrossPayFormula
+    ? grossPay + reimbursementsSum - netDeductions
+    : legacyGrossEarnings + reimbursementsSum - totalDeductions;
 
   return {
-    grossEarnings,
+    grossEarnings: grossPay,
+    grossPay,
+    grossReductions,
+    netDeductions,
     epfEmployeeValue,
     epfEmployerValue,
     socsoEmployeeVal,

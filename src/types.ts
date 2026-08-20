@@ -84,6 +84,9 @@ export type ContractStatutoryTreatment = 'with_statutory' | 'without_statutory';
 
 export type PayrollPayoutKind = 'regular' | 'bonus' | 'incentive_commission' | 'claim_reimbursement';
 
+export type PayrollCalculationVersion = 'legacy' | 'gross_pay_v2';
+export const GROSS_PAY_CALCULATION_VERSION: PayrollCalculationVersion = 'gross_pay_v2';
+
 export type PayrollLineNotes = Record<string, string>;
 
 export interface PayrollDocumentDisplaySettings {
@@ -132,6 +135,7 @@ export interface Employee {
   
   reimbursementAmount?: number;
   reimbursementDesc?: string;
+  incompleteMonthDeduction?: number;
   
   bonusAmount?: number;
   bonusDesc?: string;
@@ -476,6 +480,7 @@ export interface HistoricalPayrollRecord {
   reimbursementAmount?: number;
   reimbursementDesc?: string;
   unpaidLeave?: number;
+  incompleteMonthDeduction?: number;
   deductionInLieu?: number;
   deductionCp38?: number;
   deductionOthers?: number;
@@ -490,6 +495,8 @@ export interface HistoricalPayrollRecord {
   documentType?: PayrollDocumentType;
   compensationLabel?: string;
   displaySettingsSnapshot?: PayrollDocumentDisplaySettings;
+  grossPay?: number;
+  calculationVersion?: PayrollCalculationVersion;
   epfEmployee?: number;
   epfEmployer?: number;
   socsoEmployee?: number;
@@ -729,6 +736,7 @@ export interface PayrollRecord2026 {
   reimbursementAmount: number;
   reimbursementDesc?: string;
   unpaidLeave: number;
+  incompleteMonthDeduction?: number;
   deductionInLieu: number;
   deductionCp38: number;
   deductionOthers: number;
@@ -743,6 +751,8 @@ export interface PayrollRecord2026 {
   documentType?: PayrollDocumentType;
   compensationLabel?: string;
   displaySettingsSnapshot?: PayrollDocumentDisplaySettings;
+  grossPay?: number;
+  calculationVersion?: PayrollCalculationVersion;
   actualPCBDeducted: number;
   epfEmployee: number;
   epfEmployer: number;

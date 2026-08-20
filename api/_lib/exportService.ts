@@ -122,33 +122,34 @@ export const buildPayrollFileExportRow = (row: Row, employee: Row | undefined, s
       'allowance_accommodation',
       'allowance_phone',
     ]);
-  const grossPay = row.gross_pay ?? row.gross_salary ?? sumFields(row, [
-    'basic_salary',
-    'allowance_general',
-    'allowance_transport',
-    'allowance_parking',
-    'allowance_meal',
-    'allowance_accommodation',
-    'allowance_phone',
-    'overtime',
-    'bonus_amount',
-    'commission_amount',
-    'back_pay_amount',
-    'aws_amount',
-    'compensation_amount',
-    'reimbursement_amount',
-  ]);
+  const isGrossPayV2 = row.calculation_version === 'gross_pay_v2';
+  const grossPay = row.gross_pay ?? row.gross_salary ?? (isGrossPayV2
+    ? Math.max(0, numericValue(row.basic_salary) + allowances + numericValue(row.commission_amount) - numericValue(row.unpaid_leave) - numericValue(row.incomplete_month_deduction ?? row.proration_deduction))
+    : sumFields(row, [
+      'basic_salary',
+      'allowance_general',
+      'allowance_transport',
+      'allowance_parking',
+      'allowance_meal',
+      'allowance_accommodation',
+      'allowance_phone',
+      'overtime',
+      'bonus_amount',
+      'commission_amount',
+      'back_pay_amount',
+      'aws_amount',
+      'compensation_amount',
+    ]));
   const totalDeduction = row.total_deduction ?? sumFields(row, [
     'actual_pcb_deducted',
     'epf_employee',
     'socso_employee',
     'lindung24_employee',
     'eis_employee',
-    'unpaid_leave',
     'deduction_in_lieu',
     'deduction_cp38',
     'deduction_others',
-  ]);
+  ]) + (isGrossPayV2 ? 0 : numericValue(row.unpaid_leave));
   const paymentDescription = row.payment_description
     || row.payout_description
     || row.payout_title

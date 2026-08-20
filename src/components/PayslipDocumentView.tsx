@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { pdf } from '@react-pdf/renderer';
 import { PayslipPDFDocument } from './PayslipPDFDocument';
-import { Employee, CorporateEntity, PayrollDocumentDisplaySettings, PayrollRecord2026 } from '../types';
+import { Employee, CorporateEntity, PayrollDocumentDisplaySettings, PayrollRecord2026, GROSS_PAY_CALCULATION_VERSION } from '../types';
 import { calculatePayslip, getPayrollDocumentDisplaySettings, getPayrollDocumentFieldLabels, getPayrollDocumentProfile, getPayrollDocumentProfileForRecord, getPayrollBasicSalary, getSalaryProration, getDirectLogoUrl, calculateSocsoContribution, getEmployeeForMonth, getEffectiveTerminationDateForDate, getSeparatePayoutConfig, isSeparatePayrollRecord } from '../data';
 import { formatToDDMMMYYYY } from '../lib/dateUtils';
 
@@ -112,6 +112,7 @@ export default function PayslipDocumentView({
       reimbursementAmount: isSeparatePayoutDocument ? Number(activePayrollRecord.reimbursementAmount || 0) : (activePayrollRecord.reimbursementAmount ?? activeEmployee.reimbursementAmount),
       reimbursementDesc: activePayrollRecord.reimbursementDesc ?? activeEmployee.reimbursementDesc,
       unpaidLeave: activePayrollRecord.unpaidLeave ?? activeEmployee.unpaidLeave,
+      incompleteMonthDeduction: activePayrollRecord.incompleteMonthDeduction ?? activeEmployee.incompleteMonthDeduction,
       deductionInLieu: activePayrollRecord.deductionInLieu ?? activeEmployee.deductionInLieu,
       deductionCp38: activePayrollRecord.deductionCp38 ?? activeEmployee.deductionCp38,
       deductionOthers: activePayrollRecord.deductionOthers ?? activeEmployee.deductionOthers,
@@ -125,6 +126,12 @@ export default function PayslipDocumentView({
   const breakdown = activePayrollRecord
     ? calculatePayslip(payrollDocumentEmployee, payMonth, payYear, {
       basicSalaryOverride: isSeparatePayoutDocument ? 0 : payrollDocumentEmployee.basicSalary,
+      calculationVersion: isSeparatePayoutDocument || activePayrollRecord.calculationVersion !== GROSS_PAY_CALCULATION_VERSION
+        ? undefined
+        : GROSS_PAY_CALCULATION_VERSION,
+      grossPayOverride: isSeparatePayoutDocument || activePayrollRecord.calculationVersion !== GROSS_PAY_CALCULATION_VERSION
+        ? undefined
+        : activePayrollRecord.grossPay,
       statutorySalaryOverride: isSeparatePayoutDocument
         ? ((activePayrollRecord.payoutKind && activePayrollRecord.payoutKind !== 'regular')
           ? Number((activePayrollRecord.payoutKind === 'bonus'
@@ -659,7 +666,7 @@ export default function PayslipDocumentView({
               {/* Total Row */}
               <div className="flex justify-between items-center border-t border-b border-[#A32626] py-3 mt-4 text-[#A32626] font-black text-xs uppercase tracking-wider">
 	                <span>{documentProfile.isPaymentVoucher ? 'Gross Amount' : 'Total Earnings & Additions'}</span>
-                <span className="font-mono">RM {(breakdown.grossEarnings + breakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                <span className="font-mono">RM {(breakdown.grossPay + breakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
               </div>
             </div>
 
@@ -773,7 +780,7 @@ export default function PayslipDocumentView({
               <div>
                 <p className="text-[10px] text-[#6B6B6B] font-black uppercase tracking-wider">{documentProfile.isPaymentVoucher ? 'Gross Amount' : 'Gross Pay'}</p>
                 <p className="text-lg font-black text-[#333333] font-mono mt-0.5">
-                  RM {(breakdown.grossEarnings + breakdown.reimbursementsSum).toLocaleString('en-US', {minimumFractionDigits: 2})}
+                  RM {breakdown.grossPay.toLocaleString('en-US', {minimumFractionDigits: 2})}
                 </p>
               </div>
             </div>

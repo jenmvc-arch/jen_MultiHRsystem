@@ -27,6 +27,7 @@ import type {
   PayrollPayoutKind,
   ContractStatutoryTreatment
 } from '../types';
+import { GROSS_PAY_CALCULATION_VERSION } from '../types';
 import {
   calculatePayslip,
   calculatePcb2026,
@@ -40,6 +41,7 @@ import {
   getSalaryProration,
   getSeparatePayoutConfig,
   getSeparatePayoutDocumentProfile,
+  isSeparatePayrollRecord,
   isEmployeeEligibleForPayrollPeriod,
   type PayslipBreakdown,
   type YtdBreakdown
@@ -99,6 +101,7 @@ type MockupDraft = {
   taxPcb: number;
   hrdCorp: number;
   unpaidLeave: number;
+  incompleteMonthDeduction: number;
   deductionInLieu: number;
   deductionCp38: number;
   deductionOthers: number;
@@ -172,10 +175,19 @@ const getInitialDraft = (
   month: number,
   year: number,
   payoutKind?: Exclude<PayrollPayoutKind, 'regular'> | null,
-  companyEmployees?: Employee[]
+  companyEmployees?: Employee[],
+  payrollRecord?: PayrollRecord2026
 ): MockupDraft => {
   const effectiveEmployee = getEmployeeForMonth(employee, month, year);
-  const breakdown = calculatePayslip(employee, month, year, { companyEmployees });
+  const proration = getSalaryProration(effectiveEmployee, month, year);
+  const savedRecord = payrollRecord && !isSeparatePayrollRecord(payrollRecord) ? payrollRecord : undefined;
+  const useGrossPayV2 = !savedRecord || savedRecord.calculationVersion === GROSS_PAY_CALCULATION_VERSION;
+  const breakdown = calculatePayslip(employee, month, year, {
+    companyEmployees,
+    calculationVersion: useGrossPayV2 ? GROSS_PAY_CALCULATION_VERSION : undefined,
+    basicSalaryOverride: savedRecord?.basicSalary ?? (useGrossPayV2 ? proration.fullPeriodSalary : getPayrollBasicSalary(employee, month, year)),
+    grossPayOverride: savedRecord?.grossPay
+  });
   const documentProfile = getPayrollDocumentProfile(effectiveEmployee);
   const separatePayoutConfig = payoutKind ? getSeparatePayoutConfig(payoutKind) : null;
   const separatePayoutAmount = separatePayoutConfig
@@ -183,50 +195,52 @@ const getInitialDraft = (
     : 0;
 
   const regularDraft: MockupDraft = {
-    paymentDate: effectiveEmployee.paymentDate || getDefaultPaymentDate(month, year),
-    basicSalary: getPayrollBasicSalary(employee, month, year),
-    allowanceGeneral: effectiveEmployee.allowanceGeneral || 0,
-    allowanceTransport: effectiveEmployee.allowanceTransport ?? effectiveEmployee.transportAllowance ?? 0,
-    allowanceParking: effectiveEmployee.allowanceParking || 0,
-    allowanceMeal: effectiveEmployee.allowanceMeal || 0,
-    allowanceAccommodation: effectiveEmployee.allowanceAccommodation ?? effectiveEmployee.housingAllowance ?? 0,
-    allowancePhone: effectiveEmployee.allowancePhone || 0,
-    overtime: effectiveEmployee.overtime || 0,
-    bonusAmount: effectiveEmployee.bonusAmount ?? effectiveEmployee.performanceBonus ?? 0,
-    bonusDesc: effectiveEmployee.bonusDesc || '',
-    commissionAmount: effectiveEmployee.commissionAmount || 0,
-    commissionDesc: effectiveEmployee.commissionDesc || '',
-    backPayAmount: effectiveEmployee.backPayAmount || 0,
-    backPayDesc: effectiveEmployee.backPayDesc || '',
-    awsAmount: effectiveEmployee.awsAmount || 0,
-    awsDesc: effectiveEmployee.awsDesc || '',
-    compensationAmount: effectiveEmployee.compensationAmount || 0,
-    compensationDesc: effectiveEmployee.compensationDesc || '',
-    reimbursementAmount: effectiveEmployee.reimbursementAmount || 0,
-    reimbursementDesc: effectiveEmployee.reimbursementDesc || '',
+    paymentDate: savedRecord?.paymentDate || effectiveEmployee.paymentDate || getDefaultPaymentDate(month, year),
+    basicSalary: savedRecord?.basicSalary ?? proration.fullPeriodSalary,
+    allowanceGeneral: savedRecord?.allowanceGeneral ?? (effectiveEmployee.allowanceGeneral || 0),
+    allowanceTransport: savedRecord?.allowanceTransport ?? (effectiveEmployee.allowanceTransport ?? effectiveEmployee.transportAllowance ?? 0),
+    allowanceParking: savedRecord?.allowanceParking ?? (effectiveEmployee.allowanceParking || 0),
+    allowanceMeal: savedRecord?.allowanceMeal ?? (effectiveEmployee.allowanceMeal || 0),
+    allowanceAccommodation: savedRecord?.allowanceAccommodation ?? (effectiveEmployee.allowanceAccommodation ?? effectiveEmployee.housingAllowance ?? 0),
+    allowancePhone: savedRecord?.allowancePhone ?? (effectiveEmployee.allowancePhone || 0),
+    overtime: savedRecord?.overtime ?? (effectiveEmployee.overtime || 0),
+    bonusAmount: savedRecord?.bonusAmount ?? (effectiveEmployee.bonusAmount ?? effectiveEmployee.performanceBonus ?? 0),
+    bonusDesc: savedRecord?.bonusDesc ?? (effectiveEmployee.bonusDesc || ''),
+    commissionAmount: savedRecord?.commissionAmount ?? (effectiveEmployee.commissionAmount || 0),
+    commissionDesc: savedRecord?.commissionDesc ?? (effectiveEmployee.commissionDesc || ''),
+    backPayAmount: savedRecord?.backPayAmount ?? (effectiveEmployee.backPayAmount || 0),
+    backPayDesc: savedRecord?.backPayDesc ?? (effectiveEmployee.backPayDesc || ''),
+    awsAmount: savedRecord?.awsAmount ?? (effectiveEmployee.awsAmount || 0),
+    awsDesc: savedRecord?.awsDesc ?? (effectiveEmployee.awsDesc || ''),
+    compensationAmount: savedRecord?.compensationAmount ?? (effectiveEmployee.compensationAmount || 0),
+    compensationDesc: savedRecord?.compensationDesc ?? (effectiveEmployee.compensationDesc || ''),
+    reimbursementAmount: savedRecord?.reimbursementAmount ?? (effectiveEmployee.reimbursementAmount || 0),
+    reimbursementDesc: savedRecord?.reimbursementDesc ?? (effectiveEmployee.reimbursementDesc || ''),
     otherEarningAmount: 0,
     otherEarningDesc: '',
-    epfEmployee: breakdown.epfEmployeeValue,
-    epfEmployer: breakdown.epfEmployerValue,
-    socsoEmployee: breakdown.socsoEmployeeVal,
-    socsoEmployer: breakdown.socsoEmployerVal,
-    lindung24Employee: breakdown.skbbkEmpVal,
-    eisEmployee: breakdown.eisEmployeeVal,
-    eisEmployer: breakdown.eisEmployerVal,
-    taxPcb: breakdown.taxPcbVal,
-    hrdCorp: breakdown.hrdCorpVal,
-    unpaidLeave: effectiveEmployee.unpaidLeave || 0,
-    deductionInLieu: effectiveEmployee.deductionInLieu || 0,
-    deductionCp38: effectiveEmployee.deductionCp38 || 0,
-    deductionOthers: effectiveEmployee.deductionOthers || 0,
-    deductionOthersDesc: effectiveEmployee.deductionOthersDesc || '',
-    statutoryTreatment: documentProfile.statutoryEnabled ? 'with_statutory' : 'without_statutory',
+    epfEmployee: savedRecord?.epfEmployee ?? breakdown.epfEmployeeValue,
+    epfEmployer: savedRecord?.epfEmployer ?? breakdown.epfEmployerValue,
+    socsoEmployee: savedRecord?.socsoEmployee ?? breakdown.socsoEmployeeVal,
+    socsoEmployer: savedRecord?.socsoEmployer ?? breakdown.socsoEmployerVal,
+    lindung24Employee: savedRecord?.lindung24Employee ?? breakdown.skbbkEmpVal,
+    eisEmployee: savedRecord?.eisEmployee ?? breakdown.eisEmployeeVal,
+    eisEmployer: savedRecord?.eisEmployer ?? breakdown.eisEmployerVal,
+    taxPcb: savedRecord?.actualPCBDeducted ?? breakdown.taxPcbVal,
+    hrdCorp: savedRecord?.hrdCorp ?? breakdown.hrdCorpVal,
+    unpaidLeave: savedRecord?.unpaidLeave ?? (effectiveEmployee.unpaidLeave || 0),
+    incompleteMonthDeduction: savedRecord?.incompleteMonthDeduction ?? (useGrossPayV2 ? (effectiveEmployee.incompleteMonthDeduction ?? proration.prorationDeduction) : 0),
+    deductionInLieu: savedRecord?.deductionInLieu ?? (effectiveEmployee.deductionInLieu || 0),
+    deductionCp38: savedRecord?.deductionCp38 ?? (effectiveEmployee.deductionCp38 || 0),
+    deductionOthers: savedRecord?.deductionOthers ?? (effectiveEmployee.deductionOthers || 0),
+    deductionOthersDesc: savedRecord?.deductionOthersDesc ?? (effectiveEmployee.deductionOthersDesc || ''),
+    statutoryTreatment: savedRecord?.statutoryTreatment || (documentProfile.statutoryEnabled ? 'with_statutory' : 'without_statutory'),
     payoutDescription: '',
-    lineNotes: {},
+    lineNotes: savedRecord?.lineNotes || {},
     descriptions: {
       ...DEFAULT_DESCRIPTION_OVERRIDES,
       ...(effectiveEmployee.deductionOthersDesc ? { deductionOthers: effectiveEmployee.deductionOthersDesc } : {}),
-      ...(effectiveEmployee.payslipDescriptions || {})
+      ...(effectiveEmployee.payslipDescriptions || {}),
+      ...(savedRecord?.payslipDescriptions || {})
     }
   };
 
@@ -268,6 +282,7 @@ const getInitialDraft = (
     taxPcb: 0,
     hrdCorp: 0,
     unpaidLeave: 0,
+    incompleteMonthDeduction: 0,
     deductionInLieu: 0,
     deductionCp38: 0,
     deductionOthers: 0,
@@ -275,7 +290,7 @@ const getInitialDraft = (
     statutoryTreatment: separatePayoutConfig.defaultStatutoryTreatment,
     payoutDescription: '',
     lineNotes: {},
-    descriptions: { ...DEFAULT_DESCRIPTION_OVERRIDES }
+    descriptions: { ...DEFAULT_DESCRIPTION_OVERRIDES, ...(savedRecord?.payslipDescriptions || {}) }
   };
 };
 
@@ -305,6 +320,8 @@ const getCalculationEmployee = (employee: Employee, draft: MockupDraft): Employe
   compensationDesc: draft.compensationDesc,
   reimbursementAmount: draft.reimbursementAmount,
   reimbursementDesc: draft.reimbursementDesc,
+  unpaidLeave: draft.unpaidLeave,
+  incompleteMonthDeduction: draft.incompleteMonthDeduction,
   deductionInLieu: draft.deductionInLieu,
   deductionCp38: draft.deductionCp38,
   deductionOthers: draft.deductionOthers,
@@ -472,7 +489,23 @@ export default function PayrollEditorMockupView({
   }
 
   const draftKey = getDraftKey(rawActiveEmployee, payMonth, payYear, separatePayoutKind);
-  const currentDraft = demoDrafts[draftKey] || getInitialDraft(rawActiveEmployee, payMonth, payYear, separatePayoutKind, employees);
+  const persistedPayrollRecord = payrollRecords2026.find(record => (
+    record.employeeEmail.toLowerCase() === rawActiveEmployee.email.toLowerCase() &&
+    record.payrollMonth === payMonth &&
+    record.payrollYear === payYear &&
+    (isSeparatePayoutMode
+      ? record.payoutKind === separatePayoutKind
+      : !isSeparatePayrollRecord(record))
+  ));
+  const useGrossPayV2 = isEditing || !persistedPayrollRecord || persistedPayrollRecord.calculationVersion === GROSS_PAY_CALCULATION_VERSION;
+  const currentDraft = demoDrafts[draftKey] || getInitialDraft(
+    rawActiveEmployee,
+    payMonth,
+    payYear,
+    separatePayoutKind,
+    employees,
+    persistedPayrollRecord
+  );
   const activeDraft = editingDraft || currentDraft;
   const effectiveEmployee = getEmployeeForMonth(rawActiveEmployee, payMonth, payYear);
   const selectedPayoutAmount = getDraftPayoutAmount(activeDraft, separatePayoutKind);
@@ -512,6 +545,7 @@ export default function PayrollEditorMockupView({
     return calculatePayslip(employeeForCalc, payMonth, payYear, {
       basicSalaryOverride: isSeparatePayoutMode ? 0 : draft.basicSalary,
       statutorySalaryOverride: isSeparatePayoutMode ? draftStatutoryBasis : undefined,
+      calculationVersion: isSeparatePayoutMode || !useGrossPayV2 ? undefined : GROSS_PAY_CALCULATION_VERSION,
       ignoreSavedStatutory: true,
       companyEmployees: employees
     });
@@ -555,6 +589,7 @@ export default function PayrollEditorMockupView({
   const breakdown = calculatePayslip(calculationEmployee, payMonth, payYear, {
     basicSalaryOverride: isSeparatePayoutMode ? 0 : activeDraft.basicSalary,
     statutorySalaryOverride: isSeparatePayoutMode ? statutoryBasis : undefined,
+    calculationVersion: isSeparatePayoutMode || !useGrossPayV2 ? undefined : GROSS_PAY_CALCULATION_VERSION,
     ignoreSavedStatutory: true,
     companyEmployees: employees,
     statutoryOverrides: {
@@ -672,6 +707,7 @@ export default function PayrollEditorMockupView({
       {
         basicSalaryOverride: isSeparatePayoutMode ? 0 : draft.basicSalary,
         statutorySalaryOverride: isSeparatePayoutMode ? getDraftPayoutAmount(draft, separatePayoutKind) : undefined,
+        calculationVersion: isSeparatePayoutMode ? undefined : GROSS_PAY_CALCULATION_VERSION,
         ignoreSavedStatutory: true,
         companyEmployees: employees,
         statutoryOverrides: {
@@ -717,6 +753,7 @@ export default function PayrollEditorMockupView({
       reimbursementAmount: draft.reimbursementAmount,
       reimbursementDesc: draft.reimbursementDesc,
       unpaidLeave: draft.unpaidLeave,
+      incompleteMonthDeduction: isSeparatePayoutMode ? 0 : draft.incompleteMonthDeduction,
       deductionInLieu: draft.deductionInLieu,
       deductionCp38: draft.deductionCp38,
       deductionOthers: draft.deductionOthers,
@@ -741,6 +778,8 @@ export default function PayrollEditorMockupView({
       eisEmployer: recordBreakdown.eisEmployerVal,
       hrdCorp: recordBreakdown.hrdCorpVal,
       netPay: recordBreakdown.netPay,
+      grossPay: recordBreakdown.grossPay,
+      calculationVersion: isSeparatePayoutMode ? 'legacy' : GROSS_PAY_CALCULATION_VERSION,
       createdAt: getGmt8Timestamp()
     };
   };
@@ -821,6 +860,7 @@ export default function PayrollEditorMockupView({
     subdued?: boolean;
   }> = [
     { field: 'unpaidLeave', label: 'Unpaid Leave' },
+    { field: 'incompleteMonthDeduction', label: 'Incomplete Month Deduction' },
     { field: 'deductionInLieu', label: 'Payment in Lieu' },
     { field: 'deductionCp38', label: 'CP38 Direct Tax' },
     { field: 'deductionOthers', label: 'Others', subdued: true }
@@ -862,10 +902,11 @@ export default function PayrollEditorMockupView({
   const useDefaultCalculatedAmount = () => {
     if (!editingDraft) return;
 
-    const defaultBasicSalary = isSeparatePayoutMode ? 0 : proration.payableSalary;
+    const defaultBasicSalary = isSeparatePayoutMode ? 0 : proration.fullPeriodSalary;
     const baseDraft = {
       ...editingDraft,
       basicSalary: defaultBasicSalary,
+      incompleteMonthDeduction: isSeparatePayoutMode ? 0 : proration.prorationDeduction,
       taxPcb: 0
     };
     const defaultStatutoryValues = getDefaultStatutoryDraftValues(baseDraft, editingDraft.statutoryTreatment);
@@ -873,6 +914,7 @@ export default function PayrollEditorMockupView({
     setEditingDraft(previous => previous ? {
       ...previous,
       basicSalary: defaultBasicSalary,
+      incompleteMonthDeduction: isSeparatePayoutMode ? 0 : proration.prorationDeduction,
       ...defaultStatutoryValues
     } : previous);
     onShowNotification(
@@ -1290,7 +1332,7 @@ export default function PayrollEditorMockupView({
               )}
               <div className="mt-2 flex items-center justify-between border-t border-primary/20 pt-3 text-xs font-bold text-primary">
                 <span>{documentProfile.isPaymentVoucher ? 'Gross Amount' : 'Total Earnings & Reimbursements'}</span>
-                <span className="font-mono">{formatMoney(breakdown.grossEarnings + breakdown.reimbursementsSum)}</span>
+                <span className="font-mono">{formatMoney(breakdown.grossPay + breakdown.reimbursementsSum)}</span>
               </div>
             </div>
           </div>
@@ -1367,6 +1409,7 @@ export default function PayrollEditorMockupView({
               {displaySettings.showDeductionDetails && (
                 <>
                   {renderLine({ label: 'Unpaid Leave', amount: activeDraft.unpaidLeave, field: 'unpaidLeave', descriptionKey: 'unpaidLeave', fallback: 'Unpaid Leave', collapsedWhenEditing: true, removable: true })}
+                  {renderLine({ label: 'Incomplete Month Deduction', amount: activeDraft.incompleteMonthDeduction, field: 'incompleteMonthDeduction', fallback: 'Incomplete Month Deduction', collapsedWhenEditing: true })}
                   {renderLine({ label: 'Payment in Lieu', amount: activeDraft.deductionInLieu, field: 'deductionInLieu', descriptionKey: 'deductionInLieu', fallback: 'Payment in Lieu', collapsedWhenEditing: true, removable: true })}
                   {documentProfile.statutoryEnabled && renderLine({ label: 'CP38 Direct Tax', amount: activeDraft.deductionCp38, field: 'deductionCp38', descriptionKey: 'deductionCp38', fallback: 'CP38 Direct Tax', collapsedWhenEditing: true, removable: true })}
                   {renderLine({ label: 'Other Deductions', amount: activeDraft.deductionOthers, field: 'deductionOthers', descriptionKey: 'deductionOthers', fallback: activeDraft.deductionOthersDesc || 'Other Deductions', collapsedWhenEditing: true, removable: true })}
@@ -1435,7 +1478,7 @@ export default function PayrollEditorMockupView({
 	            <span className="font-mono text-sm font-bold text-primary">{formatMoney(breakdown.netPay)}</span>
 	          </div>
 	          <div className="mt-3 space-y-1 text-xs">
-	            <div className="flex justify-between gap-4"><span className="text-on-surface-variant">{documentProfile.isPaymentVoucher ? 'Gross Amount' : 'Gross Earnings + Reimbursements'}</span><span className="font-mono">{formatMoney(breakdown.grossEarnings + breakdown.reimbursementsSum)}</span></div>
+	            <div className="flex justify-between gap-4"><span className="text-on-surface-variant">{documentProfile.isPaymentVoucher ? 'Gross Amount' : 'Gross Pay + Reimbursements'}</span><span className="font-mono">{formatMoney(breakdown.grossPay + breakdown.reimbursementsSum)}</span></div>
 	            <div className="flex justify-between gap-4"><span className="text-on-surface-variant">{documentProfile.isPaymentVoucher ? 'Other Deductions' : 'Total Deductions'}</span><span className="font-mono text-red-700">- {formatMoney(breakdown.totalDeductions)}</span></div>
 	            <div className="flex justify-between gap-4 border-t border-primary/15 pt-2 font-bold text-primary"><span>{documentProfile.isPaymentVoucher ? 'Net Payable' : 'Net Pay'}</span><span className="font-mono">{formatMoney(breakdown.netPay)}</span></div>
 	          </div>

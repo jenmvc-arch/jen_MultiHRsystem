@@ -1,6 +1,6 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
-import { Employee, CorporateEntity, PayrollDocumentDisplaySettings, PayrollRecord2026 } from '../types';
+import { Employee, CorporateEntity, PayrollDocumentDisplaySettings, PayrollRecord2026, GROSS_PAY_CALCULATION_VERSION } from '../types';
 import { calculatePayslip, getPayrollDocumentDisplaySettings, getPayrollDocumentFieldLabels, getPayrollDocumentProfile, getPayrollDocumentProfileForRecord, getDirectLogoUrl, getPayrollBasicSalary, getSalaryProration, calculateSocsoContribution, getEmployeeForMonth, getEffectiveTerminationDateForDate, getSeparatePayoutConfig, isSeparatePayrollRecord } from '../data';
 import { formatToDDMMMYYYY } from '../lib/dateUtils';
 
@@ -441,6 +441,7 @@ export const PayslipPDFDocument = ({ employee: sourceEmployee, entity, month = 1
       reimbursementAmount: isSeparatePayoutDocument ? Number(activePayrollRecord.reimbursementAmount || 0) : (activePayrollRecord.reimbursementAmount ?? baseEmployee.reimbursementAmount),
       reimbursementDesc: activePayrollRecord.reimbursementDesc ?? baseEmployee.reimbursementDesc,
       unpaidLeave: activePayrollRecord.unpaidLeave ?? baseEmployee.unpaidLeave,
+      incompleteMonthDeduction: activePayrollRecord.incompleteMonthDeduction ?? baseEmployee.incompleteMonthDeduction,
       deductionInLieu: activePayrollRecord.deductionInLieu ?? baseEmployee.deductionInLieu,
       deductionCp38: activePayrollRecord.deductionCp38 ?? baseEmployee.deductionCp38,
       deductionOthers: activePayrollRecord.deductionOthers ?? baseEmployee.deductionOthers,
@@ -468,6 +469,12 @@ export const PayslipPDFDocument = ({ employee: sourceEmployee, entity, month = 1
     ? calculatePayslip(employee, month, year, {
       basicSalaryOverride: isSeparatePayoutDocument ? 0 : employee.basicSalary,
       statutorySalaryOverride: isSeparatePayoutDocument ? payoutAmount : undefined,
+      calculationVersion: isSeparatePayoutDocument || activePayrollRecord.calculationVersion !== GROSS_PAY_CALCULATION_VERSION
+        ? undefined
+        : GROSS_PAY_CALCULATION_VERSION,
+      grossPayOverride: isSeparatePayoutDocument || activePayrollRecord.calculationVersion !== GROSS_PAY_CALCULATION_VERSION
+        ? undefined
+        : activePayrollRecord.grossPay,
       statutoryEligibilityOverride: isSeparatePayoutDocument ? documentProfile.statutoryEnabled : undefined,
       ignoreSavedStatutory: true,
       statutoryOverrides: {
@@ -808,7 +815,7 @@ export const PayslipPDFDocument = ({ employee: sourceEmployee, entity, month = 1
 
             <View style={styles.tableTotalRow}>
               <Text style={styles.tableTotalText}>{documentProfile.isPaymentVoucher ? 'Gross Amount' : 'Total Earnings & Additions'}</Text>
-              <Text style={styles.tableTotalText}>{formatCurrency(breakdown.grossEarnings + breakdown.reimbursementsSum)}</Text>
+              <Text style={styles.tableTotalText}>{formatCurrency(breakdown.grossPay + breakdown.reimbursementsSum)}</Text>
             </View>
           </View>
 
@@ -905,7 +912,7 @@ export const PayslipPDFDocument = ({ employee: sourceEmployee, entity, month = 1
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>{documentProfile.isPaymentVoucher ? 'Gross Amount' : 'Gross Pay'}</Text>
             <Text style={styles.summaryValue}>
-              {formatCurrency(breakdown.grossEarnings + breakdown.reimbursementsSum)}
+              {formatCurrency(breakdown.grossPay)}
             </Text>
           </View>
 

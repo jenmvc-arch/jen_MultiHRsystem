@@ -578,10 +578,24 @@ export default function PayrollView({
                       + Number(record.epfEmployee || 0)
                       + Number(record.socsoEmployee || 0)
                       + Number(record.eisEmployee || 0)
-                      + Number(record.unpaidLeave || 0)
+                      + (record.calculationVersion === 'gross_pay_v2' ? 0 : Number(record.unpaidLeave || 0))
                       + Number(record.deductionInLieu || 0)
                       + Number(record.deductionCp38 || 0)
                       + Number(record.deductionOthers || 0);
+                    const legacyGross = Number(record.basicSalary || 0)
+                      + Number(record.allowanceGeneral || 0)
+                      + Number(record.allowanceTransport || 0)
+                      + Number(record.allowanceParking || 0)
+                      + Number(record.allowanceMeal || 0)
+                      + Number(record.allowanceAccommodation || 0)
+                      + Number(record.allowancePhone || 0)
+                      + Number(record.overtime || 0)
+                      + Number(record.bonusAmount || 0)
+                      + Number(record.commissionAmount || 0)
+                      + Number(record.backPayAmount || 0)
+                      + Number(record.awsAmount || 0)
+                      + Number(record.compensationAmount || 0);
+                    const grossPay = record.grossPay ?? legacyGross;
                     return (
                       <tr key={record.id} className="hover:bg-primary/5">
                         <td className="p-3">
@@ -596,7 +610,7 @@ export default function PayrollView({
                         <td className="p-3 font-semibold text-primary">{employee?.name || record.employeeEmail}<span className="block text-[10px] font-normal text-on-surface-variant">{record.employeeEmail}</span></td>
                         <td className="p-3">{employee?.department || '—'}</td>
                         <td className="p-3">{HISTORY_MONTHS[record.payrollMonth]} {record.payrollYear}</td>
-                        <td className="p-3 text-right font-mono">{formatMoney(Number(record.basicSalary || 0) + Number(record.allowanceGeneral || 0) + Number(record.allowanceTransport || 0) + Number(record.allowanceParking || 0) + Number(record.allowanceMeal || 0) + Number(record.allowanceAccommodation || 0) + Number(record.allowancePhone || 0) + Number(record.overtime || 0) + Number(record.bonusAmount || 0) + Number(record.commissionAmount || 0) + Number(record.backPayAmount || 0) + Number(record.awsAmount || 0) + Number(record.compensationAmount || 0) + Number(record.reimbursementAmount || 0))}</td>
+                        <td className="p-3 text-right font-mono">{formatMoney(grossPay)}</td>
                         <td className="p-3 text-right font-mono text-red-700">{formatMoney(deductions)}</td>
                         <td className="p-3 text-right font-mono font-bold text-green-700">{formatMoney(record.netPay)}</td>
                         <td className="p-3">{record.createdAt || '—'}</td>
