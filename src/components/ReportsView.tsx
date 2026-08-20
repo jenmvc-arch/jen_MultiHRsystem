@@ -17,17 +17,23 @@ import {
   Award
 } from 'lucide-react';
 import { Employee, EmployeePerformance } from '../types';
+import ExportButton from './ExportButton';
+import { requestExport } from '../lib/exportClient';
 
 interface ReportsViewProps {
   employees: Employee[];
   performances: EmployeePerformance[];
   onShowNotification: (title: string, message: string) => void;
+  currentUserRole?: string | null;
+  activeEntityId?: string;
 }
 
 export default function ReportsView({
   employees,
   performances,
-  onShowNotification
+  onShowNotification,
+  currentUserRole,
+  activeEntityId
 }: ReportsViewProps) {
   // Config state
   const [reportType, setReportType] = useState('Departmental Metrics Breakdown');
@@ -88,7 +94,7 @@ export default function ReportsView({
         performances.filter(p => impactedEmployees.some(e => e.id === p.employeeId)).length || 3.9)
     : 0;
 
-  const handleGenerateReport = () => {
+  const handleGenerateReport = async () => {
     if (activeDepts.length === 0) {
       onShowNotification('Configuration Empty', 'Please select at least one department under Target Audience.');
       return;
@@ -98,29 +104,77 @@ export default function ReportsView({
       return;
     }
 
+    if (format === 'ppt') {
+      onShowNotification('Unsupported Format', 'PowerPoint export is not part of the universal export system yet. Choose PDF, Excel, CSV, or Text.');
+      return;
+    }
     setIsExporting(true);
-    setExportProgress(10);
-    
-    const interval = setInterval(() => {
-      setExportProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            setIsExporting(false);
-            onShowNotification(
-              'Report Export Complete',
-              `Your ${reportType} report has been compiled and downloaded in ${format.toUpperCase()} format.`
-            );
-          }, 300);
-          return 100;
-        }
-        return prev + 30;
+    setExportProgress(20);
+    try {
+      await requestExport({
+        module: 'performance',
+        format: format === 'excel' ? 'xlsx' : format,
+        scope: 'filtered',
+        filters: {
+          entityId: activeEntityId,
+          department: activeDepts.length === 1 ? activeDepts[0] : undefined,
+          startDate,
+          endDate,
+          reportType,
+          metrics: activeMetricsList,
+        },
+        columns: [
+          'employee_id', 'employee_name', 'department', 'review_cycle_id',
+          'review_status', 'rating', 'teamwork_score',
+          'communication_score', 'problem_solving_score',
+        ],
+        includeHeader: true,
+        includeFilters: true,
+        orientation: 'landscape',
+        filename: `${reportType}_${startDate}_to_${endDate}`,
       });
-    }, 200);
+      setExportProgress(100);
+      onShowNotification('Report Export Complete', `Your ${reportType} report has been downloaded.`);
+    } catch (error: any) {
+      onShowNotification('Report Export Failed', error.message || 'Unable to generate the export file.');
+    } finally {
+      setTimeout(() => {
+        setIsExporting(false);
+        setExportProgress(0);
+      }, 250);
+    }
   };
 
   return (
     <div className="max-w-6xl mx-auto animate-in fade-in duration-200">
+      <div className="mb-4 flex justify-end">
+        <ExportButton
+          module="performance"
+          title="Performance report"
+          currentUserRole={currentUserRole}
+          onShowNotification={onShowNotification}
+          filters={{
+            entityId: activeEntityId,
+            department: activeDepts.length === 1 ? activeDepts[0] : undefined,
+            startDate,
+            endDate,
+            reportType,
+            metrics: activeMetricsList,
+          }}
+          columns={[
+            { key: 'employee_id', label: 'Employee ID' },
+            { key: 'employee_name', label: 'Employee Name' },
+            { key: 'department', label: 'Department' },
+            { key: 'review_cycle_id', label: 'Review Cycle' },
+            { key: 'review_status', label: 'Review Status' },
+            { key: 'rating', label: 'Rating', type: 'number' },
+            { key: 'teamwork_score', label: 'Teamwork', type: 'number' },
+            { key: 'communication_score', label: 'Communication', type: 'number' },
+            { key: 'problem_solving_score', label: 'Problem Solving', type: 'number' },
+            { key: 'manager_comments', label: 'Manager Comments', sensitive: true },
+          ]}
+        />
+      </div>
       <div className="flex flex-col lg:flex-row gap-6 items-stretch">
         
         {/* Left Side: Report Export Configuration Form */}

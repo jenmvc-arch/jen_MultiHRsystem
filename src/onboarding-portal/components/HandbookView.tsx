@@ -40,6 +40,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { exportAcknowledgementPdf } from '../utils/pdfExport';
 import { OFFICIAL_HANDBOOK } from '../data/handbookDocument';
 import { getHandbookVideoSection } from '../data/handbookVideos';
+import { useFeedback } from '../../components/GlobalFeedbackSystem';
 
 interface HandbookViewProps {
   modules: HandbookModule[];
@@ -129,6 +130,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   onShowNotification,
 }) => {
   const { t } = useLanguage();
+  const { confirmAction, showWarning } = useFeedback();
   const savedBriefing = useMemo(() => loadSavedBriefing(), []);
 
   const [briefingStatus, setBriefingStatus] = useState<BriefingStatus>(() => {
@@ -509,12 +511,13 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
       : subsectionProgress[module.id] || 0;
 
     if (subsectionIndex > lastAvailableSection) {
-      alert(
+      showWarning(
         module.status === 'locked' && !partInitials[module.id]
           ? `Part ${module.id} is locked. Please complete Part ${module.id - 1} first.`
           : `${getPartSectionLabel(module.id, subsectionIndex + 1)} is locked. Please complete ${
               getPartSectionLabel(module.id, lastAvailableSection + 1)
-            } first.`
+            } first.`,
+        'Handbook Section Locked'
       );
       return;
     }
@@ -629,10 +632,13 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   };
 
   // START OVER HANDLER
-  const handleStartOver = () => {
-    const confirmed = window.confirm(
-      'Are you sure you want to start over? This will reset your briefing session back to Part 1.'
-    );
+  const handleStartOver = async () => {
+    const confirmed = await confirmAction({
+      title: 'Reset Briefing Session',
+      message: 'Are you sure you want to start over? This will reset your briefing session back to Part 1.',
+      type: 'danger',
+      confirmLabel: 'Start Over',
+    });
     if (!confirmed) return;
 
     setSelectedModuleId(1);
@@ -959,10 +965,11 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                               const prevUncompleted = modules.find(
                                 (prev) => prev.id < m.id && prev.status !== 'completed' && !partInitials[prev.id]
                               );
-                              alert(
+                              showWarning(
                                 `Part ${m.id} is locked. Please initial and complete Part ${
                                   prevUncompleted ? prevUncompleted.id : m.id - 1
-                                } first.`
+                                } first.`,
+                                'Handbook Part Locked'
                               );
                               return;
                             }
@@ -1584,7 +1591,10 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                   type="button"
                   onClick={() => {
                     if (!partInitials[activeModule.id] && activeModule.status !== 'completed') {
-                      alert(`Please draw your handwritten initial signature on the pad for Part ${activeModule.id} before proceeding.`);
+                      showWarning(
+                        `Please draw your handwritten initial signature on the pad for Part ${activeModule.id} before proceeding.`,
+                        'Signature Required'
+                      );
                       return;
                     }
 

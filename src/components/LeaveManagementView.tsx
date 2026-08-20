@@ -19,6 +19,7 @@ import {
   Layers3,
   ListChecks,
   Plus,
+  RefreshCw,
   RotateCcw,
   Save,
   Send,
@@ -27,6 +28,7 @@ import {
   SlidersHorizontal,
   Trash2,
   UserRound,
+  UserCog,
   Users,
   XCircle
 } from 'lucide-react';
@@ -47,6 +49,17 @@ import {
   DEFAULT_LEAVE_CONDITIONING_POLICIES,
   DEFAULT_LEAVE_CONFIGS,
   DEFAULT_LEAVE_GROUPS,
+  DEFAULT_PUBLIC_HOLIDAY_GROUPS,
+  DEFAULT_PUBLIC_HOLIDAYS,
+  DEFAULT_PUBLIC_HOLIDAY_GROUP_ID,
+  DEFAULT_WORK_SHIFT_GROUP_DAYS,
+  DEFAULT_WORK_SHIFT_GROUPS,
+  calculateShiftHours,
+  calculateWorkShiftWeeklyHours,
+  addHoursToTime,
+  normalizeWorkShiftGroupDays,
+  EmployeeLeaveGroupAssignment,
+  EmployeeWorkShiftAssignment,
   eligibleOffInLieuDays,
   findDuplicateAssignedLeaveTypes,
   getGroupItems,
@@ -58,6 +71,9 @@ import {
   LeavePayrollDeduction,
   LeaveRequest,
   LeaveRequestStatus,
+  PublicHoliday,
+  PublicHolidayCategory,
+  PublicHolidayGroup,
   OffInLieuEntry,
   OffInLieuRequest,
   OffInLieuSubmissionMode,
@@ -67,8 +83,12 @@ import {
   STANDARD_CARRY_OVER_ID,
   STANDARD_POLICY_ID,
   REPLACEMENT_LEAVE_TYPE_ID,
+  WorkShiftDayType,
+  WorkShiftGroup,
+  WorkShiftGroupDay,
 } from '../lib/leaveDomain';
 import { loadLeaveWorkspace, persistLeaveWorkspace } from '../lib/leaveService';
+import { useFeedback } from './GlobalFeedbackSystem';
 
 export {
   DEFAULT_CARRY_OVER_SETTINGS,
@@ -92,22 +112,27 @@ interface LeaveManagementViewProps {
   onUpdateEmployee?: (id: string, updates: Partial<Employee>) => Promise<void>;
 }
 
-type LeaveWorkspaceSection = 'overview' | 'policy' | 'types' | 'groups' | 'off-in-lieu';
+type LeaveWorkspaceSection = 'overview' | 'off-in-lieu' | 'groups' | 'employee-assignment' | 'work-shifts' | 'public-holidays' | 'types' | 'policy' | 'carry-over' | 'calendar';
 type RequestStatusFilter = 'All' | LeaveRequestStatus;
 type OffInLieuStatusFilter = 'All' | OffInLieuStatus;
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WORK_SHIFT_WEEKDAYS = [1, 2, 3, 4, 5, 6, 0];
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
 const SECTION_TABS: Array<{ id: LeaveWorkspaceSection; label: string; icon: React.ElementType }> = [
-  { id: 'overview', label: 'Overview & Requests', icon: ListChecks },
-  { id: 'policy', label: 'Policy Rules', icon: SlidersHorizontal },
-  { id: 'types', label: 'Leave Types', icon: FileText },
+  { id: 'overview', label: 'Requests & Balances', icon: ListChecks },
+  { id: 'off-in-lieu', label: 'Off in Lieu', icon: Clock3 },
   { id: 'groups', label: 'Leave Groups', icon: Layers3 },
-  { id: 'off-in-lieu', label: 'Off in Lieu', icon: Clock3 }
+  { id: 'employee-assignment', label: 'Employee Assignment', icon: UserCog },
+  { id: 'public-holidays', label: 'Public Holidays', icon: Calendar },
+  { id: 'types', label: 'Type of Leave', icon: FileText },
+  { id: 'policy', label: 'Conditioning Policy', icon: SlidersHorizontal },
+  { id: 'carry-over', label: 'Carry Over Settings', icon: RotateCcw },
+  { id: 'calendar', label: 'Calendar', icon: CalendarDays }
 ];
 
 const inputClass = 'w-full rounded-md border border-neutral-border bg-white px-3 py-2 text-xs text-on-surface outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/10';
@@ -189,12 +214,21 @@ export default function LeaveManagementView({
   activeEntityId,
   onUpdateEmployee
 }: LeaveManagementViewProps) {
+  const { confirmAction } = useFeedback();
   const [activeSection, setActiveSection] = useState<LeaveWorkspaceSection>('overview');
+  const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [leaveConfigs, setLeaveConfigs] = useState<LeaveConfig[]>(DEFAULT_LEAVE_CONFIGS);
   const [conditioningPolicies, setConditioningPolicies] = useState<LeaveConditioningPolicy[]>(DEFAULT_LEAVE_CONDITIONING_POLICIES);
   const [carryOverSettings, setCarryOverSettings] = useState<CarryOverLeaveBalanceSettings[]>(DEFAULT_CARRY_OVER_SETTINGS);
   const [leaveGroups, setLeaveGroups] = useState<LeaveGroup[]>(DEFAULT_LEAVE_GROUPS);
+  const [assignments, setAssignments] = useState<EmployeeLeaveGroupAssignment[]>([]);
+  const [workShiftGroups, setWorkShiftGroups] = useState<WorkShiftGroup[]>(DEFAULT_WORK_SHIFT_GROUPS);
+  const [workShiftGroupDays, setWorkShiftGroupDays] = useState<WorkShiftGroupDay[]>(DEFAULT_WORK_SHIFT_GROUP_DAYS);
+  const [employeeWorkShiftAssignments, setEmployeeWorkShiftAssignments] = useState<EmployeeWorkShiftAssignment[]>([]);
+  const [publicHolidayGroups, setPublicHolidayGroups] = useState<PublicHolidayGroup[]>(DEFAULT_PUBLIC_HOLIDAY_GROUPS);
+  const [publicHolidays, setPublicHolidays] = useState<PublicHoliday[]>(DEFAULT_PUBLIC_HOLIDAYS);
   const [offInLieuRequests, setOffInLieuRequests] = useState<OffInLieuRequest[]>([]);
   const [ledgerEntries, setLedgerEntries] = useState<LeaveBalanceLedgerEntry[]>([]);
   const [payrollDeductions, setPayrollDeductions] = useState<LeavePayrollDeduction[]>([]);
@@ -225,12 +259,34 @@ export default function LeaveManagementView({
   const [newGroupDescription, setNewGroupDescription] = useState('');
   const [newGroupPolicyId, setNewGroupPolicyId] = useState(STANDARD_POLICY_ID);
   const [newGroupCarryOverId, setNewGroupCarryOverId] = useState(STANDARD_CARRY_OVER_ID);
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const [assignmentEmployeeId, setAssignmentEmployeeId] = useState('');
+  const [assignmentGroupId, setAssignmentGroupId] = useState('');
+  const [assignmentEffectiveDate, setAssignmentEffectiveDate] = useState(getGmt8DateString());
+  const [assignmentDates, setAssignmentDates] = useState<Record<string, string>>({});
+  const [selectedWorkShiftGroupId, setSelectedWorkShiftGroupId] = useState(DEFAULT_WORK_SHIFT_GROUPS[0].id);
+  const [newWorkShiftName, setNewWorkShiftName] = useState('');
+  const [newWorkShiftDescription, setNewWorkShiftDescription] = useState('');
+  const [workShiftAssignmentMode, setWorkShiftAssignmentMode] = useState<'single' | 'bulk'>('single');
+  const [workShiftAssignmentEmployeeIds, setWorkShiftAssignmentEmployeeIds] = useState<string[]>([]);
+  const [workShiftAssignmentGroupId, setWorkShiftAssignmentGroupId] = useState(DEFAULT_WORK_SHIFT_GROUPS[0].id);
+  const [workShiftAssignmentEffectiveDate, setWorkShiftAssignmentEffectiveDate] = useState(getGmt8DateString());
+  const [workShiftAssignmentEndDate, setWorkShiftAssignmentEndDate] = useState('');
+  const [selectedPublicHolidayGroupId, setSelectedPublicHolidayGroupId] = useState(DEFAULT_PUBLIC_HOLIDAY_GROUP_ID);
+  const [publicHolidayCategory, setPublicHolidayCategory] = useState<PublicHolidayCategory>('national');
+  const [publicHolidayYear, setPublicHolidayYear] = useState(new Date().getFullYear());
+  const [newPublicHolidayGroupName, setNewPublicHolidayGroupName] = useState('');
+  const [newPublicHolidayName, setNewPublicHolidayName] = useState('');
+  const [newPublicHolidayDate, setNewPublicHolidayDate] = useState(getGmt8DateString());
+  const [newPublicHolidayObservedDate, setNewPublicHolidayObservedDate] = useState('');
+  const [newPublicHolidayNotes, setNewPublicHolidayNotes] = useState('');
 
   const [offInLieuMode, setOffInLieuMode] = useState<OffInLieuSubmissionMode>('single');
   const [offInLieuEmployeeIds, setOffInLieuEmployeeIds] = useState<string[]>([]);
   const [isOffInLieuEmployeePickerOpen, setIsOffInLieuEmployeePickerOpen] = useState(false);
   const [offInLieuExpiryDate, setOffInLieuExpiryDate] = useState(addOneMonth(getGmt8DateString()));
   const [offInLieuEntries, setOffInLieuEntries] = useState<OffInLieuEntry[]>([]);
+  const [offInLieuNotes, setOffInLieuNotes] = useState('');
   const [offInLieuCalendarDate, setOffInLieuCalendarDate] = useState(() => {
     const today = new Date();
     return { year: today.getFullYear(), month: today.getMonth() };
@@ -238,26 +294,40 @@ export default function LeaveManagementView({
 
   useEffect(() => {
     let cancelled = false;
-    if (!activeEntityId) return () => {
+    if (!activeEntityId) {
+      setIsLoadingWorkspace(false);
+      return () => {
       cancelled = true;
-    };
+      };
+    }
 
-    void loadLeaveWorkspace(activeEntityId).then((workspace) => {
-      if (cancelled) return;
-      setRequests(workspace.requests);
-      setLeaveConfigs(workspace.configs.map(normalizeLeaveConfig));
-      setConditioningPolicies(workspace.policies.length > 0 ? workspace.policies : DEFAULT_LEAVE_CONDITIONING_POLICIES);
-      setCarryOverSettings(workspace.carryOverSettings.length > 0 ? workspace.carryOverSettings : DEFAULT_CARRY_OVER_SETTINGS);
-      setLeaveGroups(workspace.groups.length > 0 ? workspace.groups : DEFAULT_LEAVE_GROUPS);
-      setOffInLieuRequests(workspace.offInLieuRequests);
-      setLedgerEntries(workspace.ledgerEntries);
-      setPayrollDeductions(workspace.payrollDeductions);
-    });
+    setIsLoadingWorkspace(true);
+    void loadLeaveWorkspace(activeEntityId)
+      .then((workspace) => {
+        if (cancelled) return;
+        setRequests(workspace.requests);
+        setLeaveConfigs(workspace.configs.map(normalizeLeaveConfig));
+        setConditioningPolicies(workspace.policies.length > 0 ? workspace.policies : DEFAULT_LEAVE_CONDITIONING_POLICIES);
+        setCarryOverSettings(workspace.carryOverSettings.length > 0 ? workspace.carryOverSettings : DEFAULT_CARRY_OVER_SETTINGS);
+        setLeaveGroups(workspace.groups.length > 0 ? workspace.groups : DEFAULT_LEAVE_GROUPS);
+        setAssignments(workspace.assignments);
+        setWorkShiftGroups(workspace.workShiftGroups.length > 0 ? workspace.workShiftGroups : DEFAULT_WORK_SHIFT_GROUPS);
+        setWorkShiftGroupDays(workspace.workShiftGroupDays.length > 0 ? workspace.workShiftGroupDays : DEFAULT_WORK_SHIFT_GROUP_DAYS);
+        setEmployeeWorkShiftAssignments(workspace.employeeWorkShiftAssignments);
+        setPublicHolidayGroups(workspace.publicHolidayGroups.length > 0 ? workspace.publicHolidayGroups : DEFAULT_PUBLIC_HOLIDAY_GROUPS);
+        setPublicHolidays(workspace.publicHolidays.length > 0 ? workspace.publicHolidays : DEFAULT_PUBLIC_HOLIDAYS);
+        setOffInLieuRequests(workspace.offInLieuRequests);
+        setLedgerEntries(workspace.ledgerEntries);
+        setPayrollDeductions(workspace.payrollDeductions);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingWorkspace(false);
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [activeEntityId]);
+  }, [activeEntityId, refreshKey]);
 
   useEffect(() => {
     setSelectedEmployeeId((previous) => (
@@ -274,6 +344,43 @@ export default function LeaveManagementView({
         : leaveConfigs.find((config) => config.enabled !== false)?.leaveType || ''
     ));
   }, [leaveConfigs]);
+
+  useEffect(() => {
+    setAssignmentDates(activeEntityId ? readScopedJson(`leave_assignment_dates_${activeEntityId}`, {}) : {});
+  }, [activeEntityId]);
+
+  useEffect(() => {
+    setAssignmentEmployeeId((previous) => (
+      activeEmployees.some((employee) => employee.id === previous)
+        ? previous
+        : activeEmployees[0]?.id || ''
+    ));
+    setAssignmentGroupId((previous) => (
+      leaveGroups.some((group) => group.enabled && group.id === previous)
+        ? previous
+        : leaveGroups.find((group) => group.enabled)?.id || ''
+    ));
+    setSelectedGroupId((previous) => (
+      leaveGroups.some((group) => group.id === previous)
+        ? previous
+        : leaveGroups[0]?.id || ''
+    ));
+    setSelectedWorkShiftGroupId((previous) => (
+      workShiftGroups.some((group) => group.id === previous)
+        ? previous
+        : workShiftGroups[0]?.id || ''
+    ));
+    setWorkShiftAssignmentGroupId((previous) => (
+      workShiftGroups.some((group) => group.enabled && group.id === previous)
+        ? previous
+        : workShiftGroups.find((group) => group.enabled)?.id || ''
+    ));
+    setSelectedPublicHolidayGroupId((previous) => (
+      publicHolidayGroups.some((group) => group.id === previous)
+        ? previous
+        : publicHolidayGroups[0]?.id || ''
+    ));
+  }, [activeEmployees, leaveGroups, workShiftGroups, publicHolidayGroups]);
 
   const saveRequests = (next: LeaveRequest[]) => {
     setRequests(next);
@@ -299,10 +406,16 @@ export default function LeaveManagementView({
     persistWorkspace({ carryOverSettings: next });
   };
 
-  const saveGroups = (next: LeaveGroup[]) => {
+  const saveGroups = (next: LeaveGroup[], nextAssignments = assignments) => {
     setLeaveGroups(next);
     if (activeEntityId) writeScopedJson(`leave_groups_${activeEntityId}`, next);
-    persistWorkspace({ groups: next });
+    persistWorkspace({ groups: next, assignments: nextAssignments });
+  };
+
+  const saveAssignments = (next: EmployeeLeaveGroupAssignment[]) => {
+    setAssignments(next);
+    if (activeEntityId) writeScopedJson(`leave_group_assignments_${activeEntityId}`, next);
+    persistWorkspace({ assignments: next });
   };
 
   const saveOffInLieuRequests = (next: OffInLieuRequest[]) => {
@@ -316,6 +429,12 @@ export default function LeaveManagementView({
     policies: LeaveConditioningPolicy[];
     carryOverSettings: CarryOverLeaveBalanceSettings[];
     groups: LeaveGroup[];
+    assignments: EmployeeLeaveGroupAssignment[];
+    workShiftGroups: WorkShiftGroup[];
+    workShiftGroupDays: WorkShiftGroupDay[];
+    employeeWorkShiftAssignments: EmployeeWorkShiftAssignment[];
+    publicHolidayGroups: PublicHolidayGroup[];
+    publicHolidays: PublicHoliday[];
     requests: LeaveRequest[];
     offInLieuRequests: OffInLieuRequest[];
     ledgerEntries: LeaveBalanceLedgerEntry[];
@@ -327,7 +446,12 @@ export default function LeaveManagementView({
       policies: overrides.policies || conditioningPolicies,
       carryOverSettings: overrides.carryOverSettings || carryOverSettings,
       groups: overrides.groups || leaveGroups,
-      assignments: [],
+      assignments: overrides.assignments || assignments,
+      workShiftGroups: overrides.workShiftGroups || workShiftGroups,
+      workShiftGroupDays: overrides.workShiftGroupDays || workShiftGroupDays,
+      employeeWorkShiftAssignments: overrides.employeeWorkShiftAssignments || employeeWorkShiftAssignments,
+      publicHolidayGroups: overrides.publicHolidayGroups || publicHolidayGroups,
+      publicHolidays: overrides.publicHolidays || publicHolidays,
       requests: overrides.requests || requests,
       offInLieuRequests: overrides.offInLieuRequests || offInLieuRequests,
       ledgerEntries: overrides.ledgerEntries || ledgerEntries,
@@ -363,6 +487,13 @@ export default function LeaveManagementView({
 
   const pendingLeaveCount = requests.filter((request) => request.status === 'Pending').length;
   const pendingOffInLieuCount = offInLieuRequests.filter((request) => request.status === 'Pending').length;
+  const visibleAssignments = assignments
+    .filter((assignment) => activeEmployees.some((employee) => employee.id === assignment.employeeId))
+    .map((assignment) => ({
+      ...assignment,
+      assignedAt: assignment.assignedAt || assignmentDates[`${assignment.groupId}-${assignment.employeeId}`] || getGmt8DateString(),
+    }))
+    .filter((assignment) => leaveGroups.some((group) => group.id === assignment.groupId));
   const selectedOffInLieuEmployees = activeEmployees.filter((employee) => offInLieuEmployeeIds.includes(employee.id));
   const offInLieuDaysPerEmployee = roundToHalfDay(
     offInLieuEntries.reduce((total, entry) => total + entry.eligibleDays, 0)
@@ -388,23 +519,64 @@ export default function LeaveManagementView({
   const updateCarryOver = (
     id: string,
     field: keyof CarryOverLeaveBalanceSettings,
-    value: string | number
+    value: string | number | boolean
   ) => {
     saveCarryOver(carryOverSettings.map((setting) => setting.id === id ? { ...setting, [field]: value } : setting));
   };
 
-  const applyLeaveGroupAssignments = (groupId: string, employeeId: string, checked: boolean) => {
-    const next = leaveGroups.map((group) => {
-      if (group.id === groupId) {
-        return {
-          ...group,
-          assignedEmployeeIds: checked
-            ? [...new Set([...group.assignedEmployeeIds, employeeId])]
-            : group.assignedEmployeeIds.filter((id) => id !== employeeId)
-        };
-      }
-      return group;
-    });
+  const getWorkShiftGroupForEmployee = (employeeId: string, effectiveDate: string) => {
+    const assignment = [...employeeWorkShiftAssignments]
+      .filter((item) => (
+        item.employeeId === employeeId
+        && item.active
+        && item.effectiveDate <= effectiveDate
+        && (!item.endDate || item.endDate >= effectiveDate)
+      ))
+      .sort((left, right) => right.effectiveDate.localeCompare(left.effectiveDate))[0];
+    return workShiftGroups.find((group) => group.id === assignment?.groupId) || workShiftGroups[0];
+  };
+
+  const getPublicHolidayDatesForEmployee = (employeeId: string) => {
+    const holidayGroupIds = leaveGroups
+      .filter((group) => group.enabled && group.assignedEmployeeIds.includes(employeeId))
+      .flatMap((group) => group.publicHolidayGroupIds || [])
+      .slice(0, 2);
+    const selectedHolidayGroupIds = holidayGroupIds.length > 0
+      ? holidayGroupIds
+      : [DEFAULT_PUBLIC_HOLIDAY_GROUP_ID];
+    return publicHolidays
+      .filter((holiday) => holiday.enabled && selectedHolidayGroupIds.includes(holiday.groupId))
+      .flatMap((holiday) => [holiday.holidayDate, holiday.observedDate].filter(Boolean) as string[]);
+  };
+
+  const applyLeaveGroupAssignments = (groupId: string, employeeId: string, checked: boolean): boolean => {
+    const assignmentKey = `${groupId}-${employeeId}`;
+    const existing = assignments.find((assignment) => assignment.id === assignmentKey);
+    const nextAssignments = existing
+      ? assignments.map((assignment) => assignment.id === assignmentKey
+        ? {
+          ...assignment,
+          active: checked,
+          assignedAt: assignment.assignedAt || assignmentDates[assignmentKey] || getGmt8DateString(),
+        }
+        : assignment)
+      : [
+        ...assignments,
+        {
+          id: assignmentKey,
+          entityId: activeEntityId,
+          employeeId,
+          groupId,
+          active: checked,
+          assignedAt: assignmentDates[assignmentKey] || getGmt8DateString(),
+        },
+      ];
+    const next = leaveGroups.map((group) => ({
+      ...group,
+      assignedEmployeeIds: nextAssignments
+        .filter((assignment) => assignment.groupId === group.id && assignment.active)
+        .map((assignment) => assignment.employeeId),
+    }));
     const duplicates = findDuplicateAssignedLeaveTypes(next, employeeId);
     if (checked && duplicates.length > 0) {
       const duplicateNames = duplicates
@@ -414,12 +586,56 @@ export default function LeaveManagementView({
         'Leave Group Conflict',
         `This employee already has an active group containing: ${duplicateNames}. Remove the duplicate leave type before assigning this group.`,
       );
-      return;
+      return false;
     }
-    saveGroups(next);
+    saveGroups(next, nextAssignments);
+    saveAssignments(nextAssignments);
+    return true;
   };
 
-  const calculateDays = (start: string, end: string) => calculateLeaveDateDays(start, end, policyForLeaveType);
+  const assignLeaveGroup = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!assignmentEmployeeId || !assignmentGroupId) {
+      onShowNotification('Validation Error', 'Select an active employee and leave group before assigning.');
+      return;
+    }
+    const applied = applyLeaveGroupAssignments(assignmentGroupId, assignmentEmployeeId, true);
+    if (!applied) return;
+    const assignmentKey = `${assignmentGroupId}-${assignmentEmployeeId}`;
+    const nextDates = { ...assignmentDates, [assignmentKey]: assignmentEffectiveDate };
+    setAssignmentDates(nextDates);
+    if (activeEntityId) writeScopedJson(`leave_assignment_dates_${activeEntityId}`, nextDates);
+    onShowNotification(
+      'Leave Group Assigned',
+      `${leaveGroups.find((group) => group.id === assignmentGroupId)?.name || 'Leave group'} was assigned to ${
+        activeEmployees.find((employee) => employee.id === assignmentEmployeeId)?.name || 'the employee'
+      } effective ${formatToDDMMMYYYY(assignmentEffectiveDate)}.`
+    );
+  };
+
+  const disableLeaveGroupAssignment = async (groupId: string, employeeId: string) => {
+    const employee = activeEmployees.find((item) => item.id === employeeId);
+    const group = leaveGroups.find((item) => item.id === groupId);
+    const confirmed = await confirmAction({
+      title: 'Disable Leave Group Assignment',
+      message: `Disable ${group?.name || 'this leave group'} for ${employee?.name || 'this employee'}? Their historical leave records will remain unchanged.`,
+      type: 'danger',
+      confirmLabel: 'Disable Assignment',
+    });
+    if (!confirmed) return;
+    if (applyLeaveGroupAssignments(groupId, employeeId, false)) {
+      onShowNotification('Assignment Disabled', `${group?.name || 'Leave group'} is no longer active for ${employee?.name || 'the employee'}.`);
+    }
+  };
+
+  const calculateDays = (start: string, end: string) => calculateLeaveDateDays(
+    start,
+    end,
+    policyForLeaveType,
+    selectedEmployeeId ? getPublicHolidayDatesForEmployee(selectedEmployeeId) : [],
+    selectedEmployeeId ? getWorkShiftGroupForEmployee(selectedEmployeeId, start) : workShiftGroups[0],
+    workShiftGroupDays,
+  );
 
   const handleApplyLeave = (event: React.FormEvent) => {
     event.preventDefault();
@@ -455,9 +671,18 @@ export default function LeaveManagementView({
     onShowNotification('Leave Request Submitted', `${totalDays} day(s) of ${leaveType} are pending review for ${employee.name}.`);
   };
 
-  const updateLeaveRequestStatus = (id: string, status: Exclude<LeaveRequestStatus, 'Pending'>) => {
+  const updateLeaveRequestStatus = async (id: string, status: Exclude<LeaveRequestStatus, 'Pending'>) => {
     const request = requests.find((item) => item.id === id);
     if (!request) return;
+    const confirmed = await confirmAction({
+      title: status === 'Approved' ? 'Approve Leave Request' : 'Reject Leave Request',
+      message: status === 'Approved'
+        ? `Approve ${request.leaveType} for ${request.employeeName} from ${formatToDDMMMYYYY(request.startDate)} to ${formatToDDMMMYYYY(request.endDate)}?`
+        : `Reject this leave request for ${request.employeeName}?`,
+      type: status === 'Approved' ? 'info' : 'danger',
+      confirmLabel: status === 'Approved' ? 'Approve Request' : 'Reject Request',
+    });
+    if (!confirmed) return;
     const updatedRequest = {
       ...request,
       status,
@@ -665,6 +890,7 @@ export default function LeaveManagementView({
       description: newGroupDescription.trim() || 'Custom employee leave group.',
       policyId: newGroupPolicyId,
       carryOverId: newGroupCarryOverId,
+      publicHolidayGroupIds: [DEFAULT_PUBLIC_HOLIDAY_GROUP_ID],
       leaveTypeIds: [],
       assignedEmployeeIds: [],
       enabled: true
@@ -673,6 +899,368 @@ export default function LeaveManagementView({
     setNewGroupName('');
     setNewGroupDescription('');
     onShowNotification('Leave Group Added', `${name} can now be assigned to active employees.`);
+  };
+
+  const getWorkShiftDays = (groupId: string) => normalizeWorkShiftGroupDays(workShiftGroupDays, groupId);
+
+  const saveWorkShiftData = (nextGroups: WorkShiftGroup[], nextDays: WorkShiftGroupDay[]) => {
+    setWorkShiftGroups(nextGroups);
+    setWorkShiftGroupDays(nextDays);
+    if (activeEntityId) {
+      writeScopedJson(`work_shift_groups_${activeEntityId}`, nextGroups);
+      writeScopedJson(`work_shift_group_days_${activeEntityId}`, nextDays);
+    }
+    persistWorkspace({
+      workShiftGroups: nextGroups,
+      workShiftGroupDays: nextDays,
+    });
+  };
+
+  const updateWorkShiftDay = (
+    groupId: string,
+    weekday: number,
+    field: 'startTime' | 'endTime' | 'dayType',
+    value: string,
+  ) => {
+    const currentDays = getWorkShiftDays(groupId);
+    const nextDays = currentDays.map((day) => {
+      if (day.weekday !== weekday) return day;
+      const nextDay = {
+        ...day,
+        [field]: value,
+      } as WorkShiftGroupDay;
+      const dayType = field === 'dayType'
+        ? value as WorkShiftDayType
+        : nextDay.dayType;
+      const startTime = dayType === 'half_day'
+        ? nextDay.startTime || day.startTime || '09:00'
+        : nextDay.startTime;
+      const endTime = dayType === 'half_day' && (field === 'dayType' || field === 'startTime')
+        ? addHoursToTime(startTime, 4)
+        : nextDay.endTime || (dayType === 'half_day' ? addHoursToTime(startTime, 4) : '');
+      return {
+        ...nextDay,
+        dayType,
+        isWorkDay: dayType !== 'rest',
+        startTime,
+        endTime,
+        actualHours: calculateShiftHours(startTime, endTime, dayType),
+      };
+    });
+    const mergedDays = [
+      ...workShiftGroupDays.filter((day) => day.groupId !== groupId),
+      ...nextDays,
+    ];
+    const weeklyHours = calculateWorkShiftWeeklyHours(nextDays, groupId);
+    const nextGroups = workShiftGroups.map((group) => group.id === groupId
+      ? { ...group, weeklyHours, weeklyHoursWarning: weeklyHours > 45 }
+      : group);
+    saveWorkShiftData(nextGroups, mergedDays);
+  };
+
+  const updateWorkShiftGroup = (
+    groupId: string,
+    field: 'name' | 'description' | 'enabled',
+    value: string | boolean,
+  ) => {
+    const nextGroups = workShiftGroups.map((group) => group.id === groupId
+      ? { ...group, [field]: value }
+      : group);
+    saveWorkShiftData(nextGroups, workShiftGroupDays);
+  };
+
+  const addWorkShiftGroup = (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = newWorkShiftName.trim();
+    if (!name) {
+      onShowNotification('Validation Error', 'Please provide a name for the Work & Shift Group.');
+      return;
+    }
+    if (workShiftGroups.some((group) => group.name.trim().toLowerCase() === name.toLowerCase())) {
+      onShowNotification('Validation Error', 'A Work & Shift Group with this name already exists.');
+      return;
+    }
+    const id = `work-shift-${Date.now()}`;
+    const days = normalizeWorkShiftGroupDays([], id);
+    const weeklyHours = calculateWorkShiftWeeklyHours(days, id);
+    const nextGroup: WorkShiftGroup = {
+      id,
+      entityId: activeEntityId,
+      name,
+      description: newWorkShiftDescription.trim() || 'Custom working schedule.',
+      enabled: true,
+      weeklyHours,
+      weeklyHoursWarning: weeklyHours > 45,
+    };
+    saveWorkShiftData([...workShiftGroups, nextGroup], [...workShiftGroupDays, ...days]);
+    setSelectedWorkShiftGroupId(id);
+    setWorkShiftAssignmentGroupId(id);
+    setNewWorkShiftName('');
+    setNewWorkShiftDescription('');
+    onShowNotification('Work & Shift Group Added', `${name} is ready to configure.`);
+  };
+
+  const saveWorkShiftGroup = (groupId: string) => {
+    const group = workShiftGroups.find((item) => item.id === groupId);
+    const days = getWorkShiftDays(groupId);
+    if (!group) return;
+    if (!days.some((day) => day.dayType !== 'rest')) {
+      onShowNotification('Validation Error', 'A Work & Shift Group must contain at least one Work day.');
+      return;
+    }
+    const invalidDay = days.find((day) => (
+      day.dayType !== 'rest'
+      && (!day.startTime || !day.endTime || day.startTime === day.endTime)
+    ));
+    if (invalidDay) {
+      onShowNotification('Validation Error', `${WEEKDAYS[invalidDay.weekday]} needs different start and end times.`);
+      return;
+    }
+    const weeklyHours = calculateWorkShiftWeeklyHours(days, groupId);
+    const nextGroups = workShiftGroups.map((item) => item.id === groupId
+      ? { ...item, weeklyHours, weeklyHoursWarning: weeklyHours > 45 }
+      : item);
+    saveWorkShiftData(nextGroups, [
+      ...workShiftGroupDays.filter((day) => day.groupId !== groupId),
+      ...days,
+    ]);
+    onShowNotification(
+      'Work & Shift Group Saved',
+      `${group.name} totals ${weeklyHours.toFixed(2)} hours per week${weeklyHours > 45 ? ' and exceeds the 45-hour weekly warning threshold.' : '.'}`,
+    );
+  };
+
+  const deleteWorkShiftGroup = async (groupId: string) => {
+    const group = workShiftGroups.find((item) => item.id === groupId);
+    if (!group || group.id === DEFAULT_WORK_SHIFT_GROUPS[0].id) {
+      onShowNotification('Work & Shift Group', 'The default Malaysia schedule cannot be deleted.');
+      return;
+    }
+    const confirmed = await confirmAction({
+      title: 'Delete Work & Shift Group',
+      message: `Delete ${group.name}? Existing historical assignments will remain in the record.`,
+      type: 'danger',
+      confirmLabel: 'Delete Group',
+    });
+    if (!confirmed) return;
+    const nextGroups = workShiftGroups.filter((item) => item.id !== groupId);
+    const nextDays = workShiftGroupDays.filter((day) => day.groupId !== groupId);
+    const nextAssignments = employeeWorkShiftAssignments.filter((assignment) => assignment.groupId !== groupId);
+    setEmployeeWorkShiftAssignments(nextAssignments);
+    if (activeEntityId) writeScopedJson(`employee_work_shift_assignments_${activeEntityId}`, nextAssignments);
+    saveWorkShiftData(nextGroups, nextDays);
+    persistWorkspace({ employeeWorkShiftAssignments: nextAssignments });
+    setSelectedWorkShiftGroupId(nextGroups[0]?.id || '');
+    setWorkShiftAssignmentGroupId(nextGroups.find((item) => item.enabled)?.id || '');
+    onShowNotification('Work & Shift Group Deleted', `${group.name} was removed.`);
+  };
+
+  const subtractOneDay = (dateString: string) => {
+    const date = new Date(`${dateString}T00:00:00`);
+    date.setDate(date.getDate() - 1);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  };
+
+  const assignWorkShiftGroup = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const employeeIds = workShiftAssignmentMode === 'single'
+      ? workShiftAssignmentEmployeeIds.slice(0, 1)
+      : [...new Set(workShiftAssignmentEmployeeIds)];
+    const group = workShiftGroups.find((item) => item.id === workShiftAssignmentGroupId);
+    if (employeeIds.length === 0 || !group) {
+      onShowNotification('Validation Error', 'Select at least one employee and an active Work & Shift Group.');
+      return;
+    }
+    if (!workShiftAssignmentEffectiveDate) {
+      onShowNotification('Validation Error', 'Select an effective date for the assignment.');
+      return;
+    }
+    if (workShiftAssignmentEndDate && workShiftAssignmentEndDate < workShiftAssignmentEffectiveDate) {
+      onShowNotification('Validation Error', 'The assignment end date cannot be earlier than the effective date.');
+      return;
+    }
+
+    const conflicts = employeeIds.flatMap((employeeId) => employeeWorkShiftAssignments
+      .filter((assignment) => (
+        assignment.employeeId === employeeId
+        && assignment.active
+        && assignment.groupId !== group.id
+        && (assignment.endDate ? assignment.endDate >= workShiftAssignmentEffectiveDate : true)
+      ))
+      .map(() => activeEmployees.find((employee) => employee.id === employeeId)?.name || employeeId));
+    if (conflicts.length > 0) {
+      const confirmed = await confirmAction({
+        title: workShiftAssignmentMode === 'bulk' ? 'Replace Work & Shift Assignments' : 'Replace Work & Shift Assignment',
+        message: `${[...new Set(conflicts)].join(', ')} already have an active schedule. End the conflicting assignment before applying ${group.name}?`,
+        type: 'warning',
+        confirmLabel: 'Replace Assignment',
+      });
+      if (!confirmed) return;
+    }
+
+    let nextAssignments = [...employeeWorkShiftAssignments];
+    const createdAt = new Date().toISOString();
+    employeeIds.forEach((employeeId) => {
+      nextAssignments = nextAssignments.map((assignment) => {
+        if (
+          assignment.employeeId !== employeeId
+          || !assignment.active
+          || assignment.endDate && assignment.endDate < workShiftAssignmentEffectiveDate
+        ) {
+          return assignment;
+        }
+        if (assignment.effectiveDate < workShiftAssignmentEffectiveDate) {
+          return {
+            ...assignment,
+            endDate: subtractOneDay(workShiftAssignmentEffectiveDate),
+          };
+        }
+        return { ...assignment, active: false };
+      });
+      nextAssignments.push({
+        id: `work-shift-assignment-${Date.now()}-${employeeId}`,
+        entityId: activeEntityId,
+        employeeId,
+        groupId: group.id,
+        effectiveDate: workShiftAssignmentEffectiveDate,
+        endDate: workShiftAssignmentEndDate || undefined,
+        active: true,
+        assignedAt: createdAt,
+      });
+    });
+
+    setEmployeeWorkShiftAssignments(nextAssignments);
+    if (activeEntityId) writeScopedJson(`employee_work_shift_assignments_${activeEntityId}`, nextAssignments);
+    persistWorkspace({ employeeWorkShiftAssignments: nextAssignments });
+    onShowNotification(
+      'Work & Shift Group Assigned',
+      `${group.name} was assigned to ${employeeIds.length} employee${employeeIds.length === 1 ? '' : 's'} from ${formatToDDMMMYYYY(workShiftAssignmentEffectiveDate)}.`,
+    );
+    setWorkShiftAssignmentEmployeeIds([]);
+    setWorkShiftAssignmentEndDate('');
+  };
+
+  const updateGroupPublicHolidaySelection = (groupId: string, holidayGroupId: string, checked: boolean) => {
+    const group = leaveGroups.find((item) => item.id === groupId);
+    if (!group) return;
+    const currentIds = [...new Set(group.publicHolidayGroupIds || [DEFAULT_PUBLIC_HOLIDAY_GROUP_ID])];
+    if (checked && !currentIds.includes(holidayGroupId) && currentIds.length >= 2) {
+      onShowNotification('Public Holiday Limit', 'Each Leave Group can select a maximum of two Public Holiday Groups.');
+      return;
+    }
+    const nextIds = checked
+      ? [...currentIds, holidayGroupId]
+      : currentIds.filter((id) => id !== holidayGroupId);
+    saveGroups(leaveGroups.map((item) => item.id === groupId
+      ? { ...item, publicHolidayGroupIds: nextIds.length > 0 ? nextIds : [DEFAULT_PUBLIC_HOLIDAY_GROUP_ID] }
+      : item));
+  };
+
+  const updatePublicHolidayGroup = (
+    groupId: string,
+    field: 'name' | 'category' | 'stateCode' | 'enabled',
+    value: string | boolean,
+  ) => {
+    const nextGroups = publicHolidayGroups.map((group) => group.id === groupId
+      ? { ...group, [field]: value }
+      : group);
+    setPublicHolidayGroups(nextGroups);
+    if (activeEntityId) writeScopedJson(`public_holiday_groups_${activeEntityId}`, nextGroups);
+    persistWorkspace({ publicHolidayGroups: nextGroups });
+  };
+
+  const addPublicHolidayGroup = (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = newPublicHolidayGroupName.trim();
+    if (!name) {
+      onShowNotification('Validation Error', 'Please provide a public holiday group name.');
+      return;
+    }
+    if (publicHolidayGroups.some((group) => group.name.toLowerCase() === name.toLowerCase())) {
+      onShowNotification('Validation Error', 'A public holiday group with this name already exists.');
+      return;
+    }
+    const id = `public-holiday-group-${Date.now()}`;
+    const nextGroups = [
+      ...publicHolidayGroups,
+      {
+        id,
+        entityId: activeEntityId,
+        name,
+        category: publicHolidayCategory,
+        enabled: true,
+      },
+    ];
+    setPublicHolidayGroups(nextGroups);
+    setSelectedPublicHolidayGroupId(id);
+    if (activeEntityId) writeScopedJson(`public_holiday_groups_${activeEntityId}`, nextGroups);
+    persistWorkspace({ publicHolidayGroups: nextGroups });
+    setNewPublicHolidayGroupName('');
+    onShowNotification('Public Holiday Group Added', `${name} is ready for yearly holiday records.`);
+  };
+
+  const updatePublicHoliday = (
+    holidayId: string,
+    field: 'name' | 'holidayDate' | 'observedDate' | 'notes' | 'enabled',
+    value: string | boolean,
+  ) => {
+    const nextHolidays = publicHolidays.map((holiday) => holiday.id === holidayId
+      ? {
+        ...holiday,
+        [field]: value,
+        year: field === 'holidayDate' ? Number(String(value).slice(0, 4)) : holiday.year,
+      }
+      : holiday);
+    setPublicHolidays(nextHolidays);
+    if (activeEntityId) writeScopedJson(`public_holidays_${activeEntityId}`, nextHolidays);
+    persistWorkspace({ publicHolidays: nextHolidays });
+  };
+
+  const addPublicHoliday = (event: React.FormEvent) => {
+    event.preventDefault();
+    const group = publicHolidayGroups.find((item) => item.id === selectedPublicHolidayGroupId);
+    if (!group || !newPublicHolidayName.trim() || !newPublicHolidayDate) {
+      onShowNotification('Validation Error', 'Select a holiday group and provide a holiday name and date.');
+      return;
+    }
+    const year = Number(newPublicHolidayDate.slice(0, 4));
+    const nextHoliday: PublicHoliday = {
+      id: `public-holiday-${Date.now()}`,
+      entityId: activeEntityId,
+      groupId: group.id,
+      name: newPublicHolidayName.trim(),
+      holidayDate: newPublicHolidayDate,
+      observedDate: newPublicHolidayObservedDate || undefined,
+      year,
+      notes: newPublicHolidayNotes.trim(),
+      enabled: true,
+    };
+    const nextHolidays = [nextHoliday, ...publicHolidays];
+    setPublicHolidays(nextHolidays);
+    if (activeEntityId) writeScopedJson(`public_holidays_${activeEntityId}`, nextHolidays);
+    persistWorkspace({ publicHolidays: nextHolidays });
+    setPublicHolidayYear(year);
+    setNewPublicHolidayName('');
+    setNewPublicHolidayObservedDate('');
+    setNewPublicHolidayNotes('');
+    onShowNotification('Public Holiday Added', `${nextHoliday.name} was added to ${group.name}.`);
+  };
+
+  const deletePublicHoliday = async (holidayId: string) => {
+    const holiday = publicHolidays.find((item) => item.id === holidayId);
+    if (!holiday) return;
+    const confirmed = await confirmAction({
+      title: 'Delete Public Holiday',
+      message: `Delete ${holiday.name} from the holiday calendar?`,
+      type: 'danger',
+      confirmLabel: 'Delete Holiday',
+    });
+    if (!confirmed) return;
+    const nextHolidays = publicHolidays.filter((item) => item.id !== holidayId);
+    setPublicHolidays(nextHolidays);
+    if (activeEntityId) writeScopedJson(`public_holidays_${activeEntityId}`, nextHolidays);
+    persistWorkspace({ publicHolidays: nextHolidays });
+    onShowNotification('Public Holiday Deleted', `${holiday.name} was removed.`);
   };
 
   const updateOffInLieuEntry = (
@@ -719,6 +1307,7 @@ export default function LeaveManagementView({
     setOffInLieuEmployeeIds([]);
     setOffInLieuExpiryDate(addOneMonth(getGmt8DateString()));
     setOffInLieuEntries([]);
+    setOffInLieuNotes('');
   };
 
   const saveOffInLieu = (submit: boolean) => {
@@ -742,6 +1331,7 @@ export default function LeaveManagementView({
       employeeIds: [...offInLieuEmployeeIds],
       employeeNames: names,
       entries: offInLieuEntries.map((entry) => ({ ...entry })),
+      notes: offInLieuNotes.trim(),
       expiryDate: offInLieuExpiryDate,
       totalDaysPerEmployee: offInLieuDaysPerEmployee,
       totalDays: offInLieuTotalDays,
@@ -759,9 +1349,18 @@ export default function LeaveManagementView({
     );
   };
 
-  const updateOffInLieuStatus = (id: string, status: Exclude<OffInLieuStatus, 'Draft' | 'Pending'>) => {
+  const updateOffInLieuStatus = async (id: string, status: Exclude<OffInLieuStatus, 'Draft' | 'Pending'>) => {
     const request = offInLieuRequests.find((item) => item.id === id);
     if (!request) return;
+    const confirmed = await confirmAction({
+      title: status === 'Approved' ? 'Approve Off in Lieu Request' : 'Reject Off in Lieu Request',
+      message: status === 'Approved'
+        ? `Approve ${request.totalDays.toFixed(1)} replacement leave day(s) for ${request.employeeNames.join(', ')}?`
+        : `Reject this Off in Lieu request for ${request.employeeNames.join(', ')}?`,
+      type: status === 'Approved' ? 'info' : 'danger',
+      confirmLabel: status === 'Approved' ? 'Approve Request' : 'Reject Request',
+    });
+    if (!confirmed) return;
     const nextRequests = offInLieuRequests.map((item) => item.id === id ? {
       ...item,
       status,
@@ -850,21 +1449,54 @@ export default function LeaveManagementView({
 
   const renderOverview = () => (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        {[
-          { label: 'Active leave types', value: enabledLeaveConfigs.length, icon: FileText, tone: 'text-primary bg-primary/10' },
-          { label: 'Leave groups', value: leaveGroups.filter((group) => group.enabled).length, icon: Layers3, tone: 'text-secondary bg-secondary/10' },
-          { label: 'Pending leave', value: pendingLeaveCount, icon: CalendarDays, tone: 'text-amber-700 bg-amber-100' },
-          { label: 'Pending off in lieu', value: pendingOffInLieuCount, icon: Clock3, tone: 'text-emerald-700 bg-emerald-100' }
-        ].map(({ label, value, icon: Icon, tone }) => (
-          <div key={label} className={`${cardClass} p-4`}>
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">{label}</span>
-              <span className={`rounded-lg p-2 ${tone}`}><Icon className="h-4 w-4" /></span>
-            </div>
-            <p className="mt-4 font-mono text-3xl font-bold text-on-surface">{value}</p>
+      <div className={`${cardClass} overflow-hidden p-5`}>
+        <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          <div>
+            <h2 className="text-base font-bold text-on-surface">Employee Leave Balance</h2>
+            <p className="mt-1 text-xs text-on-surface-variant">Review remaining, taken, pending, carry-forward, and credit balances for an active employee.</p>
           </div>
-        ))}
+          <select value={selectedEmployeeId} onChange={(event) => setSelectedEmployeeId(event.target.value)} className={`${inputClass} sm:max-w-[280px]`}>
+            {activeEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
+          </select>
+        </div>
+        {currentEmployee && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-primary/15 bg-primary/5 p-3">
+            <EmployeeAvatar employee={currentEmployee} className="h-10 w-10 rounded-full" />
+            <div>
+              <p className="text-sm font-bold text-on-surface">{currentEmployee.name}</p>
+              <p className="text-xs text-on-surface-variant">{currentEmployee.department} · {currentEmployee.designation}</p>
+            </div>
+          </div>
+        )}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {enabledLeaveConfigs.map((config) => {
+            const balance = selectedEmployeeBalances.find((item) => item.leaveTypeId === config.id);
+            const remaining = balance?.remaining ?? config.daysEntitled;
+            const expiryDate = ledgerEntries
+              .filter((entry) => entry.employeeId === selectedEmployeeId && entry.leaveTypeId === config.id && entry.expiresAt)
+              .map((entry) => entry.expiresAt as string)
+              .sort()[0];
+            return (
+              <div key={config.id} className="rounded-lg border border-neutral-border/60 bg-neutral-50 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">{config.leaveType}</span>
+                  {balance?.replacementCredit ? <span className="rounded-full bg-secondary/10 px-1.5 py-0.5 text-[9px] font-bold text-secondary">Credit</span> : null}
+                </div>
+                <div className="mt-2 flex items-end justify-between">
+                  <span className="font-mono text-2xl font-bold text-primary">{remaining}</span>
+                  <span className="text-[10px] text-on-surface-variant">/ {(balance?.entitlement ?? config.daysEntitled) + (balance?.carryOver ?? 0)} days</span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-on-surface-variant">
+                  <span>Approved taken <strong className="font-mono text-on-surface">{balance?.taken ?? 0}</strong></span>
+                  <span>Pending <strong className="font-mono text-on-surface">{balance?.pending ?? 0}</strong></span>
+                  <span>Carry forward <strong className="font-mono text-on-surface">{balance?.carryOver ?? 0}</strong></span>
+                  <span>Credits <strong className="font-mono text-on-surface">{balance?.credited ?? 0}</strong></span>
+                </div>
+                {expiryDate && <p className="mt-2 border-t border-neutral-border/60 pt-2 text-[10px] text-amber-700">Expires {formatToDDMMMYYYY(expiryDate)}</p>}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
@@ -917,6 +1549,10 @@ export default function LeaveManagementView({
                 <span className="ml-1 text-[10px] text-on-surface-variant">under active policy</span>
               </div>
             </div>
+            <div className="flex items-center justify-between rounded-lg border border-neutral-border/60 bg-neutral-50 px-3 py-2.5 text-[11px]">
+              <span className={labelClass}>Applicable Policy</span>
+              <span className="font-semibold text-on-surface">{policyForLeaveType?.name || 'Not configured'}</span>
+            </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
@@ -967,6 +1603,7 @@ export default function LeaveManagementView({
                       <EmployeeAvatar employee={employee} className="h-9 w-9 rounded-full" />
                       <div>
                         <p className="text-xs font-bold text-on-surface">{request.employeeName}</p>
+                        <p className="mt-0.5 text-[10px] text-on-surface-variant">{employee?.department || 'Department not set'} · {employee?.designation || 'Designation not set'}</p>
                         <p className="mt-0.5 text-[10px] font-mono text-on-surface-variant">{request.id} | Applied {formatToDDMMMYYYY(request.appliedDate)}</p>
                       </div>
                     </div>
@@ -978,6 +1615,10 @@ export default function LeaveManagementView({
                     <div><span className={labelClass}>Days</span><span className="font-mono font-semibold text-on-surface">{request.totalDays}</span></div>
                   </div>
                   <p className="mt-3 text-xs italic text-on-surface-variant">"{request.reason}"</p>
+                  <div className="mt-3 grid grid-cols-1 gap-2 rounded-md border border-neutral-border/40 bg-white p-3 text-[10px] sm:grid-cols-2">
+                    <div><span className={labelClass}>Payroll Deduction</span><span className="font-mono font-bold text-on-surface">RM {payrollDeductions.filter((deduction) => deduction.leaveRequestId === request.id).reduce((total, deduction) => total + deduction.amount, 0).toFixed(2)}</span></div>
+                    <div><span className={labelClass}>Payroll Sync</span><span className={`font-bold ${payrollDeductions.some((deduction) => deduction.leaveRequestId === request.id && deduction.status === 'Synced') ? 'text-green-700' : 'text-on-surface-variant'}`}>{payrollDeductions.some((deduction) => deduction.leaveRequestId === request.id && deduction.status === 'Synced') ? 'Synced' : payrollDeductions.some((deduction) => deduction.leaveRequestId === request.id) ? 'Pending' : 'Not applicable'}</span></div>
+                  </div>
                   {request.status === 'Pending' && (
                     <div className="mt-3 flex justify-end gap-2">
                       <button type="button" onClick={() => updateLeaveRequestStatus(request.id, 'Rejected')} className="flex items-center gap-1 rounded bg-red-50 px-3 py-1.5 text-[10px] font-bold text-red-700 transition hover:bg-red-100"><XCircle className="h-3.5 w-3.5" /> Reject</button>
@@ -991,35 +1632,6 @@ export default function LeaveManagementView({
         </div>
       </div>
 
-      <div className={`${cardClass} overflow-hidden p-5`}>
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-bold text-on-surface">Leave Balance Snapshot</h2>
-            <p className="mt-1 text-xs text-on-surface-variant">Select an active employee to review the current entitlement picture.</p>
-          </div>
-          <select value={selectedEmployeeId} onChange={(event) => setSelectedEmployeeId(event.target.value)} className={`${inputClass} max-w-[250px]`}>
-            {activeEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
-          </select>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {enabledLeaveConfigs.slice(0, 8).map((config) => {
-            const balance = selectedEmployeeBalances.find((item) => item.leaveTypeId === config.id);
-            const remaining = balance?.remaining ?? config.daysEntitled;
-            return (
-              <div key={config.id} className="rounded-lg border border-neutral-border/60 bg-neutral-50 p-3">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">{config.leaveType}</span>
-                <div className="mt-2 flex items-end justify-between">
-                  <span className="font-mono text-2xl font-bold text-primary">{remaining}</span>
-                  <span className="text-[10px] text-on-surface-variant">/ {(balance?.entitlement ?? config.daysEntitled) + (balance?.carryOver ?? 0)} days</span>
-                </div>
-                <span className="mt-2 block text-[10px] text-on-surface-variant">{config.condition}</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <LeaveCalendar requests={requests} employees={activeEmployees} />
     </div>
   );
 
@@ -1049,6 +1661,7 @@ export default function LeaveManagementView({
                 ['working_days', 'Working days'],
                 ['working_days_excluding_holidays', 'Working days excluding holidays']
               ]} />
+              <NumberField label="Entitlement Days" value={policy.entitlementDays || 0} onChange={(value) => updatePolicy(policy.id, 'entitlementDays', value)} min={0} />
               <SelectField label="Rounding Rule" value={policy.roundingRule} onChange={(value) => updatePolicy(policy.id, 'roundingRule', value)} options={[
                 ['exact', 'Exact day count'],
                 ['nearest_half_day', 'Nearest half day'],
@@ -1083,10 +1696,11 @@ export default function LeaveManagementView({
             <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <ToggleRow label="Exclude weekends" checked={policy.excludeWeekends} onChange={(checked) => updatePolicy(policy.id, 'excludeWeekends', checked)} />
               <ToggleRow label="Exclude public holidays" checked={policy.excludePublicHolidays} onChange={(checked) => updatePolicy(policy.id, 'excludePublicHolidays', checked)} />
+              <ToggleRow label="Sync payroll deductions" checked={policy.payrollDeductionBehavior !== 'none'} onChange={(checked) => updatePolicy(policy.id, 'payrollDeductionBehavior', checked ? 'deduct_excess' : 'none')} />
             </div>
 
             <div className="mt-5">
-              <label className={labelClass}>Rule Notes</label>
+              <label className={labelClass}>Description</label>
               <textarea rows={3} value={policy.notes} onChange={(event) => updatePolicy(policy.id, 'notes', event.target.value)} className={inputClass} />
             </div>
           </div>
@@ -1112,6 +1726,11 @@ export default function LeaveManagementView({
         </div>
       </div>
 
+    </div>
+  );
+
+  const renderCarryOver = () => (
+    <div className="space-y-6">
       <SectionIntro
         icon={RotateCcw}
         eyebrow="Carry Over Leave Balance Settings"
@@ -1147,6 +1766,9 @@ export default function LeaveManagementView({
               ) : (
                 <NumberField label="Expiry Months After Year End" value={setting.expiryMonths} onChange={(value) => updateCarryOver(setting.id, 'expiryMonths', value)} min={0} />
               )}
+            </div>
+            <div className="mt-4">
+              <ToggleRow label="Enable carry forward" checked={setting.enabled !== false} onChange={(checked) => updateCarryOver(setting.id, 'enabled', checked)} />
             </div>
             <div className="mt-5">
               <label className={labelClass}>Carry Forward Rule Details</label>
@@ -1203,7 +1825,7 @@ export default function LeaveManagementView({
                     <div className="flex items-start gap-3">
                       <span className="rounded bg-primary/10 px-2 py-1 font-mono text-[10px] font-bold text-primary">{config.code}</span>
                       <div>
-                        <input value={config.leaveType} onChange={(event) => updateConfig(config.id, 'leaveType', event.target.value)} className="w-full bg-transparent font-bold text-on-surface outline-none" />
+                        <input value={config.leaveType} disabled={config.systemManaged} onChange={(event) => updateConfig(config.id, 'leaveType', event.target.value)} className="w-full bg-transparent font-bold text-on-surface outline-none disabled:cursor-not-allowed disabled:opacity-60" />
                         <span className="mt-1 block text-[10px] text-on-surface-variant">{config.isDefault ? 'Default leave type' : 'Custom leave type'}</span>
                       </div>
                     </div>
@@ -1294,9 +1916,41 @@ export default function LeaveManagementView({
         </form>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        {leaveGroups.map((group) => (
-          <div key={group.id} className={`${cardClass} p-5`}>
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
+        <div className={`${cardClass} h-fit p-3`}>
+          <div className="border-b border-neutral-border/60 px-3 pb-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">Leave Groups</p>
+            <p className="mt-1 text-xs text-on-surface-variant">Select a group to configure its rules.</p>
+          </div>
+          <div className="mt-3 space-y-1">
+            {leaveGroups.map((group) => (
+              <button
+                key={group.id}
+                type="button"
+                onClick={() => setSelectedGroupId(group.id)}
+                className={`w-full rounded-lg border p-3 text-left transition ${selectedGroupId === group.id ? 'border-primary/30 bg-primary/5 shadow-sm' : 'border-transparent hover:bg-neutral-50'}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-on-surface">{group.name}</span>
+                  <span className={`rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase ${group.enabled ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-on-surface-variant'}`}>{group.enabled ? 'Active' : 'Disabled'}</span>
+                </div>
+                <span className="mt-1 block text-[10px] text-on-surface-variant">{group.leaveTypeIds.length} leave types · {group.assignedEmployeeIds.length} assigned</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {(() => {
+          const group = leaveGroups.find((item) => item.id === selectedGroupId);
+          if (!group) {
+            return (
+              <div className={`${cardClass} p-5`}>
+                <EmptyState icon={Layers3} title="No leave group selected" description="Create or select a leave group to configure its rules." />
+              </div>
+            );
+          }
+          return (
+          <div className={`${cardClass} p-5`}>
             <div className="flex items-start justify-between gap-3 border-b border-neutral-100 pb-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -1313,6 +1967,42 @@ export default function LeaveManagementView({
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <SelectField label="Conditioning Policy" value={group.policyId} onChange={(value) => saveGroups(leaveGroups.map((item) => item.id === group.id ? { ...item, policyId: value } : item))} options={conditioningPolicies.map((policy) => [policy.id, policy.name])} />
               <SelectField label="Carry Over Setting" value={group.carryOverId} onChange={(value) => saveGroups(leaveGroups.map((item) => item.id === group.id ? { ...item, carryOverId: value } : item))} options={carryOverSettings.map((setting) => [setting.id, setting.name])} />
+            </div>
+
+            <div className="mt-4 rounded-lg border border-neutral-border/60 bg-neutral-50/60 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className={labelClass}>Public Holiday Groups</p>
+                  <p className="text-[10px] text-on-surface-variant">Select up to two calendars. Holiday dates are excluded only when the applicable policy enables public-holiday exclusion.</p>
+                </div>
+                <span className="shrink-0 rounded-full bg-primary/10 px-2 py-1 text-[9px] font-bold text-primary">
+                  {(group.publicHolidayGroupIds || [DEFAULT_PUBLIC_HOLIDAY_GROUP_ID]).length}/2 selected
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {publicHolidayGroups.filter((holidayGroup) => holidayGroup.enabled).map((holidayGroup) => {
+                  const selectedHolidayGroups = group.publicHolidayGroupIds || [DEFAULT_PUBLIC_HOLIDAY_GROUP_ID];
+                  return (
+                    <label key={holidayGroup.id} className="flex cursor-pointer items-start gap-2 rounded-md border border-neutral-border/60 bg-white px-3 py-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={selectedHolidayGroups.includes(holidayGroup.id)}
+                        onChange={(event) => updateGroupPublicHolidaySelection(group.id, holidayGroup.id, event.target.checked)}
+                        className="mt-0.5 h-3.5 w-3.5 accent-[#b42318]"
+                      />
+                      <span>
+                        <span className="block font-semibold text-on-surface">{holidayGroup.name}</span>
+                        <span className="mt-0.5 block text-[9px] uppercase tracking-wider text-on-surface-variant">{holidayGroup.category}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center gap-2 rounded-md border border-primary/15 bg-primary/5 px-3 py-2 text-[10px] text-on-surface-variant">
+              <Clock3 className="h-3.5 w-3.5 shrink-0 text-primary" />
+              Rest/off-day source: <strong className="text-on-surface">Employee's active Work & Shift Group</strong>
             </div>
 
             <div className="mt-4">
@@ -1346,32 +2036,470 @@ export default function LeaveManagementView({
               </div>
             </div>
 
-            <div className="mt-4">
-              <div className="flex items-center justify-between">
-                <p className={labelClass}>Assigned active employees</p>
-                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">{group.assignedEmployeeIds.length} assigned</span>
-              </div>
-              <div className="max-h-48 space-y-1 overflow-y-auto rounded-md border border-neutral-border/60 p-2">
-                {activeEmployees.length === 0 ? (
-                  <p className="p-2 text-xs text-on-surface-variant">No active employees available.</p>
-                ) : activeEmployees.map((employee) => (
-                  <label key={employee.id} className="flex items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-neutral-50">
-                    <input type="checkbox" checked={group.assignedEmployeeIds.includes(employee.id)} onChange={(event) => applyLeaveGroupAssignments(group.id, employee.id, event.target.checked)} className="h-3.5 w-3.5 accent-[#b42318]" />
-                    <EmployeeAvatar employee={employee} className="h-6 w-6 rounded-full" />
-                    <span className="font-semibold text-on-surface">{employee.name}</span>
-                    <span className="ml-auto text-[10px] text-on-surface-variant">{employee.department}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
             <div className="mt-4 flex items-center justify-between border-t border-neutral-100 pt-3 text-[10px] text-on-surface-variant">
-              <span>{group.leaveTypeIds.length} leave types</span>
+              <span>{group.leaveTypeIds.length} leave types · {group.assignedEmployeeIds.length} assigned</span>
               <span>{getGroupPolicyName(group)} | {getGroupCarryOverName(group)}</span>
             </div>
           </div>
-        ))}
+          );
+        })()}
       </div>
+    </div>
+  );
+
+  const renderWorkShiftGroups = () => {
+    const selectedGroup = workShiftGroups.find((group) => group.id === selectedWorkShiftGroupId);
+    const selectedDays = selectedGroup ? getWorkShiftDays(selectedGroup.id) : [];
+    const activeScheduleAssignments = employeeWorkShiftAssignments.filter((assignment) => (
+      activeEmployees.some((employee) => employee.id === assignment.employeeId)
+    ));
+
+    return (
+      <div className="space-y-6">
+        <SectionIntro
+          icon={Clock3}
+          eyebrow="Work & Shift Groups"
+          title="Configure working days, shifts, and rest days"
+          description="Full Day deducts a one-hour break, 0.5 Day has no break deduction, and Rest days contribute zero working hours."
+        />
+
+        <div className={`${cardClass} p-5`}>
+          <form onSubmit={addWorkShiftGroup} className="grid grid-cols-1 gap-4 md:grid-cols-12">
+            <div className="md:col-span-4">
+              <label className={labelClass}>Group Name</label>
+              <input value={newWorkShiftName} onChange={(event) => setNewWorkShiftName(event.target.value)} placeholder="e.g. Retail 6-Day Shift" className={inputClass} />
+            </div>
+            <div className="md:col-span-6">
+              <label className={labelClass}>Description</label>
+              <input value={newWorkShiftDescription} onChange={(event) => setNewWorkShiftDescription(event.target.value)} placeholder="Describe the employee population or shift pattern." className={inputClass} />
+            </div>
+            <div className="flex items-end md:col-span-2">
+              <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-2.5 text-xs font-bold text-white shadow-sm hover:opacity-90">
+                <Plus className="h-4 w-4" /> Add Group
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
+          <div className={`${cardClass} h-fit p-3`}>
+            <div className="border-b border-neutral-border/60 px-3 pb-3">
+              <p className={labelClass}>Work & Shift Groups</p>
+              <p className="text-xs text-on-surface-variant">Select a group to configure its seven-day schedule.</p>
+            </div>
+            <div className="mt-3 space-y-1">
+              {workShiftGroups.map((group) => (
+                <button
+                  key={group.id}
+                  type="button"
+                  onClick={() => setSelectedWorkShiftGroupId(group.id)}
+                  className={`w-full rounded-lg border p-3 text-left transition ${selectedWorkShiftGroupId === group.id ? 'border-primary/30 bg-primary/5 shadow-sm' : 'border-transparent hover:bg-neutral-50'}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-xs font-bold text-on-surface">{group.name}</span>
+                    <span className={`rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase ${group.enabled ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-on-surface-variant'}`}>{group.enabled ? 'Active' : 'Disabled'}</span>
+                  </div>
+                  <span className="mt-1 block font-mono text-[10px] text-on-surface-variant">{group.weeklyHours.toFixed(2)} hours/week</span>
+                  {group.weeklyHoursWarning && <span className="mt-1 block text-[9px] font-bold text-amber-700">Over 45-hour warning</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {!selectedGroup ? (
+            <div className={`${cardClass} p-5`}>
+              <EmptyState icon={Clock3} title="No Work & Shift Group selected" description="Create or select a group to configure its schedule." />
+            </div>
+          ) : (
+            <div className={`${cardClass} overflow-hidden`}>
+              <div className="flex flex-col justify-between gap-4 border-b border-neutral-border bg-neutral-50 p-5 sm:flex-row sm:items-start">
+                <div className="min-w-0 flex-1">
+                  <label className={labelClass}>Group Name</label>
+                  <input value={selectedGroup.name} onChange={(event) => updateWorkShiftGroup(selectedGroup.id, 'name', event.target.value)} className="w-full border-0 bg-transparent p-0 text-lg font-bold text-on-surface outline-none focus:ring-0" />
+                  <label className={`${labelClass} mt-3`}>Description</label>
+                  <textarea rows={2} value={selectedGroup.description} onChange={(event) => updateWorkShiftGroup(selectedGroup.id, 'description', event.target.value)} className={`${inputClass} bg-white`} />
+                </div>
+                <div className="flex flex-col items-start gap-2 sm:items-end">
+                  <span className={`rounded-full px-3 py-1.5 text-[10px] font-bold uppercase ${selectedGroup.weeklyHoursWarning ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-700'}`}>
+                    {selectedGroup.weeklyHours.toFixed(2)} hours/week
+                  </span>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => updateWorkShiftGroup(selectedGroup.id, 'enabled', !selectedGroup.enabled)} className="rounded-md border border-neutral-border px-3 py-1.5 text-[10px] font-bold text-on-surface-variant hover:bg-white">
+                      {selectedGroup.enabled ? 'Disable' : 'Enable'}
+                    </button>
+                    <button type="button" onClick={() => void deleteWorkShiftGroup(selectedGroup.id)} className="rounded-md border border-red-200 px-3 py-1.5 text-[10px] font-bold text-red-700 hover:bg-red-50">
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {selectedGroup.weeklyHoursWarning && (
+                <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-900">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                  <span>Weekly working hours exceed 45 hours. Saving is allowed, but HR should review the schedule.</span>
+                </div>
+              )}
+
+              <div className="overflow-x-auto p-5">
+                <table className="min-w-[900px] w-full text-left text-xs">
+                  <thead className="border-b border-neutral-border text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                    <tr>
+                      <th className="p-3">Working Day</th>
+                      <th className="p-3">Start</th>
+                      <th className="p-3">End</th>
+                      <th className="p-3">Day Setting</th>
+                      <th className="p-3 text-center">Work</th>
+                      <th className="p-3 text-center">Rest</th>
+                      <th className="p-3 text-right">Actual Hours</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-border/60">
+                    {WORK_SHIFT_WEEKDAYS.map((weekday) => {
+                      const day = selectedDays.find((item) => item.weekday === weekday) as WorkShiftGroupDay;
+                      const isRest = day.dayType === 'rest';
+                      return (
+                        <tr key={day.id} className="align-middle">
+                          <td className="p-3 font-bold text-on-surface">{['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][weekday]}</td>
+                          <td className="p-3"><input type="time" value={day.startTime} onChange={(event) => updateWorkShiftDay(selectedGroup.id, weekday, 'startTime', event.target.value)} className={`${inputClass} font-mono`} /></td>
+                            <td className="p-3"><input type="time" value={day.endTime} onChange={(event) => updateWorkShiftDay(selectedGroup.id, weekday, 'endTime', event.target.value)} className={`${inputClass} font-mono`} /></td>
+                          <td className="p-3">
+                            <select value={day.dayType} onChange={(event) => updateWorkShiftDay(selectedGroup.id, weekday, 'dayType', event.target.value)} className={inputClass}>
+                              <option value="full_day">Full Day</option>
+                              <option value="half_day">Half-day</option>
+                              <option value="rest">Rest</option>
+                            </select>
+                          </td>
+                          <td className="p-3 text-center">
+                            <input type="checkbox" checked={!isRest} onChange={() => updateWorkShiftDay(selectedGroup.id, weekday, 'dayType', isRest ? 'full_day' : 'rest')} className="h-4 w-4 accent-[#b42318]" aria-label={`Work on ${WEEKDAYS[weekday]}`} />
+                          </td>
+                          <td className="p-3 text-center">
+                            <input type="checkbox" checked={isRest} onChange={() => updateWorkShiftDay(selectedGroup.id, weekday, 'dayType', isRest ? 'full_day' : 'rest')} className="h-4 w-4 accent-[#b42318]" aria-label={`Rest on ${WEEKDAYS[weekday]}`} />
+                          </td>
+                          <td className="p-3 text-right font-mono font-bold text-primary">{day.actualHours.toFixed(2)} h</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex flex-col justify-between gap-3 border-t border-neutral-border bg-white px-5 py-4 sm:flex-row sm:items-center">
+                <p className="text-xs text-on-surface-variant">Full Day: (end - start) - 1 hour break. Half-day defaults to an end time four hours after the start, and the end time remains editable.</p>
+                <button type="button" onClick={() => saveWorkShiftGroup(selectedGroup.id)} className="flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-xs font-bold text-white hover:opacity-90">
+                  <Save className="h-4 w-4" /> Save Group
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className={`${cardClass} p-5`}>
+          <div className="mb-5 flex flex-col justify-between gap-3 border-b border-neutral-100 pb-4 sm:flex-row sm:items-start">
+            <div>
+              <h2 className="text-base font-bold text-on-surface">Assign Work & Shift Group</h2>
+              <p className="mt-1 text-xs text-on-surface-variant">Each employee resolves to one effective schedule at a time. Bulk replacements require confirmation.</p>
+            </div>
+            <div className="flex rounded-md bg-neutral-100 p-1">
+              {(['single', 'bulk'] as const).map((mode) => (
+                <button key={mode} type="button" onClick={() => { setWorkShiftAssignmentMode(mode); if (mode === 'single') setWorkShiftAssignmentEmployeeIds((ids) => ids.slice(0, 1)); }} className={`rounded px-3 py-1.5 text-[10px] font-bold uppercase ${workShiftAssignmentMode === mode ? 'bg-white text-primary shadow-sm' : 'text-on-surface-variant'}`}>
+                  {mode}
+                </button>
+              ))}
+            </div>
+          </div>
+          <form onSubmit={assignWorkShiftGroup} className="grid grid-cols-1 gap-4 md:grid-cols-12">
+            <div className="md:col-span-4">
+              <label className={labelClass}>{workShiftAssignmentMode === 'single' ? 'Employee' : 'Employees'}</label>
+              {workShiftAssignmentMode === 'single' ? (
+                <select value={workShiftAssignmentEmployeeIds[0] || ''} onChange={(event) => setWorkShiftAssignmentEmployeeIds(event.target.value ? [event.target.value] : [])} className={inputClass}>
+                  <option value="">Select active employee</option>
+                  {activeEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name} · {employee.department}</option>)}
+                </select>
+              ) : (
+                <select multiple value={workShiftAssignmentEmployeeIds} onChange={(event) => setWorkShiftAssignmentEmployeeIds([...event.currentTarget.selectedOptions].map((option: HTMLOptionElement) => option.value))} className={`${inputClass} min-h-[92px]`}>
+                  {activeEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name} · {employee.department}</option>)}
+                </select>
+              )}
+            </div>
+            <div className="md:col-span-3">
+              <label className={labelClass}>Work & Shift Group</label>
+              <select value={workShiftAssignmentGroupId} onChange={(event) => setWorkShiftAssignmentGroupId(event.target.value)} className={inputClass}>
+                {workShiftGroups.filter((group) => group.enabled).map((group) => <option key={group.id} value={group.id}>{group.name} · {group.weeklyHours.toFixed(2)}h</option>)}
+              </select>
+            </div>
+            <div className="md:col-span-2"><label className={labelClass}>Effective Date</label><input type="date" value={workShiftAssignmentEffectiveDate} onChange={(event) => setWorkShiftAssignmentEffectiveDate(event.target.value)} className={`${inputClass} font-mono`} /></div>
+            <div className="md:col-span-2"><label className={labelClass}>End Date (Optional)</label><input type="date" value={workShiftAssignmentEndDate} onChange={(event) => setWorkShiftAssignmentEndDate(event.target.value)} className={`${inputClass} font-mono`} /></div>
+            <div className="flex items-end md:col-span-1"><button type="submit" className="flex w-full items-center justify-center rounded-md bg-primary px-3 py-2.5 text-white hover:opacity-90" title="Assign group"><Plus className="h-4 w-4" /></button></div>
+          </form>
+
+          <div className="mt-5 overflow-x-auto">
+            <table className="min-w-[900px] w-full text-left text-xs">
+              <thead className="border-b border-neutral-border text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                <tr><th className="p-3">Employee</th><th className="p-3">Group</th><th className="p-3">Effective</th><th className="p-3">End</th><th className="p-3">Status</th></tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-border/60">
+                {activeScheduleAssignments.length === 0 ? (
+                  <tr><td colSpan={5} className="p-5"><EmptyState icon={UserCog} title="No work schedule assignments" description="Employees without an assignment use the Malaysia standard schedule." /></td></tr>
+                ) : activeScheduleAssignments.map((assignment) => {
+                  const employee = activeEmployees.find((item) => item.id === assignment.employeeId);
+                  const group = workShiftGroups.find((item) => item.id === assignment.groupId);
+                  if (!employee || !group) return null;
+                  const isCurrent = assignment.active && assignment.effectiveDate <= getGmt8DateString() && (!assignment.endDate || assignment.endDate >= getGmt8DateString());
+                  return (
+                    <tr key={assignment.id}>
+                      <td className="p-3"><p className="font-bold text-on-surface">{employee.name}</p><p className="text-[10px] text-on-surface-variant">{employee.department} · {employee.designation}</p></td>
+                      <td className="p-3"><p className="font-semibold text-on-surface">{group.name}</p><p className="font-mono text-[10px] text-on-surface-variant">{group.weeklyHours.toFixed(2)} hours/week</p></td>
+                      <td className="p-3 font-mono">{formatToDDMMMYYYY(assignment.effectiveDate)}</td>
+                      <td className="p-3 font-mono">{assignment.endDate ? formatToDDMMMYYYY(assignment.endDate) : 'Open ended'}</td>
+                      <td className="p-3"><span className={`rounded-full px-2 py-1 text-[9px] font-bold uppercase ${isCurrent ? 'bg-green-100 text-green-700' : assignment.effectiveDate > getGmt8DateString() ? 'bg-blue-100 text-blue-700' : 'bg-neutral-100 text-on-surface-variant'}`}>{isCurrent ? 'Current' : assignment.effectiveDate > getGmt8DateString() ? 'Future' : 'History'}</span></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderPublicHolidays = () => {
+    const categoryGroups = publicHolidayGroups.filter((group) => group.category === publicHolidayCategory);
+    const selectedGroup = publicHolidayGroups.find((group) => group.id === selectedPublicHolidayGroupId)
+      || categoryGroups[0];
+    const selectedGroupHolidays = selectedGroup
+      ? publicHolidays.filter((holiday) => holiday.groupId === selectedGroup.id && holiday.year === publicHolidayYear)
+      : [];
+    const years = [...new Set([2026, 2027, new Date().getFullYear(), ...publicHolidays.map((holiday) => holiday.year)])].sort();
+
+    return (
+      <div className="space-y-6">
+        <SectionIntro
+          icon={Calendar}
+          eyebrow="Public Holiday Groups"
+          title="Maintain National and State holiday calendars"
+          description="Holiday groups are selected on Leave Groups and can be edited by year. Employees are not assigned automatically by nationality or address."
+        />
+
+        <div className={`${cardClass} p-5`}>
+          <form onSubmit={addPublicHolidayGroup} className="grid grid-cols-1 gap-4 md:grid-cols-12">
+            <div className="md:col-span-6"><label className={labelClass}>Group Name</label><input value={newPublicHolidayGroupName} onChange={(event) => setNewPublicHolidayGroupName(event.target.value)} placeholder="e.g. Sabah Operations" className={inputClass} /></div>
+            <div className="md:col-span-3"><label className={labelClass}>Category</label><select value={publicHolidayCategory} onChange={(event) => { const category = event.target.value as PublicHolidayCategory; setPublicHolidayCategory(category); const firstGroup = publicHolidayGroups.find((group) => group.category === category); if (firstGroup) setSelectedPublicHolidayGroupId(firstGroup.id); }} className={inputClass}><option value="national">National</option><option value="state">State</option></select></div>
+            <div className="flex items-end md:col-span-3"><button type="submit" className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-2.5 text-xs font-bold text-white hover:opacity-90"><Plus className="h-4 w-4" /> Add Holiday Group</button></div>
+          </form>
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
+          <div className={`${cardClass} h-fit p-3`}>
+            <div className="flex rounded-md bg-neutral-100 p-1">
+              {(['national', 'state'] as const).map((category) => {
+                const count = publicHolidayGroups.filter((group) => group.category === category).length;
+                return <button key={category} type="button" onClick={() => { setPublicHolidayCategory(category); const next = publicHolidayGroups.find((group) => group.category === category); if (next) setSelectedPublicHolidayGroupId(next.id); }} className={`flex-1 rounded px-3 py-2 text-[10px] font-bold uppercase ${publicHolidayCategory === category ? 'bg-white text-primary shadow-sm' : 'text-on-surface-variant'}`}>{category} ({count})</button>;
+              })}
+            </div>
+            <div className="mt-3 space-y-1">
+              {categoryGroups.map((group) => (
+                <button key={group.id} type="button" onClick={() => setSelectedPublicHolidayGroupId(group.id)} className={`w-full rounded-lg border p-3 text-left ${selectedGroup?.id === group.id ? 'border-primary/30 bg-primary/5' : 'border-transparent hover:bg-neutral-50'}`}>
+                  <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-on-surface">{group.name}</span><span className={`rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase ${group.enabled ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-on-surface-variant'}`}>{group.enabled ? 'Enabled' : 'Disabled'}</span></div>
+                  <span className="mt-1 block text-[10px] uppercase text-on-surface-variant">{group.stateCode || 'Malaysia'}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {!selectedGroup ? (
+            <div className={`${cardClass} p-5`}><EmptyState icon={Calendar} title="No holiday group selected" description="Create a National or State group to manage holiday records." /></div>
+          ) : (
+            <div className={`${cardClass} overflow-hidden`}>
+              <div className="flex flex-col justify-between gap-3 border-b border-neutral-border bg-neutral-50 p-5 sm:flex-row sm:items-end">
+                <div className="min-w-0 flex-1">
+                  <label className={labelClass}>Group Name</label>
+                  <input value={selectedGroup.name} onChange={(event) => updatePublicHolidayGroup(selectedGroup.id, 'name', event.target.value)} className="w-full border-0 bg-transparent p-0 text-lg font-bold text-on-surface outline-none focus:ring-0" />
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <div><label className={labelClass}>Category</label><select value={selectedGroup.category} onChange={(event) => { const category = event.target.value as PublicHolidayCategory; updatePublicHolidayGroup(selectedGroup.id, 'category', category); setPublicHolidayCategory(category); }} className={inputClass}><option value="national">National</option><option value="state">State</option></select></div>
+                    <div><label className={labelClass}>State Code</label><input value={selectedGroup.stateCode || ''} onChange={(event) => updatePublicHolidayGroup(selectedGroup.id, 'stateCode', event.target.value.toUpperCase())} placeholder="Optional" className={inputClass} /></div>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 sm:items-end">
+                  <select value={publicHolidayYear} onChange={(event) => setPublicHolidayYear(Number(event.target.value))} className={`${inputClass} sm:w-[120px]`}>{years.map((year) => <option key={year} value={year}>{year}</option>)}</select>
+                  <label className="flex items-center gap-2 text-[10px] font-bold text-on-surface-variant"><input type="checkbox" checked={selectedGroup.enabled} onChange={(event) => updatePublicHolidayGroup(selectedGroup.id, 'enabled', event.target.checked)} className="h-4 w-4 accent-[#b42318]" /> Enabled</label>
+                </div>
+              </div>
+
+              <form onSubmit={addPublicHoliday} className="grid grid-cols-1 gap-3 border-b border-neutral-border p-5 md:grid-cols-12">
+                <div className="md:col-span-3"><label className={labelClass}>Holiday Name</label><input value={newPublicHolidayName} onChange={(event) => setNewPublicHolidayName(event.target.value)} placeholder="e.g. Awal Muharram" className={inputClass} /></div>
+                <div className="md:col-span-2"><label className={labelClass}>Date</label><input type="date" value={newPublicHolidayDate} onChange={(event) => setNewPublicHolidayDate(event.target.value)} className={`${inputClass} font-mono`} /></div>
+                <div className="md:col-span-2"><label className={labelClass}>Observed Date</label><input type="date" value={newPublicHolidayObservedDate} onChange={(event) => setNewPublicHolidayObservedDate(event.target.value)} className={`${inputClass} font-mono`} /></div>
+                <div className="md:col-span-3"><label className={labelClass}>Notes</label><input value={newPublicHolidayNotes} onChange={(event) => setNewPublicHolidayNotes(event.target.value)} placeholder="Optional HR note" className={inputClass} /></div>
+                <div className="flex items-end md:col-span-2"><button type="submit" className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-2.5 text-xs font-bold text-white hover:opacity-90"><Plus className="h-4 w-4" /> Add Holiday</button></div>
+              </form>
+
+              <div className="overflow-x-auto p-5">
+                {selectedGroupHolidays.length === 0 ? (
+                  <EmptyState icon={Calendar} title={`No ${publicHolidayYear} holidays recorded`} description="Add an editable holiday record for this group and year." />
+                ) : (
+                  <table className="min-w-[900px] w-full text-left text-xs">
+                    <thead className="border-b border-neutral-border text-[10px] font-bold uppercase tracking-wider text-on-surface-variant"><tr><th className="p-3">Holiday Name</th><th className="p-3">Date</th><th className="p-3">Observed Date</th><th className="p-3">Notes</th><th className="p-3 text-center">Enabled</th><th className="p-3 text-right">Action</th></tr></thead>
+                    <tbody className="divide-y divide-neutral-border/60">
+                      {selectedGroupHolidays.map((holiday) => (
+                        <tr key={holiday.id}>
+                          <td className="p-3"><input value={holiday.name} onChange={(event) => updatePublicHoliday(holiday.id, 'name', event.target.value)} className="w-full border-0 bg-transparent p-0 font-semibold text-on-surface outline-none focus:ring-0" /></td>
+                          <td className="p-3"><input type="date" value={holiday.holidayDate} onChange={(event) => updatePublicHoliday(holiday.id, 'holidayDate', event.target.value)} className={`${inputClass} font-mono`} /></td>
+                          <td className="p-3"><input type="date" value={holiday.observedDate || ''} onChange={(event) => updatePublicHoliday(holiday.id, 'observedDate', event.target.value)} className={`${inputClass} font-mono`} /></td>
+                          <td className="p-3"><input value={holiday.notes || ''} onChange={(event) => updatePublicHoliday(holiday.id, 'notes', event.target.value)} className="w-full border-0 bg-transparent p-0 text-[10px] text-on-surface-variant outline-none focus:ring-0" placeholder="Optional note" /></td>
+                          <td className="p-3 text-center"><input type="checkbox" checked={holiday.enabled} onChange={(event) => updatePublicHoliday(holiday.id, 'enabled', event.target.checked)} className="h-4 w-4 accent-[#b42318]" /></td>
+                          <td className="p-3 text-right"><button type="button" onClick={() => void deletePublicHoliday(holiday.id)} className="rounded p-2 text-red-700 hover:bg-red-50" title="Delete holiday"><Trash2 className="h-4 w-4" /></button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderEmployeeAssignment = () => (
+    <div className="space-y-6">
+      <SectionIntro
+        icon={UserCog}
+        eyebrow="Employee Leave Group Assignment"
+        title="Assign multiple leave groups to active employees"
+        description="Assign groups by employee and prevent overlapping leave types across active group assignments."
+      />
+
+      <div className={`${cardClass} p-5`}>
+        <form onSubmit={assignLeaveGroup} className="grid grid-cols-1 gap-4 md:grid-cols-12">
+          <div className="md:col-span-4">
+            <label className={labelClass}>Employee</label>
+            <select value={assignmentEmployeeId} onChange={(event) => setAssignmentEmployeeId(event.target.value)} className={inputClass}>
+              <option value="">Select active employee</option>
+              {activeEmployees.map((employee) => (
+                <option key={employee.id} value={employee.id}>{employee.name} · {employee.department}</option>
+              ))}
+            </select>
+          </div>
+          <div className="md:col-span-3">
+            <label className={labelClass}>Leave Group</label>
+            <select value={assignmentGroupId} onChange={(event) => setAssignmentGroupId(event.target.value)} className={inputClass}>
+              <option value="">Select leave group</option>
+              {leaveGroups.filter((group) => group.enabled).map((group) => (
+                <option key={group.id} value={group.id}>{group.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="md:col-span-3">
+            <label className={labelClass}>Effective Date</label>
+            <input type="date" value={assignmentEffectiveDate} onChange={(event) => setAssignmentEffectiveDate(event.target.value)} className={`${inputClass} font-mono`} />
+          </div>
+          <div className="flex items-end md:col-span-2">
+            <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-2.5 text-xs font-bold text-white shadow-sm transition hover:opacity-90">
+              <Plus className="h-4 w-4" /> Assign Group
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className={`${cardClass} overflow-hidden`}>
+        <div className="flex flex-col justify-between gap-3 border-b border-neutral-border bg-neutral-50 p-4 sm:flex-row sm:items-center">
+          <div>
+            <h2 className="text-base font-bold text-on-surface">Current Assignments</h2>
+            <p className="mt-1 text-xs text-on-surface-variant">Assignments inherit the selected group’s leave type, policy, and carry-over rules.</p>
+          </div>
+          <span className="rounded-full bg-primary/10 px-3 py-1 text-[10px] font-bold uppercase text-primary">{visibleAssignments.length} assignment(s)</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-[760px] w-full text-left text-xs">
+            <thead className="border-b border-neutral-border text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+              <tr>
+                <th className="p-4">Employee</th>
+                <th className="p-4">Leave Group</th>
+                <th className="p-4">Effective Date</th>
+                <th className="p-4">Status</th>
+                <th className="p-4 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-border/60">
+              {visibleAssignments.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-6">
+                    <EmptyState icon={UserCog} title="No leave group assignments" description="Assign a leave group to an active employee to begin." />
+                  </td>
+                </tr>
+              ) : visibleAssignments.map((assignment) => {
+                const employee = activeEmployees.find((item) => item.id === assignment.employeeId);
+                const group = leaveGroups.find((item) => item.id === assignment.groupId);
+                if (!employee || !group) return null;
+                const assignmentIsActive = assignment.active && group.enabled;
+                return (
+                  <tr key={assignment.id} className="align-middle hover:bg-neutral-50/60">
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <EmployeeAvatar employee={employee} className="h-8 w-8 rounded-full" />
+                        <div>
+                          <p className="font-bold text-on-surface">{employee.name}</p>
+                          <p className="text-[10px] text-on-surface-variant">{employee.department} · {employee.designation}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      <p className="font-semibold text-on-surface">{group.name}</p>
+                      <p className="mt-1 text-[10px] text-on-surface-variant">{group.leaveTypeIds.length} leave types</p>
+                    </td>
+                    <td className="p-4 font-mono text-on-surface">{formatToDDMMMYYYY(assignment.assignedAt)}</td>
+                    <td className="p-4">
+                      <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${assignmentIsActive ? 'bg-green-100 text-green-700' : 'bg-neutral-100 text-on-surface-variant'}`}>
+                        {assignmentIsActive ? 'Active' : 'Disabled'}
+                      </span>
+                    </td>
+                    <td className="p-4 text-right">
+                      <button
+                        type="button"
+                        disabled={!group.enabled}
+                        onClick={() => {
+                          if (assignment.active) {
+                            void disableLeaveGroupAssignment(group.id, employee.id);
+                          } else if (applyLeaveGroupAssignments(group.id, employee.id, true)) {
+                            onShowNotification('Assignment Re-enabled', `${group.name} is active again for ${employee.name}.`);
+                          }
+                        }}
+                        className={`rounded-md border px-3 py-1.5 text-[10px] font-bold ${assignment.active ? 'border-red-200 text-red-700 hover:bg-red-50' : 'border-primary/20 text-primary hover:bg-primary/5'}`}
+                      >
+                        {!group.enabled ? 'Enable Group First' : assignment.active ? 'Disable' : 'Re-enable'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderCalendar = () => (
+    <div className="space-y-6">
+      <SectionIntro
+        icon={CalendarDays}
+        eyebrow="Company Shift-Planning Leave Calendar"
+        title="Coordinate approved leave and team coverage"
+        description="Review approved leave dates, selected-date absences, active-duty counts, and recommended backup employees."
+      />
+      <LeaveCalendar
+        requests={requests}
+        employees={activeEmployees}
+        workShiftGroups={workShiftGroups}
+        workShiftGroupDays={workShiftGroupDays}
+        employeeWorkShiftAssignments={employeeWorkShiftAssignments}
+        publicHolidayGroups={publicHolidayGroups}
+        publicHolidays={publicHolidays}
+        leaveGroups={leaveGroups}
+      />
     </div>
   );
 
@@ -1533,6 +2661,11 @@ export default function LeaveManagementView({
             </div>
           </div>
 
+          <div className="mt-5">
+            <label className={labelClass}>Notes</label>
+            <textarea value={offInLieuNotes} onChange={(event) => setOffInLieuNotes(event.target.value)} rows={3} className={inputClass} placeholder="Add supporting notes for the overtime or replacement leave request." />
+          </div>
+
           <div className="mt-5 flex flex-col-reverse justify-end gap-2 border-t border-neutral-100 pt-4 sm:flex-row">
             <button type="button" onClick={resetOffInLieuForm} className="flex items-center justify-center gap-2 rounded-md border border-neutral-border px-4 py-2 text-xs font-bold text-on-surface-variant hover:bg-neutral-50"><RotateCcw className="h-4 w-4" /> Cancel</button>
             <button type="button" onClick={() => saveOffInLieu(false)} className="flex items-center justify-center gap-2 rounded-md border border-primary px-4 py-2 text-xs font-bold text-primary hover:bg-primary/5"><Save className="h-4 w-4" /> Save</button>
@@ -1571,6 +2704,7 @@ export default function LeaveManagementView({
                 <div className="mt-3 space-y-1">
                   {request.entries.map((entry) => <div key={entry.id} className="flex justify-between text-[10px] text-on-surface-variant"><span>{formatToDDMMMYYYY(entry.date)} | {entry.startTime} - {entry.endTime}</span><span className="font-mono font-bold text-secondary">{entry.eligibleDays.toFixed(1)} day</span></div>)}
                 </div>
+                {request.notes && <p className="mt-3 rounded-md bg-white p-2 text-[10px] italic text-on-surface-variant">“{request.notes}”</p>}
                 {request.status === 'Pending' && (
                   <div className="mt-3 flex justify-end gap-2">
                     <button type="button" onClick={() => updateOffInLieuStatus(request.id, 'Rejected')} className="rounded bg-red-50 px-3 py-1.5 text-[10px] font-bold text-red-700 hover:bg-red-100">Reject</button>
@@ -1587,18 +2721,40 @@ export default function LeaveManagementView({
 
   return (
     <div className="mx-auto max-w-[1440px] space-y-6 pb-8 text-left">
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+      <div className="flex flex-col justify-between gap-5 border-b border-neutral-border/70 pb-6 lg:flex-row lg:items-end">
         <div>
-          <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.24em] text-primary">
-            <Briefcase className="h-3.5 w-3.5" /> Leave Administration
-          </div>
           <h1 className="text-3xl font-bold tracking-tight text-on-background">Leave Management</h1>
-          <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">Configure leave rules, build employee leave groups, review applications, and convert approved overtime into replacement leave.</p>
+          <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">Configure leave policies, employee leave groups, leave requests, Off in Lieu credits, balances, and payroll deductions.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-[10px] font-bold uppercase text-primary">{activeEmployees.length} active employees</span>
+          <button
+            type="button"
+            onClick={() => setRefreshKey((key) => key + 1)}
+            disabled={isLoadingWorkspace}
+            className="flex items-center justify-center gap-2 rounded-md border border-neutral-border bg-white px-3 py-2 text-xs font-bold text-on-surface transition hover:bg-neutral-50 disabled:cursor-wait disabled:opacity-60"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoadingWorkspace ? 'animate-spin' : ''}`} /> {isLoadingWorkspace ? 'Loading leave data...' : 'Refresh Leave Data'}
+          </button>
           <button type="button" onClick={() => setActiveSection('off-in-lieu')} className="flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-xs font-bold text-white shadow-sm hover:opacity-90"><Plus className="h-4 w-4" /> Off in Lieu Request</button>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'Active Leave Types', value: enabledLeaveConfigs.length, icon: FileText, tone: 'text-primary bg-primary/10' },
+          { label: 'Leave Groups', value: leaveGroups.filter((group) => group.enabled).length, icon: Layers3, tone: 'text-secondary bg-secondary/10' },
+          { label: 'Pending Leave', value: pendingLeaveCount, icon: CalendarDays, tone: 'text-amber-700 bg-amber-100' },
+          { label: 'Pending OIL', value: pendingOffInLieuCount, icon: Clock3, tone: 'text-emerald-700 bg-emerald-100' }
+        ].map(({ label, value, icon: Icon, tone }) => (
+          <div key={label} className={`${cardClass} p-4`}>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">{label}</span>
+              <span className={`rounded-lg p-2 ${tone}`}><Icon className="h-4 w-4" /></span>
+            </div>
+            <p className="mt-4 font-mono text-3xl font-bold text-on-surface">{isLoadingWorkspace ? '—' : value}</p>
+          </div>
+        ))}
       </div>
 
       <div className={`${cardClass} overflow-x-auto p-2`}>
@@ -1611,11 +2767,33 @@ export default function LeaveManagementView({
         </div>
       </div>
 
+      <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900">
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+        <div className="space-y-1 leading-relaxed">
+          <p>Leave groups can be combined per employee, but overlapping leave types across active groups are not allowed.</p>
+          <p>Replacement Leave is created only after an Off in Lieu request has been approved.</p>
+        </div>
+      </div>
+
+      {isLoadingWorkspace ? (
+        <div className={`${cardClass} flex min-h-64 flex-col items-center justify-center gap-3 p-8`}>
+          <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm font-bold text-on-surface">Loading leave data...</p>
+          <p className="text-xs text-on-surface-variant">Refreshing policies, balances, requests, and coverage records.</p>
+        </div>
+      ) : (
+        <>
       {activeSection === 'overview' && renderOverview()}
       {activeSection === 'policy' && renderPolicy()}
+      {activeSection === 'carry-over' && renderCarryOver()}
       {activeSection === 'types' && renderLeaveTypes()}
       {activeSection === 'groups' && renderLeaveGroups()}
+      {activeSection === 'employee-assignment' && renderEmployeeAssignment()}
+      {activeSection === 'public-holidays' && renderPublicHolidays()}
       {activeSection === 'off-in-lieu' && renderOffInLieu()}
+      {activeSection === 'calendar' && renderCalendar()}
+        </>
+      )}
     </div>
   );
 }

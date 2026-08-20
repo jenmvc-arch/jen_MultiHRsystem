@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Building2, Clock, CreditCard, FileText, PlusCircle } from 'lucide-react';
+import { Building2, Check, Clock, CreditCard, FileText, PlusCircle, ArrowLeft } from 'lucide-react';
 import type { CorporateEntity, Employee, PayrollRecord2026, PayrollPayoutKind } from '../types';
 import type { PayrollDocumentDisplaySettings } from '../types';
 import {
@@ -19,6 +19,7 @@ import {
 } from '../data';
 import PayslipDocumentView from './PayslipDocumentView';
 import PayrollEditorMockupView from './PayrollEditorMockupView';
+import ExportButton from './ExportButton';
 
 interface PayrollViewProps {
   employees: Employee[];
@@ -27,9 +28,10 @@ interface PayrollViewProps {
   onShowNotification: (title: string, message: string) => void;
   activeEntity?: CorporateEntity;
   onSavePayrollRecord?: (record: PayrollRecord2026) => Promise<void>;
+  currentUserRole?: string | null;
 }
 
-type PayrollSubTab = 'processing' | 'document' | 'history';
+type PayrollSubTab = 'editor' | 'payroll-file' | 'payslip-preview' | 'history';
 type PayrollDocumentViewMode = 'regular' | 'payout';
 
 const MONTHS = [
@@ -61,17 +63,19 @@ export default function PayrollView({
   onUpdateEmployee,
   onShowNotification,
   activeEntity,
-  onSavePayrollRecord
+  onSavePayrollRecord,
+  currentUserRole
 }: PayrollViewProps) {
   const defaultPeriod = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const [selectedPayPeriod, setSelectedPayPeriod] = useState(defaultPeriod);
   const [selectedDepartment, setSelectedDepartment] = useState('All Departments');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(employees[0]?.id || '');
-  const [activeSubTab, setActiveSubTab] = useState<PayrollSubTab>('processing');
+  const [activeSubTab, setActiveSubTab] = useState<PayrollSubTab>('editor');
   const [displaySettingsDraft, setDisplaySettingsDraft] = useState<PayrollDocumentDisplaySettings>({});
   const [isSavingDisplaySettings, setIsSavingDisplaySettings] = useState(false);
   const [selectedPayoutKind, setSelectedPayoutKind] = useState<Exclude<PayrollPayoutKind, 'regular'> | null>(null);
   const [selectedPayrollRecord, setSelectedPayrollRecord] = useState<PayrollRecord2026 | null>(null);
+  const [selectedPayrollFileRecordIds, setSelectedPayrollFileRecordIds] = useState<string[]>([]);
 
   const [monthName, selectedYearText] = selectedPayPeriod.split(' ');
   const payMonthIndex = Math.max(1, MONTHS.indexOf(monthName) + 1);
@@ -152,25 +156,44 @@ export default function PayrollView({
   const launchSeparatePayout = (kind: Exclude<PayrollPayoutKind, 'regular'>) => {
     setSelectedPayoutKind(kind);
     setSelectedPayrollRecord(null);
-    setActiveSubTab('processing');
+    setActiveSubTab('editor');
   };
 
   const clearSeparatePayoutMode = () => setSelectedPayoutKind(null);
 
   const handleSelectedEmployeeChange = (employeeId: string) => {
-    setSelectedPayrollRecord(null);
     setSelectedEmployeeId(employeeId);
   };
 
   const handleSelectedPayPeriodChange = (payPeriod: string) => {
-    setSelectedPayrollRecord(null);
     setSelectedPayPeriod(payPeriod);
+    setSelectedPayrollRecord(null);
+    setSelectedPayrollFileRecordIds([]);
   };
 
   const handleSelectedDepartmentChange = (department: string) => {
-    setSelectedPayrollRecord(null);
     setSelectedDepartment(department);
+    setSelectedPayrollRecord(null);
+    setSelectedPayrollFileRecordIds([]);
   };
+
+  const payrollFileRecords = useMemo(() => {
+    const employeeByEmail = new Map<string, Employee>(entityEmployees.map(employee => [employee.email.toLowerCase(), employee]));
+    return payrollRecords2026
+      .filter(record => {
+        const employee = employeeByEmail.get(record.employeeEmail.toLowerCase());
+        return employee
+          && record.payrollMonth === payMonthIndex
+          && record.payrollYear === payYear
+          && (selectedDepartment === 'All Departments' || employee.department === selectedDepartment);
+      })
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  }, [entityEmployees, payrollRecords2026, payMonthIndex, payYear, selectedDepartment]);
+
+  useEffect(() => {
+    const availableIds = new Set(payrollFileRecords.map(record => record.id));
+    setSelectedPayrollFileRecordIds(previous => previous.filter(id => availableIds.has(id)));
+  }, [payrollFileRecords]);
 
   const renderSeparatePayoutPanel = () => {
     if (!activePayrollEmployee) return null;
@@ -310,9 +333,7 @@ export default function PayrollView({
     <button
       type="button"
       onClick={() => {
-        if (tab === 'document') {
-          setSelectedPayrollRecord(null);
-        }
+        if (tab === 'payslip-preview' && !selectedPayrollRecord) return;
         setActiveSubTab(tab);
       }}
       className={`flex-1 py-2 px-4 rounded font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
@@ -430,7 +451,7 @@ export default function PayrollView({
                           onClick={() => {
                             setSelectedPayrollRecord(record);
                             setSelectedPayPeriod(`${HISTORY_MONTHS[record.payrollMonth]} ${record.payrollYear}`);
-                            setActiveSubTab('document');
+                            setActiveSubTab('payslip-preview');
                           }}
                           className="px-2.5 py-1 bg-primary/10 text-primary hover:bg-primary/20 rounded font-bold transition-colors cursor-pointer text-[10px]"
                         >
@@ -451,9 +472,10 @@ export default function PayrollView({
   return (
     <div className="max-w-6xl mx-auto animate-in fade-in duration-200 space-y-6">
       <div className="bg-white border border-neutral-border p-1.5 rounded-lg flex gap-1.5 shadow-xs select-none text-left">
-        {renderSubTabButton('processing', '1. Payroll Editor', <CreditCard className="w-4 h-4" />)}
-        {renderSubTabButton('document', '2. Preview Only', <FileText className="w-4 h-4" />)}
-        {renderSubTabButton('history', '3. YTD & Payroll History', <Clock className="w-4 h-4" />)}
+        {renderSubTabButton('editor', '1. Payroll Editor', <CreditCard className="w-4 h-4" />)}
+        {renderSubTabButton('payroll-file', '2. Payroll File', <FileText className="w-4 h-4" />)}
+        {renderSubTabButton('payslip-preview', '3. Preview of Payslip', <FileText className="w-4 h-4" />)}
+        {renderSubTabButton('history', '4. YTD & Payroll History', <Clock className="w-4 h-4" />)}
       </div>
 
       <div className="bg-white border border-neutral-border p-4 rounded-lg flex justify-between items-center shadow-xs text-left select-none">
@@ -469,10 +491,10 @@ export default function PayrollView({
         </span>
       </div>
 
-      {renderSeparatePayoutPanel()}
-      {renderDisplaySettingsPanel()}
+      {activeSubTab === 'editor' && renderSeparatePayoutPanel()}
+      {activeSubTab === 'editor' && renderDisplaySettingsPanel()}
 
-      {activeSubTab === 'processing' ? (
+      {activeSubTab === 'editor' ? (
         <PayrollEditorMockupView
           mode="embedded"
           employees={entityEmployees}
@@ -490,23 +512,138 @@ export default function PayrollView({
           onGeneratedPayrollRecord={record => {
             setSelectedPayrollRecord(record);
             setSelectedPayoutKind(record.payoutKind && record.payoutKind !== 'regular' ? record.payoutKind : null);
-            setActiveSubTab('document');
+            setSelectedPayrollFileRecordIds([record.id]);
+            setActiveSubTab('payroll-file');
           }}
           onShowNotification={onShowNotification}
         />
-      ) : activeSubTab === 'document' ? (
+      ) : activeSubTab === 'payroll-file' ? (
+        <div className="space-y-4 rounded-lg border border-neutral-border bg-white p-5 shadow-xs">
+          <div className="flex flex-col gap-3 border-b border-neutral-border/60 pb-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-primary">Payroll File</h2>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                Only payroll records saved and processed from Payroll Editor appear here.
+              </p>
+            </div>
+            <ExportButton
+              module="payroll"
+              title="Processed payroll file"
+              currentUserRole={currentUserRole}
+              onShowNotification={onShowNotification}
+              selectedRecordIds={selectedPayrollFileRecordIds}
+              filters={{
+                entityId: activeEntity?.id,
+                department: selectedDepartment,
+                payrollMonth: payMonthIndex,
+                payrollYear: payYear,
+              }}
+              columns={[
+                { key: 'employee_email', label: 'Employee Email' },
+                { key: 'employee_name', label: 'Employee Name' },
+                { key: 'department', label: 'Department' },
+                { key: 'payroll_month', label: 'Payroll Month', type: 'number' },
+                { key: 'payroll_year', label: 'Payroll Year', type: 'number' },
+                { key: 'status', label: 'Payroll Status' },
+                { key: 'gross_salary', label: 'Gross Pay', sensitive: true, type: 'currency' },
+                { key: 'actual_pcb_deducted', label: 'Deductions', sensitive: true, type: 'currency' },
+                { key: 'net_pay', label: 'Net Pay', sensitive: true, type: 'currency' },
+                { key: 'created_at', label: 'Processed At', type: 'date' },
+              ]}
+            />
+          </div>
+          {payrollFileRecords.length === 0 ? (
+            <div className="rounded border border-dashed border-neutral-border p-12 text-center text-xs text-on-surface-variant">
+              <p className="font-bold text-on-surface">No processed payroll records</p>
+              <p className="mt-1">Use Save and Process in Payroll Editor to add the current employee to this Payroll File.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded border border-neutral-border">
+              <table className="w-full min-w-[900px] text-left text-xs">
+                <thead className="bg-neutral-50 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                  <tr>
+                    <th className="p-3">
+                      <input
+                        type="checkbox"
+                        checked={payrollFileRecords.length > 0 && selectedPayrollFileRecordIds.length === payrollFileRecords.length}
+                        onChange={event => setSelectedPayrollFileRecordIds(event.target.checked ? payrollFileRecords.map(record => record.id) : [])}
+                        className="h-4 w-4 accent-primary"
+                        aria-label="Select all payroll records"
+                      />
+                    </th>
+                    <th className="p-3">Employee</th>
+                    <th className="p-3">Department</th>
+                    <th className="p-3">Payroll Period</th>
+                    <th className="p-3 text-right">Gross Pay</th>
+                    <th className="p-3 text-right">Deductions</th>
+                    <th className="p-3 text-right">Net Pay</th>
+                    <th className="p-3">Processed At</th>
+                    <th className="p-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-border/50">
+                  {payrollFileRecords.map(record => {
+                    const employee = entityEmployees.find(item => item.email.toLowerCase() === record.employeeEmail.toLowerCase());
+                    const deductions = Number(record.actualPCBDeducted || 0)
+                      + Number(record.epfEmployee || 0)
+                      + Number(record.socsoEmployee || 0)
+                      + Number(record.eisEmployee || 0)
+                      + Number(record.unpaidLeave || 0)
+                      + Number(record.deductionInLieu || 0)
+                      + Number(record.deductionCp38 || 0)
+                      + Number(record.deductionOthers || 0);
+                    return (
+                      <tr key={record.id} className="hover:bg-primary/5">
+                        <td className="p-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedPayrollFileRecordIds.includes(record.id)}
+                            onChange={event => setSelectedPayrollFileRecordIds(previous => event.target.checked ? [...new Set([...previous, record.id])] : previous.filter(id => id !== record.id))}
+                            className="h-4 w-4 accent-primary"
+                            aria-label={`Select ${employee?.name || record.employeeEmail}`}
+                          />
+                        </td>
+                        <td className="p-3 font-semibold text-primary">{employee?.name || record.employeeEmail}<span className="block text-[10px] font-normal text-on-surface-variant">{record.employeeEmail}</span></td>
+                        <td className="p-3">{employee?.department || '—'}</td>
+                        <td className="p-3">{HISTORY_MONTHS[record.payrollMonth]} {record.payrollYear}</td>
+                        <td className="p-3 text-right font-mono">{formatMoney(Number(record.basicSalary || 0) + Number(record.allowanceGeneral || 0) + Number(record.allowanceTransport || 0) + Number(record.allowanceParking || 0) + Number(record.allowanceMeal || 0) + Number(record.allowanceAccommodation || 0) + Number(record.allowancePhone || 0) + Number(record.overtime || 0) + Number(record.bonusAmount || 0) + Number(record.commissionAmount || 0) + Number(record.backPayAmount || 0) + Number(record.awsAmount || 0) + Number(record.compensationAmount || 0) + Number(record.reimbursementAmount || 0))}</td>
+                        <td className="p-3 text-right font-mono text-red-700">{formatMoney(deductions)}</td>
+                        <td className="p-3 text-right font-mono font-bold text-green-700">{formatMoney(record.netPay)}</td>
+                        <td className="p-3">{record.createdAt || '—'}</td>
+                        <td className="p-3 text-right">
+                          <button type="button" onClick={() => { setSelectedPayrollRecord(record); setSelectedEmployeeId(employee?.id || selectedEmployeeId); setActiveSubTab('payslip-preview'); }} className="rounded bg-primary/10 px-2.5 py-1.5 font-bold text-primary hover:bg-primary/20">Preview Payslip</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="flex items-center gap-2 text-[11px] text-on-surface-variant"><Check className="h-3.5 w-3.5 text-green-700" /> Selection controls which processed records are included in Export. Deselecting does not delete payroll records.</p>
+        </div>
+      ) : activeSubTab === 'payslip-preview' ? (
         <div className="bg-white rounded-lg border border-neutral-border overflow-hidden shadow-xs">
-          <PayslipDocumentView
-            employees={eligibleEmployees.length > 0 ? eligibleEmployees : entityEmployees}
-            selectedEmployeeId={selectedEmployeeId}
-            onBack={() => setActiveSubTab('processing')}
-            onShowNotification={onShowNotification}
-            activeEntity={activeEntity}
-            payMonth={payMonthIndex}
-            payYear={payYear}
-            displaySettingsOverride={displaySettingsDraft}
-            payrollRecordOverride={selectedPayrollRecord || undefined}
-          />
+          {selectedPayrollRecord ? (
+            <PayslipDocumentView
+              employees={entityEmployees}
+              selectedEmployeeId={selectedEmployeeId}
+              onBack={() => setActiveSubTab('payroll-file')}
+              onShowNotification={onShowNotification}
+              activeEntity={activeEntity}
+              payMonth={selectedPayrollRecord.payrollMonth}
+              payYear={selectedPayrollRecord.payrollYear}
+              displaySettingsOverride={selectedPayrollRecord.displaySettingsSnapshot || displaySettingsDraft}
+              payrollRecordOverride={selectedPayrollRecord}
+            />
+          ) : (
+            <div className="p-12 text-center text-sm text-on-surface-variant">
+              <ArrowLeft className="mx-auto mb-3 h-6 w-6 text-primary" />
+              <p className="font-bold text-on-surface">No payslip selected</p>
+              <p className="mt-1">Open Payroll File and choose Preview Payslip on a processed payroll record.</p>
+              <button type="button" onClick={() => setActiveSubTab('payroll-file')} className="mt-4 rounded bg-primary px-4 py-2 text-xs font-bold text-white">Go to Payroll File</button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="bg-white rounded-lg border border-neutral-border p-6 shadow-xs text-left space-y-6">

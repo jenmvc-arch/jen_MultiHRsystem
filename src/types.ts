@@ -17,6 +17,7 @@ export type AppTab =
   | 'entities'
   | 'tax-settings'
   | 'leave-management'
+  | 'work-shift-groups'
   | 'forms-directory'
   | 'hire-onboarding'
   | 'department-role'
@@ -281,6 +282,112 @@ export interface Candidate {
   stage: 'Applied' | 'Interviewing' | 'Offered' | 'Onboarding';
   progress: number;
   dateJoined: string;
+  pipelineStatus?: CandidatePipelineStatus;
+  pipelineUpdatedAt?: string;
+  receivedAt?: string;
+  appliedAt?: string;
+  kivNotes?: string;
+  kivFollowUpDate?: string;
+  rejectionReason?: string;
+}
+
+export type CandidatePipelineStatus =
+  | 'applied'
+  | 'shortlisted'
+  | 'kiv'
+  | 'interview_scheduled'
+  | 'interview_cancelled'
+  | 'interview_no_show'
+  | 'interview_withdrew'
+  | 'interview_passed'
+  | 'offer_preparing'
+  | 'offer_sent'
+  | 'offer_accepted'
+  | 'offer_rejected'
+  | 'onboarding'
+  | 'rejected';
+
+export type CandidateInterviewStatus =
+  | 'scheduled'
+  | 'cancelled'
+  | 'no_show'
+  | 'withdrew'
+  | 'kiv';
+
+export interface CandidateInterview {
+  id: string;
+  candidateId: string;
+  scheduledDate: string;
+  scheduledTime: string;
+  meetingLink: string;
+  notes: string;
+  status: CandidateInterviewStatus;
+  cancellationReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CandidateEvaluation {
+  id: string;
+  candidateId: string;
+  evaluators: Array<{
+    id: string;
+    name: string;
+    designation: string;
+    date: string;
+  }>;
+  technicalScore: number;
+  communicationScore: number;
+  culturalFitScore: number;
+  leadershipScore: number;
+  overallRecommendation: 'Strong Hire' | 'Hire' | 'Hold' | 'No Hire';
+  additionalComments: string;
+  updatedAt: string;
+}
+
+export type CandidateOfferStatus = 'offer_preparing' | 'offer_sent' | 'offer_accepted' | 'offer_rejected';
+
+export interface CandidateOffer {
+  id: string;
+  candidateId: string;
+  status: CandidateOfferStatus;
+  statusUpdatedAt: string;
+  responseNotes: string;
+  rejectionReason?: string;
+}
+
+export type CandidateShareLinkKind = 'interview' | 'onboarding';
+
+export interface CandidateShareLink {
+  id: string;
+  candidateId: string;
+  kind: CandidateShareLinkKind;
+  token: string;
+  url: string;
+  expiresAt: string;
+  createdAt: string;
+  invalidatedAt?: string;
+}
+
+export interface CandidateShareDelivery {
+  id: string;
+  shareLinkId: string;
+  candidateId: string;
+  channel: 'copy' | 'share' | 'email' | 'whatsapp';
+  status: 'handoff' | 'sent' | 'failed';
+  createdAt: string;
+  error?: string;
+}
+
+export interface CandidatePipelineHistoryEvent {
+  id: string;
+  candidateId: string;
+  fromStatus?: CandidatePipelineStatus;
+  toStatus: CandidatePipelineStatus;
+  eventType: string;
+  notes?: string;
+  actorName?: string;
+  createdAt: string;
 }
 
 export type PCBProcessingMode =

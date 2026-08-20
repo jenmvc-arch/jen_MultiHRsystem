@@ -46,12 +46,21 @@ import {
   calculateLeaveBalances,
   calculateLeaveDateDays,
   DEFAULT_LEAVE_CONFIGS,
+  DEFAULT_PUBLIC_HOLIDAYS,
   CarryOverLeaveBalanceSettings,
+  EmployeeLeaveGroupAssignment,
+  EmployeeWorkShiftAssignment,
   LeaveBalanceLedgerEntry,
   LeaveConfig,
   LeaveConditioningPolicy,
   LeaveGroup,
+  LeavePayrollDeduction,
   LeaveRequest,
+  OffInLieuRequest,
+  PublicHoliday,
+  PublicHolidayGroup,
+  WorkShiftGroup,
+  WorkShiftGroupDay,
 } from '../lib/leaveDomain';
 import { loadLeaveWorkspace, persistLeaveWorkspace } from '../lib/leaveService';
 
@@ -210,7 +219,15 @@ export default function EmployeePortalView({
   const [leavePolicies, setLeavePolicies] = useState<LeaveConditioningPolicy[]>([]);
   const [leaveCarryOverSettings, setLeaveCarryOverSettings] = useState<CarryOverLeaveBalanceSettings[]>([]);
   const [leaveGroups, setLeaveGroups] = useState<LeaveGroup[]>([]);
+  const [leaveGroupAssignments, setLeaveGroupAssignments] = useState<EmployeeLeaveGroupAssignment[]>([]);
+  const [workShiftGroups, setWorkShiftGroups] = useState<WorkShiftGroup[]>([]);
+  const [workShiftGroupDays, setWorkShiftGroupDays] = useState<WorkShiftGroupDay[]>([]);
+  const [employeeWorkShiftAssignments, setEmployeeWorkShiftAssignments] = useState<EmployeeWorkShiftAssignment[]>([]);
+  const [publicHolidayGroups, setPublicHolidayGroups] = useState<PublicHolidayGroup[]>([]);
+  const [publicHolidays, setPublicHolidays] = useState<PublicHoliday[]>(DEFAULT_PUBLIC_HOLIDAYS);
   const [leaveLedgerEntries, setLeaveLedgerEntries] = useState<LeaveBalanceLedgerEntry[]>([]);
+  const [offInLieuRequests, setOffInLieuRequests] = useState<OffInLieuRequest[]>([]);
+  const [leavePayrollDeductions, setLeavePayrollDeductions] = useState<LeavePayrollDeduction[]>([]);
   const [allLeaveRequests, setAllLeaveRequests] = useState<LeaveRequest[]>([]);
   const [leaveType, setLeaveType] = useState('Annual Leave');
   const [leaveStartDate, setLeaveStartDate] = useState(getGmt8DateString());
@@ -336,7 +353,15 @@ export default function EmployeePortalView({
       setLeavePolicies(workspace.policies);
       setLeaveCarryOverSettings(workspace.carryOverSettings);
       setLeaveGroups(workspace.groups);
+      setLeaveGroupAssignments(workspace.assignments);
+      setWorkShiftGroups(workspace.workShiftGroups);
+      setWorkShiftGroupDays(workspace.workShiftGroupDays);
+      setEmployeeWorkShiftAssignments(workspace.employeeWorkShiftAssignments);
+      setPublicHolidayGroups(workspace.publicHolidayGroups);
+      setPublicHolidays(workspace.publicHolidays);
       setLeaveLedgerEntries(workspace.ledgerEntries);
+      setOffInLieuRequests(workspace.offInLieuRequests);
+      setLeavePayrollDeductions(workspace.payrollDeductions);
       setAllLeaveRequests(previewRequests);
       setLeaveType(configs[0]?.leaveType || 'Annual Leave');
       setLeaveStartDate(getGmt8DateString());
@@ -420,6 +445,33 @@ export default function EmployeePortalView({
   const pendingLeaveCount = visibleLeaveRequests.filter((request) => request.status === 'Pending').length;
   const annualLeaveRemaining = annualLeaveBalance?.remaining ?? annualLeaveConfig.daysEntitled;
   const sickLeaveRemaining = sickLeaveBalance?.remaining ?? sickLeaveConfig.daysEntitled;
+
+  const activeWorkShiftAssignment = useMemo(() => {
+    if (!selectedEmployee) return undefined;
+    return [...employeeWorkShiftAssignments]
+      .filter((assignment) => (
+        assignment.employeeId === selectedEmployee.id
+        && assignment.active
+        && assignment.effectiveDate <= leaveStartDate
+        && (!assignment.endDate || assignment.endDate >= leaveStartDate)
+      ))
+      .sort((left, right) => right.effectiveDate.localeCompare(left.effectiveDate))[0];
+  }, [employeeWorkShiftAssignments, leaveStartDate, selectedEmployee]);
+
+  const activeWorkShiftGroup = workShiftGroups.find((group) => group.id === activeWorkShiftAssignment?.groupId)
+    || workShiftGroups[0];
+
+  const employeePublicHolidayDates = useMemo(() => {
+    if (!selectedEmployee) return [];
+    const assignedGroupIds = leaveGroups
+      .filter((group) => group.enabled && group.assignedEmployeeIds.includes(selectedEmployee.id))
+      .flatMap((group) => group.publicHolidayGroupIds || [])
+      .slice(0, 2);
+    const holidayGroupIds = assignedGroupIds.length > 0 ? assignedGroupIds : ['public-holiday-malaysia-national'];
+    return publicHolidays
+      .filter((holiday) => holiday.enabled && holidayGroupIds.includes(holiday.groupId))
+      .flatMap((holiday) => [holiday.holidayDate, holiday.observedDate].filter(Boolean) as string[]);
+  }, [leaveGroups, publicHolidays, selectedEmployee]);
 
   const profileCompleteness = useMemo(() => {
     if (!selectedEmployee) return 0;
@@ -561,7 +613,14 @@ export default function EmployeePortalView({
     }
     const selectedConfig = leaveConfigs.find((config) => config.leaveType === leaveType) || leaveConfigs[0];
     const selectedPolicy = leavePolicies.find((policy) => policy.id === selectedConfig?.policyId) || leavePolicies[0];
-    const totalDays = calculateLeaveDateDays(leaveStartDate, leaveEndDate, selectedPolicy);
+    const totalDays = calculateLeaveDateDays(
+      leaveStartDate,
+      leaveEndDate,
+      selectedPolicy,
+      employeePublicHolidayDates,
+      activeWorkShiftGroup,
+      workShiftGroupDays,
+    );
     if (totalDays <= 0) {
       onShowNotification('Leave request', 'The selected dates do not produce any eligible leave days under the active policy.');
       return;
@@ -588,11 +647,16 @@ export default function EmployeePortalView({
         policies: leavePolicies,
         carryOverSettings: leaveCarryOverSettings,
         groups: leaveGroups,
-        assignments: [],
+        assignments: leaveGroupAssignments,
+        workShiftGroups,
+        workShiftGroupDays,
+        employeeWorkShiftAssignments,
+        publicHolidayGroups,
+        publicHolidays,
         requests: nextRequests,
-        offInLieuRequests: [],
+        offInLieuRequests,
         ledgerEntries: leaveLedgerEntries,
-        payrollDeductions: [],
+        payrollDeductions: leavePayrollDeductions,
         source: 'local',
       }).catch((error) => {
         console.warn('[Employee Portal] Leave request Supabase save failed:', error);

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 
 import { Employee } from '../types';
+import { useFeedback } from './GlobalFeedbackSystem';
 
 interface DepartmentRoleViewProps {
   onShowNotification: (title: string, message: string, type?: 'success' | 'info' | 'error') => void;
@@ -51,6 +52,7 @@ export default function DepartmentRoleView({
   employees,
   onUpdateEmployee
 }: DepartmentRoleViewProps) {
+  const { confirmAction } = useFeedback();
   const [departments, setDepartments] = useState<string[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
 
@@ -143,21 +145,31 @@ export default function DepartmentRoleView({
   };
 
   // Delete Department
-  const handleDeleteDept = (index: number, name: string) => {
-    if (window.confirm(`Are you sure you want to remove the "${name}" department?`)) {
-      const updated = departments.filter((_, i) => i !== index);
-      saveDepartments(updated);
-      onShowNotification('Department Deleted', `"${name}" removed.`, 'success');
-    }
+  const handleDeleteDept = async (index: number, name: string) => {
+    const confirmed = await confirmAction({
+      title: 'Delete Department',
+      message: `Are you sure you want to remove the "${name}" department? This may affect employee records assigned to it.`,
+      type: 'danger',
+      confirmLabel: 'Delete Department',
+    });
+    if (!confirmed) return;
+    const updated = departments.filter((_, i) => i !== index);
+    saveDepartments(updated);
+    onShowNotification('Department Deleted', `"${name}" removed.`, 'success');
   };
 
   // Delete Role
-  const handleDeleteRole = (index: number, name: string) => {
-    if (window.confirm(`Are you sure you want to remove the "${name}" designation?`)) {
-      const updated = roles.filter((_, i) => i !== index);
-      saveRoles(updated);
-      onShowNotification('Role Deleted', `"${name}" removed.`, 'success');
-    }
+  const handleDeleteRole = async (index: number, name: string) => {
+    const confirmed = await confirmAction({
+      title: 'Delete Designation',
+      message: `Are you sure you want to remove the "${name}" designation? This may affect employee records assigned to it.`,
+      type: 'danger',
+      confirmLabel: 'Delete Designation',
+    });
+    if (!confirmed) return;
+    const updated = roles.filter((_, i) => i !== index);
+    saveRoles(updated);
+    onShowNotification('Role Deleted', `"${name}" removed.`, 'success');
   };
 
   // Start Edit Dept

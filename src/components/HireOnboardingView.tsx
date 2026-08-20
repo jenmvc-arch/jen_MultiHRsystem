@@ -1,40 +1,77 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useState, useEffect } from 'react';
-import { 
-  UserPlus, 
-  CheckSquare, 
-  Briefcase, 
-  MapPin, 
-  ArrowRight, 
-  CheckCircle, 
-  ChevronRight, 
-  Plus, 
-  Clock, 
-  Mail, 
-  Phone,
-  Compass,
-  FileBadge,
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  Ban,
+  BookOpen,
+  BriefcaseBusiness,
+  CalendarClock,
+  CheckCircle2,
+  ChevronRight,
+  CircleHelp,
+  ClipboardCheck,
+  Clock3,
+  ExternalLink,
   FileText,
   LayoutGrid,
-  UserCheck,
+  Link2,
+  LoaderCircle,
+  Mail,
+  MapPin,
+  MoreHorizontal,
+  Phone,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Send,
   Share2,
-  Link as LinkIcon,
-  BookOpen
+  Trash2,
+  UserCheck,
+  UserPlus,
+  UserRound,
+  Video,
+  X,
+  XCircle,
 } from 'lucide-react';
-import { CorporateEntity, Candidate, Employee } from '../types';
+import { CorporateEntity, Candidate, CandidateEvaluation, CandidateInterview, CandidateOffer, CandidatePipelineStatus, Employee } from '../types';
 import JobApplicationForm from './JobApplicationForm';
 import OnboardingForm from './OnboardingForm';
+import CandidateEvaluationPanel from './CandidateEvaluationPanel';
 import { getGmt8DateString } from '../lib/dateUtils';
 import { getCandidateNameFromApplication } from '../lib/employeeInput';
+import { useFeedback } from './GlobalFeedbackSystem';
 import {
   getHireOnboardingSectionFromPath,
   getPathForHireOnboardingSection,
-  HireOnboardingSection
+  HireOnboardingSection,
 } from '../lib/appRoutes';
+import {
+  addDays,
+  createHiringId,
+  getBroadCandidateStage,
+  getCandidatePipelineStatus,
+  getInterviewQueue,
+  getOfferStatusLabel,
+  getPipelineStatusLabel,
+  isShareLinkActive,
+  nowIso,
+  toDateTime,
+} from '../lib/hiringPipelineDomain';
+import {
+  createCandidateShareLink,
+  deleteCandidatePipelineData,
+  ensureCandidateIntake,
+  getCandidateEvaluation,
+  getCandidateInterview,
+  getCandidateOffer,
+  HiringPipelineData,
+  loadHiringPipelineData,
+  recordPipelineEvent,
+  recordShareDelivery,
+  saveEvaluation,
+  saveInterview,
+  saveOffer,
+} from '../lib/hiringPipelineService';
 
 const OnboardingPortalView = React.lazy(() => import('./OnboardingPortalView'));
 
@@ -52,6 +89,7 @@ interface HireOnboardingViewProps {
   employees: Employee[];
   candidates: Candidate[];
   onAddCandidate: (newCandidate: Candidate) => Promise<void>;
+  onDeleteCandidate: (id: string) => Promise<void>;
   onUpdateCandidate: (id: string, updates: Partial<Candidate>) => Promise<void>;
   onUpdateEmployee?: (id: string, updates: Partial<Employee>) => Promise<void>;
   currentUserName?: string | null;
@@ -59,14 +97,55 @@ interface HireOnboardingViewProps {
   currentUserRole?: string | null;
 }
 
+type PipelineQueue = 'applied' | 'kiv' | 'interviewing' | 'offered' | 'onboarding';
+type InterviewQueue = 'upcoming' | 'passed';
+type OfferFilter = 'all' | CandidateOffer['status'];
+type StatusModalKind = 'kiv' | 'reject' | 'cancel' | 'other';
+
 const INITIAL_ONBOARDING_TASKS: OnboardingTask[] = [
   { id: 'T-01', title: 'Submit signed Letter of Offer', completed: true, category: 'Compliance' },
   { id: 'T-02', title: 'Upload LHDN Tax & KWSP EPF Credentials', completed: true, category: 'Compliance' },
   { id: 'T-03', title: 'Configure corporate GSuite email address', completed: true, category: 'IT Setup' },
   { id: 'T-04', title: 'Ship company Macbook & accessories', completed: false, category: 'IT Setup' },
   { id: 'T-05', title: 'Complete first-week security training module', completed: false, category: 'Training' },
-  { id: 'T-06', title: 'Conduct HR statutory compliance walkthrough', completed: false, category: 'Admin' }
+  { id: 'T-06', title: 'Conduct HR statutory compliance walkthrough', completed: false, category: 'Admin' },
 ];
+
+const blankEvaluation = (candidateId: string): CandidateEvaluation => ({
+  id: createHiringId('EVAL'),
+  candidateId,
+  evaluators: [{
+    id: createHiringId('EVALUATOR'),
+    name: '',
+    designation: '',
+    date: getGmt8DateString(),
+  }],
+  technicalScore: 0,
+  communicationScore: 0,
+  culturalFitScore: 0,
+  leadershipScore: 0,
+  overallRecommendation: 'Hold',
+  additionalComments: '',
+  updatedAt: nowIso(),
+});
+
+const dateInDays = (days: number) => addDays(new Date(), days).toISOString().slice(0, 10);
+
+const statusBadgeClass = (status: CandidatePipelineStatus) => {
+  if (status === 'rejected' || status === 'offer_rejected' || status === 'interview_cancelled') {
+    return 'bg-red-50 text-red-700 border-red-200';
+  }
+  if (status === 'kiv' || status === 'interview_no_show' || status === 'interview_withdrew') {
+    return 'bg-amber-50 text-amber-700 border-amber-200';
+  }
+  if (status === 'offer_accepted' || status === 'onboarding') {
+    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  }
+  if (status === 'interview_scheduled' || status === 'interview_passed') {
+    return 'bg-blue-50 text-blue-700 border-blue-200';
+  }
+  return 'bg-neutral-100 text-on-surface-variant border-neutral-border';
+};
 
 export default function HireOnboardingView({
   entities,
@@ -75,17 +154,49 @@ export default function HireOnboardingView({
   employees,
   candidates,
   onAddCandidate,
+  onDeleteCandidate,
   onUpdateCandidate,
   onUpdateEmployee,
   currentUserName,
   currentUserEmail,
-  currentUserRole
+  currentUserRole,
 }: HireOnboardingViewProps) {
+  const { confirmAction } = useFeedback();
   const [tasks, setTasks] = useState<OnboardingTask[]>(INITIAL_ONBOARDING_TASKS);
-  const [selectedCandidateId, setSelectedCandidateId] = useState('CAN-01');
+  const [selectedCandidateId, setSelectedCandidateId] = useState('');
   const [activeTab, setActiveTab] = useState<HireOnboardingSection>(() => (
     getHireOnboardingSectionFromPath(window.location.pathname)
   ));
+  const [activeQueue, setActiveQueue] = useState<PipelineQueue>('applied');
+  const [interviewQueue, setInterviewQueue] = useState<InterviewQueue>('upcoming');
+  const [offerFilter, setOfferFilter] = useState<OfferFilter>('all');
+  const [pipelineData, setPipelineData] = useState<HiringPipelineData>({
+    history: [],
+    interviews: [],
+    evaluations: [],
+    offers: [],
+    shareLinks: [],
+    deliveries: [],
+  });
+  const [isLoadingPipeline, setIsLoadingPipeline] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const [scheduleCandidateId, setScheduleCandidateId] = useState('');
+  const [scheduleDate, setScheduleDate] = useState(dateInDays(1));
+  const [scheduleTime, setScheduleTime] = useState('10:00');
+  const [scheduleMeetingLink, setScheduleMeetingLink] = useState('');
+  const [scheduleNotes, setScheduleNotes] = useState('');
+
+  const [statusModal, setStatusModal] = useState<{
+    kind: StatusModalKind;
+    candidateId: string;
+    notes: string;
+    followUpDate: string;
+    interviewAction?: 'no_show' | 'withdrew' | 'kiv';
+  } | null>(null);
+  const [evaluationCandidateId, setEvaluationCandidateId] = useState('');
+  const [evaluationDraft, setEvaluationDraft] = useState<CandidateEvaluation | null>(null);
+  const [isSavingEvaluation, setIsSavingEvaluation] = useState(false);
 
   const navigateToSection = (section: HireOnboardingSection, replace = false) => {
     setActiveTab(section);
@@ -96,36 +207,151 @@ export default function HireOnboardingView({
   };
 
   useEffect(() => {
-    const handlePopState = () => {
-      setActiveTab(getHireOnboardingSectionFromPath(window.location.pathname));
-    };
+    const handlePopState = () => setActiveTab(getHireOnboardingSectionFromPath(window.location.pathname));
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Load departments and roles dynamically
-  const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
-  const [availableRoles, setAvailableRoles] = useState<string[]>([]);
-
-  useEffect(() => {
-    const savedDepts = localStorage.getItem('company_departments');
-    let depts = ['Product & Engineering', 'Finance', 'Human Resources', 'Sales & Marketing', 'Strategy', 'Operations'];
-    if (savedDepts) {
-      depts = JSON.parse(savedDepts);
+  const availableDepartments = useMemo(() => {
+    try {
+      const saved = localStorage.getItem('company_departments');
+      return saved
+        ? JSON.parse(saved) as string[]
+        : ['Product & Engineering', 'Finance', 'Human Resources', 'Sales & Marketing', 'Strategy', 'Operations'];
+    } catch {
+      return ['Product & Engineering', 'Finance', 'Human Resources', 'Sales & Marketing', 'Strategy', 'Operations'];
     }
-    setAvailableDepartments(depts);
-
-    const savedRoles = localStorage.getItem('company_roles');
-    let rls = ['Software Engineer', 'Senior Software Engineer', 'Product Manager', 'UX Designer', 'HR Specialist', 'Finance Manager', 'Consultant'];
-    if (savedRoles) {
-      rls = JSON.parse(savedRoles);
-    }
-    setAvailableRoles(rls);
-    setCandRole(current => current || rls[0] || '');
-    setCandDept(current => depts.includes(current) ? current : (depts[0] || ''));
   }, []);
 
+  const candidateIds = candidates.map((candidate) => candidate.id).join('|');
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoadingPipeline(true);
+    void loadHiringPipelineData()
+      .then(async (loaded) => {
+        let next = loaded;
+        for (const candidate of candidates) {
+          next = await ensureCandidateIntake(next, candidate, currentUserName);
+        }
+        if (!cancelled) setPipelineData(next);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          onShowNotification('Hiring Pipeline', `Pipeline history could not be loaded: ${error.message || error}`);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingPipeline(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [candidateIds, currentUserName, onShowNotification]);
+
+  useEffect(() => {
+    if (!selectedCandidateId || !candidates.some((candidate) => candidate.id === selectedCandidateId)) {
+      setSelectedCandidateId(candidates[0]?.id || '');
+    }
+  }, [candidates, selectedCandidateId]);
+
+  const selectedCandidate = candidates.find((candidate) => candidate.id === selectedCandidateId);
+  const selectedInterview = selectedCandidate
+    ? getCandidateInterview(pipelineData, selectedCandidate.id)
+    : undefined;
+  const selectedEvaluation = selectedCandidate
+    ? getCandidateEvaluation(pipelineData, selectedCandidate.id)
+    : undefined;
+
+  const getStatus = (candidate: Candidate): CandidatePipelineStatus => {
+    const latestEvent = pipelineData.history
+      .filter((event) => event.candidateId === candidate.id)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    return latestEvent?.toStatus || getCandidatePipelineStatus(candidate);
+  };
+  const getOffer = (candidateId: string) => {
+    const persisted = getCandidateOffer(pipelineData, candidateId);
+    if (persisted) return persisted;
+    const candidate = candidates.find((item) => item.id === candidateId);
+    const status = candidate ? getStatus(candidate) : undefined;
+    if (!status || !['offer_preparing', 'offer_sent', 'offer_accepted', 'offer_rejected'].includes(status)) {
+      return undefined;
+    }
+    return {
+      id: `legacy-offer-${candidateId}`,
+      candidateId,
+      status,
+      statusUpdatedAt: candidate?.pipelineUpdatedAt || nowIso(),
+      responseNotes: '',
+    } as CandidateOffer;
+  };
+  const selectedOffer = selectedCandidate ? getOffer(selectedCandidate.id) : undefined;
+  const actorName = currentUserName || currentUserEmail || 'HR Admin';
+
+  const appliedCandidates = candidates.filter((candidate) => (
+    ['applied', 'shortlisted'].includes(getStatus(candidate))
+  ));
+  const kivCandidates = candidates.filter((candidate) => getStatus(candidate) === 'kiv');
+  const interviewingCandidates = candidates.filter((candidate) => (
+    ['interview_scheduled', 'interview_cancelled', 'interview_no_show', 'interview_withdrew', 'interview_passed'].includes(getStatus(candidate))
+  ));
+  const offeredCandidates = candidates.filter((candidate) => (
+    ['offer_preparing', 'offer_sent', 'offer_rejected', 'offer_accepted'].includes(getStatus(candidate))
+  ));
+  const onboardingCandidates = candidates.filter((candidate) => getStatus(candidate) === 'onboarding');
+
+  const upcomingInterviewCandidates = interviewingCandidates.filter((candidate) => (
+    getInterviewQueue(getCandidateInterview(pipelineData, candidate.id)) === 'upcoming'
+  ));
+  const passedInterviewCandidates = interviewingCandidates.filter((candidate) => (
+    getInterviewQueue(getCandidateInterview(pipelineData, candidate.id)) === 'passed'
+  ));
+
+  const getQueueCandidates = () => {
+    if (activeQueue === 'applied') return appliedCandidates;
+    if (activeQueue === 'kiv') return kivCandidates;
+    if (activeQueue === 'interviewing') {
+      return interviewQueue === 'upcoming' ? upcomingInterviewCandidates : passedInterviewCandidates;
+    }
+    if (activeQueue === 'offered') {
+      return offerFilter === 'all'
+        ? offeredCandidates
+        : offeredCandidates.filter((candidate) => getOffer(candidate.id)?.status === offerFilter);
+    }
+    return onboardingCandidates;
+  };
+
+  const visibleCandidates = getQueueCandidates();
+
+  const transitionCandidate = async (
+    candidate: Candidate,
+    toStatus: CandidatePipelineStatus,
+    fields: Partial<Candidate> = {},
+    eventType = 'status_changed',
+    notes?: string,
+    dataOverride?: HiringPipelineData,
+  ) => {
+    const fromStatus = getStatus(candidate);
+    const timestamp = nowIso();
+    await onUpdateCandidate(candidate.id, {
+      ...fields,
+      stage: getBroadCandidateStage(toStatus),
+      pipelineStatus: toStatus,
+      pipelineUpdatedAt: timestamp,
+    });
+    const nextData = await recordPipelineEvent(dataOverride || pipelineData, {
+      candidateId: candidate.id,
+      fromStatus,
+      toStatus,
+      eventType,
+      notes,
+      actorName,
+    });
+    setPipelineData(nextData);
+    return nextData;
+  };
+
   const handleApplicationSubmit = async (formData: any) => {
+    const timestamp = nowIso();
     const newCandidate: Candidate = {
       id: formData.id || `CAN-${Date.now()}`,
       name: getCandidateNameFromApplication(formData),
@@ -134,18 +360,17 @@ export default function HireOnboardingView({
       designation: formData.designation,
       department: formData.department || availableDepartments[0] || 'Human Resources',
       entityId: formData.entityId || entities[0]?.id || 'ENT-92',
-      stage: formData.stage || 'Applied',
-      progress: Number(formData.progress || 0),
-      dateJoined: formData.dateJoined || getGmt8DateString()
+      stage: 'Applied',
+      progress: 0,
+      dateJoined: formData.dateJoined || getGmt8DateString(),
+      pipelineStatus: 'applied',
+      receivedAt: timestamp,
+      appliedAt: timestamp,
     };
-
     await onAddCandidate(newCandidate);
     setSelectedCandidateId(newCandidate.id);
     navigateToSection('pipeline');
-    onShowNotification(
-      'Applicant Registered', 
-      `Direct application for ${newCandidate.name} has been added to the hiring pipeline.`
-    );
+    onShowNotification('Applicant Registered', `${newCandidate.name} was added to Applied. Internal evaluation remains administrator-only.`);
   };
 
   const handleOnboardingComplete = async (newEmployee: Employee) => {
@@ -154,223 +379,686 @@ export default function HireOnboardingView({
     navigateToSection('pipeline');
   };
 
-  const handleOnboardingStageAdvance = async (candidateId: string, stage: 'Applied' | 'Interviewing' | 'Offered' | 'Onboarding') => {
-    await onUpdateCandidate(candidateId, { stage, progress: 100 });
+  const handleOnboardingStageAdvance = async (candidateId: string) => {
+    const candidate = candidates.find((item) => item.id === candidateId);
+    if (!candidate) return;
+    await transitionCandidate(candidate, 'onboarding', {}, 'onboarding_started');
   };
 
-  // Candidate Create Form States
-  const [candName, setCandName] = useState('');
-  const [candEmail, setCandEmail] = useState('');
-  const [candPhone, setCandPhone] = useState('');
-  const [candRole, setCandRole] = useState('');
-  const [candDept, setCandDept] = useState('Engineering');
-  const [candEntity, setCandEntity] = useState(entities[0]?.id || 'ENT-92');
-  const [isSavingCandidate, setIsSavingCandidate] = useState(false);
-  const [candErrors, setCandErrors] = useState<{ [key: string]: string }>({});
-
-  useEffect(() => {
-    if (entities.length > 0 && (!candEntity || candEntity !== entities[0].id)) {
-      setCandEntity(entities[0].id);
+  const handleShortlist = async (candidate: Candidate) => {
+    try {
+      await transitionCandidate(candidate, 'shortlisted', {}, 'shortlisted');
+      onShowNotification('Candidate Shortlisted', `${candidate.name} can now be scheduled for an interview.`);
+    } catch (error: any) {
+      onShowNotification('Shortlist Failed', error.message || 'The candidate could not be shortlisted.');
     }
-  }, [entities]);
-
-  const selectedCandidate = candidates.find(c => c.id === selectedCandidateId) || candidates[0];
-
-  const validateCandidate = () => {
-    const errs: { [key: string]: string } = {};
-    if (!candName.trim()) {
-      errs.candName = 'Full Name is required.';
-    } else if (candName.trim().length < 3) {
-      errs.candName = 'Full Name must be at least 3 characters.';
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!candEmail.trim()) {
-      errs.candEmail = 'Email address is required.';
-    } else if (!emailRegex.test(candEmail.trim())) {
-      errs.candEmail = 'Please enter a valid email address.';
-    }
-
-    if (!candPhone.trim()) {
-      errs.candPhone = 'Contact phone number is required.';
-    }
-
-    if (!candRole.trim()) {
-      errs.candRole = 'Job designation role is required.';
-    }
-
-    setCandErrors(errs);
-    return Object.keys(errs).length === 0;
   };
 
-  const handleCreateCandidate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validateCandidate()) {
-      onShowNotification('Validation Error', 'Please correct the highlighted fields.');
+  const handleReject = async (candidate: Candidate, reason = '') => {
+    const confirmed = await confirmAction({
+      title: 'Reject Candidate',
+      message: `Are you sure you want to reject ${candidate.name}? The decision will be recorded in the hiring history.`,
+      type: 'danger',
+      confirmLabel: 'Reject Candidate',
+      onConfirm: async () => {
+        await transitionCandidate(
+          candidate,
+          'rejected',
+          { rejectionReason: reason || 'Rejected by HR review.' },
+          'rejected',
+          reason || undefined,
+        );
+      },
+    });
+    if (confirmed) onShowNotification('Candidate Rejected', `${candidate.name} was moved to the final rejected state.`);
+  };
+
+  const handleKiv = async (candidate: Candidate, notes: string, followUpDate: string) => {
+    try {
+      await transitionCandidate(
+        candidate,
+        'kiv',
+        { kivNotes: notes, kivFollowUpDate: followUpDate || undefined },
+        'kiv',
+        notes || undefined,
+      );
+      onShowNotification('Candidate Moved to KIV', `${candidate.name} is now in the KIV queue.`);
+      setStatusModal(null);
+    } catch (error: any) {
+      onShowNotification('KIV Update Failed', error.message || 'The candidate could not be moved to KIV.');
+    }
+  };
+
+  const handleDeleteSelectedCandidate = async () => {
+    if (!selectedCandidate || activeQueue !== 'applied') return;
+    const confirmed = await confirmAction({
+      title: 'Delete Candidate',
+      message: `Are you sure you want to delete ${selectedCandidate.name}? This will remove the candidate and related pipeline history.`,
+      type: 'danger',
+      confirmLabel: 'Delete Candidate',
+      onConfirm: async () => {
+        setIsSaving(true);
+        try {
+          await onDeleteCandidate(selectedCandidate.id);
+          setPipelineData(deleteCandidatePipelineData(pipelineData, selectedCandidate.id));
+          setSelectedCandidateId('');
+          onShowNotification('Candidate Deleted', `${selectedCandidate.name} was removed from the hiring pipeline.`);
+        } finally {
+          setIsSaving(false);
+        }
+      },
+    });
+    if (!confirmed) setIsSaving(false);
+  };
+
+  const handleScheduleInterview = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const candidate = candidates.find((item) => item.id === scheduleCandidateId);
+    if (!candidate || !scheduleDate || !scheduleTime) {
+      onShowNotification('Interview Schedule', 'Candidate, date, and time are required.');
       return;
     }
-
-    setIsSavingCandidate(true);
+    if (!toDateTime(scheduleDate, scheduleTime)) {
+      onShowNotification('Interview Schedule', 'Please enter a valid interview date and time.');
+      return;
+    }
+    setIsSaving(true);
     try {
-      const newCandidate: Candidate = {
-        id: `CAN-${Date.now()}`,
-        name: candName,
-        email: candEmail,
-        phone: candPhone,
-        designation: candRole,
-        department: candDept,
-        entityId: candEntity || entities[0]?.id || 'ENT-92',
-        stage: 'Applied',
-        progress: 0,
-        dateJoined: getGmt8DateString()
+      const previousInterview = getCandidateInterview(pipelineData, candidate.id);
+      const interview: CandidateInterview = {
+        id: previousInterview?.id || createHiringId('INT'),
+        candidateId: candidate.id,
+        scheduledDate: scheduleDate,
+        scheduledTime: scheduleTime,
+        meetingLink: scheduleMeetingLink.trim(),
+        notes: scheduleNotes.trim(),
+        status: 'scheduled',
+        createdAt: previousInterview?.createdAt || nowIso(),
+        updatedAt: nowIso(),
       };
-
-      await onAddCandidate(newCandidate);
-      setSelectedCandidateId(newCandidate.id);
-      
-      setCandName('');
-      setCandEmail('');
-      setCandPhone('');
-      setCandRole('');
-      setCandErrors({});
-
-      onShowNotification(
-        'Candidate Added', 
-        `Successfully entered ${newCandidate.name} into the hiring pipeline.`
+      const nextData = await saveInterview(pipelineData, interview);
+      await transitionCandidate(
+        candidate,
+        'interview_scheduled',
+        {},
+        previousInterview ? 'interview_rescheduled' : 'interview_scheduled',
+        scheduleNotes.trim() || undefined,
+        nextData,
       );
-    } catch (err: any) {
-      onShowNotification('Save Error', `Failed to register candidate: ${err.message || err}`);
+      setScheduleCandidateId('');
+      onShowNotification(
+        previousInterview ? 'Interview Rescheduled' : 'Interview Scheduled',
+        `${candidate.name}'s interview is set for ${scheduleDate} at ${scheduleTime}.`,
+      );
+    } catch (error: any) {
+      onShowNotification('Interview Schedule Failed', error.message || 'The interview could not be saved.');
     } finally {
-      setIsSavingCandidate(false);
+      setIsSaving(false);
     }
   };
 
-  const handlePromoteStage = async (candidateId: string) => {
-    const c = candidates.find(cand => cand.id === candidateId);
-    if (c) {
-      let nextStage: 'Applied' | 'Interviewing' | 'Offered' | 'Onboarding' = 'Applied';
-      if (c.stage === 'Applied') nextStage = 'Interviewing';
-      else if (c.stage === 'Interviewing') nextStage = 'Offered';
-      else if (c.stage === 'Offered') nextStage = 'Onboarding';
-      else if (c.stage === 'Onboarding') {
-        onShowNotification('Already Onboarding', 'Candidate has reached the active onboarding phase.');
-        return;
-      }
+  const handleInterviewStatus = async (
+    candidate: Candidate,
+    action: 'no_show' | 'withdrew' | 'kiv',
+    notes: string,
+  ) => {
+    const interview = getCandidateInterview(pipelineData, candidate.id);
+    if (!interview) return;
+    const interviewStatus = action === 'no_show' ? 'no_show' : action === 'withdrew' ? 'withdrew' : 'kiv';
+    const nextInterview = { ...interview, status: interviewStatus as CandidateInterview['status'], updatedAt: nowIso() };
+    try {
+      const nextData = await saveInterview(pipelineData, nextInterview);
+      const nextStatus = action === 'kiv' ? 'kiv' : action === 'no_show' ? 'interview_no_show' : 'interview_withdrew';
+      await transitionCandidate(candidate, nextStatus, action === 'kiv' ? { kivNotes: notes } : {}, `interview_${action}`, notes, nextData);
+      setStatusModal(null);
+      onShowNotification('Interview Status Updated', `${candidate.name} was marked as ${getPipelineStatusLabel(nextStatus)}.`);
+    } catch (error: any) {
+      onShowNotification('Interview Status Failed', error.message || 'The interview status could not be saved.');
+    }
+  };
 
-      try {
-        await onUpdateCandidate(candidateId, { stage: nextStage });
-        onShowNotification(
-          'Hiring Stage Advanced',
-          `Advanced ${c.name} to the "${nextStage}" phase.`
-        );
-      } catch (error: any) {
-        onShowNotification('Stage Update Failed', error.message || 'The candidate stage could not be saved.');
+  const handleCancelInterview = async (candidate: Candidate, notes: string) => {
+    const interview = getCandidateInterview(pipelineData, candidate.id);
+    if (!interview) return;
+    try {
+      const nextData = await saveInterview(pipelineData, {
+        ...interview,
+        status: 'cancelled',
+        cancellationReason: notes || undefined,
+        updatedAt: nowIso(),
+      });
+      await transitionCandidate(candidate, 'interview_cancelled', {}, 'interview_cancelled', notes || undefined, nextData);
+      setStatusModal(null);
+      onShowNotification('Interview Cancelled', `${candidate.name}'s interview was cancelled.`);
+    } catch (error: any) {
+      onShowNotification('Cancellation Failed', error.message || 'The interview could not be cancelled.');
+    }
+  };
+
+  const openEvaluation = (candidate: Candidate) => {
+    setSelectedCandidateId(candidate.id);
+    setEvaluationCandidateId(candidate.id);
+    setEvaluationDraft(getCandidateEvaluation(pipelineData, candidate.id) || blankEvaluation(candidate.id));
+  };
+
+  const handleSaveEvaluation = async () => {
+    if (!evaluationDraft) return;
+    setIsSavingEvaluation(true);
+    try {
+      const nextData = await saveEvaluation(pipelineData, {
+        ...evaluationDraft,
+        updatedAt: nowIso(),
+      });
+      setPipelineData(nextData);
+      setEvaluationDraft({ ...evaluationDraft, updatedAt: nowIso() });
+      onShowNotification('Evaluation Saved', 'The internal interview evaluation was saved securely.');
+    } catch (error: any) {
+      onShowNotification('Evaluation Save Failed', error.message || 'The evaluation could not be saved.');
+    } finally {
+      setIsSavingEvaluation(false);
+    }
+  };
+
+  const finalizeEvaluation = async (candidate: Candidate, outcome: 'offer' | 'reject' | 'kiv') => {
+    if (!evaluationDraft) return;
+    const nextData = await saveEvaluation(pipelineData, { ...evaluationDraft, updatedAt: nowIso() });
+    setPipelineData(nextData);
+    if (outcome === 'offer') {
+      const offer: CandidateOffer = {
+        id: getCandidateOffer(nextData, candidate.id)?.id || createHiringId('OFFER'),
+        candidateId: candidate.id,
+        status: 'offer_preparing',
+        statusUpdatedAt: nowIso(),
+        responseNotes: '',
+      };
+      const offerData = await saveOffer(nextData, offer);
+      await transitionCandidate(candidate, 'offer_preparing', {}, 'offer_created', undefined, offerData);
+      setEvaluationCandidateId('');
+      setEvaluationDraft(null);
+      setActiveQueue('offered');
+      onShowNotification('Offer Started', `${candidate.name} was moved to Offer Preparing.`);
+      return;
+    }
+    if (outcome === 'reject') {
+      await handleReject(candidate, evaluationDraft.additionalComments || 'Interview evaluation resulted in rejection.');
+      setEvaluationCandidateId('');
+      setEvaluationDraft(null);
+      return;
+    }
+    await handleKiv(candidate, evaluationDraft.additionalComments || 'Interview evaluation requires follow-up.', '');
+    setEvaluationCandidateId('');
+    setEvaluationDraft(null);
+  };
+
+  const updateOfferStatus = async (candidate: Candidate, nextStatus: CandidateOffer['status']) => {
+    const offer = getOffer(candidate.id);
+    if (!offer) return;
+    if (nextStatus === 'offer_accepted' && offer.status !== 'offer_sent') {
+      onShowNotification('Offer Action Blocked', 'The offer must be marked Offer Sent before it can be accepted.');
+      return;
+    }
+    const confirmed = await confirmAction({
+      title: nextStatus === 'offer_rejected' ? 'Reject Offer' : 'Update Offer Status',
+      message: nextStatus === 'offer_rejected'
+        ? `Are you sure you want to reject the offer for ${candidate.name}?`
+        : `Move ${candidate.name} to ${getOfferStatusLabel(nextStatus)}?`,
+      type: nextStatus === 'offer_rejected' ? 'danger' : 'info',
+      confirmLabel: nextStatus === 'offer_rejected' ? 'Reject Offer' : 'Confirm',
+      onConfirm: async () => {
+        const updatedOffer: CandidateOffer = {
+          ...offer,
+          status: nextStatus,
+          statusUpdatedAt: nowIso(),
+          rejectionReason: nextStatus === 'offer_rejected' ? offer.rejectionReason || 'Offer rejected by candidate.' : offer.rejectionReason,
+        };
+        const nextData = await saveOffer(pipelineData, updatedOffer);
+        const candidateStatus: CandidatePipelineStatus = nextStatus === 'offer_accepted' ? 'onboarding' : nextStatus;
+        const transitionedData = await transitionCandidate(candidate, candidateStatus, {}, `offer_${nextStatus.replace('offer_', '')}`, undefined, nextData);
+        if (nextStatus === 'offer_accepted') {
+          const generated = await createCandidateShareLink(transitionedData, candidate.id, 'onboarding');
+          setPipelineData(generated.data);
+        }
+      },
+    });
+    if (confirmed) {
+      onShowNotification(
+        nextStatus === 'offer_accepted' ? 'Offer Accepted' : 'Offer Status Updated',
+        nextStatus === 'offer_accepted'
+          ? `${candidate.name} moved to Onboarding and received a secure onboarding handoff link.`
+          : `${candidate.name} is now ${getOfferStatusLabel(nextStatus)}.`,
+      );
+    }
+  };
+
+  const getActiveShareLink = (candidateId: string, kind: 'interview' | 'onboarding') => (
+    pipelineData.shareLinks
+      .filter((link) => link.candidateId === candidateId && link.kind === kind)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .find((link) => isShareLinkActive(link.expiresAt, link.invalidatedAt))
+  );
+
+  const shareCandidate = async (
+    candidate: Candidate,
+    kind: 'interview' | 'onboarding',
+    channel: 'copy' | 'share' | 'email' | 'whatsapp',
+    forceRegenerate = false,
+  ) => {
+    try {
+      const currentLink = forceRegenerate ? undefined : getActiveShareLink(candidate.id, kind);
+      let nextData = pipelineData;
+      let link = currentLink;
+      if (!link) {
+        const generated = await createCandidateShareLink(pipelineData, candidate.id, kind);
+        nextData = generated.data;
+        link = generated.link;
       }
+      const interview = getCandidateInterview(nextData, candidate.id);
+      const message = kind === 'interview'
+        ? `Interview details for ${candidate.name}: ${interview?.scheduledDate || ''} at ${interview?.scheduledTime || ''}. ${interview?.meetingLink || ''}\n${link.url}`
+        : `Onboarding details for ${candidate.name}. Please complete the secure onboarding form:\n${link.url}`;
+
+      if (channel === 'copy') {
+        await navigator.clipboard?.writeText(link.url);
+      } else if (channel === 'share' && navigator.share) {
+        await navigator.share({ title: kind === 'interview' ? 'Interview details' : 'Onboarding details', text: message, url: link.url });
+      } else if (channel === 'email') {
+        window.location.href = `mailto:${encodeURIComponent(candidate.email)}?subject=${encodeURIComponent(kind === 'interview' ? 'Interview details' : 'Onboarding details')}&body=${encodeURIComponent(message)}`;
+      } else if (channel === 'whatsapp') {
+        const phone = candidate.phone.replace(/[^\d+]/g, '').replace(/^\+/, '');
+        if (!phone) throw new Error('Candidate phone number is missing.');
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+      }
+      nextData = await recordShareDelivery(nextData, {
+        shareLinkId: link.id,
+        candidateId: candidate.id,
+        channel,
+        status: 'handoff',
+      });
+      setPipelineData(nextData);
+      onShowNotification('Share Link Ready', `${kind === 'interview' ? 'Interview' : 'Onboarding'} details are ready for ${candidate.name}. Link expires ${new Date(link.expiresAt).toLocaleDateString()}.`);
+    } catch (error: any) {
+      onShowNotification('Share Failed', error.message || 'The candidate share handoff could not be created.');
     }
   };
 
   const handleToggleTask = async (taskId: string) => {
-    const updatedTasks = tasks.map(t => {
-      if (t.id === taskId) {
-        return { ...t, completed: !t.completed };
-      }
-      return t;
-    });
-    // Recompute percentage progress for selected candidate
-    const completedCount = updatedTasks.filter(t => t.completed).length;
-    const percentage = Math.round((completedCount / updatedTasks.length) * 100);
-
+    if (!selectedCandidate) return;
+    const updatedTasks = tasks.map((task) => task.id === taskId ? { ...task, completed: !task.completed } : task);
+    const percentage = Math.round((updatedTasks.filter((task) => task.completed).length / updatedTasks.length) * 100);
     try {
-      await onUpdateCandidate(selectedCandidateId, { progress: percentage });
+      await onUpdateCandidate(selectedCandidate.id, { progress: percentage });
       setTasks(updatedTasks);
     } catch (error: any) {
       onShowNotification('Task Update Failed', error.message || 'The onboarding progress could not be saved.');
     }
   };
 
-  const activeEntityName = entities.find(e => e.id === selectedCandidate?.entityId)?.name || 'Acme Tech';
+  const activeEntityName = entities.find((entity) => entity.id === selectedCandidate?.entityId)?.name || 'Red Point Sdn Bhd';
+  const evaluationCandidate = candidates.find((candidate) => candidate.id === evaluationCandidateId);
+  const selectedShare = selectedCandidate
+    ? getActiveShareLink(selectedCandidate.id, getStatus(selectedCandidate) === 'onboarding' ? 'onboarding' : 'interview')
+    : undefined;
 
-  return (
-    <div className="space-y-6 max-w-6xl mx-auto animate-in fade-in duration-200 text-left">
-      <div className="flex flex-col md:flex-row md:items-end justify-between border-b border-neutral-200/50 pb-4 gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-on-background tracking-tight">Hire & Onboarding</h1>
-          <p className="text-on-surface-variant mt-1">
-            Manage recruitment pipelines and guide newly hired staff through the structured statutory and IT setup process.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 shrink-0 self-start md:self-auto">
-          <div className="flex flex-wrap gap-1 border border-neutral-border rounded-lg p-1 bg-white">
-            <button
-              onClick={() => navigateToSection('pipeline')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${
-                activeTab === 'pipeline'
-                  ? 'bg-primary text-white shadow-sm'
-                  : 'text-on-surface hover:bg-neutral-50'
-              }`}
-            >
-              <LayoutGrid className="w-4 h-4" />
-              Hiring Pipeline
-            </button>
-            <button
-              onClick={() => navigateToSection('application-form')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${
-                activeTab === 'application-form'
-                  ? 'bg-primary text-white shadow-sm'
-                  : 'text-on-surface hover:bg-neutral-50'
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              Job Application Form
-            </button>
-            <button
-              onClick={() => navigateToSection('onboarding-form')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${
-                activeTab === 'onboarding-form'
-                  ? 'bg-primary text-white shadow-sm'
-                  : 'text-on-surface hover:bg-neutral-50'
-              }`}
-            >
-              <UserCheck className="w-4 h-4" />
-              Onboarding Form
-            </button>
-            <button
-              onClick={() => navigateToSection('onboarding-portal')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-md transition-all ${
-                activeTab === 'onboarding-portal'
-                  ? 'bg-primary text-white shadow-sm'
-                  : 'text-on-surface hover:bg-neutral-50'
-              }`}
-            >
-              <BookOpen className="w-4 h-4" />
-              Onboarding Portal
-            </button>
+  const renderCandidateCard = (candidate: Candidate) => {
+    const status = getStatus(candidate);
+    const interview = getCandidateInterview(pipelineData, candidate.id);
+    const offer = getOffer(candidate.id);
+    const isSelected = candidate.id === selectedCandidateId;
+    return (
+      <button
+        type="button"
+        key={candidate.id}
+        onClick={() => setSelectedCandidateId(candidate.id)}
+        className={`w-full rounded-xl border p-3 text-left transition-all ${isSelected ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20' : 'border-neutral-border bg-white hover:border-primary/40'}`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold text-on-background">{candidate.name}</p>
+            <p className="mt-1 truncate text-[11px] text-on-surface-variant">{candidate.department} · {candidate.designation}</p>
           </div>
+          <span className={`shrink-0 rounded-full border px-2 py-1 text-[9px] font-black uppercase ${statusBadgeClass(status)}`}>
+            {getPipelineStatusLabel(status)}
+          </span>
+        </div>
+        {interview && status.startsWith('interview') && (
+          <div className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold text-on-surface-variant">
+            <CalendarClock className="h-3.5 w-3.5 text-primary" />
+            {interview.scheduledDate} · {interview.scheduledTime}
+          </div>
+        )}
+        {offer && status.startsWith('offer') && (
+          <div className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold text-on-surface-variant">
+            <BriefcaseBusiness className="h-3.5 w-3.5 text-primary" />
+            {getOfferStatusLabel(offer.status)}
+          </div>
+        )}
+      </button>
+    );
+  };
 
+  const renderPipeline = () => (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[
+          ['Applied', appliedCandidates.length, FileText, 'text-blue-600 bg-blue-50'],
+          ['KIV', kivCandidates.length, CircleHelp, 'text-amber-600 bg-amber-50'],
+          ['Pending Interviews', upcomingInterviewCandidates.length, CalendarClock, 'text-indigo-600 bg-indigo-50'],
+          ['Pending Offers', offeredCandidates.filter((candidate) => ['offer_preparing', 'offer_sent'].includes(getStatus(candidate))).length, BriefcaseBusiness, 'text-emerald-600 bg-emerald-50'],
+        ].map(([label, value, Icon, classes]) => (
+          <div key={String(label)} className="rounded-xl border border-neutral-border bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">{label}</span>
+              <span className={`rounded-lg p-2 ${classes}`}><Icon className="h-4 w-4" /></span>
+            </div>
+            <p className="mt-3 text-2xl font-black text-on-background">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-1 overflow-x-auto rounded-xl border border-neutral-border bg-white p-1 shadow-sm">
+        {([
+          ['applied', 'Applied', appliedCandidates.length],
+          ['kiv', 'KIV', kivCandidates.length],
+          ['interviewing', 'Interviewing', interviewingCandidates.length],
+          ['offered', 'Offered', offeredCandidates.length],
+          ['onboarding', 'Onboarding', onboardingCandidates.length],
+        ] as Array<[PipelineQueue, string, number]>).map(([queue, label, count]) => (
           <button
-            onClick={() => {
-              const link = `${window.location.origin}/?form=job-apply`;
-              navigator.clipboard.writeText(link);
-              onShowNotification('Application Link Copied', 'Public job application form URL copied to clipboard.');
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold border border-neutral-border rounded-md bg-white text-on-surface hover:bg-neutral-50 cursor-pointer transition-all"
-            title="Copy public job application form link"
+            type="button"
+            key={queue}
+            onClick={() => setActiveQueue(queue)}
+            className={`flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold ${activeQueue === queue ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:bg-neutral-50'}`}
           >
-            <Share2 className="w-3.5 h-3.5 text-primary animate-pulse" />
-            Share Apply Link
+            {label}<span className={`rounded-full px-1.5 py-0.5 text-[10px] ${activeQueue === queue ? 'bg-white/20' : 'bg-neutral-100'}`}>{count}</span>
           </button>
+        ))}
+      </div>
+
+      <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50/60 p-4 text-xs text-blue-900">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+        <p>
+          Applied submissions are reviewed before interview scheduling. Interviewing is split automatically by the scheduled date and time. KIV and rejected decisions remain auditable in the candidate history.
+        </p>
+      </div>
+
+      {activeQueue === 'interviewing' && (
+        <div className="flex gap-2">
+          {([
+            ['upcoming', `Upcoming Interview (${upcomingInterviewCandidates.length})`],
+            ['passed', `Passed Interview (${passedInterviewCandidates.length})`],
+          ] as Array<[InterviewQueue, string]>).map(([queue, label]) => (
+            <button
+              type="button"
+              key={queue}
+              onClick={() => setInterviewQueue(queue)}
+              className={`rounded-lg border px-3 py-2 text-xs font-bold ${interviewQueue === queue ? 'border-primary bg-primary/5 text-primary' : 'border-neutral-border text-on-surface-variant'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {activeQueue === 'offered' && (
+        <div className="flex gap-2 overflow-x-auto">
+          {([
+            ['all', 'All Offers'],
+            ['offer_preparing', 'Offer Preparing'],
+            ['offer_sent', 'Offer Sent'],
+            ['offer_rejected', 'Offer Rejected'],
+          ] as Array<[OfferFilter, string]>).map(([filter, label]) => (
+            <button
+              type="button"
+              key={filter}
+              onClick={() => setOfferFilter(filter)}
+              className={`shrink-0 rounded-lg border px-3 py-2 text-xs font-bold ${offerFilter === filter ? 'border-primary bg-primary/5 text-primary' : 'border-neutral-border text-on-surface-variant'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(18rem,25rem)_minmax(0,1fr)]">
+        <div className="rounded-xl border border-neutral-border bg-neutral-50 p-3">
+          <div className="mb-3 flex items-center justify-between gap-3 px-1">
+            <div>
+              <h2 className="text-sm font-black text-on-background">
+                {activeQueue === 'interviewing' ? (interviewQueue === 'upcoming' ? 'Upcoming Interviews' : 'Passed Interviews') : activeQueue[0].toUpperCase() + activeQueue.slice(1)}
+              </h2>
+              <p className="mt-0.5 text-[11px] text-on-surface-variant">Select a candidate to review the full record.</p>
+            </div>
+            <div className="flex items-center gap-1">
+              {activeQueue === 'applied' && selectedCandidate && visibleCandidates.some((candidate) => candidate.id === selectedCandidate.id) && (
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteSelectedCandidate()}
+                  disabled={isSaving}
+                  className="rounded-md p-2 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  aria-label="Delete selected candidate"
+                  title="Delete selected candidate"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+              <button type="button" onClick={() => void loadHiringPipelineData().then(setPipelineData)} className="rounded-md p-2 text-on-surface-variant hover:bg-white hover:text-primary" aria-label="Refresh pipeline">
+                <RefreshCw className={`h-4 w-4 ${isLoadingPipeline ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+          <div className="max-h-[32rem] space-y-2 overflow-y-auto">
+            {visibleCandidates.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-neutral-border bg-white px-4 py-10 text-center text-xs text-on-surface-variant">
+                <ClipboardCheck className="mx-auto mb-2 h-8 w-8 text-neutral-300" />
+                No candidates in this queue.
+              </div>
+            ) : visibleCandidates.map(renderCandidateCard)}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-neutral-border bg-white p-5 shadow-sm">
+          {!selectedCandidate ? (
+            <div className="flex min-h-[28rem] items-center justify-center text-center text-sm text-on-surface-variant">
+              Select a candidate to open the detail workspace.
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <div className="flex flex-col justify-between gap-4 border-b border-neutral-100 pb-4 md:flex-row md:items-start">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <UserRound className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-lg font-black text-on-background">{selectedCandidate.name}</h2>
+                      <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase ${statusBadgeClass(getStatus(selectedCandidate))}`}>
+                        {getPipelineStatusLabel(getStatus(selectedCandidate))}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-on-surface-variant">
+                      <span className="inline-flex items-center gap-1"><Mail className="h-3.5 w-3.5" />{selectedCandidate.email}</span>
+                      <span className="inline-flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{selectedCandidate.phone}</span>
+                      <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{selectedCandidate.department} · {selectedCandidate.designation}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-neutral-50 px-3 py-2 text-right text-[10px] text-on-surface-variant">
+                  <p className="font-bold uppercase tracking-wider">Entity</p>
+                  <p className="mt-1 font-black text-primary">{activeEntityName}</p>
+                </div>
+              </div>
+
+              {activeQueue === 'applied' && (
+                <div className="flex flex-wrap gap-2">
+                  {getStatus(selectedCandidate) === 'applied' && (
+                    <button type="button" onClick={() => void handleShortlist(selectedCandidate)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white hover:opacity-90">
+                      <CheckCircle2 className="h-4 w-4" /> Shortlist
+                    </button>
+                  )}
+                  {getStatus(selectedCandidate) === 'shortlisted' && (
+                    <button type="button" onClick={() => { setScheduleCandidateId(selectedCandidate.id); setScheduleDate(dateInDays(1)); setScheduleTime('10:00'); setScheduleMeetingLink(''); setScheduleNotes(''); }} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white hover:opacity-90">
+                      <CalendarClock className="h-4 w-4" /> Schedule Interview
+                    </button>
+                  )}
+                  <button type="button" onClick={() => setStatusModal({ kind: 'kiv', candidateId: selectedCandidate.id, notes: '', followUpDate: '' })} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-50">
+                    <CircleHelp className="h-4 w-4" /> KIV
+                  </button>
+                  <button type="button" onClick={() => setStatusModal({ kind: 'reject', candidateId: selectedCandidate.id, notes: '', followUpDate: '' })} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50">
+                    <XCircle className="h-4 w-4" /> Reject
+                  </button>
+                </div>
+              )}
+
+              {activeQueue === 'kiv' && (
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => void transitionCandidate(selectedCandidate, 'applied', { kivNotes: undefined, kivFollowUpDate: undefined }, 'kiv_resumed').then(() => onShowNotification('KIV Resumed', `${selectedCandidate.name} returned to Applied.`))} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white">
+                    <RotateCcw className="h-4 w-4" /> Resume Applied
+                  </button>
+                </div>
+              )}
+
+              {activeQueue === 'interviewing' && selectedInterview && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-3 rounded-xl border border-blue-100 bg-blue-50/40 p-4 sm:grid-cols-3">
+                    <div><p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Date</p><p className="mt-1 text-sm font-black text-on-background">{selectedInterview.scheduledDate}</p></div>
+                    <div><p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Time</p><p className="mt-1 text-sm font-black text-on-background">{selectedInterview.scheduledTime}</p></div>
+                    <div><p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Meeting Link</p><p className="mt-1 truncate text-sm font-black text-on-background">{selectedInterview.meetingLink || 'Not provided'}</p></div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {getInterviewQueue(selectedInterview) === 'upcoming' && selectedInterview.status === 'scheduled' && (
+                      <>
+                        <button type="button" onClick={() => { setScheduleCandidateId(selectedCandidate.id); setScheduleDate(selectedInterview.scheduledDate); setScheduleTime(selectedInterview.scheduledTime); setScheduleMeetingLink(selectedInterview.meetingLink); setScheduleNotes(selectedInterview.notes); }} className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 px-3 py-2 text-xs font-bold text-primary hover:bg-primary/5">
+                          <Clock3 className="h-4 w-4" /> Change Date & Time
+                        </button>
+                        <button type="button" onClick={() => setStatusModal({ kind: 'cancel', candidateId: selectedCandidate.id, notes: '', followUpDate: '' })} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50">
+                          <Ban className="h-4 w-4" /> Cancel
+                        </button>
+                        <div className="relative">
+                          <details>
+                            <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg border border-neutral-border px-3 py-2 text-xs font-bold text-on-surface-variant hover:bg-neutral-50"><MoreHorizontal className="h-4 w-4" /> Other</summary>
+                            <div className="absolute right-0 z-10 mt-2 w-48 rounded-lg border border-neutral-border bg-white p-1 shadow-xl">
+                              <button type="button" onClick={() => setStatusModal({ kind: 'other', candidateId: selectedCandidate.id, notes: '', followUpDate: '', interviewAction: 'no_show' })} className="block w-full rounded-md px-3 py-2 text-left text-xs font-semibold hover:bg-neutral-50">Candidate no-show</button>
+                              <button type="button" onClick={() => setStatusModal({ kind: 'other', candidateId: selectedCandidate.id, notes: '', followUpDate: '', interviewAction: 'withdrew' })} className="block w-full rounded-md px-3 py-2 text-left text-xs font-semibold hover:bg-neutral-50">Candidate withdrew</button>
+                              <button type="button" onClick={() => setStatusModal({ kind: 'other', candidateId: selectedCandidate.id, notes: '', followUpDate: '', interviewAction: 'kiv' })} className="block w-full rounded-md px-3 py-2 text-left text-xs font-semibold hover:bg-neutral-50">Move to KIV</button>
+                            </div>
+                          </details>
+                        </div>
+                      </>
+                    )}
+                    <button type="button" onClick={() => void shareCandidate(selectedCandidate, 'interview', 'copy')} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white hover:opacity-90"><Link2 className="h-4 w-4" /> Copy Share Link</button>
+                    <button type="button" onClick={() => void shareCandidate(selectedCandidate, 'interview', 'email')} className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-border px-3 py-2 text-xs font-bold text-on-surface-variant hover:bg-neutral-50"><Mail className="h-4 w-4" /> Email</button>
+                    <button type="button" onClick={() => void shareCandidate(selectedCandidate, 'interview', 'whatsapp')} className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-border px-3 py-2 text-xs font-bold text-on-surface-variant hover:bg-neutral-50"><Send className="h-4 w-4" /> WhatsApp</button>
+                  </div>
+                  {getInterviewQueue(selectedInterview) === 'passed' && (
+                    <button type="button" onClick={() => openEvaluation(selectedCandidate)} className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700">
+                      <ClipboardCheck className="h-4 w-4" /> Open Interview Evaluation
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {activeQueue === 'offered' && selectedOffer && (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Offer Status</p>
+                    <p className="mt-1 text-lg font-black text-on-background">{getOfferStatusLabel(selectedOffer.status)}</p>
+                    <p className="mt-1 text-xs text-on-surface-variant">Last updated {new Date(selectedOffer.statusUpdatedAt).toLocaleString()}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedOffer.status === 'offer_preparing' && (
+                      <button type="button" onClick={() => void updateOfferStatus(selectedCandidate, 'offer_sent')} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white"><Send className="h-4 w-4" /> Mark Offer Sent</button>
+                    )}
+                    {selectedOffer.status === 'offer_sent' && (
+                      <>
+                        <button type="button" onClick={() => void updateOfferStatus(selectedCandidate, 'offer_accepted')} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white"><CheckCircle2 className="h-4 w-4" /> Offer Accepted</button>
+                        <button type="button" onClick={() => void updateOfferStatus(selectedCandidate, 'offer_rejected')} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700"><XCircle className="h-4 w-4" /> Offer Rejected</button>
+                      </>
+                    )}
+                    {selectedOffer.status === 'offer_rejected' && <span className="text-xs font-semibold text-red-700">This offer is closed. Create a new offer only after a new approved evaluation.</span>}
+                  </div>
+                </div>
+              )}
+
+              {activeQueue === 'onboarding' && (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Onboarding handoff</p>
+                      <p className="mt-1 text-sm font-bold text-on-background">Generate a secure 30-day candidate link with no internal notes.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => void shareCandidate(selectedCandidate, 'onboarding', 'copy', Boolean(selectedShare))} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white"><Link2 className="h-4 w-4" /> {selectedShare ? 'Regenerate & Copy' : 'Generate & Copy'}</button>
+                      <button type="button" onClick={() => void shareCandidate(selectedCandidate, 'onboarding', 'email')} className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-border bg-white px-3 py-2 text-xs font-bold text-on-surface-variant"><Mail className="h-4 w-4" /> Email</button>
+                      <button type="button" onClick={() => void shareCandidate(selectedCandidate, 'onboarding', 'whatsapp')} className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-border bg-white px-3 py-2 text-xs font-bold text-on-surface-variant"><Send className="h-4 w-4" /> WhatsApp</button>
+                    </div>
+                  </div>
+                  {selectedShare && <p className="break-all rounded-lg bg-neutral-50 p-3 font-mono text-[10px] text-on-surface-variant">Active link: {selectedShare.url}<br />Expires: {new Date(selectedShare.expiresAt).toLocaleString()}</p>}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-black uppercase tracking-wide text-on-surface-variant">Onboarding checklist</p>
+                      <span className="text-xs font-black text-primary">{selectedCandidate.progress}% complete</span>
+                    </div>
+                    {tasks.map((task) => (
+                      <button type="button" key={task.id} onClick={() => void handleToggleTask(task.id)} className={`flex w-full items-center justify-between rounded-lg border p-3 text-left text-xs ${task.completed ? 'border-emerald-200 bg-emerald-50/30' : 'border-neutral-border bg-white hover:border-primary/40'}`}>
+                        <span className={task.completed ? 'font-semibold text-on-surface-variant line-through' : 'font-bold text-on-background'}>{task.title}</span>
+                        <span className={`rounded-full px-2 py-1 text-[9px] font-bold ${task.completed ? 'bg-emerald-100 text-emerald-700' : 'bg-neutral-100 text-on-surface-variant'}`}>{task.completed ? 'Done' : task.category}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t border-neutral-100 pt-4">
+                <p className="mb-3 text-[10px] font-black uppercase tracking-wider text-on-surface-variant">Audit trail</p>
+                <div className="max-h-36 space-y-2 overflow-y-auto">
+                  {pipelineData.history.filter((event) => event.candidateId === selectedCandidate.id).slice(0, 8).map((event) => (
+                    <div key={event.id} className="flex items-start justify-between gap-3 text-[11px]">
+                      <div><span className="font-bold text-on-background">{getPipelineStatusLabel(event.toStatus)}</span><span className="ml-2 text-on-surface-variant">{event.notes || event.eventType}</span></div>
+                      <time className="shrink-0 text-on-surface-variant">{new Date(event.createdAt).toLocaleDateString()}</time>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
+      <div className="rounded-xl border border-neutral-border bg-white p-5 shadow-sm">
+        <h2 className="flex items-center gap-2 border-b border-neutral-100 pb-3 text-sm font-black text-primary"><ExternalLink className="h-4 w-4" /> Candidate-facing links</h2>
+        <p className="mt-4 text-xs leading-relaxed text-on-surface-variant">Interview links expire after 7 days. Onboarding links expire after 30 days. Regenerating a link invalidates the previous link. Internal evaluations, notes, and offer history are never included.</p>
+        {selectedCandidate && selectedInterview && (
+          <button type="button" onClick={() => void shareCandidate(selectedCandidate, 'interview', 'share')} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-neutral-border px-3 py-2 text-xs font-bold text-on-surface-variant hover:bg-neutral-50"><Share2 className="h-4 w-4" /> Share selected interview</button>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderHeader = () => (
+    <div className="flex flex-col justify-between gap-4 border-b border-neutral-200/50 pb-4 md:flex-row md:items-end">
+      <div>
+        <h1 className="text-3xl font-black tracking-tight text-on-background">Hire & Onboarding</h1>
+        <p className="mt-1 max-w-3xl text-sm text-on-surface-variant">Manage Applied submissions, KIV decisions, interviews, offers, secure candidate handoffs, and onboarding progress in one auditable lifecycle.</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap gap-1 rounded-lg border border-neutral-border bg-white p-1">
+          <button type="button" onClick={() => navigateToSection('pipeline')} className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs font-bold ${activeTab === 'pipeline' ? 'bg-primary text-white' : 'text-on-surface-variant hover:bg-neutral-50'}`}><LayoutGrid className="h-4 w-4" /> Pipeline</button>
+          <button type="button" onClick={() => navigateToSection('application-form')} className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs font-bold ${activeTab === 'application-form' ? 'bg-primary text-white' : 'text-on-surface-variant hover:bg-neutral-50'}`}><FileText className="h-4 w-4" /> Application Form</button>
+          <button type="button" onClick={() => navigateToSection('onboarding-form')} className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs font-bold ${activeTab === 'onboarding-form' ? 'bg-primary text-white' : 'text-on-surface-variant hover:bg-neutral-50'}`}><UserCheck className="h-4 w-4" /> Employee Enrollment</button>
+          <button type="button" onClick={() => navigateToSection('onboarding-portal')} className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs font-bold ${activeTab === 'onboarding-portal' ? 'bg-primary text-white' : 'text-on-surface-variant hover:bg-neutral-50'}`}><BookOpen className="h-4 w-4" /> Onboarding Portal</button>
+        </div>
+        <button type="button" onClick={() => { void navigator.clipboard?.writeText(`${window.location.origin}/?form=job-apply`); onShowNotification('Application Link Copied', 'Public job application form URL copied to your clipboard.'); }} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-border bg-white px-3 py-2 text-xs font-bold text-on-surface-variant hover:bg-neutral-50"><Share2 className="h-4 w-4 text-primary" /> Share Apply Link</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="mx-auto max-w-7xl animate-in fade-in duration-200">
+      {renderHeader()}
+
       {activeTab === 'onboarding-portal' ? (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <React.Suspense
-            fallback={
-              <div className="flex min-h-64 items-center justify-center border-y border-neutral-border text-sm font-semibold text-on-surface-variant">
-                Loading Onboarding Portal...
-              </div>
-            }
-          >
+        <div className="mt-6">
+          <React.Suspense fallback={<div className="flex min-h-64 items-center justify-center text-sm font-semibold text-on-surface-variant">Loading Onboarding Portal...</div>}>
             <OnboardingPortalView
               employees={employees}
               candidates={candidates}
@@ -384,15 +1072,12 @@ export default function HireOnboardingView({
           </React.Suspense>
         </div>
       ) : activeTab === 'application-form' ? (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <JobApplicationForm 
-            onApplicationSubmit={handleApplicationSubmit}
-            onShowNotification={onShowNotification}
-          />
+        <div className="mt-6">
+          <JobApplicationForm onApplicationSubmit={handleApplicationSubmit} onShowNotification={onShowNotification} />
         </div>
       ) : activeTab === 'onboarding-form' ? (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <OnboardingForm 
+        <div className="mt-6">
+          <OnboardingForm
             candidates={candidates}
             entities={entities}
             onOnboardingComplete={handleOnboardingComplete}
@@ -401,314 +1086,71 @@ export default function HireOnboardingView({
           />
         </div>
       ) : (
-        <>
-          {/* Candidate Pipeline Columns (Applied, Interviewing, Offered, Onboarding) */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        
-        {(['Applied', 'Interviewing', 'Offered', 'Onboarding'] as const).map(stage => {
-          const stageCandidates = candidates.filter(c => c.stage === stage);
-          return (
-            <div key={stage} className="bg-neutral-50 border border-neutral-border rounded-lg p-3 space-y-3 flex flex-col justify-start">
-              <div className="flex justify-between items-center border-b border-neutral-200/50 pb-2">
-                <span className="font-bold text-[11px] text-on-surface-variant uppercase tracking-wider">{stage}</span>
-                <span className="text-[10px] font-bold font-mono text-primary bg-primary-container/10 px-1.5 py-0.5 rounded-full">
-                  {stageCandidates.length}
-                </span>
-              </div>
+        <div className="mt-6">{renderPipeline()}</div>
+      )}
 
-              <div className="space-y-2 flex-1 overflow-y-auto max-h-[220px]">
-                {stageCandidates.length === 0 ? (
-                  <div className="text-[10px] text-on-surface-variant/60 text-center py-6 italic">
-                    No records
-                  </div>
-                ) : (
-                  stageCandidates.map(cand => {
-                    const isSelected = cand.id === selectedCandidateId;
-                    return (
-                      <div
-                        key={cand.id}
-                        onClick={() => setSelectedCandidateId(cand.id)}
-                        className={`p-2.5 rounded border text-xs text-left cursor-pointer transition-all ${
-                          isSelected 
-                            ? 'bg-white border-primary shadow-xs ring-1 ring-primary/20' 
-                            : 'bg-white border-neutral-border hover:border-primary/50'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-1">
-                          <div className="font-bold text-on-surface hover:text-primary transition-colors truncate pr-1">{cand.name}</div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const link = `${window.location.origin}/?form=onboarding&candidateId=${cand.id}`;
-                              navigator.clipboard.writeText(link);
-                              onShowNotification('Onboarding Link Copied', `Onboarding link for ${cand.name} copied.`);
-                            }}
-                            className="p-1 hover:bg-neutral-100 text-on-surface-variant hover:text-primary rounded shrink-0 cursor-pointer transition-colors"
-                            title="Copy candidate onboarding link"
-                          >
-                            <LinkIcon className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                        <div className="text-[10px] text-on-surface-variant truncate mt-0.5">{cand.designation}</div>
-                        
-                        {stage === 'Onboarding' ? (
-                          <div className="mt-2 space-y-1">
-                            <div className="flex justify-between text-[9px] font-semibold text-on-surface-variant">
-                              <span>Checklist</span>
-                              <span className="font-mono">{cand.progress}%</span>
-                            </div>
-                            <div className="w-full bg-neutral-100 h-1.5 rounded-full overflow-hidden">
-                              <div className="bg-green-600 h-full transition-all duration-300" style={{ width: `${cand.progress}%` }} />
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="mt-2 flex justify-end">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handlePromoteStage(cand.id);
-                              }}
-                              className="px-1.5 py-0.5 bg-neutral-100 hover:bg-neutral-200 border text-[9px] font-bold rounded flex items-center gap-0.5 text-on-surface-variant cursor-pointer"
-                              title="Advance hiring phase"
-                            >
-                              Advance <ArrowRight className="w-2.5 h-2.5" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+      {scheduleCandidateId && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4 backdrop-blur-[2px]">
+          <form onSubmit={handleScheduleInterview} className="w-full max-w-lg space-y-4 rounded-2xl border border-neutral-border bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-neutral-100 pb-3">
+              <div><h2 className="text-base font-black text-on-background">Schedule Interview</h2><p className="mt-1 text-xs text-on-surface-variant">Shortlisted candidates move to Interviewing once a date and time are saved.</p></div>
+              <button type="button" onClick={() => setScheduleCandidateId('')} className="rounded-md p-1.5 text-on-surface-variant hover:bg-neutral-50"><X className="h-4 w-4" /></button>
             </div>
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        
-        {/* Left hand: Add prospective candidates */}
-        <div className="lg:col-span-5 bg-white border border-neutral-border rounded-lg p-5 shadow-sm space-y-4">
-          <h2 className="text-base font-bold text-primary flex items-center gap-2 pb-2 border-b border-neutral-100">
-            <Plus className="w-4 h-4" /> Log Prospective / Selected Candidate
-          </h2>
-
-          <form onSubmit={handleCreateCandidate} className="space-y-3 text-xs">
-            <div>
-              <label className="block font-bold text-on-surface-variant uppercase mb-1">
-                Full Name <span className="text-error">*</span>
-              </label>
-              <input 
-                type="text" 
-                placeholder="e.g. Tan Boon Heong"
-                value={candName}
-                onChange={(e) => setCandName(e.target.value)}
-                className={`w-full bg-white border ${candErrors.candName ? 'border-error' : 'border-neutral-border'} rounded p-2 focus:ring-1 focus:ring-primary outline-none`}
-              />
-              {candErrors.candName && (
-                <span className="text-error text-[10px] mt-1 block font-semibold">{candErrors.candName}</span>
-              )}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="text-xs font-bold text-on-surface-variant">Date<input required type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} className="mt-1 w-full rounded-md border border-neutral-border p-2 font-normal text-on-background outline-none focus:ring-2 focus:ring-primary/20" /></label>
+              <label className="text-xs font-bold text-on-surface-variant">Time<input required type="time" value={scheduleTime} onChange={(event) => setScheduleTime(event.target.value)} className="mt-1 w-full rounded-md border border-neutral-border p-2 font-normal text-on-background outline-none focus:ring-2 focus:ring-primary/20" /></label>
             </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block font-bold text-on-surface-variant uppercase mb-1">
-                  Email Address <span className="text-error">*</span>
-                </label>
-                <input 
-                  type="email" 
-                  placeholder="e.g. tan@domain.com"
-                  value={candEmail}
-                  onChange={(e) => setCandEmail(e.target.value)}
-                  className={`w-full bg-white border ${candErrors.candEmail ? 'border-error' : 'border-neutral-border'} rounded p-2 focus:ring-1 focus:ring-primary outline-none`}
-                />
-                {candErrors.candEmail && (
-                  <span className="text-error text-[10px] mt-1 block font-semibold">{candErrors.candEmail}</span>
-                )}
-              </div>
-              <div>
-                <label className="block font-bold text-on-surface-variant uppercase mb-1">
-                  Contact Phone <span className="text-error">*</span>
-                </label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. +60 17-293 8472"
-                  value={candPhone}
-                  onChange={(e) => setCandPhone(e.target.value)}
-                  className={`w-full bg-white border ${candErrors.candPhone ? 'border-error' : 'border-neutral-border'} rounded p-2 focus:ring-1 focus:ring-primary outline-none`}
-                />
-                {candErrors.candPhone && (
-                  <span className="text-error text-[10px] mt-1 block font-semibold">{candErrors.candPhone}</span>
-                )}
-              </div>
+            <label className="text-xs font-bold text-on-surface-variant">Interview link<input value={scheduleMeetingLink} onChange={(event) => setScheduleMeetingLink(event.target.value)} placeholder="https://meet.google.com/..." className="mt-1 w-full rounded-md border border-neutral-border p-2 font-normal text-on-background outline-none focus:ring-2 focus:ring-primary/20" /></label>
+            <label className="text-xs font-bold text-on-surface-variant">Notes<textarea rows={3} value={scheduleNotes} onChange={(event) => setScheduleNotes(event.target.value)} placeholder="Panel, preparation notes, or location details" className="mt-1 w-full rounded-md border border-neutral-border p-2 font-normal text-on-background outline-none focus:ring-2 focus:ring-primary/20" /></label>
+            <div className="flex justify-end gap-2 border-t border-neutral-100 pt-3">
+              <button type="button" onClick={() => setScheduleCandidateId('')} className="rounded-lg border border-neutral-border px-3 py-2 text-xs font-bold text-on-surface-variant">Cancel</button>
+              <button type="submit" disabled={isSaving} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{isSaving && <LoaderCircle className="h-4 w-4 animate-spin" />} {isSaving ? 'Saving...' : 'Save Interview'}</button>
             </div>
-
-            <div>
-              <label className="block font-bold text-on-surface-variant uppercase mb-1">
-                Job Designation Role <span className="text-error">*</span>
-              </label>
-              <select 
-                value={candRole}
-                onChange={(e) => setCandRole(e.target.value)}
-                className={`w-full bg-white border ${candErrors.candRole ? 'border-error' : 'border-neutral-border'} rounded p-2 focus:ring-1 focus:ring-primary outline-none font-semibold text-primary`}
-              >
-                {(() => {
-                  const rolesToRender = [...availableRoles];
-                  if (candRole && !rolesToRender.includes(candRole)) {
-                    rolesToRender.push(candRole);
-                  }
-                  return rolesToRender.map(r => (
-                    <option key={r} value={r}>{r}</option>
-                  ));
-                })()}
-              </select>
-              {candErrors.candRole && (
-                <span className="text-error text-[10px] mt-1 block font-semibold">{candErrors.candRole}</span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block font-bold text-on-surface-variant uppercase mb-1">Department</label>
-                <select 
-                  value={candDept}
-                  onChange={(e) => setCandDept(e.target.value)}
-                  className="w-full bg-white border border-neutral-border rounded p-2 focus:ring-1 focus:ring-primary outline-none font-semibold text-primary"
-                >
-                  {(() => {
-                    const deptsToRender = [...availableDepartments];
-                    if (candDept && !deptsToRender.includes(candDept)) {
-                      deptsToRender.push(candDept);
-                    }
-                    return deptsToRender.map(d => (
-                      <option key={d} value={d}>{d}</option>
-                    ));
-                  })()}
-                </select>
-              </div>
-
-              <div style={{ display: 'none' }}>
-                <label className="block font-bold text-on-surface-variant uppercase mb-1">Assigned Subsidiary</label>
-                <select 
-                  value={candEntity}
-                  onChange={(e) => setCandEntity(e.target.value)}
-                  className="w-full bg-white border border-neutral-border rounded p-2 focus:ring-1 focus:ring-primary outline-none animate-none"
-                >
-                  {entities.map(ent => (
-                    <option key={ent.id} value={ent.id}>{ent.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full bg-primary hover:opacity-95 text-white font-semibold py-2 rounded text-xs transition-opacity shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
-            >
-              <UserPlus className="w-4 h-4" /> Register Candidate Account
-            </button>
           </form>
         </div>
+      )}
 
-        {/* Right hand: Comprehensive Onboarding Checklist */}
-        <div className="lg:col-span-7 bg-white border border-neutral-border rounded-lg p-5 shadow-sm flex flex-col justify-between">
-          
-          <div className="space-y-4">
-            
-            {/* Header profile of selected candidate */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-100 pb-3">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Candidate Profile</span>
-                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                    selectedCandidate?.stage === 'Onboarding' 
-                      ? 'bg-green-100 text-green-700' 
-                      : 'bg-yellow-100 text-yellow-700'
-                  }`}>
-                    {selectedCandidate?.stage}
-                  </span>
-                </div>
-                <h3 className="font-bold text-base text-on-background">{selectedCandidate?.name}</h3>
-                
-                <div className="flex flex-wrap items-center gap-3 text-[10px] text-on-surface-variant font-mono">
-                  <span className="flex items-center gap-1"><Mail className="w-3 h-3 text-on-surface-variant/70" /> {selectedCandidate?.email}</span>
-                  <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-on-surface-variant/70" /> {selectedCandidate?.phone}</span>
-                </div>
-              </div>
-
-              <div className="text-right text-xs shrink-0 font-mono bg-neutral-50 p-2.5 rounded border border-neutral-border/30">
-                <div className="text-on-surface-variant text-[10px] font-semibold">Assigned Company</div>
-                <div className="font-bold text-primary mt-0.5">{activeEntityName}</div>
+      {statusModal && (() => {
+        const modalCandidate = candidates.find((candidate) => candidate.id === statusModal.candidateId);
+        if (!modalCandidate) return null;
+        const title = statusModal.kind === 'kiv' ? 'Move Candidate to KIV' : statusModal.kind === 'cancel' ? 'Cancel Interview' : statusModal.kind === 'other' ? 'Update Interview Status' : 'Reject Candidate';
+        return (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4 backdrop-blur-[2px]">
+            <div className="w-full max-w-md space-y-4 rounded-2xl border border-neutral-border bg-white p-5 shadow-2xl">
+              <div className="flex items-start justify-between gap-3 border-b border-neutral-100 pb-3"><div><h2 className="text-base font-black text-on-background">{title}</h2><p className="mt-1 text-xs text-on-surface-variant">{modalCandidate.name}</p></div><button type="button" onClick={() => setStatusModal(null)} className="rounded-md p-1.5 text-on-surface-variant hover:bg-neutral-50"><X className="h-4 w-4" /></button></div>
+              {statusModal.kind === 'other' && <p className="rounded-lg bg-amber-50 p-3 text-xs font-semibold text-amber-900">This action is recorded in the interview history and can move the candidate to KIV.</p>}
+              <label className="block text-xs font-bold text-on-surface-variant">Reason / notes<textarea rows={4} value={statusModal.notes} onChange={(event) => setStatusModal({ ...statusModal, notes: event.target.value })} className="mt-1 w-full rounded-md border border-neutral-border p-2 text-xs font-normal text-on-background outline-none focus:ring-2 focus:ring-primary/20" placeholder="Optional notes for the audit trail" /></label>
+              {statusModal.kind === 'kiv' && <label className="block text-xs font-bold text-on-surface-variant">Follow-up date<input type="date" value={statusModal.followUpDate} onChange={(event) => setStatusModal({ ...statusModal, followUpDate: event.target.value })} className="mt-1 w-full rounded-md border border-neutral-border p-2 text-xs font-normal text-on-background outline-none focus:ring-2 focus:ring-primary/20" /></label>}
+              <div className="flex justify-end gap-2 border-t border-neutral-100 pt-3">
+                <button type="button" onClick={() => setStatusModal(null)} className="rounded-lg border border-neutral-border px-3 py-2 text-xs font-bold text-on-surface-variant">Cancel</button>
+                <button type="button" onClick={() => {
+                  if (statusModal.kind === 'kiv') void handleKiv(modalCandidate, statusModal.notes, statusModal.followUpDate);
+                  else if (statusModal.kind === 'cancel') void handleCancelInterview(modalCandidate, statusModal.notes);
+                  else if (statusModal.kind === 'other' && statusModal.interviewAction) void handleInterviewStatus(modalCandidate, statusModal.interviewAction, statusModal.notes);
+                  else {
+                    void handleReject(modalCandidate, statusModal.notes).then(() => setStatusModal(null));
+                  }
+                }} className={`rounded-lg px-3 py-2 text-xs font-bold text-white ${statusModal.kind === 'reject' || statusModal.kind === 'cancel' ? 'bg-red-600 hover:bg-red-700' : 'bg-primary hover:opacity-90'}`}>{statusModal.kind === 'reject' ? 'Reject Candidate' : statusModal.kind === 'cancel' ? 'Cancel Interview' : 'Save Decision'}</button>
               </div>
             </div>
-
-            {selectedCandidate?.stage === 'Onboarding' ? (
-              <div className="space-y-3.5 animate-in fade-in duration-300">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-on-surface uppercase tracking-wider flex items-center gap-1.5">
-                    <CheckSquare className="w-4 h-4 text-primary" /> Core Compliance & Setup Tasks
-                  </span>
-                  <span className="text-xs font-bold text-primary font-mono">{selectedCandidate.progress}% Completed</span>
-                </div>
-
-                {/* Checklist tasks */}
-                <div className="space-y-2">
-                  {tasks.map(task => (
-                    <div 
-                      key={task.id}
-                      onClick={() => handleToggleTask(task.id)}
-                      className={`p-3 rounded-lg border text-xs flex items-center justify-between gap-3 cursor-pointer transition-all ${
-                        task.completed 
-                          ? 'bg-green-50/20 border-green-200 text-on-surface-variant' 
-                          : 'bg-white border-neutral-border hover:border-primary/50 text-on-surface'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${
-                          task.completed 
-                            ? 'bg-green-600 border-green-600' 
-                            : 'border-neutral-border bg-white'
-                        }`}>
-                          {task.completed && <CheckCircle className="w-3.5 h-3.5 text-white" />}
-                        </div>
-                        <span className={task.completed ? 'line-through text-on-surface-variant/70 font-medium' : 'font-bold'}>{task.title}</span>
-                      </div>
-
-                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded font-mono ${
-                        task.category === 'Compliance' 
-                          ? 'bg-blue-100 text-blue-700' 
-                          : task.category === 'IT Setup' 
-                          ? 'bg-purple-100 text-purple-700' 
-                          : task.category === 'Training'
-                          ? 'bg-amber-100 text-amber-700'
-                          : 'bg-neutral-100 text-neutral-700'
-                      }`}>
-                        {task.category}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="border border-dashed border-neutral-200 rounded-lg p-8 text-center text-xs text-on-surface-variant leading-relaxed py-12 flex flex-col items-center justify-center gap-3">
-                <Compass className="w-10 h-10 text-on-surface-variant/30" />
-                <div>
-                  <span className="block font-bold text-on-surface">Compliance Checklist Locked</span>
-                  <span className="block mt-0.5">Please click "Advance" on the candidate card above to move this profile into the active "Onboarding" phase first.</span>
-                </div>
-              </div>
-            )}
-
           </div>
+        );
+      })()}
 
-          <div className="mt-6 pt-3 border-t border-neutral-100 flex items-center justify-between text-[11px] font-bold text-on-surface-variant font-mono">
-            <span>Onboarding Pipeline Total: <strong>{candidates.filter(c => c.stage === 'Onboarding').length}</strong></span>
-            <span className="flex items-center gap-1 text-primary"><FileBadge className="w-3.5 h-3.5 text-primary" /> LHDN / SOCSO Compliant checklist</span>
+      {evaluationCandidate && evaluationDraft && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-[2px]">
+          <div className="my-6 w-full max-w-3xl rounded-2xl border border-neutral-border bg-white p-5 shadow-2xl">
+            <div className="mb-4 flex items-start justify-between gap-3 border-b border-neutral-100 pb-3"><div><h2 className="text-base font-black text-on-background">Interview Evaluation · {evaluationCandidate.name}</h2><p className="mt-1 text-xs text-on-surface-variant">Save the internal assessment before making the final Offer, Reject, or KIV decision.</p></div><button type="button" onClick={() => { setEvaluationCandidateId(''); setEvaluationDraft(null); }} className="rounded-md p-1.5 text-on-surface-variant hover:bg-neutral-50"><X className="h-4 w-4" /></button></div>
+            <CandidateEvaluationPanel value={evaluationDraft} onChange={setEvaluationDraft} onSave={() => void handleSaveEvaluation()} saving={isSavingEvaluation} />
+            <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-neutral-100 pt-4">
+              <button type="button" onClick={() => { setEvaluationCandidateId(''); setEvaluationDraft(null); }} className="rounded-lg border border-neutral-border px-3 py-2 text-xs font-bold text-on-surface-variant">Cancel</button>
+              <button type="button" onClick={() => void finalizeEvaluation(evaluationCandidate, 'kiv')} className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-bold text-amber-800">KIV</button>
+              <button type="button" onClick={() => void finalizeEvaluation(evaluationCandidate, 'reject')} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700">Reject</button>
+              <button type="button" onClick={() => void finalizeEvaluation(evaluationCandidate, 'offer')} className="rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white">Offer</button>
+            </div>
           </div>
         </div>
-
-      </div>
-      </>)}
+      )}
     </div>
   );
 }

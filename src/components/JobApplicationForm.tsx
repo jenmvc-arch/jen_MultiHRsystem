@@ -30,6 +30,7 @@ import { formatNricOrPassport } from '../lib/employeeInput';
 interface JobApplicationFormProps {
   onShowNotification: (title: string, message: string) => void;
   onApplicationSubmit?: (candidateData: any) => Promise<void>;
+  showInternalEvaluation?: boolean;
 }
 
 interface OtherLanguage {
@@ -56,7 +57,8 @@ interface Evaluator {
 
 export default function JobApplicationForm({
   onShowNotification,
-  onApplicationSubmit
+  onApplicationSubmit,
+  showInternalEvaluation = true
 }: JobApplicationFormProps) {
   // Loading and Success States
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -324,7 +326,7 @@ export default function JobApplicationForm({
           designation: positionApplied || 'Applicant',
           department: 'Engineering',
           entityId: 'ENT-92',
-          stage: overallRecommendation === 'Strong Hire' || overallRecommendation === 'Hire' ? 'Offered' : 'Applied',
+          stage: showInternalEvaluation && (overallRecommendation === 'Strong Hire' || overallRecommendation === 'Hire') ? 'Offered' : 'Applied',
           progress: 0,
           dateJoined: reportDate || getGmt8DateString(),
           photoUrl: photoPreview
@@ -364,14 +366,16 @@ export default function JobApplicationForm({
               <span className="text-on-surface-variant">Position:</span>
               <strong className="text-primary font-sans">{positionApplied}</strong>
             </div>
-            <div className="flex justify-between border-b pb-1.5 border-neutral-200">
-              <span className="text-on-surface-variant">Internal Rec:</span>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                overallRecommendation === 'Strong Hire' || overallRecommendation === 'Hire'
-                  ? 'bg-green-100 text-green-800'
-                  : 'bg-red-100 text-red-800'
-              }`}>{overallRecommendation}</span>
-            </div>
+            {showInternalEvaluation && (
+              <div className="flex justify-between border-b pb-1.5 border-neutral-200">
+                <span className="text-on-surface-variant">Internal Rec:</span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                  overallRecommendation === 'Strong Hire' || overallRecommendation === 'Hire'
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-red-100 text-red-800'
+                }`}>{overallRecommendation}</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-on-surface-variant">Submission Date:</span>
               <span>{appDate}</span>
@@ -1306,7 +1310,8 @@ export default function JobApplicationForm({
                 </div>
               </div>
 
-              {/* SECTION 9: HR / INTERVIEWER EVALUATION (INTERNAL SECTION) */}
+              {showInternalEvaluation && (
+              /* SECTION 9: HR / INTERVIEWER EVALUATION (INTERNAL SECTION) */
               <div className="space-y-4 bg-neutral-100 p-6 rounded-2xl border border-neutral-200">
                 <div className="flex items-center gap-2 border-b border-neutral-200 pb-2">
                   <div className="w-6 h-6 rounded-full bg-primary/20 text-slate-800 flex items-center justify-center font-bold text-xs">9</div>
@@ -1478,6 +1483,7 @@ export default function JobApplicationForm({
 
                 </div>
               </div>
+              )}
 
             </div>
 

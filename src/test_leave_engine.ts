@@ -5,11 +5,18 @@ import {
   calculateLeaveDateDays,
   calculatePayrollDeduction,
   calculateProratedEntitlement,
+  calculateShiftHours,
+  calculateWorkShiftWeeklyHours,
   calculateWorkingHours,
+  addHoursToTime,
+  normalizeWorkShiftGroupDays,
   consumeReplacementLeaveFIFO,
   DEFAULT_CARRY_OVER_SETTINGS,
   DEFAULT_LEAVE_CONFIGS,
   DEFAULT_LEAVE_GROUPS,
+  DEFAULT_PUBLIC_HOLIDAY_GROUPS,
+  DEFAULT_PUBLIC_HOLIDAYS,
+  DEFAULT_WORK_SHIFT_GROUP_DAYS,
   eligibleOffInLieuDays,
   findDuplicateAssignedLeaveTypes,
   splitLeaveDaysAcrossPayrollMonths,
@@ -104,6 +111,34 @@ const balances = calculateLeaveBalances({
 assert.equal(balances[0].remaining, 18);
 
 assert.equal(calculateWorkingHours('09:00', '15:00'), 6);
+assert.equal(addHoursToTime('09:00', 4), '13:00');
+assert.equal(addHoursToTime('22:00', 4), '02:00');
+assert.equal(
+  normalizeWorkShiftGroupDays([{
+    ...DEFAULT_WORK_SHIFT_GROUP_DAYS[6],
+    groupId: 'half-day-test',
+    dayType: 'half_day',
+    isWorkDay: true,
+    startTime: '09:00',
+    endTime: '14:00',
+  }], 'half-day-test').find((day) => day.weekday === 6)?.endTime,
+  '14:00',
+);
+assert.equal(calculateShiftHours('09:00', '18:00', 'full_day'), 8);
+assert.equal(calculateShiftHours('09:00', '13:00', 'half_day'), 2);
+assert.equal(calculateShiftHours('09:00', '13:00', 'rest'), 0);
+assert.equal(calculateShiftHours('22:00', '06:00', 'full_day'), 7);
+assert.equal(calculateShiftHours('09:00', '09:00', 'full_day'), 0);
+assert.equal(calculateWorkShiftWeeklyHours(DEFAULT_WORK_SHIFT_GROUP_DAYS), 40);
+const longSchedule = DEFAULT_WORK_SHIFT_GROUP_DAYS.map((day) => (
+  day.dayType === 'rest'
+    ? day
+    : { ...day, startTime: '08:00', endTime: '18:00', actualHours: 9 }
+));
+assert.equal(calculateWorkShiftWeeklyHours(longSchedule), 45);
+assert.ok(calculateWorkShiftWeeklyHours(longSchedule.map((day) => (
+  day.dayType === 'rest' ? day : { ...day, actualHours: 10 }
+))) > 45);
 assert.equal(eligibleOffInLieuDays(6), 0.5);
 assert.equal(eligibleOffInLieuDays(6.01), 1);
 assert.equal(0.5 + 1, 1.5);
@@ -157,6 +192,42 @@ assert.equal(split.reduce((sum, item) => sum + item.leaveDays, 0), 4);
 assert.equal(split[0].payrollMonth, 12);
 assert.equal(split[1].payrollMonth, 1);
 
+const customSchedule = DEFAULT_WORK_SHIFT_GROUP_DAYS.map((day) => (
+  day.weekday === 0 || day.weekday === 6
+    ? day
+    : {
+      ...day,
+      dayType: day.weekday === 3 ? 'rest' as const : day.dayType,
+      isWorkDay: day.weekday !== 3,
+      actualHours: day.weekday === 3 ? 0 : day.actualHours,
+    }
+));
+assert.equal(
+  calculateLeaveDateDays(
+    '2026-08-10',
+    '2026-08-16',
+    standardPolicy,
+    [],
+    { id: 'custom-schedule', name: 'Custom', description: '', enabled: true, weeklyHours: 32, weeklyHoursWarning: false },
+    customSchedule.map((day) => ({ ...day, groupId: 'custom-schedule' })),
+  ),
+  4,
+);
+assert.equal(
+  calculateLeaveDateDays(
+    '2026-08-10',
+    '2026-08-11',
+    standardPolicy,
+    ['2026-08-11'],
+    { id: 'custom-schedule', name: 'Custom', description: '', enabled: true, weeklyHours: 32, weeklyHoursWarning: false },
+    customSchedule.map((day) => ({ ...day, groupId: 'custom-schedule' })),
+  ),
+  1,
+);
+assert.equal(DEFAULT_PUBLIC_HOLIDAY_GROUPS.filter((group) => group.category === 'national').length, 1);
+assert.ok(DEFAULT_PUBLIC_HOLIDAYS.some((holiday) => holiday.year === 2026));
+assert.ok(DEFAULT_PUBLIC_HOLIDAYS.some((holiday) => holiday.year === 2027));
+
 const deductions = [
   { id: 'LPD-leave-1-1', leaveRequestId: 'leave-1' },
   { id: 'LPD-leave-1-1', leaveRequestId: 'leave-1' },
@@ -164,4 +235,3 @@ const deductions = [
 assert.equal(new Set(deductions.map((item) => item.id)).size, 1);
 
 console.log('Leave engine tests passed.');
-

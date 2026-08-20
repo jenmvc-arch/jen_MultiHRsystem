@@ -18,13 +18,28 @@ import {
 } from 'lucide-react';
 import { Employee } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
-import { LeaveRequest } from '../lib/leaveDomain';
+import {
+  EmployeeWorkShiftAssignment,
+  LeaveGroup,
+  LeaveRequest,
+  PublicHoliday,
+  PublicHolidayGroup,
+  WorkShiftGroup,
+  WorkShiftGroupDay,
+  getWorkShiftDayForDate,
+} from '../lib/leaveDomain';
 import { formatToDDMMMYYYY } from '../lib/dateUtils';
 import { isCurrentEmploymentStatus } from '../data';
 
 interface LeaveCalendarProps {
   requests: LeaveRequest[];
   employees: Employee[];
+  workShiftGroups?: WorkShiftGroup[];
+  workShiftGroupDays?: WorkShiftGroupDay[];
+  employeeWorkShiftAssignments?: EmployeeWorkShiftAssignment[];
+  publicHolidayGroups?: PublicHolidayGroup[];
+  publicHolidays?: PublicHoliday[];
+  leaveGroups?: LeaveGroup[];
 }
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -33,7 +48,16 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-export default function LeaveCalendar({ requests, employees }: LeaveCalendarProps) {
+export default function LeaveCalendar({
+  requests,
+  employees,
+  workShiftGroups = [],
+  workShiftGroupDays = [],
+  employeeWorkShiftAssignments = [],
+  publicHolidayGroups = [],
+  publicHolidays = [],
+  leaveGroups = [],
+}: LeaveCalendarProps) {
   const today = new Date();
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
@@ -152,10 +176,48 @@ export default function LeaveCalendar({ requests, employees }: LeaveCalendarProp
     return map;
   }, [requests]);
 
+  const holidaysByDate = useMemo(() => {
+    const map: Record<string, Array<PublicHoliday & { group?: PublicHolidayGroup }>> = {};
+    publicHolidays
+      .filter((holiday) => holiday.enabled)
+      .forEach((holiday) => {
+        const group = publicHolidayGroups.find((item) => item.id === holiday.groupId);
+        [holiday.holidayDate, holiday.observedDate].filter(Boolean).forEach((date) => {
+          if (!date) return;
+          map[date] = [...(map[date] || []), { ...holiday, group }];
+        });
+      });
+    return map;
+  }, [publicHolidayGroups, publicHolidays]);
+
+  const getScheduleForEmployee = (employeeId: string, dateString: string) => {
+    const assignment = [...employeeWorkShiftAssignments]
+      .filter((item) => (
+        item.employeeId === employeeId
+        && item.active
+        && item.effectiveDate <= dateString
+        && (!item.endDate || item.endDate >= dateString)
+      ))
+      .sort((left, right) => right.effectiveDate.localeCompare(left.effectiveDate))[0];
+    const group = workShiftGroups.find((item) => item.id === assignment?.groupId) || workShiftGroups[0];
+    return {
+      group,
+      day: getWorkShiftDayForDate(group, workShiftGroupDays, new Date(`${dateString}T00:00:00`).getDay()),
+    };
+  };
+
   // Selected date statistics & personnel
   const selectedDateLeaves = useMemo(() => {
     return approvedLeavesByDate[selectedDate] || [];
   }, [selectedDate, approvedLeavesByDate]);
+
+  const selectedDateHolidays = holidaysByDate[selectedDate] || [];
+  const selectedDateRestEmployees = useMemo(
+    () => employees.filter((employee) => (
+      getScheduleForEmployee(employee.id, selectedDate).day?.dayType === 'rest'
+    )),
+    [employees, selectedDate, employeeWorkShiftAssignments, workShiftGroups, workShiftGroupDays],
+  );
 
   // Active coverage details for selected date
   const shiftPlanningCoverage = useMemo(() => {
@@ -194,14 +256,17 @@ export default function LeaveCalendar({ requests, employees }: LeaveCalendarProp
       }
     });
 
+    const restCount = selectedDateRestEmployees.length;
+    const absentCount = selectedDateLeaves.length;
     return {
       warnings,
       backupsByDept,
       totalEmployees: employees.length,
-      absentCount: selectedDateLeaves.length,
-      activeCount: employees.length - selectedDateLeaves.length
+      absentCount,
+      restCount,
+      activeCount: Math.max(0, employees.length - absentCount - restCount)
     };
-  }, [selectedDateLeaves, employees]);
+  }, [selectedDateLeaves, selectedDateRestEmployees, employees]);
 
   // Color helper for leave types
   const getLeaveColorStyles = (leaveType: string) => {
@@ -343,8 +408,10 @@ export default function LeaveCalendar({ requests, employees }: LeaveCalendarProp
           <div className="grid grid-cols-7 gap-1">
             {calendarDays.map((cell, idx) => {
               const dateLeaves = approvedLeavesByDate[cell.dateString] || [];
+              const dateHolidays = holidaysByDate[cell.dateString] || [];
               const isSelected = selectedDate === cell.dateString;
               const hasLeaves = dateLeaves.length > 0;
+              const hasHolidays = dateHolidays.length > 0;
               
               return (
                 <button
@@ -371,8 +438,8 @@ export default function LeaveCalendar({ requests, employees }: LeaveCalendarProp
                     </span>
                     
                     {/* Tiny visual indicators */}
-                    {hasLeaves && (
-                      <div className="flex gap-0.5">
+                    {(hasLeaves || hasHolidays) && (
+                      <div className="flex items-center gap-0.5">
                         {dateLeaves.slice(0, 3).map((l, i) => {
                           const style = getLeaveColorStyles(l.leaveType);
                           return (
@@ -383,6 +450,7 @@ export default function LeaveCalendar({ requests, employees }: LeaveCalendarProp
                             />
                           );
                         })}
+                        {hasHolidays && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" title={dateHolidays.map((holiday) => holiday.name).join(', ')} />}
                         {dateLeaves.length > 3 && (
                           <span className="w-1.5 h-1.5 bg-neutral-600 rounded-full flex items-center justify-center text-[5px] text-white">
                             +
@@ -413,6 +481,11 @@ export default function LeaveCalendar({ requests, employees }: LeaveCalendarProp
                         + {dateLeaves.length - 2} more...
                       </div>
                     )}
+                    {dateHolidays.slice(0, 1).map((holiday) => (
+                      <div key={`${holiday.id}-${holiday.holidayDate}`} className="truncate rounded border border-amber-200 bg-amber-50 px-1 py-0.5 text-left text-[8px] font-semibold text-amber-800" title={`${holiday.name} · ${holiday.group?.name || 'Public Holiday'}`}>
+                        {holiday.name}
+                      </div>
+                    ))}
                   </div>
 
                   {/* Small visual line for mobile if there's any leave */}
@@ -458,6 +531,36 @@ export default function LeaveCalendar({ requests, employees }: LeaveCalendarProp
                 <span className="text-[8px] text-on-surface-variant">Absent staff</span>
               </div>
             </div>
+
+            <div className="grid grid-cols-2 gap-2 text-center text-xs">
+              <div className="bg-white border border-neutral-border/40 p-2 rounded flex flex-col justify-center">
+                <span className="text-[9px] uppercase font-bold text-on-surface-variant tracking-wider">Rest Day</span>
+                <span className="text-base font-bold text-on-surface font-mono mt-0.5">{shiftPlanningCoverage.restCount}</span>
+                <span className="text-[8px] text-on-surface-variant">scheduled rest</span>
+              </div>
+              <div className="bg-white border border-neutral-border/40 p-2 rounded flex flex-col justify-center">
+                <span className="text-[9px] uppercase font-bold text-on-surface-variant tracking-wider">Public Holidays</span>
+                <span className="text-base font-bold text-amber-700 font-mono mt-0.5">{selectedDateHolidays.length}</span>
+                <span className="text-[8px] text-on-surface-variant">enabled records</span>
+              </div>
+            </div>
+
+            {selectedDateHolidays.length > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <h3 className="text-[10px] font-extrabold uppercase tracking-wider text-amber-900">Upcoming Public Holidays</h3>
+                <div className="mt-2 space-y-2">
+                  {selectedDateHolidays.map((holiday) => (
+                    <div key={`${holiday.id}-${holiday.holidayDate}`} className="flex items-start justify-between gap-3 text-[10px]">
+                      <div>
+                        <p className="font-bold text-amber-950">{holiday.name}</p>
+                        <p className="text-amber-800">{holiday.group?.name || 'Public Holiday Group'} · {holiday.group?.category || 'national'}</p>
+                      </div>
+                      <span className="shrink-0 font-mono font-bold text-amber-900">{formatToDDMMMYYYY(holiday.holidayDate)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Coverage Warnings */}
             {shiftPlanningCoverage.warnings.length > 0 && (
@@ -530,6 +633,12 @@ export default function LeaveCalendar({ requests, employees }: LeaveCalendarProp
                               {leave.startDate.substring(5)} to {leave.endDate.substring(5)}
                             </span>
                           </div>
+                          <div>
+                            <span className="text-[8px] text-on-surface-variant uppercase block font-semibold">Work / Rest</span>
+                            <span className={`font-bold ${getScheduleForEmployee(leave.employeeId, selectedDate).day?.dayType === 'rest' ? 'text-on-surface-variant' : 'text-green-700'}`}>
+                              {getScheduleForEmployee(leave.employeeId, selectedDate).day?.dayType === 'rest' ? 'Rest day' : `${getScheduleForEmployee(leave.employeeId, selectedDate).group?.name || 'Work schedule'} · ${getScheduleForEmployee(leave.employeeId, selectedDate).day?.actualHours?.toFixed(2) || '0.00'} h`}
+                            </span>
+                          </div>
                         </div>
 
                         {/* Leave Reason note */}
@@ -573,6 +682,21 @@ export default function LeaveCalendar({ requests, employees }: LeaveCalendarProp
                 </div>
               )}
             </div>
+
+            {selectedDateRestEmployees.length > 0 && (
+              <div className="mt-4 rounded-lg border border-neutral-border/60 bg-white p-3">
+                <h3 className="text-[10px] font-extrabold uppercase tracking-wider text-on-surface-variant">Employees on Rest Day ({selectedDateRestEmployees.length})</h3>
+                <div className="mt-2 space-y-1.5">
+                  {selectedDateRestEmployees.slice(0, 8).map((employee) => (
+                    <div key={employee.id} className="flex items-center justify-between gap-2 text-[10px]">
+                      <span className="font-semibold text-on-surface">{employee.name}</span>
+                      <span className="text-on-surface-variant">{employee.department}</span>
+                    </div>
+                  ))}
+                  {selectedDateRestEmployees.length > 8 && <p className="text-[9px] text-on-surface-variant">+{selectedDateRestEmployees.length - 8} more employees</p>}
+                </div>
+              </div>
+            )}
 
           </div>
 

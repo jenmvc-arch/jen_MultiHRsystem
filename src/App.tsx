@@ -11,7 +11,6 @@ import {
   X, 
   Settings, 
   HelpCircle, 
-  CheckCircle, 
   AlertCircle,
   Clock,
   Briefcase,
@@ -59,6 +58,7 @@ import ReportsView from './components/ReportsView';
 import EntitiesView from './components/EntitiesView';
 import TaxSettingsView from './components/TaxSettingsView';
 import LeaveManagementView from './components/LeaveManagementView';
+import WorkShiftGroupsView from './components/WorkShiftGroupsView';
 import FormsDirectoryView from './components/FormsDirectoryView';
 import HireOnboardingView from './components/HireOnboardingView';
 import DepartmentRoleView from './components/DepartmentRoleView';
@@ -68,6 +68,8 @@ import AppAccessSettingsPreview from './components/AppAccessSettingsPreview';
 import LoginView from './components/LoginView';
 import JobApplicationForm from './components/JobApplicationForm';
 import OnboardingForm from './components/OnboardingForm';
+import CandidateShareView from './components/CandidateShareView';
+import { useFeedback } from './components/GlobalFeedbackSystem';
 import { EntityContextProvider } from './context/EntityContext';
 
 import { googleSheetsClient, isGoogleConfigured, SheetsDataPayload } from './lib/googleSheetsClient';
@@ -148,6 +150,8 @@ class ErrorBoundary extends (React.Component as any) {
 }
 
 export default function App() {
+  const { showToast } = useFeedback();
+
   useState(() => {
     seedSocsoConfigurationsAndBrackets();
     return true;
@@ -1148,7 +1152,14 @@ export default function App() {
             entityId: resolvedEntityId,
             stage: c.stage as any,
             progress: Number(c.progress || 0),
-            dateJoined: c.dateJoined || ''
+            dateJoined: c.dateJoined || '',
+            pipelineStatus: c.pipelineStatus || undefined,
+            pipelineUpdatedAt: c.pipelineUpdatedAt || undefined,
+            receivedAt: c.receivedAt || undefined,
+            appliedAt: c.appliedAt || undefined,
+            kivNotes: c.kivNotes || undefined,
+            kivFollowUpDate: c.kivFollowUpDate || undefined,
+            rejectionReason: c.rejectionReason || undefined
           };
         });
         setCandidates(parsedCandidates.filter(cand => cand.entityId === 'ENT-92'));
@@ -1404,34 +1415,28 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Toast System
-  const [toast, setToast] = useState<{ show: boolean; title: string; message: string; type: 'success' | 'info' }>({
-    show: false,
-    title: '',
-    message: '',
-    type: 'success'
-  });
-
   // New Request Modal state
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [requestType, setRequestType] = useState('Annual Leave');
   const [requestDesc, setRequestDesc] = useState('');
   const [requestDate, setRequestDate] = useState(() => getGmt8DateString());
 
-  // Trigger toast helper
-  const triggerNotification = (title: string, message: string, type: 'success' | 'info' = 'success') => {
-    setToast({ show: true, title, message, type });
+  // Shared feedback adapter kept compatible with existing module callbacks.
+  const triggerNotification = (
+    title: string,
+    message: string,
+    type: 'success' | 'info' | 'warning' | 'error' = 'success'
+  ) => {
+    const context = `${title} ${message}`;
+    const resolvedType = type === 'info' && /\bwarning\b|limit reached|please specify|please provide/i.test(context)
+      ? 'warning'
+      : type === 'success' && /error|failed|failure|denied|blocked|could not|unable|invalid|mismatch|not saved/i.test(context)
+      ? 'error'
+      : type === 'info' && /error|failed|failure|denied|blocked|could not|unable|invalid|mismatch|not saved/i.test(context)
+      ? 'error'
+      : type;
+    showToast({ title, message, type: resolvedType });
   };
-
-  // Dismiss toast after timeout
-  useEffect(() => {
-    if (toast.show) {
-      const timer = setTimeout(() => {
-        setToast(prev => ({ ...prev, show: false }));
-      }, 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [toast.show]);
 
   const getScriptUrlForEntity = (entityNameOrId?: string): string | undefined => {
     if (!entityNameOrId) return undefined;
@@ -1450,10 +1455,15 @@ export default function App() {
   };
 
   const handleAddCandidate = async (candidateInput: Candidate) => {
+    const intakeTimestamp = getGmt8Timestamp();
     const newCandidate: Candidate = {
       ...candidateInput,
       email: candidateInput.email.trim().toLowerCase(),
-      entityId: candidateInput.entityId || activeEntityId || 'ENT-92'
+      entityId: candidateInput.entityId || activeEntityId || 'ENT-92',
+      pipelineStatus: candidateInput.pipelineStatus || 'applied',
+      pipelineUpdatedAt: candidateInput.pipelineUpdatedAt || intakeTimestamp,
+      receivedAt: candidateInput.receivedAt || intakeTimestamp,
+      appliedAt: candidateInput.appliedAt || intakeTimestamp
     };
 
     if (candidates.some(candidate => candidate.email.toLowerCase() === newCandidate.email)) {
@@ -1480,7 +1490,14 @@ export default function App() {
           entityName: newCandidate.entityId === 'ENT-92' ? 'Red Point Sdn Bhd' : (newCandidate.entityId === 'ENT-86' ? 'YSYD Sdn Bhd' : newCandidate.entityId),
           stage: newCandidate.stage,
           progress: newCandidate.progress,
-          dateJoined: newCandidate.dateJoined
+          dateJoined: newCandidate.dateJoined,
+          pipelineStatus: newCandidate.pipelineStatus,
+          pipelineUpdatedAt: newCandidate.pipelineUpdatedAt,
+          receivedAt: newCandidate.receivedAt,
+          appliedAt: newCandidate.appliedAt,
+          kivNotes: newCandidate.kivNotes,
+          kivFollowUpDate: newCandidate.kivFollowUpDate,
+          rejectionReason: newCandidate.rejectionReason
         }, scriptUrl);
       } catch (err) {
         console.error('[Google Sheets Candidate Insert] Failed:', err);
@@ -1516,6 +1533,22 @@ export default function App() {
     }
 
     setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+  };
+
+  const handleDeleteCandidate = async (id: string) => {
+    const targetCandidate = candidates.find(candidate => candidate.id === id);
+    if (!targetCandidate) {
+      throw new Error('The candidate record could not be found.');
+    }
+
+    if (isSupabaseConfigured) {
+      await supabaseClient.delete('candidates', id, 'id');
+    } else if (isGoogleConfigured) {
+      const scriptUrl = getScriptUrlForEntity(targetCandidate.entityId);
+      await googleSheetsClient.delete('candidates', id, 'id', scriptUrl);
+    }
+
+    setCandidates(prev => prev.filter(candidate => candidate.id !== id));
   };
 
   const handleAddEmployee = async (employeeInput: Employee) => {
@@ -2169,6 +2202,13 @@ export default function App() {
 
   const isJobApplyMode = window.location.search.includes('form=job-apply');
   const isOnboardingMode = window.location.search.includes('form=onboarding');
+  const isCandidateShareMode = window.location.search.includes('candidateShare=');
+
+  if (isCandidateShareMode) {
+    return (
+      <CandidateShareView candidates={candidates} />
+    );
+  }
 
   if (isJobApplyMode) {
     return (
@@ -2177,6 +2217,7 @@ export default function App() {
           <JobApplicationForm 
             onShowNotification={triggerNotification}
             onApplicationSubmit={handleAddCandidate}
+            showInternalEvaluation={false}
           />
         </div>
       </div>
@@ -2412,29 +2453,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Toast Notification HUD */}
-      {toast.show && (
-        <div className="fixed top-4 right-4 z-50 max-w-sm bg-white border border-neutral-border shadow-2xl rounded-lg p-4 flex items-start gap-3 animate-in slide-in-from-top-4 duration-300">
-          <div className="shrink-0 mt-0.5">
-            {toast.type === 'success' ? (
-              <CheckCircle className="w-5 h-5 text-green-600" />
-            ) : (
-              <AlertCircle className="w-5 h-5 text-primary" />
-            )}
-          </div>
-          <div className="flex-1 text-left text-xs">
-            <h4 className="font-bold text-on-background leading-tight">{toast.title}</h4>
-            <p className="text-on-surface-variant mt-0.5">{toast.message}</p>
-          </div>
-          <button 
-            onClick={() => setToast(prev => ({ ...prev, show: false }))}
-            className="text-outline hover:text-on-surface transition-colors cursor-pointer"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
-
       {/* Main Responsive Left Sidebar Navigation */}
       <Sidebar 
         currentTab={currentTab} 
@@ -2550,6 +2568,7 @@ export default function App() {
 	              onSavePayrollRecord={handleSavePayrollRecord2026}
 	              onShowNotification={triggerNotification}
 	              activeEntity={activeEntity}
+	              currentUserRole={currentUserRole}
 	            />
           )}
 
@@ -2595,6 +2614,7 @@ export default function App() {
               onShowNotification={triggerNotification}
               activeEntityId={activeEntityId}
               currentUserEmail={currentUserEmail}
+              currentUserRole={currentUserRole}
             />
           )}
 
@@ -2621,6 +2641,8 @@ export default function App() {
               employees={filteredEmployeesWithHistory}
               performances={filteredPerformances}
               onShowNotification={triggerNotification}
+              currentUserRole={currentUserRole}
+              activeEntityId={activeEntityId}
             />
           )}
 
@@ -2630,6 +2652,14 @@ export default function App() {
               onShowNotification={triggerNotification}
               activeEntityId={activeEntityId}
               onUpdateEmployee={handleUpdateEmployeeSalary}
+            />
+          )}
+
+          {currentTab === 'work-shift-groups' && (
+            <WorkShiftGroupsView
+              employees={filteredEmployees}
+              activeEntityId={activeEntityId}
+              onShowNotification={triggerNotification}
             />
           )}
 
@@ -2649,6 +2679,7 @@ export default function App() {
               employees={filteredEmployees}
               candidates={filteredCandidates}
               onAddCandidate={handleAddCandidate}
+              onDeleteCandidate={handleDeleteCandidate}
               onUpdateCandidate={handleUpdateCandidate}
               onUpdateEmployee={handleUpdateEmployeeSalary}
               currentUserName={currentUserName}

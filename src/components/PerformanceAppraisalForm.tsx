@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Employee, EmployeePerformance, ReviewCycle } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
+import { useFeedback } from './GlobalFeedbackSystem';
 import {
   AppraisalCompetencyRating,
   AppraisalKpiCategory,
@@ -142,6 +143,7 @@ export default function PerformanceAppraisalForm({
   onSavePerformance,
   onShowNotification,
 }: PerformanceAppraisalFormProps) {
+  const { confirmAction } = useFeedback();
   const [draft, setDraft] = useState<PerformanceAppraisalDraft>(() =>
     loadAppraisalDraft(employee, reviewCycle, performance, currentUserName || '')
   );
@@ -273,8 +275,14 @@ export default function PerformanceAppraisalForm({
     }));
   };
 
-  const removeKpiCategory = (categoryId: string) => {
-    if (typeof window !== 'undefined' && !window.confirm('Remove this KPI category and all rows?')) return;
+  const removeKpiCategory = async (categoryId: string) => {
+    const confirmed = await confirmAction({
+      title: 'Remove KPI Category',
+      message: 'Remove this KPI category and all rows? This change will be reflected in the appraisal draft.',
+      type: 'danger',
+      confirmLabel: 'Remove Category',
+    });
+    if (!confirmed) return;
     setDraft((prev) => ({
       ...prev,
       kpiCategories: prev.kpiCategories.filter((category) => category.id !== categoryId),

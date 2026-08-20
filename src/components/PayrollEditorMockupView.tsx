@@ -749,32 +749,28 @@ export default function PayrollEditorMockupView({
     if (!editingDraft) return;
     const recordToSave = buildPayrollRecord(editingDraft);
 
-    if (isSeparatePayoutMode && !onSavePayrollRecord) {
-      onShowNotification('Save Failed', 'Payroll save handler is not available for separate payout generation.');
+    if (!onSavePayrollRecord) {
+      onShowNotification('Save Failed', 'Payroll save handler is not available.');
       return;
     }
 
-    if (isSeparatePayoutMode && onSavePayrollRecord) {
-      try {
-        await onSavePayrollRecord(recordToSave);
-      } catch (error: any) {
-        onShowNotification('Save Failed', error?.message || 'Separate payout record could not be saved.');
-        return;
-      }
+    try {
+      await onSavePayrollRecord(recordToSave);
+    } catch (error: any) {
+      onShowNotification('Save Failed', error?.message || 'Payroll record could not be saved.');
+      return;
     }
 
     setDemoDrafts(previous => ({ ...previous, [draftKey]: editingDraft }));
     setIsEditing(false);
     setEditingDraft(null);
     onShowNotification(
-      `${recordToSave.documentType || documentProfile.documentType} Saved`,
+      `${recordToSave.documentType || documentProfile.documentType} Saved and Processed`,
       isSeparatePayoutMode
-        ? `${recordToSave.payoutTitle || 'Separate payout'} was saved and generated for preview.`
-        : `Your ${documentProfile.documentType.toLowerCase()} changes have been saved in the payroll editor session.`
+        ? `${recordToSave.payoutTitle || 'Separate payout'} was saved to Payroll File.`
+        : `Your ${documentProfile.documentType.toLowerCase()} was saved to Payroll File.`
     );
-    if (isSeparatePayoutMode) {
-      onGeneratedPayrollRecord?.(recordToSave);
-    }
+    onGeneratedPayrollRecord?.(recordToSave);
   };
 
   const cancelEditing = () => {
@@ -1142,7 +1138,7 @@ export default function PayrollEditorMockupView({
             onClick={saveDemo}
             className="inline-flex items-center justify-center gap-2 rounded bg-green-700 px-4 py-2 font-bold text-white hover:bg-green-800"
           >
-            <Save className="w-4 h-4" /> {isSeparatePayoutMode ? 'Save and Generate' : 'Save'}
+            <Save className="w-4 h-4" /> {isSeparatePayoutMode ? 'Save and Process' : 'Save and Process'}
           </button>
         </div>
       )}

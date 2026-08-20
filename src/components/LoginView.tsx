@@ -22,12 +22,14 @@ import {
   isRoleAllowedForLoginPortal,
   LoginPortal,
 } from '../lib/userRoles';
+import { useFeedback } from './GlobalFeedbackSystem';
 
 interface LoginViewProps {
   onLoginSuccess: (user: UserAccount) => void;
 }
 
 export default function LoginView({ onLoginSuccess }: LoginViewProps) {
+  const { showInfoModal } = useFeedback();
   const [loginPortal, setLoginPortal] = useState<LoginPortal>('admin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -36,6 +38,9 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  const isLocalPreview = typeof window !== 'undefined'
+    && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
   const isEmployeeSigner = (user: Pick<UserAccount, 'role'>) => {
     return isEmployeeSignerRole(user.role);
@@ -223,8 +228,18 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         }
         // A missing local API server is allowed to use the existing offline
         // demo accounts so the localhost preview remains usable.
+        if (!isLocalPreview) {
+          setIsLoading(false);
+          setError(securePayload.error || 'Secure admin login is unavailable. Please contact the system administrator.');
+          return;
+        }
       } catch (secureError) {
         console.warn('[Admin Auth] Secure session endpoint unavailable:', secureError);
+        if (!isLocalPreview) {
+          setIsLoading(false);
+          setError('Secure admin login is unavailable. Please try again or contact the system administrator.');
+          return;
+        }
       }
     }
 
@@ -500,11 +515,13 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                 href="#forgot" 
                 onClick={(e) => {
                   e.preventDefault();
-                  alert(
-                    loginPortal === 'admin'
+                  void showInfoModal({
+                    title: loginPortal === 'admin' ? 'Admin Account Access' : 'Employee Account Access',
+                    message: loginPortal === 'admin'
                       ? 'Admin accounts are provisioned by HR.\n\nDemo Admin Username: hr.redpoint\nPassword: admin123#'
-                      : 'Employee accounts use the company-issued username and temporary password.\n\nIf you do not have your credentials, please contact HR.'
-                  );
+                      : 'Employee accounts use the company-issued username and temporary password.\n\nIf you do not have your credentials, please contact HR.',
+                    acknowledgeLabel: 'Return to Sign In',
+                  });
                 }}
                 className="text-sm text-[#A32626] hover:text-[#8F1F1F] font-semibold transition-colors"
               >

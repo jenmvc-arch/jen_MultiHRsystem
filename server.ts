@@ -11,6 +11,7 @@ import {
   handleEmployeeAccountEvents,
   handleEmployeeAccountList,
 } from './api/_lib/employeeAccountHandlers';
+import { handleExport } from './api/_lib/exportHandlers';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -35,6 +36,7 @@ app.post('/api/admin/employee-accounts/reset-password', (req, res) => (
 app.post('/api/admin/employee-accounts/share', (req, res) => (
   handleEmployeeAccountAction(req, res, 'share')
 ));
+app.post('/api/admin/exports', handleExport);
 
 // API Endpoint to generate PDF from the payslip client view
 app.get('/api/generate-pdf', async (req, res) => {

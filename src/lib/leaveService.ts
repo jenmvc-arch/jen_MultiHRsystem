@@ -5,7 +5,12 @@ import {
   DEFAULT_LEAVE_CONDITIONING_POLICIES,
   DEFAULT_LEAVE_CONFIGS,
   DEFAULT_LEAVE_GROUPS,
+  DEFAULT_PUBLIC_HOLIDAY_GROUPS,
+  DEFAULT_PUBLIC_HOLIDAYS,
+  DEFAULT_WORK_SHIFT_GROUP_DAYS,
+  DEFAULT_WORK_SHIFT_GROUPS,
   EmployeeLeaveGroupAssignment,
+  EmployeeWorkShiftAssignment,
   LeaveBalanceLedgerEntry,
   LeaveConfig,
   LeaveConditioningPolicy,
@@ -14,6 +19,12 @@ import {
   LeavePayrollDeduction,
   LeaveRequest,
   LeaveWorkspaceData,
+  PublicHoliday,
+  PublicHolidayGroup,
+  WorkShiftGroup,
+  WorkShiftGroupDay,
+  calculateWorkShiftWeeklyHours,
+  normalizeWorkShiftGroupDays,
   getGroupItems,
   OffInLieuEntry,
   OffInLieuRequest,
@@ -67,6 +78,10 @@ function hasLegacyLeaveData(entityId: string): boolean {
     `leave_carry_over_settings_${entityId}`,
     `leave_groups_${entityId}`,
     `off_in_lieu_requests_${entityId}`,
+    `work_shift_groups_${entityId}`,
+    `employee_work_shift_assignments_${entityId}`,
+    `public_holiday_groups_${entityId}`,
+    `public_holidays_${entityId}`,
   ].some((key) => Boolean(localStorage.getItem(key)));
 }
 
@@ -81,6 +96,15 @@ function normalizeConfig(value: LeaveConfig, index: number): LeaveConfig {
     policyId: value.policyId || fallback.policyId,
     carryOverId: value.carryOverId || fallback.carryOverId,
     canCarryOver: value.canCarryOver !== false,
+  };
+}
+
+function normalizeLeaveGroup(group: LeaveGroup): LeaveGroup {
+  return {
+    ...group,
+    publicHolidayGroupIds: group.publicHolidayGroupIds?.length
+      ? [...new Set(group.publicHolidayGroupIds)].slice(0, 2)
+      : ['public-holiday-malaysia-national'],
   };
 }
 
@@ -100,6 +124,26 @@ function loadLocalWorkspace(entityId: string): LeaveWorkspaceData {
   const groups = readJson<LeaveGroup[]>(
     `leave_groups_${entityId}`,
     DEFAULT_LEAVE_GROUPS,
+  ).map(normalizeLeaveGroup);
+  const workShiftGroups = readJson<WorkShiftGroup[]>(
+    `work_shift_groups_${entityId}`,
+    DEFAULT_WORK_SHIFT_GROUPS,
+  );
+  const workShiftGroupDays = workShiftGroups.flatMap((group) => normalizeWorkShiftGroupDays(
+    readJson<WorkShiftGroupDay[]>(`work_shift_group_days_${entityId}`, DEFAULT_WORK_SHIFT_GROUP_DAYS),
+    group.id,
+  ));
+  const employeeWorkShiftAssignments = readJson<EmployeeWorkShiftAssignment[]>(
+    `employee_work_shift_assignments_${entityId}`,
+    [],
+  );
+  const publicHolidayGroups = readJson<PublicHolidayGroup[]>(
+    `public_holiday_groups_${entityId}`,
+    DEFAULT_PUBLIC_HOLIDAY_GROUPS,
+  );
+  const publicHolidays = readJson<PublicHoliday[]>(
+    `public_holidays_${entityId}`,
+    DEFAULT_PUBLIC_HOLIDAYS,
   );
   const requests = readJson<LeaveRequest[]>(`leave_requests_${entityId}`, []);
   const offInLieuRequests = readJson<OffInLieuRequest[]>(
@@ -114,13 +158,19 @@ function loadLocalWorkspace(entityId: string): LeaveWorkspaceData {
     `leave_payroll_deductions_${entityId}`,
     [],
   );
-  const assignments = groups.flatMap((group) => group.assignedEmployeeIds.map((employeeId) => ({
-    id: `${group.id}-${employeeId}`,
-    entityId,
-    employeeId,
-    groupId: group.id,
-    active: group.enabled,
-  })));
+  const savedAssignments = readJson<EmployeeLeaveGroupAssignment[]>(
+    `leave_group_assignments_${entityId}`,
+    [],
+  );
+  const assignments = savedAssignments.length > 0
+    ? savedAssignments.map((assignment) => ({ ...assignment, entityId }))
+    : groups.flatMap((group) => group.assignedEmployeeIds.map((employeeId) => ({
+      id: `${group.id}-${employeeId}`,
+      entityId,
+      employeeId,
+      groupId: group.id,
+      active: group.enabled,
+    })));
 
   return {
     configs,
@@ -128,6 +178,15 @@ function loadLocalWorkspace(entityId: string): LeaveWorkspaceData {
     carryOverSettings: carryOverSettings.length > 0 ? carryOverSettings : DEFAULT_CARRY_OVER_SETTINGS,
     groups: groups.length > 0 ? groups : DEFAULT_LEAVE_GROUPS,
     assignments,
+    workShiftGroups: workShiftGroups.map((group) => ({
+      ...group,
+      weeklyHours: calculateWorkShiftWeeklyHours(workShiftGroupDays, group.id),
+      weeklyHoursWarning: calculateWorkShiftWeeklyHours(workShiftGroupDays, group.id) > 45,
+    })),
+    workShiftGroupDays,
+    employeeWorkShiftAssignments,
+    publicHolidayGroups,
+    publicHolidays,
     requests: requests.map((request) => ({
       ...request,
       entityId: request.entityId || entityId,
@@ -145,6 +204,12 @@ function persistLocalWorkspace(entityId: string, workspace: LeaveWorkspaceData) 
   writeJson(`leave_conditioning_policies_${entityId}`, workspace.policies);
   writeJson(`leave_carry_over_settings_${entityId}`, workspace.carryOverSettings);
   writeJson(`leave_groups_${entityId}`, workspace.groups);
+  writeJson(`leave_group_assignments_${entityId}`, workspace.assignments);
+  writeJson(`work_shift_groups_${entityId}`, workspace.workShiftGroups);
+  writeJson(`work_shift_group_days_${entityId}`, workspace.workShiftGroupDays);
+  writeJson(`employee_work_shift_assignments_${entityId}`, workspace.employeeWorkShiftAssignments);
+  writeJson(`public_holiday_groups_${entityId}`, workspace.publicHolidayGroups);
+  writeJson(`public_holidays_${entityId}`, workspace.publicHolidays);
   writeJson(`leave_requests_${entityId}`, workspace.requests);
   writeJson(`off_in_lieu_requests_${entityId}`, workspace.offInLieuRequests);
   writeJson(`leave_balance_ledger_${entityId}`, workspace.ledgerEntries);
@@ -154,7 +219,12 @@ function persistLocalWorkspace(entityId: string, workspace: LeaveWorkspaceData) 
 async function selectTable(table: string, entityId: string): Promise<any[]> {
   if (!employeeSupabase) return [];
   const result = await employeeSupabase.from(table).select('*').eq('entity_id', entityId);
-  if (result.error) throw result.error;
+  if (result.error) {
+    if (/relation .* does not exist|schema cache|could not find the table/i.test(result.error.message || '')) {
+      return [];
+    }
+    throw result.error;
+  }
   return (result.data || []).map(toCamel);
 }
 
@@ -188,9 +258,30 @@ function mapRowsToWorkspace(entityId: string, rows: Record<string, any[]>): Leav
       policyId: group.policyId || groupItems[0]?.policyId || policies[0]?.id,
       carryOverId: group.carryOverId || groupItems[0]?.carryOverId || carryOverSettings[0]?.id,
       leaveTypeIds: groupItems.filter((item) => item.enabled !== false).map((item) => item.leaveTypeId),
+      publicHolidayGroupIds: group.publicHolidayGroupIds?.length
+        ? [...new Set(group.publicHolidayGroupIds)].slice(0, 2)
+        : ['public-holiday-malaysia-national'],
       items: groupItems,
       assignedEmployeeIds: groupAssignments,
       enabled: group.enabled !== false,
+    };
+  });
+  const workShiftGroups: WorkShiftGroup[] = rows.workGroups.length > 0
+    ? rows.workGroups.map((group) => ({ ...group }))
+    : DEFAULT_WORK_SHIFT_GROUPS;
+  const workShiftGroupDays = workShiftGroups.flatMap((group) => normalizeWorkShiftGroupDays(
+    rows.workDays.map((day) => ({
+      ...day,
+      actualHours: Number(day.actualHours ?? 0),
+    })),
+    group.id,
+  ));
+  const normalizedWorkShiftGroups = workShiftGroups.map((group) => {
+    const weeklyHours = calculateWorkShiftWeeklyHours(workShiftGroupDays, group.id);
+    return {
+      ...group,
+      weeklyHours,
+      weeklyHoursWarning: weeklyHours > 45,
     };
   });
 
@@ -200,6 +291,18 @@ function mapRowsToWorkspace(entityId: string, rows: Record<string, any[]>): Leav
     carryOverSettings: carryOverSettings.length > 0 ? carryOverSettings : DEFAULT_CARRY_OVER_SETTINGS,
     groups: groups.length > 0 ? groups : DEFAULT_LEAVE_GROUPS,
     assignments,
+    workShiftGroups: normalizedWorkShiftGroups,
+    workShiftGroupDays,
+    employeeWorkShiftAssignments: rows.workAssignments,
+    publicHolidayGroups: rows.holidayGroups.length > 0
+      ? [
+        ...DEFAULT_PUBLIC_HOLIDAY_GROUPS.filter((defaultGroup) => !rows.holidayGroups.some((group) => group.id === defaultGroup.id)),
+        ...rows.holidayGroups,
+      ]
+      : DEFAULT_PUBLIC_HOLIDAY_GROUPS,
+    publicHolidays: rows.holidays.length > 0
+      ? [...DEFAULT_PUBLIC_HOLIDAYS.filter((defaultHoliday) => !rows.holidays.some((holiday) => holiday.id === defaultHoliday.id)), ...rows.holidays]
+      : DEFAULT_PUBLIC_HOLIDAYS,
     requests: rows.requests,
     offInLieuRequests: rows.offRequests.map((request) => ({
       ...request,
@@ -216,7 +319,7 @@ export async function loadLeaveWorkspace(entityId: string): Promise<LeaveWorkspa
   if (!entityId || !isEmployeeSupabaseConfigured || !employeeSupabase) return localFallback;
 
   try {
-    const [types, policies, carry, groups, items, assignments, requests, offRequests, offEntries, ledger, deductions] = await Promise.all([
+    const [types, policies, carry, groups, items, assignments, requests, offRequests, offEntries, ledger, deductions, workGroups, workDays, workAssignments, holidayGroups, holidays] = await Promise.all([
       selectTable('leave_types', entityId),
       selectTable('leave_condition_policies', entityId),
       selectTable('leave_carryover_settings', entityId),
@@ -228,6 +331,11 @@ export async function loadLeaveWorkspace(entityId: string): Promise<LeaveWorkspa
       selectTable('off_in_lieu_entries', entityId),
       selectTable('leave_balance_ledger', entityId),
       selectTable('leave_payroll_deductions', entityId),
+      selectTable('work_shift_groups', entityId),
+      selectTable('work_shift_group_days', entityId),
+      selectTable('employee_work_shift_assignments', entityId),
+      selectTable('public_holiday_groups', entityId),
+      selectTable('public_holidays', entityId),
     ]);
     const workspace = mapRowsToWorkspace(entityId, {
       types,
@@ -241,8 +349,14 @@ export async function loadLeaveWorkspace(entityId: string): Promise<LeaveWorkspa
       offEntries,
       ledger,
       deductions,
+      workGroups,
+      workDays,
+      workAssignments,
+      holidayGroups,
+      holidays,
     });
-    const hasRemoteData = types.length + policies.length + carry.length + groups.length + requests.length + offRequests.length > 0;
+    const hasRemoteData = types.length + policies.length + carry.length + groups.length + requests.length + offRequests.length + workGroups.length + holidayGroups.length > 0;
+    const needsScheduleOrHolidaySeed = workGroups.length === 0 || workDays.length === 0 || holidayGroups.length === 0 || holidays.length === 0;
     if (hasLegacyLeaveData(entityId) && typeof localStorage !== 'undefined' && localStorage.getItem(`leave_legacy_imported_${entityId}`) !== 'true') {
       const merged: LeaveWorkspaceData = {
         ...workspace,
@@ -271,6 +385,9 @@ export async function loadLeaveWorkspace(entityId: string): Promise<LeaveWorkspa
       await importLegacyLeaveData(entityId, localFallback);
       return localFallback;
     }
+    if (needsScheduleOrHolidaySeed) {
+      await persistLeaveWorkspace(entityId, workspace);
+    }
     persistLocalWorkspace(entityId, workspace);
     return workspace;
   } catch (error) {
@@ -282,7 +399,13 @@ export async function loadLeaveWorkspace(entityId: string): Promise<LeaveWorkspa
 async function upsertRows(table: string, rows: RecordValue[]) {
   if (!employeeSupabase || rows.length === 0) return;
   const result = await employeeSupabase.from(table).upsert(rows.map(toSnake));
-  if (result.error) throw result.error;
+  if (result.error) {
+    if (/relation .* does not exist|schema cache|could not find the table/i.test(result.error.message || '')) {
+      console.warn(`[Leave Service] Optional table ${table} is not migrated yet; local persistence remains active.`);
+      return;
+    }
+    throw result.error;
+  }
 }
 
 export async function persistLeaveWorkspace(entityId: string, workspace: LeaveWorkspaceData): Promise<void> {
@@ -296,15 +419,20 @@ export async function persistLeaveWorkspace(entityId: string, workspace: LeaveWo
       groupId: group.id,
     }))
   ));
-  const assignments = workspace.groups.flatMap((group) => (
-    group.assignedEmployeeIds.map((employeeId) => ({
+  const assignments = workspace.assignments.length > 0
+    ? workspace.assignments.map((assignment) => ({
+      ...assignment,
+      entityId,
+    }))
+    : workspace.groups.flatMap((group) => (
+      group.assignedEmployeeIds.map((employeeId) => ({
       id: `${group.id}-${employeeId}`,
       entityId,
       employeeId,
       groupId: group.id,
-      active: group.enabled,
-    }))
-  ));
+      active: true,
+      }))
+    ));
 
   await Promise.all([
     upsertRows('leave_types', workspace.configs.map((config) => ({
@@ -330,6 +458,7 @@ export async function persistLeaveWorkspace(entityId: string, workspace: LeaveWo
       description: group.description,
       policyId: group.policyId,
       carryOverId: group.carryOverId,
+      publicHolidayGroupIds: group.publicHolidayGroupIds || ['public-holiday-malaysia-national'],
       enabled: group.enabled,
     }))),
     upsertRows('leave_group_items', groupItems),
@@ -343,6 +472,11 @@ export async function persistLeaveWorkspace(entityId: string, workspace: LeaveWo
     })))),
     upsertRows('leave_balance_ledger', workspace.ledgerEntries.map((entry) => ({ ...entry, entityId }))),
     upsertRows('leave_payroll_deductions', workspace.payrollDeductions.map((deduction) => ({ ...deduction, entityId }))),
+    upsertRows('work_shift_groups', workspace.workShiftGroups.map((group) => ({ ...group, entityId }))),
+    upsertRows('work_shift_group_days', workspace.workShiftGroupDays.map((day) => ({ ...day, entityId }))),
+    upsertRows('employee_work_shift_assignments', workspace.employeeWorkShiftAssignments.map((assignment) => ({ ...assignment, entityId }))),
+    upsertRows('public_holiday_groups', workspace.publicHolidayGroups.map((group) => ({ ...group, entityId }))),
+    upsertRows('public_holidays', workspace.publicHolidays.map((holiday) => ({ ...holiday, entityId }))),
   ]);
 }
 

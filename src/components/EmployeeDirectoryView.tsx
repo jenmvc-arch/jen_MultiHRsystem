@@ -67,7 +67,9 @@ import {
   EmployeeAccountSummary,
 } from '../lib/employeeAccountTypes';
 import { canManageAppAccess } from '../lib/userRoles';
+import ExportButton from './ExportButton';
 import EmployeeAvatar from './EmployeeAvatar';
+import { useFeedback } from './GlobalFeedbackSystem';
 import { FilePond, registerPlugin } from 'react-filepond';
 import 'filepond/dist/filepond.min.css';
 import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
@@ -197,6 +199,7 @@ interface EmployeeDirectoryViewProps {
   onShowNotification: (title: string, message: string, type?: 'success' | 'info') => void;
   activeEntityId?: string;
   currentUserEmail?: string | null;
+  currentUserRole?: string | null;
 }
 
 export default function EmployeeDirectoryView({
@@ -207,8 +210,10 @@ export default function EmployeeDirectoryView({
   onUpdateEmployee,
   onShowNotification,
   activeEntityId,
-  currentUserEmail
+  currentUserEmail,
+  currentUserRole
 }: EmployeeDirectoryViewProps) {
+  const { confirmAction } = useFeedback();
   const activeEmployees = getCurrentActiveEmployees(employees);
   const [searchQuery, setSearchQuery] = useState('');
   const currentMonth = new Date().getMonth() + 1;
@@ -1401,19 +1406,25 @@ export default function EmployeeDirectoryView({
    };
 
   const handleDelete = async (id: string, name: string) => {
-    if (window.confirm(`Are you sure you want to terminate/remove ${name} from active payroll directory?`)) {
-      setSavingAction(`delete:${id}`);
-      try {
-        await onDeleteEmployee(id);
-        onShowNotification('Employee Deleted', `${name} removed successfully.`);
-        if (selectedEmployeeId === id) {
-          setIsDetailOpen(false);
-        }
-      } catch (error) {
-        console.error('[Employee Delete] Failed:', error);
-      } finally {
-        setSavingAction(null);
+    const confirmed = await confirmAction({
+      title: 'Remove Employee',
+      message: `Are you sure you want to terminate/remove ${name} from the active payroll directory? This action will update their employment record.`,
+      type: 'danger',
+      confirmLabel: 'Remove Employee',
+    });
+    if (!confirmed) return;
+
+    setSavingAction(`delete:${id}`);
+    try {
+      await onDeleteEmployee(id);
+      onShowNotification('Employee Deleted', `${name} removed successfully.`);
+      if (selectedEmployeeId === id) {
+        setIsDetailOpen(false);
       }
+    } catch (error) {
+      console.error('[Employee Delete] Failed:', error);
+    } finally {
+      setSavingAction(null);
     }
   };
 
@@ -2760,7 +2771,36 @@ export default function EmployeeDirectoryView({
               </div>
 
               <div className="text-xs font-semibold text-on-surface-variant shrink-0">
-                Directory Registry count: <span className="text-primary font-bold">{filteredEmployees.length} personnel found</span>
+                <div className="flex items-center gap-3">
+                  <ExportButton
+                    module="employees"
+                    title="Employee master list"
+                    currentUserRole={currentUserRole}
+                    onShowNotification={onShowNotification}
+                    filters={{
+                      entityId: activeEntityId,
+                      department: deptFilter,
+                      status: statusFilter,
+                      search: searchQuery,
+                    }}
+                    columns={[
+                      { key: 'id', label: 'Employee ID' },
+                      { key: 'name', label: 'Employee Name' },
+                      { key: 'email', label: 'Email' },
+                      { key: 'department', label: 'Department' },
+                      { key: 'designation', label: 'Position' },
+                      { key: 'status', label: 'Employment Status' },
+                      { key: 'employment_type', label: 'Employment Type' },
+                      { key: 'date_of_joined', label: 'Join Date', type: 'date' },
+                      { key: 'contact_number', label: 'Contact Number' },
+                      { key: 'nric_passport', label: 'NRIC / Passport', sensitive: true },
+                      { key: 'basic_salary', label: 'Basic Salary', sensitive: true, type: 'currency' },
+                      { key: 'bank_name', label: 'Bank Name', sensitive: true },
+                      { key: 'account_no', label: 'Bank Account', sensitive: true },
+                    ]}
+                  />
+                  <span>Directory Registry count: <span className="text-primary font-bold">{filteredEmployees.length} personnel found</span></span>
+                </div>
               </div>
             </div>
 
