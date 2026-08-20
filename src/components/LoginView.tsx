@@ -33,6 +33,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [loginPortal, setLoginPortal] = useState<LoginPortal>('admin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [employeeOtp, setEmployeeOtp] = useState('');
+  const [otpRequested, setOtpRequested] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +88,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     setLoginPortal(portal);
     setError(null);
     setAuthNotice(null);
+    setOtpRequested(false);
+    setEmployeeOtp('');
   };
 
   useEffect(() => {
@@ -161,19 +165,19 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         return;
       }
 
-      const { error: otpError } = await employeeAuthClient.auth.signInWithOtp({
-        email: signerEmail,
-        options: {
-          shouldCreateUser: false,
-          emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
-        },
+      const response = await fetch('/api/employee-auth/otp/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: signerEmail, purpose: 'login', name: matchedUser.name }),
       });
+      const payload = await response.json().catch(() => ({}));
       setIsLoading(false);
-      if (otpError) {
-        setError(otpError.message || 'The secure employee sign-in link could not be sent.');
+      if (!response.ok) {
+        setError(payload.error || 'The verification code could not be sent.');
         return;
       }
-      setAuthNotice(`A secure sign-in link has been sent to ${signerEmail}.`);
+      setOtpRequested(true);
+      setAuthNotice(`A verification code has been sent to ${signerEmail}.`);
       return;
     }
 
@@ -190,12 +194,43 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     setAuthNotice(null);
 
     // Validate inputs
-    if (!email.trim() || !password) {
-      setError('Please fill in all fields.');
+    if (!email.trim() || (loginPortal === 'admin' && !password)) {
+      setError(loginPortal === 'admin' ? 'Please fill in all fields.' : 'Please enter your employee email.');
       return;
     }
 
     setIsLoading(true);
+
+    if (loginPortal === 'employee' && otpRequested) {
+      const response = await fetch('/api/employee-auth/otp/verify', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), otp: employeeOtp, purpose: 'login' }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setIsLoading(false);
+        setError(payload.error || 'The verification code is invalid.');
+        return;
+      }
+      const client = employeeSupabase || supabase;
+      if (client) await client.auth.signOut({ scope: 'local' });
+      const profileResponse = await fetch('/api/employee-auth/profile', {
+        credentials: 'include',
+      });
+      const profile = await profileResponse.json().catch(() => ({}));
+      setIsLoading(false);
+      onLoginSuccess({
+        email: profile.email || email.trim().toLowerCase(),
+        password: '',
+        name: profile.name || email.trim(),
+        role: 'Employee',
+        mustChangePassword: Boolean(profile.mustChangePassword),
+        profileLoadedFromServer: true,
+      });
+      return;
+    }
 
     if (loginPortal === 'admin') {
       try {
@@ -472,7 +507,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             </div>
 
             {/* Password Input Group */}
-            <div>
+            {loginPortal === 'admin' && <div>
               <label className="block text-sm font-semibold text-[#333333] mb-1.5">
                 Password
               </label>
@@ -497,7 +532,26 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
-            </div>
+            </div>}
+
+            {loginPortal === 'employee' && otpRequested && (
+              <div>
+                <label className="block text-sm font-semibold text-[#333333] mb-1.5">
+                  Verification Code
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  required
+                  maxLength={6}
+                  value={employeeOtp}
+                  onChange={(e) => setEmployeeOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="Enter 6-digit code"
+                  className="w-full h-12 px-4 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] placeholder-gray-400 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all"
+                />
+              </div>
+            )}
 
             {/* Remember Me & Forgot Password */}
             <div className="flex justify-between items-center mt-2">

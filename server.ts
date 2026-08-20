@@ -7,9 +7,14 @@ import {
   handleAdminSession,
   handleEmployeeAuthProfile,
   handleEmployeeAuthSetup,
+  handleEmployeeOtpRequest,
+  handleEmployeeOtpResend,
+  handleEmployeeOtpVerify,
   handleEmployeeAccountAction,
   handleEmployeeAccountEvents,
   handleEmployeeAccountList,
+  handleAdminEmailTest,
+  handleBusinessEmailNotification,
 } from './api/_lib/employeeAccountHandlers';
 import { handleExport } from './api/_lib/exportHandlers';
 
@@ -25,6 +30,9 @@ app.get('/api/auth/session', handleAdminSession);
 app.post('/api/auth/profile', handleAdminProfile);
 app.get('/api/employee-auth/profile', handleEmployeeAuthProfile);
 app.post('/api/employee-auth/complete-setup', handleEmployeeAuthSetup);
+app.post('/api/employee-auth/otp/request', handleEmployeeOtpRequest);
+app.post('/api/employee-auth/otp/resend', handleEmployeeOtpResend);
+app.post('/api/employee-auth/otp/verify', handleEmployeeOtpVerify);
 app.get('/api/admin/employee-accounts', handleEmployeeAccountList);
 app.get('/api/admin/employee-accounts/events', handleEmployeeAccountEvents);
 app.post('/api/admin/employee-accounts/provision', (req, res) => (
@@ -37,6 +45,8 @@ app.post('/api/admin/employee-accounts/share', (req, res) => (
   handleEmployeeAccountAction(req, res, 'share')
 ));
 app.post('/api/admin/exports', handleExport);
+app.post('/api/admin/email/test', handleAdminEmailTest);
+app.post('/api/admin/email/notification', handleBusinessEmailNotification);
 
 // API Endpoint to generate PDF from the payslip client view
 app.get('/api/generate-pdf', async (req, res) => {

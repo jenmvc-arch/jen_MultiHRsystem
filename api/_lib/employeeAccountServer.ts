@@ -15,6 +15,16 @@ import {
   EmployeeAccountSummary,
 } from '../../src/lib/employeeAccountTypes.js';
 import { isAdminPortalRole } from '../../src/lib/userRoles.js';
+import { sendEmailTemplate } from './email/emailService.js';
+import {
+  generateOtp,
+  hashOtp,
+  verifyOtpHash,
+  OTP_MAX_VERIFICATION_ATTEMPTS,
+  OTP_REQUEST_LIMIT_PER_HOUR,
+  OTP_RESEND_COOLDOWN_SECONDS,
+  OTP_TTL_SECONDS,
+} from './email/otpPolicy.js';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -64,6 +74,8 @@ export interface EmployeeAccountTarget {
 }
 
 const normalize = (value: unknown) => String(value || '').trim().toLowerCase();
+const EMPLOYEE_OTP_SESSION_COOKIE = 'redpoint_employee_otp_session';
+const EMPLOYEE_OTP_SESSION_TTL_SECONDS = 8 * 60 * 60;
 
 const isAccountSchemaMissing = (message: string) => (
   /employee_accounts|employee_account_events|schema cache|could not find the table/i.test(message)
@@ -103,6 +115,174 @@ export const createEmployeeAdminClient = (): SupabaseClient => {
   return createClient(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+};
+
+const otpError = (message: string, statusCode = 400) => (
+  Object.assign(new Error(message), { statusCode })
+);
+
+const setEmployeeOtpSessionCookie = (
+  res: any,
+  email: string,
+  authUserId: string
+) => {
+  const now = Math.floor(Date.now() / 1000);
+  const body = encode(JSON.stringify({
+    email,
+    authUserId,
+    expiresAt: now + EMPLOYEE_OTP_SESSION_TTL_SECONDS,
+  }));
+  res.setHeader(
+    'Set-Cookie',
+    `${EMPLOYEE_OTP_SESSION_COOKIE}=${encodeURIComponent(`${body}.${sign(body)}`)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${EMPLOYEE_OTP_SESSION_TTL_SECONDS}${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`
+  );
+};
+
+const getEmployeeOtpSession = (req: any) => {
+  const cookies = parseCookieHeader(req.headers?.cookie);
+  const raw = cookies[EMPLOYEE_OTP_SESSION_COOKIE];
+  if (!raw) return null;
+  const [body, signature] = raw.split('.');
+  if (!body || !signature) return null;
+  const expected = sign(body);
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (
+    actualBuffer.length !== expectedBuffer.length
+    || !timingSafeEqual(actualBuffer, expectedBuffer)
+  ) return null;
+  try {
+    const payload = JSON.parse(decode(body));
+    return payload.expiresAt > Math.floor(Date.now() / 1000) ? payload : null;
+  } catch {
+    return null;
+  }
+};
+
+export interface OtpRequestResult {
+  ok: boolean;
+  email: string;
+  resendAvailableAt: string;
+}
+
+export interface OtpVerificationResult {
+  ok: boolean;
+  email: string;
+}
+
+export const requestEmployeeOtp = async (input: {
+  email: string;
+  purpose?: 'login' | 'password_reset' | 'activation';
+  name?: string;
+}): Promise<OtpRequestResult> => {
+  const email = normalize(input.email);
+  const purpose = input.purpose || 'login';
+  if (!email.includes('@')) throw otpError('A valid employee email is required.');
+
+  const employeeAdmin = createEmployeeAdminClient();
+  const authUsers = await employeeAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  if (authUsers.error) throw new Error(`Employee Auth lookup failed: ${authUsers.error.message}`);
+  const authUser = (authUsers.data?.users || []).find((user: any) => normalize(user.email) === email);
+  if (!authUser) throw otpError('This employee account is not available for OTP sign-in.', 404);
+
+  const now = new Date();
+  const { data: recent, error: recentError } = await employeeAdmin
+    .from('email_otp_challenges')
+    .select('created_at,resend_available_at')
+    .eq('email', email)
+    .eq('purpose', purpose)
+    .gte('created_at', new Date(now.getTime() - 60 * 60 * 1000).toISOString())
+    .order('created_at', { ascending: false });
+  if (recentError) throw new Error(`OTP rate lookup failed: ${recentError.message}`);
+  const latest = recent?.[0] as any;
+  if (latest?.resend_available_at && new Date(latest.resend_available_at).getTime() > now.getTime()) {
+    throw otpError('Please wait 60 seconds before requesting another code.', 429);
+  }
+  if ((recent || []).length >= OTP_REQUEST_LIMIT_PER_HOUR) {
+    throw otpError('Too many OTP requests. Please try again later.', 429);
+  }
+
+  const otp = generateOtp();
+  const expiresAt = new Date(now.getTime() + OTP_TTL_SECONDS * 1000);
+  const resendAvailableAt = new Date(now.getTime() + OTP_RESEND_COOLDOWN_SECONDS * 1000);
+  const { data: challenge, error: insertError } = await employeeAdmin
+    .from('email_otp_challenges')
+    .insert({
+      email,
+      auth_user_id: authUser.id,
+      otp_hash: hashOtp(otp),
+      purpose,
+      expires_at: expiresAt.toISOString(),
+      resend_available_at: resendAvailableAt.toISOString(),
+      request_count_window_start: now.toISOString(),
+      request_count: (recent || []).length + 1,
+      max_verification_attempts: OTP_MAX_VERIFICATION_ATTEMPTS,
+    })
+    .select('id')
+    .single();
+  if (insertError || !challenge) throw new Error(`OTP challenge could not be saved: ${insertError?.message || 'unknown error'}`);
+
+  const delivery = await sendEmailTemplate('otp_verification', email, {
+    name: input.name || authUser.user_metadata?.name || email,
+    otp,
+    action: purpose === 'login' ? 'sign in' : purpose.replace('_', ' '),
+  }, employeeAdmin);
+  if (!delivery.ok) {
+    await employeeAdmin.from('email_otp_challenges').update({ invalidated_at: new Date().toISOString() }).eq('id', challenge.id);
+    throw otpError('The verification email could not be sent. Please try again later.', 502);
+  }
+
+  return { ok: true, email, resendAvailableAt: resendAvailableAt.toISOString() };
+};
+
+export const verifyEmployeeOtp = async (input: {
+  email: string;
+  otp: string;
+  purpose?: 'login' | 'password_reset' | 'activation';
+  res?: any;
+}): Promise<OtpVerificationResult> => {
+  const email = normalize(input.email);
+  const purpose = input.purpose || 'login';
+  const employeeAdmin = createEmployeeAdminClient();
+  const { data: challenge, error } = await employeeAdmin
+    .from('email_otp_challenges')
+    .select('*')
+    .eq('email', email)
+    .eq('purpose', purpose)
+    .is('verified_at', null)
+    .is('invalidated_at', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`OTP lookup failed: ${error.message}`);
+  if (!challenge) throw otpError('The verification code is invalid or expired.', 401);
+  if (new Date(challenge.expires_at).getTime() <= Date.now()) {
+    await employeeAdmin.from('email_otp_challenges').update({ invalidated_at: new Date().toISOString() }).eq('id', challenge.id);
+    throw otpError('The verification code has expired.', 401);
+  }
+  if (challenge.verification_attempts >= challenge.max_verification_attempts) {
+    await employeeAdmin.from('email_otp_challenges').update({ invalidated_at: new Date().toISOString() }).eq('id', challenge.id);
+    throw otpError('Too many verification attempts. Request a new code.', 401);
+  }
+
+  const valid = verifyOtpHash(String(input.otp || ''), challenge.otp_hash);
+  if (!valid) {
+    const attempts = Number(challenge.verification_attempts || 0) + 1;
+    await employeeAdmin.from('email_otp_challenges').update({
+      verification_attempts: attempts,
+      invalidated_at: attempts >= challenge.max_verification_attempts ? new Date().toISOString() : null,
+    }).eq('id', challenge.id);
+    throw otpError('The verification code is invalid.', 401);
+  }
+
+  await employeeAdmin.from('email_otp_challenges').update({
+    verified_at: new Date().toISOString(),
+    invalidated_at: new Date().toISOString(),
+  }).eq('id', challenge.id);
+  if (input.res && challenge.auth_user_id) {
+    setEmployeeOtpSessionCookie(input.res, email, challenge.auth_user_id);
+  }
+  return { ok: true, email };
 };
 
 export const isEmployeeProjectConfigured = () => {
@@ -197,6 +377,13 @@ export const clearAdminSessionCookie = (res: any) => {
   res.setHeader(
     'Set-Cookie',
     `${ADMIN_SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0`
+  );
+};
+
+export const clearEmployeeOtpSessionCookie = (res: any) => {
+  res.append?.(
+    'Set-Cookie',
+    `${EMPLOYEE_OTP_SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0`
   );
 };
 
@@ -526,55 +713,19 @@ const sendEmail = async (
   subject: string,
   message: string
 ): Promise<AccountDeliveryResult> => {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL;
-  if (!apiKey || !from) {
-    if (process.env.NODE_ENV === 'production') {
-      return {
-        channel: 'email',
-        provider: 'Resend',
-        status: 'failed',
-        recipient: target.email,
-        error: 'Resend is not configured on the server.',
-      };
-    }
-    return {
-      channel: 'email',
-      provider: 'mailto fallback',
-      status: 'handoff',
-      recipient: target.email,
-      handoffUrl: `mailto:${encodeURIComponent(target.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`,
-    };
-  }
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from,
-      to: [target.email],
-      subject,
-      text: message,
-    }),
-  });
-  if (!response.ok) {
-    const detail = await response.text();
-    return {
-      channel: 'email',
-      provider: 'Resend',
-      status: 'failed',
-      recipient: target.email,
-      error: detail || `Resend returned ${response.status}.`,
-    };
-  }
+  const actionType = subject.toLowerCase().includes('reset')
+    ? 'password_reset'
+    : 'account_activation';
+  const delivery = await sendEmailTemplate(actionType, target.email, {
+    name: target.name,
+    actionLink: message.match(/https?:\/\/\S+/)?.[0] || '',
+  }, createEmployeeAdminClient());
   return {
     channel: 'email',
-    provider: 'Resend',
-    status: 'sent',
+    provider: 'Gmail SMTP',
+    status: delivery.ok ? 'sent' : 'failed',
     recipient: target.email,
+    error: delivery.failureReason,
   };
 };
 
@@ -793,20 +944,33 @@ const getBearerToken = (authorization: string | undefined) => {
 };
 
 export const getEmployeeAuthUser = async (req: any) => {
-  const token = getBearerToken(req.headers?.authorization);
   const config = getEmployeeAnonConfig();
-  if (!config.url || !config.anonKey) {
-    throw new Error('The employee Supabase public credentials are not configured.');
+  const authorization = req.headers?.authorization;
+  if (authorization) {
+    const token = getBearerToken(authorization);
+    if (!config.url || !config.anonKey) {
+      throw new Error('The employee Supabase public credentials are not configured.');
+    }
+    const authenticated = createClient(config.url, config.anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+    const { data, error } = await authenticated.auth.getUser(token);
+    if (error || !data.user) {
+      throw Object.assign(new Error('The employee session is not authenticated.'), { statusCode: 401 });
+    }
+    return { token, user: data.user };
   }
-  const authenticated = createClient(config.url, config.anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
-  const { data, error } = await authenticated.auth.getUser(token);
+  const otpSession = getEmployeeOtpSession(req);
+  if (!otpSession) {
+    throw Object.assign(new Error('The employee session is not authenticated.'), { statusCode: 401 });
+  }
+  const employeeAdmin = createEmployeeAdminClient();
+  const { data, error } = await employeeAdmin.auth.admin.getUserById(otpSession.authUserId);
   if (error || !data.user) {
     throw Object.assign(new Error('The employee session is not authenticated.'), { statusCode: 401 });
   }
-  return { token, user: data.user };
+  return { token: '', user: data.user };
 };
 
 export const loadEmployeeAuthProfile = async (req: any) => {

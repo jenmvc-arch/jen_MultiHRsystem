@@ -88,6 +88,7 @@ import {
   WorkShiftGroupDay,
 } from '../lib/leaveDomain';
 import { loadLeaveWorkspace, persistLeaveWorkspace } from '../lib/leaveService';
+import { requestBusinessEmail } from '../lib/emailClient';
 import { useFeedback } from './GlobalFeedbackSystem';
 
 export {
@@ -811,6 +812,16 @@ export default function LeaveManagementView({
       ledgerEntries: nextLedgerEntries,
       payrollDeductions: nextPayrollDeductions,
     });
+    const employee = activeEmployees.find((item) => item.id === request.employeeId);
+    if (employee?.email?.includes('@')) {
+      void requestBusinessEmail({
+        type: 'leave_decision',
+        recipient: employee.email,
+        name: employee.name,
+        status: status.toLowerCase(),
+        details: `${request.leaveType}: ${formatToDDMMMYYYY(request.startDate)} to ${formatToDDMMMYYYY(request.endDate)}.`,
+      }).catch((error) => onShowNotification('Email Notification Failed', error.message));
+    }
     onShowNotification(`Request ${status}`, `Leave request ${id} has been marked as ${status.toLowerCase()}.`);
   };
 
@@ -1392,6 +1403,18 @@ export default function LeaveManagementView({
       writeScopedJson(`leave_balance_ledger_${activeEntityId}`, nextLedgerEntries);
     }
     persistWorkspace({ offInLieuRequests: nextRequests, ledgerEntries: nextLedgerEntries });
+    request.employeeIds.forEach((employeeId) => {
+      const employee = activeEmployees.find((item) => item.id === employeeId);
+      if (employee?.email?.includes('@')) {
+        void requestBusinessEmail({
+          type: 'leave_decision',
+          recipient: employee.email,
+          name: employee.name,
+          status: status.toLowerCase(),
+          details: `Off in Lieu request ${request.id} has been ${status.toLowerCase()}.`,
+        }).catch((error) => onShowNotification('Email Notification Failed', error.message));
+      }
+    });
     onShowNotification(`Off in Lieu ${status}`, `${id} has been marked as ${status.toLowerCase()}.`);
   };
 

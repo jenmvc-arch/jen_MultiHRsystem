@@ -696,7 +696,20 @@ export default function App() {
         if (employeeAuthClient && !isEmployeePortalDemoPath) {
           const { data } = await employeeAuthClient.auth.getUser();
           if (!data.user && !accountPreview) {
-            localStorage.removeItem('hr-nexus-auth');
+            const cookieProfile = await fetch('/api/employee-auth/profile', {
+              credentials: 'include',
+            });
+            if (!cookieProfile.ok) {
+              localStorage.removeItem('hr-nexus-auth');
+              return;
+            }
+            const profile = await cookieProfile.json();
+            if (cancelled) return;
+            setIsAuthenticated(true);
+            setCurrentUserEmail(profile.email || storedEmail);
+            setCurrentUserName(localStorage.getItem('hr-nexus-user-name'));
+            setCurrentUserRole(storedRole);
+            setCurrentUserMustChangePassword(Boolean(profile.mustChangePassword));
             return;
           }
           if (data.user?.email) {

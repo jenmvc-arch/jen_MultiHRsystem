@@ -128,3 +128,7 @@ To log in with the default admin accounts on your spreadsheet, add a row to the 
    ```bash
    npm run server
    ```
+
+### Gmail SMTP
+
+Email delivery runs only in the Node.js backend. Configure `GMAIL_USER`, `GMAIL_APP_PASSWORD`, and `EMAIL_FROM_NAME` in untracked `.env.local` for local development and in Vercel server environment settings for deployment. Use a Google App Password, never the normal Gmail password. See `docs/gmail-smtp-email.md` for the SMTP setup, OTP policy, migration, and protected routes.
