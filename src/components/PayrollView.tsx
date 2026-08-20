@@ -574,14 +574,6 @@ export default function PayrollView({
                 <tbody className="divide-y divide-neutral-border/50">
                   {payrollFileRecords.map(record => {
                     const employee = entityEmployees.find(item => item.email.toLowerCase() === record.employeeEmail.toLowerCase());
-                    const deductions = Number(record.actualPCBDeducted || 0)
-                      + Number(record.epfEmployee || 0)
-                      + Number(record.socsoEmployee || 0)
-                      + Number(record.eisEmployee || 0)
-                      + (record.calculationVersion === 'gross_pay_v2' ? 0 : Number(record.unpaidLeave || 0))
-                      + Number(record.deductionInLieu || 0)
-                      + Number(record.deductionCp38 || 0)
-                      + Number(record.deductionOthers || 0);
                     const legacyGross = Number(record.basicSalary || 0)
                       + Number(record.allowanceGeneral || 0)
                       + Number(record.allowanceTransport || 0)
@@ -596,6 +588,10 @@ export default function PayrollView({
                       + Number(record.awsAmount || 0)
                       + Number(record.compensationAmount || 0);
                     const grossPay = record.grossPay ?? legacyGross;
+                    const deductions = Math.max(
+                      0,
+                      grossPay + Number(record.reimbursementAmount || 0) - Number(record.netPay || 0)
+                    );
                     return (
                       <tr key={record.id} className="hover:bg-primary/5">
                         <td className="p-3">
