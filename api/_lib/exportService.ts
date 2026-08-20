@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AdminSessionActor } from './employeeAccountServer.js';
 import { createMainAdminClient } from './employeeAccountServer.js';
 import { canExportSensitive, hasExportPermission, EXPORT_PERMISSIONS } from '../../src/lib/exportPermissions.js';
+import { PAYROLL_FILE_EXPORT_COLUMNS } from '../../src/lib/exportTypes.js';
 import type { ExportColumn, ExportFilterSet, ExportFormat, ExportModule, ExportRequest } from '../../src/lib/exportTypes.js';
 
 const MAX_ROWS = 5000;
@@ -32,24 +33,6 @@ const employeeColumns: ExportColumn[] = [
   { key: 'basic_salary', label: 'Basic Salary', sensitive: true, type: 'currency' },
 ];
 
-const payrollColumns: ExportColumn[] = [
-  { key: 'employee_email', label: 'Employee Email' },
-  { key: 'employee_name', label: 'Employee Name' },
-  { key: 'department', label: 'Department' },
-  { key: 'payroll_month', label: 'Payroll Month', type: 'number' },
-  { key: 'payroll_year', label: 'Payroll Year', type: 'number' },
-  { key: 'status', label: 'Payroll Status' },
-  { key: 'basic_salary', label: 'Basic Salary', sensitive: true, type: 'currency' },
-  { key: 'gross_salary', label: 'Gross Salary', sensitive: true, type: 'currency' },
-  { key: 'epf_employee', label: 'EPF Employee', sensitive: true, type: 'currency' },
-  { key: 'socso_employee', label: 'SOCSO Employee', sensitive: true, type: 'currency' },
-  { key: 'eis_employee', label: 'EIS Employee', sensitive: true, type: 'currency' },
-  { key: 'actual_pcb_deducted', label: 'PCB Deducted', sensitive: true, type: 'currency' },
-  { key: 'net_pay', label: 'Net Pay', sensitive: true, type: 'currency' },
-  { key: 'payment_date', label: 'Payment Date', type: 'date' },
-  { key: 'created_at', label: 'Processed At', type: 'date' },
-];
-
 const performanceColumns: ExportColumn[] = [
   { key: 'employee_id', label: 'Employee ID' },
   { key: 'employee_name', label: 'Employee Name' },
@@ -67,7 +50,7 @@ const performanceColumns: ExportColumn[] = [
 const manifest = (module: ExportModule) => module === 'employees'
   ? { title: 'Employee Master List', columns: employeeColumns }
   : module === 'payroll' || module === 'payslips'
-    ? { title: 'Payroll Report', columns: payrollColumns }
+    ? { title: 'Payroll File', columns: PAYROLL_FILE_EXPORT_COLUMNS }
     : { title: 'Performance Report', columns: performanceColumns };
 
 const normalize = (value: unknown) => String(value || '').trim().toLowerCase();
@@ -123,6 +106,85 @@ const applyPayrollFilters = (rows: Row[], filters: ExportFilterSet = {}) => rows
   return true;
 });
 
+const numericValue = (value: unknown) => Number(value || 0);
+
+const sumFields = (row: Row, fields: string[]) =>
+  fields.reduce((total, field) => total + numericValue(row[field]), 0);
+
+export const buildPayrollFileExportRow = (row: Row, employee: Row | undefined, serialNo: number): Row => {
+  const allowances = row.allowances !== undefined
+    ? numericValue(row.allowances)
+    : sumFields(row, [
+      'allowance_general',
+      'allowance_transport',
+      'allowance_parking',
+      'allowance_meal',
+      'allowance_accommodation',
+      'allowance_phone',
+    ]);
+  const grossPay = row.gross_pay ?? row.gross_salary ?? sumFields(row, [
+    'basic_salary',
+    'allowance_general',
+    'allowance_transport',
+    'allowance_parking',
+    'allowance_meal',
+    'allowance_accommodation',
+    'allowance_phone',
+    'overtime',
+    'bonus_amount',
+    'commission_amount',
+    'back_pay_amount',
+    'aws_amount',
+    'compensation_amount',
+    'reimbursement_amount',
+  ]);
+  const totalDeduction = row.total_deduction ?? sumFields(row, [
+    'actual_pcb_deducted',
+    'epf_employee',
+    'socso_employee',
+    'lindung24_employee',
+    'eis_employee',
+    'unpaid_leave',
+    'deduction_in_lieu',
+    'deduction_cp38',
+    'deduction_others',
+  ]);
+  const paymentDescription = row.payment_description
+    || row.payout_description
+    || row.payout_title
+    || row.document_type
+    || 'Payroll';
+
+  return {
+    ...row,
+    serial_no: serialNo,
+    employee_name: employee?.name || row.employee_name || row.employee_email || '',
+    entity_name: employee?.entity_id || row.entity_name || row.entity_id || '',
+    employment_type: employee?.employment_type || row.employment_type || '',
+    payment_mode: employee?.payment_mode || employee?.payment_method || row.payment_mode || row.payment_method || 'Bank Transfer',
+    nric_passport: employee?.nric_passport || employee?.nricPassport || row.nric_passport || '',
+    bank_name: employee?.bank_name || employee?.bankName || row.bank_name || '',
+    account_no: employee?.account_no || employee?.accountNo || row.account_no || '',
+    basic_salary: numericValue(row.basic_salary),
+    commission_amount: numericValue(row.commission_amount),
+    allowances,
+    unpaid_leave: numericValue(row.unpaid_leave),
+    incomplete_month_deduction: numericValue(row.incomplete_month_deduction ?? row.proration_deduction),
+    gross_pay: numericValue(grossPay),
+    epf_employee: numericValue(row.epf_employee),
+    socso_employee: numericValue(row.socso_employee),
+    skbbk_employee: numericValue(row.skbbk_employee ?? employee?.skbbk_employee),
+    eis_employee: numericValue(row.eis_employee),
+    actual_pcb_deducted: numericValue(row.actual_pcb_deducted),
+    total_deduction: numericValue(totalDeduction),
+    net_pay: numericValue(row.net_pay),
+    epf_employer: numericValue(row.epf_employer),
+    socso_employer: numericValue(row.socso_employer),
+    eis_employer: numericValue(row.eis_employer),
+    payment_description: paymentDescription,
+  };
+};
+
 async function loadRows(actor: AdminSessionActor, request: ExportRequest, client: SupabaseClient) {
   const filters = request.filters || {};
   const isEmployee = normalize(actor.role) === 'employee';
@@ -151,12 +213,17 @@ async function loadRows(actor: AdminSessionActor, request: ExportRequest, client
       ...row,
       employee_name: employeeByEmail.get(normalize(row.employee_email))?.name || row.employee_email,
       department: employeeByEmail.get(normalize(row.employee_email))?.department || '',
+      entity_name: employeeByEmail.get(normalize(row.employee_email))?.entity_id || '',
     })).filter((row: Row) => employeeByEmail.has(normalize(row.employee_email)));
     rows = applyPayrollFilters(rows, filters);
     if (request.scope === 'selected' || request.scope === 'record') {
       rows = rows.filter(row => selected.has(normalize(row.id)) || selected.has(normalize(row.employee_email)));
     }
-    return rows;
+    return rows.map((row, index) => buildPayrollFileExportRow(
+      row,
+      employeeByEmail.get(normalize(row.employee_email)),
+      index + 1,
+    ));
   }
 
   const result = await client.from('performances').select('*');
@@ -208,14 +275,177 @@ async function renderPdf(title: string, rows: Row[], columns: ExportColumn[], ac
   return Buffer.from(await pdf.save());
 }
 
-function workbookBuffer(title: string, rows: Row[], columns: ExportColumn[]) {
+const payrollHeaderGroups: Record<string, string> = {
+  basic_salary: 'EARNINGS',
+  commission_amount: 'EARNINGS',
+  allowances: 'EARNINGS',
+  unpaid_leave: 'DEDUCTIONS',
+  incomplete_month_deduction: 'DEDUCTIONS',
+  epf_employee: "EMPLOYEE'S CONTRIBUTION",
+  socso_employee: "EMPLOYEE'S CONTRIBUTION",
+  skbbk_employee: "EMPLOYEE'S CONTRIBUTION",
+  eis_employee: "EMPLOYEE'S CONTRIBUTION",
+  actual_pcb_deducted: "EMPLOYEE'S CONTRIBUTION",
+  epf_employer: 'EMPLOYER CONTRIBUTIONS',
+  socso_employer: 'EMPLOYER CONTRIBUTIONS',
+  eis_employer: 'EMPLOYER CONTRIBUTIONS',
+};
+
+const payrollMonthNames = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+const formatPayrollPeriod = (month: unknown, year: unknown) => {
+  const monthNumber = Number(month);
+  const monthName = payrollMonthNames[monthNumber - 1] || 'Payroll';
+  return `${monthName} ${year || ''}`.trim();
+};
+
+const columnLetter = (index: number) => {
+  let value = index + 1;
+  let result = '';
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    result = String.fromCharCode(65 + remainder) + result;
+    value = Math.floor((value - 1) / 26);
+  }
+  return result;
+};
+
+const payrollCellStyle = (column: ExportColumn, group = false) => ({
+  font: {
+    name: 'Century Gothic',
+    sz: group ? 12 : 10,
+    bold: true,
+    italic: !group,
+  },
+  alignment: {
+    horizontal: 'center',
+    vertical: 'center',
+    wrap_text: true,
+  },
+  border: {
+    top: { style: 'thin', color: { rgb: '000000' } },
+    bottom: { style: 'thin', color: { rgb: '000000' } },
+    left: { style: 'thin', color: { rgb: '000000' } },
+    right: { style: 'thin', color: { rgb: '000000' } },
+  },
+  numFmt: column.type === 'currency' ? '[$RM]#,##0.00' : column.type === 'number' ? '0' : '@',
+});
+
+const stylePayrollTemplateSheet = (sheet: XLSX.WorkSheet, columns: ExportColumn[], dataRowCount: number) => {
+  const lastColumn = columnLetter(columns.length - 1);
+  const lastRow = 7 + dataRowCount;
+  sheet['!freeze'] = { xSplit: 0, ySplit: 7 };
+  sheet['!cols'] = columns.map(column => {
+    const widths: Record<string, number> = {
+      serial_no: 8,
+      employee_name: 24,
+      employment_type: 18,
+      payment_mode: 16,
+      nric_passport: 20,
+      bank_name: 20,
+      account_no: 21,
+      payment_description: 28,
+    };
+    return { wch: widths[column.key] || 16 };
+  });
+  sheet['!rows'] = [
+    { hpt: 20 },
+    { hpt: 20 },
+    { hpt: 20 },
+    { hpt: 8 },
+    { hpt: 8 },
+    { hpt: 34 },
+    { hpt: 42 },
+  ];
+  sheet['!autofilter'] = { ref: `A7:${lastColumn}${lastRow}` };
+
+  columns.forEach((column, index) => {
+    const letter = columnLetter(index);
+    const group = payrollHeaderGroups[column.key];
+    const topCell = sheet[`${letter}6`];
+    const bottomCell = sheet[`${letter}7`];
+    if (topCell) topCell.s = payrollCellStyle(column, Boolean(group));
+    if (bottomCell) bottomCell.s = payrollCellStyle(column);
+    for (let row = 8; row <= lastRow; row += 1) {
+      const dataCell = sheet[`${letter}${row}`];
+      if (!dataCell) continue;
+      dataCell.s = { font: { name: 'Century Gothic', sz: 10 } };
+      if (column.type === 'currency') dataCell.z = '[$RM]#,##0.00';
+      if (column.type === 'number') dataCell.z = '0';
+      if (column.key === 'nric_passport' || column.key === 'account_no') dataCell.z = '@';
+    }
+  });
+};
+
+const payrollWorkbookBuffer = (title: string, rows: Row[], columns: ExportColumn[]) => {
+  const period = rows[0]?.payroll_month && rows[0]?.payroll_year
+    ? formatPayrollPeriod(rows[0].payroll_month, rows[0].payroll_year)
+    : '';
+  const companyNames = [...new Set(rows.map(row => String(row.entity_name || '').trim()).filter(Boolean))];
+  const companyName = companyNames.length === 1 ? companyNames[0] : companyNames.length > 1 ? 'Multiple Entities' : '';
+  const values = [
+    [null, 'Company Name:', companyName],
+    [null, 'Description', 'Payroll File'],
+    [null, 'Date', period],
+    [],
+    [],
+    columns.map(column => payrollHeaderGroups[column.key] || column.label),
+    columns.map(column => payrollHeaderGroups[column.key] ? column.label : null),
+    ...toMatrix(rows, columns),
+  ];
+  const sheet = XLSX.utils.aoa_to_sheet(values);
+  const merges: any[] = [];
+  let groupStart = 0;
+  while (groupStart < columns.length) {
+    const group = payrollHeaderGroups[columns[groupStart].key];
+    if (!group) {
+      merges.push({ s: { r: 5, c: groupStart }, e: { r: 6, c: groupStart } });
+      groupStart += 1;
+      continue;
+    }
+    let groupEnd = groupStart;
+    while (groupEnd + 1 < columns.length && payrollHeaderGroups[columns[groupEnd + 1].key] === group) groupEnd += 1;
+    merges.push({ s: { r: 5, c: groupStart }, e: { r: 5, c: groupEnd } });
+    groupStart = groupEnd + 1;
+  }
+  columns.forEach((column, index) => {
+    if (payrollHeaderGroups[column.key]) return;
+    sheet[`${columnLetter(index)}6`].v = column.label;
+  });
+  sheet['!merges'] = merges;
+  stylePayrollTemplateSheet(sheet, columns, rows.length);
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, sheet, title.slice(0, 31));
+  return XLSX.write(book, { type: 'buffer', bookType: 'xlsx', cellStyles: true }) as Buffer;
+};
+
+export const workbookBuffer = (
+  title: string,
+  rows: Row[],
+  columns: ExportColumn[],
+  module: ExportModule = 'employees',
+) => {
+  if (module === 'payroll' || module === 'payslips') return payrollWorkbookBuffer(title, rows, columns);
   const sheet = XLSX.utils.aoa_to_sheet([columns.map(column => column.label), ...toMatrix(rows, columns)]);
   sheet['!freeze'] = { xSplit: 0, ySplit: 1 };
   sheet['!cols'] = columns.map(column => ({ wch: Math.min(32, Math.max(12, column.label.length + 2)) }));
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, sheet, title.slice(0, 31));
   return XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
-}
+};
 
 export async function executeExport(actor: AdminSessionActor, request: ExportRequest) {
   if (!['pdf', 'xlsx', 'csv', 'txt'].includes(request.format)) {
@@ -240,7 +470,10 @@ export async function executeExport(actor: AdminSessionActor, request: ExportReq
     const lines = [manifest(request.module).title, '', columns.map(column => column.label).join(' | '), ...toMatrix(rows, columns).map(values => values.map(stringify).join(' | '))];
     buffer = Buffer.from(lines.join('\n'), 'utf8');
   } else if (request.format === 'xlsx') {
-    buffer = workbookBuffer(manifest(request.module).title, rows, columns);
+    const sheetTitle = request.module === 'payroll' || request.module === 'payslips'
+      ? formatPayrollPeriod(rows[0]?.payroll_month, rows[0]?.payroll_year)
+      : manifest(request.module).title;
+    buffer = workbookBuffer(sheetTitle, rows, columns, request.module);
     extension = 'xlsx';
   } else {
     buffer = await renderPdf(manifest(request.module).title, rows, columns, actor, request.includeFilters ? request.filters : undefined);

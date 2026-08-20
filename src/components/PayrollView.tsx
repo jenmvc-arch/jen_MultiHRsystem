@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Building2, Check, Clock, CreditCard, FileText, PlusCircle, ArrowLeft } from 'lucide-react';
 import type { CorporateEntity, Employee, PayrollRecord2026, PayrollPayoutKind } from '../types';
 import type { PayrollDocumentDisplaySettings } from '../types';
+import { PAYROLL_FILE_EXPORT_COLUMNS } from '../lib/exportTypes';
 import {
   calculateYtd,
   getDefaultPayrollDocumentDisplaySettings,
@@ -538,18 +539,7 @@ export default function PayrollView({
                 payrollMonth: payMonthIndex,
                 payrollYear: payYear,
               }}
-              columns={[
-                { key: 'employee_email', label: 'Employee Email' },
-                { key: 'employee_name', label: 'Employee Name' },
-                { key: 'department', label: 'Department' },
-                { key: 'payroll_month', label: 'Payroll Month', type: 'number' },
-                { key: 'payroll_year', label: 'Payroll Year', type: 'number' },
-                { key: 'status', label: 'Payroll Status' },
-                { key: 'gross_salary', label: 'Gross Pay', sensitive: true, type: 'currency' },
-                { key: 'actual_pcb_deducted', label: 'Deductions', sensitive: true, type: 'currency' },
-                { key: 'net_pay', label: 'Net Pay', sensitive: true, type: 'currency' },
-                { key: 'created_at', label: 'Processed At', type: 'date' },
-              ]}
+              columns={PAYROLL_FILE_EXPORT_COLUMNS}
             />
           </div>
           {payrollFileRecords.length === 0 ? (

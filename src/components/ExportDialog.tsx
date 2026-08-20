@@ -16,12 +16,22 @@ interface ExportDialogProps {
   onShowNotification: (title: string, message: string) => void;
 }
 
+const getDefaultSelectedColumns = (
+  columns: ExportColumn[],
+  currentUserRole: string | null | undefined,
+  module: ExportModule,
+) => columns
+  .filter(column => !column.sensitive || canExportSensitive(currentUserRole, module))
+  .map(column => column.key);
+
 export default function ExportDialog({
   open, module, title, columns, filters, selectedRecordIds = [], currentUserRole, onClose, onShowNotification
 }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>('xlsx');
   const [scope, setScope] = useState<ExportScope>(selectedRecordIds.length ? 'selected' : 'filtered');
-  const [selectedColumns, setSelectedColumns] = useState<string[]>(columns.filter(column => !column.sensitive).map(column => column.key));
+  const [selectedColumns, setSelectedColumns] = useState<string[]>(
+    getDefaultSelectedColumns(columns, currentUserRole, module),
+  );
   const [includeHeader, setIncludeHeader] = useState(true);
   const [includeFilters, setIncludeFilters] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -29,9 +39,9 @@ export default function ExportDialog({
   useEffect(() => {
     if (open) {
       setScope(selectedRecordIds.length ? 'selected' : 'filtered');
-      setSelectedColumns(columns.filter(column => !column.sensitive).map(column => column.key));
+      setSelectedColumns(getDefaultSelectedColumns(columns, currentUserRole, module));
     }
-  }, [open, selectedRecordIds.length]);
+  }, [open, selectedRecordIds.length, columns, currentUserRole, module]);
 
   if (!open) return null;
   const allowedColumns = columns.filter(column => !column.sensitive || canExportSensitive(currentUserRole, module));
