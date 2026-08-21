@@ -21,34 +21,27 @@ export interface AppraisalPdfExportResult {
 }
 
 const PAGE_WIDTH = 210;
-const PAGE_HEIGHT = 297;
 const MARGIN_LEFT = 14;
 const MARGIN_RIGHT = 196;
 const CONTENT_WIDTH = MARGIN_RIGHT - MARGIN_LEFT;
 const FOOTER_Y = 286;
-const CONTENT_BOTTOM = 274;
+const CONTENT_TOP = 31;
+const CONTENT_BOTTOM = 276;
+const COLUMN_GAP = 5;
+const CARD_WIDTH = (CONTENT_WIDTH - COLUMN_GAP) / 2;
 
 const COLORS = {
-  primary: [129, 9, 18] as const,
-  accent: [224, 191, 188] as const,
-  soft: [248, 242, 235] as const,
-  border: [218, 205, 195] as const,
-  text: [48, 44, 42] as const,
-  muted: [104, 96, 91] as const,
+  primary: [130, 10, 18] as const,
+  pale: [250, 244, 243] as const,
+  warm: [246, 237, 224] as const,
+  border: [210, 197, 191] as const,
+  text: [35, 31, 31] as const,
+  muted: [104, 94, 91] as const,
   white: [255, 255, 255] as const,
-  success: [29, 110, 66] as const,
-  warning: [151, 91, 13] as const,
+  footerLine: [206, 190, 184] as const,
 };
 
-const SCORING_SCALE: Array<[string, string, string]> = [
-  ['5.0', 'Outstanding', 'Consistently exceeds targets and delivers measurable additional value.'],
-  ['4.0-4.5', 'Exceeds', 'Frequently exceeds agreed targets or required performance standard.'],
-  ['3.0-3.5', 'Meets', 'Achieves agreed targets and performs the role satisfactorily.'],
-  ['2.0-2.5', 'Partially Meets', 'Achieves some requirements, but improvement is required.'],
-  ['1.0-1.5', 'Does Not Meet', 'Fails to achieve most requirements or has repeated gaps.'],
-];
-
-const displayValue = (value: unknown, fallback = 'Not provided') => {
+const displayValue = (value: unknown, fallback = '-') => {
   if (value === null || value === undefined || String(value).trim() === '') return fallback;
   return String(value);
 };
@@ -57,12 +50,20 @@ const formatTimestamp = (value: string | undefined) => {
   if (!value) return 'Not available';
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return `${new Intl.DateTimeFormat('en-MY', {
+  const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kuala_Lumpur',
-    dateStyle: 'medium',
-    timeStyle: 'medium',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
     hour12: false,
-  }).format(parsed)} GMT+8`;
+  }).formatToParts(parsed).reduce<Record<string, string>>((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second} GMT+8`;
 };
 
 const safeFilenamePart = (value: string) => (
@@ -86,12 +87,9 @@ export const buildAppraisalPdfFilename = (
   + `_${compactTimestamp(generatedAt)}_SANDBOX.pdf`
 );
 
-const scoreText = (value: number | '') => value === '' ? 'Not rated' : Number(value).toFixed(1);
+const scoreText = (value: number | '') => value === '' ? '-' : Number(value).toFixed(1);
 
-const getKpiCalculatedPercent = (row: AppraisalKpiRow) => {
-  const activeScore = Number(row.agreedScore || row.appraiseeScore || 0);
-  return `${((activeScore / 5) * Number(row.weight || 0)).toFixed(1)}%`;
-};
+type Cell = { value: unknown; align?: 'left' | 'center' | 'right' };
 
 export function createAppraisalReviewPdf({
   draft,
@@ -114,288 +112,324 @@ export function createAppraisalReviewPdf({
     creator: 'Red Point HRMS',
   });
 
-  let currentY = 0;
+  let currentY = CONTENT_TOP;
 
-  const drawHeader = (firstPage: boolean) => {
+  const setText = (color: readonly [number, number, number], font: 'normal' | 'bold', size: number) => {
+    doc.setTextColor(...color);
+    doc.setFont('helvetica', font);
+    doc.setFontSize(size);
+  };
+
+  const linesFor = (value: unknown, width: number, size = 8) => {
+    setText(COLORS.text, 'normal', size);
+    return doc.splitTextToSize(displayValue(value), width) as string[];
+  };
+
+  const drawTopHeader = (firstPage: boolean) => {
     doc.setFillColor(...COLORS.primary);
-    doc.rect(0, 0, PAGE_WIDTH, 19, 'F');
-    doc.setFillColor(...COLORS.accent);
-    doc.rect(0, 19, PAGE_WIDTH, 1.5, 'F');
-
-    doc.setTextColor(...COLORS.white);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('RED POINT SDN. BHD.', MARGIN_LEFT, 10.5);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.text('APPRAISAL REVIEW REPORT', MARGIN_RIGHT, 10.5, { align: 'right' });
-
-    currentY = firstPage ? 31 : 28;
+    doc.rect(0, 0, PAGE_WIDTH, firstPage ? 27 : 13, 'F');
     if (firstPage) {
-      doc.setTextColor(...COLORS.primary);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(16);
-      doc.text('Performance Appraisal Review', MARGIN_LEFT, currentY);
-      currentY += 6;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.setTextColor(...COLORS.muted);
-      doc.text(`${draft.employeeInfo.employeeName} - ${reviewCycle.name}`, MARGIN_LEFT, currentY);
-      doc.setFillColor(...COLORS.warning);
-      doc.roundedRect(MARGIN_RIGHT - 39, currentY - 5.5, 39, 7, 1.5, 1.5, 'F');
-      doc.setTextColor(...COLORS.white);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.text('SANDBOX REVIEW COPY', MARGIN_RIGHT - 19.5, currentY - 1, { align: 'center' });
-      currentY += 10;
+      setText(COLORS.white, 'bold', 16);
+      doc.text('Red Point HRMS', MARGIN_LEFT, 8);
+      setText(COLORS.white, 'bold', 10);
+      doc.text('Performance Appraisal Review', MARGIN_LEFT, 15.5);
+      setText(COLORS.white, 'bold', 8);
+      doc.text('SANDBOX REVIEW COPY', MARGIN_RIGHT, 8, { align: 'right' });
+      setText(COLORS.white, 'normal', 8);
+      doc.text(`${mode === 'manager' ? 'Manager' : 'Employee'} report`, MARGIN_RIGHT, 15.5, { align: 'right' });
+      doc.setFillColor(...COLORS.warm);
+      doc.rect(0, 27, PAGE_WIDTH, 1.5, 'F');
+      currentY = 33;
+    } else {
+      setText(COLORS.white, 'bold', 8);
+      doc.text('Red Point HRMS | Performance Appraisal | SANDBOX REVIEW COPY', MARGIN_LEFT, 8.5);
+      currentY = 21;
     }
   };
 
   const addPage = () => {
     doc.addPage();
-    drawHeader(false);
+    drawTopHeader(false);
   };
 
   const ensureSpace = (height: number) => {
     if (currentY + height > CONTENT_BOTTOM) addPage();
   };
 
-  const drawSectionHeading = (title: string) => {
-    ensureSpace(12);
+  const drawSectionHeading = (title: string, keepWithNext = 0) => {
+    ensureSpace(9 + keepWithNext);
     doc.setFillColor(...COLORS.primary);
     doc.roundedRect(MARGIN_LEFT, currentY, CONTENT_WIDTH, 8, 1, 1, 'F');
-    doc.setTextColor(...COLORS.white);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
+    setText(COLORS.white, 'bold', 9);
     doc.text(title, MARGIN_LEFT + 3, currentY + 5.4);
-    currentY += 12;
+    currentY += 11;
   };
 
-  const drawTextLines = (text: string, width: number, size = 8, lineHeight = 3.7) => {
-    doc.setFontSize(size);
-    const lines = doc.splitTextToSize(displayValue(text), width) as string[];
-    doc.setTextColor(...COLORS.text);
-    doc.setFont('helvetica', 'normal');
-    for (const line of lines) {
-      if (currentY + lineHeight > CONTENT_BOTTOM) addPage();
-      doc.text(line, MARGIN_LEFT, currentY);
-      currentY += lineHeight;
-    }
-    return lines.length * lineHeight;
-  };
-
-  const drawKeyValueRows = (rows: Array<[string, unknown]>) => {
-    rows.forEach(([label, value]) => {
-      const labelWidth = 43;
-      const valueWidth = CONTENT_WIDTH - labelWidth;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
-      const lines = doc.splitTextToSize(displayValue(value), valueWidth - 5) as string[];
-      const rowHeight = Math.max(8, lines.length * 3.4 + 4);
-      ensureSpace(rowHeight);
-      doc.setDrawColor(...COLORS.border);
-      doc.setLineWidth(0.25);
-      doc.setFillColor(...COLORS.soft);
-      doc.rect(MARGIN_LEFT, currentY, labelWidth, rowHeight, 'F');
-      doc.rect(MARGIN_LEFT, currentY, CONTENT_WIDTH, rowHeight, 'S');
-      doc.setTextColor(...COLORS.muted);
-      doc.setFont('helvetica', 'bold');
-      doc.text(label, MARGIN_LEFT + 2.5, currentY + 5.2);
-      doc.setTextColor(...COLORS.text);
-      doc.setFont('helvetica', 'normal');
-      doc.text(lines, MARGIN_LEFT + labelWidth + 2.5, currentY + 4.5, { lineHeightFactor: 1.15 });
-      currentY += rowHeight;
-    });
-    currentY += 3;
-  };
-
-  const drawLabeledParagraph = (label: string, value: unknown) => {
-    const text = displayValue(value);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    const lines = doc.splitTextToSize(text, CONTENT_WIDTH - 6) as string[];
-    const blockHeight = Math.max(12, 5 + lines.length * 3.5);
-    ensureSpace(blockHeight);
+  const drawCard = (x: number, y: number, width: number, height: number, label: string, value: unknown) => {
+    doc.setFillColor(...COLORS.pale);
     doc.setDrawColor(...COLORS.border);
     doc.setLineWidth(0.25);
-    doc.setFillColor(252, 250, 247);
-    doc.roundedRect(MARGIN_LEFT, currentY, CONTENT_WIDTH, blockHeight, 1, 1, 'FD');
-    doc.setTextColor(...COLORS.primary);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.text(label.toUpperCase(), MARGIN_LEFT + 3, currentY + 4.5);
-    doc.setTextColor(...COLORS.text);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.text(lines, MARGIN_LEFT + 3, currentY + 9, { lineHeightFactor: 1.15 });
-    currentY += blockHeight + 3;
+    doc.roundedRect(x, y, width, height, 1.7, 1.7, 'FD');
+    setText(COLORS.primary, 'bold', 7);
+    doc.text(label.toUpperCase(), x + 3, y + 5.4);
+    const lines = linesFor(value, width - 6, 8);
+    setText(COLORS.text, 'normal', 8);
+    doc.text(lines, x + 3, y + 12, { lineHeightFactor: 1.12 });
   };
 
-  const drawKpiRow = (categoryName: string, row: AppraisalKpiRow, index: number) => {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    const title = `${categoryName} - KPI ${index + 1}: ${displayValue(row.kra, 'Unnamed KPI')}`;
-    const titleLines = doc.splitTextToSize(title, CONTENT_WIDTH - 6) as string[];
-    const outcomeLines = doc.splitTextToSize(`Expected outcome: ${displayValue(row.outcome)}`, CONTENT_WIDTH - 6) as string[];
-    const cardHeight = 14 + titleLines.length * 3.4 + outcomeLines.length * 3.4;
-    ensureSpace(cardHeight);
-    doc.setFillColor(...COLORS.soft);
-    doc.setDrawColor(...COLORS.border);
-    doc.roundedRect(MARGIN_LEFT, currentY, CONTENT_WIDTH, cardHeight, 1.5, 1.5, 'FD');
-    doc.setTextColor(...COLORS.primary);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.text(titleLines, MARGIN_LEFT + 3, currentY + 5, { lineHeightFactor: 1.1 });
-    let blockY = currentY + 5 + titleLines.length * 3.4;
-    doc.setTextColor(...COLORS.text);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.text(outcomeLines, MARGIN_LEFT + 3, blockY, { lineHeightFactor: 1.1 });
-    blockY += outcomeLines.length * 3.4 + 4;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.text(
-      `Weight ${Number(row.weight || 0).toFixed(1)}%   |   Appraisee ${scoreText(row.appraiseeScore)}   |   Agreed ${scoreText(row.agreedScore)}   |   Calculated ${getKpiCalculatedPercent(row)}`,
-      MARGIN_LEFT + 3,
-      blockY,
+  const drawInfoCards = (rows: Array<[string, unknown]>) => {
+    for (let index = 0; index < rows.length; index += 2) {
+      const row = rows.slice(index, index + 2);
+      const lines = row.map(([, value]) => linesFor(value, CARD_WIDTH - 6, 8));
+      const height = Math.max(17, ...lines.map((valueLines) => 10 + valueLines.length * 3.4));
+      ensureSpace(height + 3);
+      row.forEach(([label, value], columnIndex) => {
+        drawCard(
+          MARGIN_LEFT + columnIndex * (CARD_WIDTH + COLUMN_GAP),
+          currentY,
+          CARD_WIDTH,
+          height,
+          label,
+          value,
+        );
+      });
+      currentY += height + 3;
+    }
+  };
+
+  const drawLabelledText = (label: string, value: unknown) => {
+    const lines = linesFor(value, CONTENT_WIDTH, 8);
+    const height = 8 + lines.length * 3.4;
+    ensureSpace(height + 4);
+    setText(COLORS.primary, 'bold', 7);
+    doc.text(label.toUpperCase(), MARGIN_LEFT, currentY + 3.5);
+    setText(COLORS.text, 'normal', 8);
+    doc.text(lines, MARGIN_LEFT, currentY + 8, { lineHeightFactor: 1.12 });
+    currentY += height + 4;
+  };
+
+  const drawTable = (
+    headers: string[],
+    widths: number[],
+    rows: Cell[][],
+    options: { category?: string } = {},
+  ) => {
+    const drawHeader = () => {
+      const headerHeight = 11;
+      doc.setFillColor(...COLORS.primary);
+      doc.setDrawColor(...COLORS.primary);
+      let x = MARGIN_LEFT;
+      headers.forEach((header, index) => {
+        doc.setFillColor(...COLORS.primary);
+        doc.rect(x, currentY, widths[index], headerHeight, 'F');
+        setText(COLORS.white, 'bold', 7);
+        const headerLines = doc.splitTextToSize(header, widths[index] - 3) as string[];
+        doc.text(headerLines, x + 1.5, currentY + 4.2, { lineHeightFactor: 1.05 });
+        x += widths[index];
+      });
+      currentY += headerHeight;
+    };
+
+    const drawCategory = () => {
+      if (!options.category) return;
+      doc.setFillColor(...COLORS.warm);
+      doc.roundedRect(MARGIN_LEFT, currentY, CONTENT_WIDTH, 8, 1.5, 1.5, 'F');
+      setText(COLORS.primary, 'bold', 8);
+      doc.text(options.category, MARGIN_LEFT + 3, currentY + 5.3);
+      currentY += 11;
+    };
+
+    ensureSpace(options.category ? 37 : 26);
+    drawCategory();
+    drawHeader();
+    rows.forEach((row) => {
+      const cellLines = row.map((cell, index) => linesFor(cell.value, widths[index] - 3, 7.2));
+      const rowHeight = Math.max(15, ...cellLines.map((lines) => 7 + lines.length * 3.25));
+      if (currentY + rowHeight > CONTENT_BOTTOM) {
+        addPage();
+        drawCategory();
+        drawHeader();
+      }
+      let x = MARGIN_LEFT;
+      row.forEach((cell, index) => {
+        const fillColor: readonly [number, number, number] = index % 2 === 0
+          ? COLORS.white
+          : [253, 251, 249];
+        doc.setFillColor(...fillColor);
+        doc.setDrawColor(...COLORS.border);
+        doc.rect(x, currentY, widths[index], rowHeight, 'FD');
+        setText(COLORS.text, 'normal', 7.2);
+        const align = cell.align || 'left';
+        const textX = align === 'right' ? x + widths[index] - 1.5 : align === 'center' ? x + widths[index] / 2 : x + 1.5;
+        doc.text(cellLines[index], textX, currentY + 4.8, {
+          align,
+          lineHeightFactor: 1.08,
+        });
+        x += widths[index];
+      });
+      currentY += rowHeight;
+    });
+    currentY += 5;
+  };
+
+  const drawSummaryTable = () => {
+    drawTable(
+      ['Measure', 'Raw / average', 'Weighted points', 'Notes'],
+      [38, 38, 43, CONTENT_WIDTH - 119],
+      [
+        [
+          { value: 'KPI score' },
+          { value: `${scores.kpiRawPercent.toFixed(2)}%` },
+          { value: `${scores.kpiWeightedPoints.toFixed(2)} / 60` },
+          { value: `Weight total: ${scores.kpiWeightTotal.toFixed(1)}%` },
+        ],
+        [
+          { value: 'Competency score' },
+          { value: `${scores.competencyRawPercent.toFixed(2)}%` },
+          { value: `${scores.competencyWeightedPoints.toFixed(2)} / 40` },
+          { value: `Average: ${scores.competencyAgreedAverage.toFixed(2)} / 5` },
+        ],
+        [
+          { value: 'Total score' },
+          { value: `${scores.totalPoints.toFixed(2)} / 100` },
+          { value: `${scores.finalRating ? scores.finalRating.toFixed(1) : '-'} / 5` },
+          { value: `${scores.tierLabel}` },
+        ],
+      ],
     );
-    currentY += cardHeight + 3;
-
-    drawKeyValueRows([
-      ['Achievement / Result', row.evidence.achievement],
-      ['Manager Verification', row.evidence.managerVerification],
-      ['Evidence Details', `${displayValue(row.evidence.evidenceType)} | Completion: ${displayValue(row.evidence.completionPercent, 'Not recorded')}% | Status: ${displayValue(row.evidence.status)}`],
-      ['Evidence Link', row.evidence.evidenceLink],
-    ]);
   };
 
-  const drawCompetency = (competency: PerformanceAppraisalDraft['competencies'][number]) => {
-    const descriptionLines = doc.splitTextToSize(displayValue(competency.description), CONTENT_WIDTH - 6) as string[];
-    const cardHeight = Math.max(17, 11 + descriptionLines.length * 3.2);
-    ensureSpace(cardHeight);
-    doc.setDrawColor(...COLORS.border);
-    doc.setFillColor(...COLORS.white);
-    doc.roundedRect(MARGIN_LEFT, currentY, CONTENT_WIDTH, cardHeight, 1.5, 1.5, 'FD');
-    doc.setTextColor(...COLORS.primary);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.text(displayValue(competency.name, 'Competency'), MARGIN_LEFT + 3, currentY + 5);
-    doc.setTextColor(...COLORS.text);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.2);
-    doc.text(descriptionLines, MARGIN_LEFT + 3, currentY + 9, { lineHeightFactor: 1.1 });
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.text(
-      `Appraisee rating: ${scoreText(competency.appraiseeRating)}   |   Agreed rating: ${scoreText(competency.agreedRating)}`,
-      MARGIN_LEFT + 3,
-      currentY + cardHeight - 3,
-    );
-    currentY += cardHeight + 3;
-
-    drawKeyValueRows([
-      ['Appraisee Comment', competency.appraiseeComment],
-      ['Manager Comment', competency.managerComment],
-      ['Supporting Example', competency.supportingExample],
-    ]);
+  const drawSignatures = () => {
+    const cardHeight = 34;
+    const width = (CONTENT_WIDTH - 10) / 3;
+    ensureSpace(cardHeight + 8);
+    const signatureRows = [
+      ['APPRAISEE', draft.signatures.appraiseeName, draft.signatures.appraiseeDate],
+      ['APPRAISER', draft.signatures.appraiserName, draft.signatures.appraiserDate],
+      ['HR REVIEWER', draft.signatures.hrReviewerName, draft.signatures.hrReviewerDate],
+    ] as const;
+    signatureRows.forEach(([label, name, date], index) => {
+      const x = MARGIN_LEFT + index * (width + 5);
+      doc.setFillColor(...COLORS.pale);
+      doc.setDrawColor(...COLORS.border);
+      doc.roundedRect(x, currentY, width, cardHeight, 1.7, 1.7, 'FD');
+      setText(COLORS.primary, 'bold', 7);
+      doc.text(label, x + 3, currentY + 5.4);
+      doc.setDrawColor(...COLORS.muted);
+      doc.line(x + 3, currentY + 21, x + width - 3, currentY + 21);
+      setText(COLORS.text, 'normal', 8);
+      doc.text(displayValue(name), x + 3, currentY + 24.5);
+      setText(COLORS.muted, 'normal', 7);
+      doc.text(`Date: ${displayValue(date)}`, x + 3, currentY + 31);
+    });
+    currentY += cardHeight + 6;
   };
 
-  drawHeader(true);
-  drawSectionHeading('1. Employee Information');
-  drawKeyValueRows([
+  drawTopHeader(true);
+  setText(COLORS.text, 'bold', 13);
+  doc.text('Performance Appraisal', MARGIN_LEFT, currentY + 7);
+  setText(COLORS.muted, 'normal', 8);
+  doc.text(displayValue(draft.subtitle || reviewCycle.name), MARGIN_LEFT, currentY + 14);
+  currentY += 22;
+
+  drawInfoCards([
+    ['Status', draft.status],
+    ['Report Mode', mode === 'manager' ? 'Manager' : 'Employee'],
+    ['Generated At', formatTimestamp(generatedAt)],
+    ['Last Saved At', formatTimestamp(draft.updatedAt)],
+  ]);
+
+  drawSectionHeading('1. Employee and Review Information');
+  drawInfoCards([
     ['Employee Name', draft.employeeInfo.employeeName],
     ['Employee ID / IC', draft.employeeInfo.employeeIdOrIc],
     ['Position Title', draft.employeeInfo.positionTitle],
     ['Department', draft.employeeInfo.department],
     ['Appraiser Name', draft.appraiserName],
-    ['Review Cycle', reviewCycle.name],
-    ['Review Period', reviewCycle.period],
     ['Review Type', draft.reviewType],
-    ['Review From', draft.reviewFrom],
-    ['Review To', draft.reviewTo],
-    ['Workflow Status', draft.status],
-    ['Review Purpose', draft.reviewPurpose],
-    ['Project / Client', [draft.projectName, draft.projectClient].filter(Boolean).join(' - ')],
+    ['Review Period', `${displayValue(draft.reviewFrom)} to ${displayValue(draft.reviewTo)}`],
+    ['Probation Stage', draft.probationStage],
+    ['Probation End Date', draft.probationEndDate],
+    ['Project Name', draft.projectName],
+    ['Project Client', draft.projectClient],
   ]);
+  drawLabelledText('Review Purpose', draft.reviewPurpose);
 
-  drawSectionHeading('Scoring Scale');
-  SCORING_SCALE.forEach(([score, title, description]) => {
-    drawKeyValueRows([[`${score} - ${title}`, description]]);
-  });
-
-  drawSectionHeading('2. Key Performance Indicators - 60%');
-  drawKeyValueRows([['Total KPI Weight', `${scores.kpiWeightTotal.toFixed(1)}%${scores.isKpiWeightValid ? '' : ' (requires review)'}`]]);
+  drawSectionHeading('2. Key Performance Indicators - 60%', 37);
   draft.kpiCategories.forEach((category) => {
-    // Keep a category heading with the start of its first KPI card.
-    ensureSpace(42);
-    doc.setFillColor(...COLORS.accent);
-    doc.roundedRect(MARGIN_LEFT, currentY, CONTENT_WIDTH, 7, 1, 1, 'F');
-    doc.setTextColor(...COLORS.primary);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.text(displayValue(category.name, 'KPI Category'), MARGIN_LEFT + 3, currentY + 4.8);
-    currentY += 10;
-    category.rows.forEach((row, index) => drawKpiRow(category.name, row, index));
+    drawTable(
+      ['KRA', 'Expected outcome', 'Wt.', 'Self', 'Agreed', 'Achievement / result', 'Verification', 'Evidence', 'Status'],
+      [24, 29, 9, 10, 13, 31, 28, 25, 13],
+      category.rows.map((row) => [
+        { value: row.kra },
+        { value: row.outcome },
+        { value: `${Number(row.weight || 0).toFixed(0)}%`, align: 'center' },
+        { value: scoreText(row.appraiseeScore), align: 'center' },
+        { value: scoreText(row.agreedScore), align: 'center' },
+        { value: row.evidence.achievement },
+        { value: row.evidence.managerVerification },
+        { value: `${displayValue(row.evidence.evidenceType)}\nCompletion: ${displayValue(row.evidence.completionPercent)}` },
+        { value: row.evidence.status },
+      ]),
+      { category: displayValue(category.name, 'KPI Category') },
+    );
   });
 
-  drawSectionHeading('3. Competency & Behavioural Assessment - 40%');
-  draft.competencies.forEach(drawCompetency);
+  drawSectionHeading('3. Competency and Behavioural Assessment - 40%', 26);
+  drawTable(
+    ['Competency', 'Description', 'Self', 'Agreed', 'Appraisee comment', 'Manager comment', 'Supporting example'],
+    [27, 37, 10, 10, 32, 32, CONTENT_WIDTH - 148],
+    draft.competencies.map((competency) => [
+      { value: competency.name },
+      { value: competency.description },
+      { value: scoreText(competency.appraiseeRating), align: 'center' },
+      { value: scoreText(competency.agreedRating), align: 'center' },
+      { value: competency.appraiseeComment },
+      { value: competency.managerComment },
+      { value: competency.supportingExample },
+    ]),
+  );
 
-  drawSectionHeading('4. Summary and Evaluation');
-  drawKeyValueRows([
-    ['KPI Raw Score', `${scores.kpiRawPercent.toFixed(2)}%`],
-    ['KPI Weighted Points', `${scores.kpiWeightedPoints.toFixed(2)} / 60`],
-    ['Competency Raw Score', `${scores.competencyRawPercent.toFixed(2)}%`],
-    ['Competency Weighted Points', `${scores.competencyWeightedPoints.toFixed(2)} / 40`],
-    ['Total Points', `${scores.totalPoints.toFixed(2)} / 100`],
-    ['Final Level', scores.tierLabel],
-    ['Final Rating', scores.finalRating ? `${scores.finalRating.toFixed(1)} / 5.0` : 'Not rated'],
-  ]);
+  drawSectionHeading('4. Overall Scoring Summary', 26);
+  drawSummaryTable();
 
-  drawSectionHeading('5. Qualitative Comments & Development');
-  drawLabeledParagraph('Employee Overall Comment', draft.qualitative.employeeOverallComment);
-  drawLabeledParagraph('Key Strengths', draft.qualitative.keyStrengths);
-  drawLabeledParagraph('Main Areas for Improvement', draft.qualitative.improvementAreas);
-  drawLabeledParagraph('Support & Training Required', draft.qualitative.supportTraining);
-  drawLabeledParagraph('Next Review Objectives', draft.qualitative.nextObjectives);
-  drawLabeledParagraph('Manager Overall Feedback', draft.qualitative.managerOverallComment);
+  drawSectionHeading('5. Qualitative Comments and Development');
+  drawLabelledText('Employee Overall Comment', draft.qualitative.employeeOverallComment);
+  drawLabelledText('Key Strengths', draft.qualitative.keyStrengths);
+  drawLabelledText('Main Areas for Improvement', draft.qualitative.improvementAreas);
+  drawLabelledText('Support and Training Required', draft.qualitative.supportTraining);
+  drawLabelledText('Next Review Objectives', draft.qualitative.nextObjectives);
+  drawLabelledText('Manager Overall Feedback', draft.qualitative.managerOverallComment);
 
   if (mode === 'manager') {
     drawSectionHeading('6. Management Usage Only');
-    drawKeyValueRows([
+    drawInfoCards([
       ['Management Decision', draft.management.decision],
       ['Effective Date', draft.management.effectiveDate],
       ['New Position', draft.management.newPosition],
       ['New Probation End Date', draft.management.newProbationEndDate],
-      ['Reason / Notes', draft.management.decision === 'Other' ? draft.management.other : draft.management.reason],
     ]);
+    drawLabelledText(
+      'Reason / Notes',
+      draft.management.decision === 'Other' ? draft.management.other : draft.management.reason,
+    );
   }
 
-  drawSectionHeading(mode === 'manager' ? '7. Acknowledgement & Signatures' : '6. Acknowledgement & Signatures');
-  drawLabeledParagraph(
+  drawSectionHeading(mode === 'manager' ? '7. Acknowledgement and Signatures' : '6. Acknowledgement and Signatures');
+  drawLabelledText(
     'Acknowledgement',
     'I acknowledge that this appraisal has been reviewed and discussed with me. Acknowledgement confirms receipt and discussion, not necessarily agreement with every rating or comment.',
   );
-  drawKeyValueRows([
-    ['Appraisee Signature', draft.signatures.appraiseeName],
-    ['Appraisee Date', draft.signatures.appraiseeDate],
-    ['Appraiser Signature', draft.signatures.appraiserName],
-    ['Appraiser Date', draft.signatures.appraiserDate],
-    ['HR Reviewer', draft.signatures.hrReviewerName],
-    ['HR Reviewer Date', draft.signatures.hrReviewerDate],
-  ]);
+  drawSignatures();
 
   const totalPages = doc.getNumberOfPages();
   for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
     doc.setPage(pageNumber);
-    doc.setDrawColor(...COLORS.accent);
-    doc.setLineWidth(0.35);
+    doc.setDrawColor(...COLORS.footerLine);
+    doc.setLineWidth(0.3);
     doc.line(MARGIN_LEFT, 280, MARGIN_RIGHT, 280);
-    doc.setTextColor(...COLORS.muted);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.5);
-    doc.text(`Sandbox copy | Generated: ${formatTimestamp(generatedAt)}`, MARGIN_LEFT, FOOTER_Y);
-    doc.text(`Last saved: ${formatTimestamp(draft.updatedAt)}`, PAGE_WIDTH / 2, FOOTER_Y, { align: 'center' });
+    setText(COLORS.muted, 'normal', 6.5);
+    doc.text('SANDBOX REVIEW COPY', MARGIN_LEFT, FOOTER_Y);
     doc.text(`Page ${pageNumber} of ${totalPages}`, MARGIN_RIGHT, FOOTER_Y, { align: 'right' });
   }
 
