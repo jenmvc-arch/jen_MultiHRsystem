@@ -3,10 +3,10 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  Download,
   FileCheck2,
   Lock,
   Plus,
-  Printer,
   Save,
   Send,
   Trash2,
@@ -27,6 +27,7 @@ import {
   PerformanceAppraisalDraft,
   saveAppraisalDraft,
 } from '../lib/performanceAppraisalDraft';
+import { downloadAppraisalReviewPdf } from '../lib/appraisalPdfExport';
 
 interface PerformanceAppraisalFormProps {
   employee: Employee;
@@ -147,6 +148,7 @@ export default function PerformanceAppraisalForm({
   const [draft, setDraft] = useState<PerformanceAppraisalDraft>(() =>
     loadAppraisalDraft(employee, reviewCycle, performance, currentUserName || '')
   );
+  const [isPdfDownloading, setIsPdfDownloading] = useState(false);
 
   useEffect(() => {
     setDraft(loadAppraisalDraft(employee, reviewCycle, performance, currentUserName || ''));
@@ -168,6 +170,23 @@ export default function PerformanceAppraisalForm({
     : draft.status === 'Agreed'
       ? 'Revise Self Appraisal'
       : 'Submit Self Appraisal';
+
+  const handleDownloadPdf = () => {
+    setIsPdfDownloading(true);
+    try {
+      const result = downloadAppraisalReviewPdf({
+        draft,
+        scores,
+        reviewCycle,
+        mode,
+      });
+      onShowNotification('Sandbox PDF Downloaded', `${result.filename} is ready for review.`);
+    } catch (error: any) {
+      onShowNotification('PDF Export Failed', error?.message || 'Unable to generate the appraisal PDF.');
+    } finally {
+      setIsPdfDownloading(false);
+    }
+  };
 
   const persistDraft = (nextDraft: PerformanceAppraisalDraft, action: DraftAction) => {
     const copy = actionCopy[action];
@@ -363,11 +382,13 @@ export default function PerformanceAppraisalForm({
         </button>
       )}
       <button
-        onClick={() => window.print()}
-        className="inline-flex items-center gap-2 rounded border border-neutral-border bg-surface-container px-3 py-2 text-xs font-bold text-on-surface transition-colors hover:bg-surface-container-high"
+        type="button"
+        onClick={handleDownloadPdf}
+        disabled={isPdfDownloading}
+        className="inline-flex items-center gap-2 rounded border border-neutral-border bg-surface-container px-3 py-2 text-xs font-bold text-on-surface transition-colors hover:bg-surface-container-high disabled:cursor-wait disabled:opacity-60"
       >
-        <Printer className="h-3.5 w-3.5" />
-        Print / PDF
+        <Download className="h-3.5 w-3.5" />
+        {isPdfDownloading ? 'Generating PDF...' : 'Download PDF'}
       </button>
     </div>
   );
