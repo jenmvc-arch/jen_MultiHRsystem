@@ -192,6 +192,24 @@ export default function PayrollView({
       .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
   }, [entityEmployees, payrollRecords2026, payMonthIndex, payYear, selectedDepartment]);
 
+  const payrollFileRows = useMemo(() => {
+    const employeeByEmail = new Map<string, Employee>(
+      employeeOptions.map(employee => [employee.email.toLowerCase(), employee])
+    );
+    const processedEmployeeEmails = new Set(
+      payrollFileRecords.map(record => record.employeeEmail.toLowerCase())
+    );
+    const processedRows = payrollFileRecords.map(record => ({
+      employee: employeeByEmail.get(record.employeeEmail.toLowerCase()),
+      record
+    })).filter((row): row is { employee: Employee; record: PayrollRecord2026 } => Boolean(row.employee));
+    const pendingRows = employeeOptions
+      .filter(employee => !processedEmployeeEmails.has(employee.email.toLowerCase()))
+      .map(employee => ({ employee, record: undefined }));
+
+    return [...processedRows, ...pendingRows];
+  }, [employeeOptions, payrollFileRecords]);
+
   useEffect(() => {
     const availableIds = new Set(payrollFileRecords.map(record => record.id));
     setSelectedPayrollFileRecordIds(previous => previous.filter(id => availableIds.has(id)));
@@ -611,7 +629,7 @@ export default function PayrollView({
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">2. Payroll File</p>
               <h2 className="mt-1 text-2xl font-black text-on-background">Processed Payroll File</h2>
               <p className="mt-1 text-xs text-on-surface-variant">
-                Only payroll records saved and processed from Payroll Editor appear here.
+                All employees in the active payroll population appear here. Save and process an employee to add them to the export file.
               </p>
             </div>
             <ExportButton
@@ -629,10 +647,10 @@ export default function PayrollView({
               columns={PAYROLL_FILE_EXPORT_COLUMNS}
             />
           </div>
-          {payrollFileRecords.length === 0 ? (
+          {payrollFileRows.length === 0 ? (
             <div className="rounded border border-dashed border-neutral-border p-12 text-center text-xs text-on-surface-variant">
-              <p className="font-bold text-on-surface">No processed payroll records</p>
-              <p className="mt-1">Use Save and Process in Payroll Editor to add the current employee to this Payroll File.</p>
+              <p className="font-bold text-on-surface">No employees available for this payroll period</p>
+              <p className="mt-1">Change the payroll filters or register employees in the active corporate entity.</p>
             </div>
           ) : (
             <div className="overflow-x-auto rounded border border-neutral-border">
@@ -649,6 +667,7 @@ export default function PayrollView({
                       />
                     </th>
                     <th className="p-3">Employee</th>
+                    <th className="p-3">Status</th>
                     <th className="p-3">Department</th>
                     <th className="p-3">Payroll Period</th>
                     <th className="p-3 text-right">Gross Pay</th>
@@ -659,8 +678,50 @@ export default function PayrollView({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-border/50">
-                  {payrollFileRecords.map(record => {
-                    const employee = entityEmployees.find(item => item.email.toLowerCase() === record.employeeEmail.toLowerCase());
+                  {payrollFileRows.map(({ employee, record }) => {
+                    if (!record) {
+                      return (
+                        <tr key={`pending-${employee.id}`} className="bg-surface-container-low/40">
+                          <td className="p-3">
+                            <input
+                              type="checkbox"
+                              disabled
+                              className="h-4 w-4 accent-primary opacity-40"
+                              aria-label={`${employee.name} is not processed`}
+                            />
+                          </td>
+                          <td className="p-3 font-semibold text-on-background">
+                            {employee.name}
+                            <span className="block text-[10px] font-normal text-on-surface-variant">{employee.email}</span>
+                          </td>
+                          <td className="p-3">
+                            <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                              Not processed
+                            </span>
+                          </td>
+                          <td className="p-3">{employee.department || '—'}</td>
+                          <td className="p-3">{HISTORY_MONTHS[payMonthIndex]} {payYear}</td>
+                          <td className="p-3 text-right font-mono text-on-surface-variant">—</td>
+                          <td className="p-3 text-right font-mono text-on-surface-variant">—</td>
+                          <td className="p-3 text-right font-mono text-on-surface-variant">—</td>
+                          <td className="p-3 text-on-surface-variant">—</td>
+                          <td className="p-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedEmployeeId(employee.id);
+                                setSelectedPayoutKind(null);
+                                setActiveSubTab('editor');
+                              }}
+                              className="rounded bg-primary/10 px-2.5 py-1.5 font-bold text-primary hover:bg-primary/20"
+                            >
+                              Open Editor
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    }
+
                     const legacyGross = Number(record.basicSalary || 0)
                       + Number(record.allowanceGeneral || 0)
                       + Number(record.allowanceTransport || 0)
@@ -691,7 +752,12 @@ export default function PayrollView({
                           />
                         </td>
                         <td className="p-3 font-semibold text-primary">{employee?.name || record.employeeEmail}<span className="block text-[10px] font-normal text-on-surface-variant">{record.employeeEmail}</span></td>
-                        <td className="p-3">{employee?.department || '—'}</td>
+                        <td className="p-3">
+                          <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-800">
+                            Processed
+                          </span>
+                        </td>
+                        <td className="p-3">{employee.department || '—'}</td>
                         <td className="p-3">{HISTORY_MONTHS[record.payrollMonth]} {record.payrollYear}</td>
                         <td className="p-3 text-right font-mono">{formatMoney(grossPay)}</td>
                         <td className="p-3 text-right font-mono text-red-700">{formatMoney(deductions)}</td>
