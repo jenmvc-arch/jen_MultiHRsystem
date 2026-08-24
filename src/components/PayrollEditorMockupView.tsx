@@ -1040,7 +1040,7 @@ export default function PayrollEditorMockupView({
   );
 
   return (
-    <div className={`${isEmbedded ? '' : 'max-w-6xl mx-auto'} space-y-5 animate-in fade-in duration-200`}>
+    <div className={`${isEmbedded ? '' : 'max-w-6xl mx-auto'} space-y-4 animate-in fade-in duration-200`}>
       {!isEmbedded && (
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
@@ -1062,7 +1062,27 @@ export default function PayrollEditorMockupView({
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 rounded-lg border border-neutral-border bg-white p-4 shadow-xs lg:grid-cols-[1.4fr_1fr_1fr_1fr_auto] lg:items-end">
+      {isEmbedded && (
+        <div className="flex flex-col gap-3 rounded-xl border border-neutral-border bg-white p-4 shadow-xs sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">1. Payroll Editor</p>
+            <h2 className="mt-1 text-2xl font-black text-on-background">Payroll Editor</h2>
+            <p className="mt-1 text-xs text-on-surface-variant">
+              Edit the saved payroll record, then save to update it.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={isEditing ? cancelEditing : startEditing}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-primary-container"
+          >
+            {isEditing ? <X className="h-4 w-4" /> : <Edit3 className="h-4 w-4" />}
+            {isEditing ? 'Cancel Edit' : `Edit ${isSeparatePayoutMode ? separatePayoutConfig?.title : documentProfile.documentType}`}
+          </button>
+        </div>
+      )}
+
+      {!isEmbedded && <div className="grid grid-cols-1 gap-3 rounded-lg border border-neutral-border bg-white p-4 shadow-xs lg:grid-cols-[1.4fr_1fr_1fr_1fr_auto] lg:items-end">
         <div>
           <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Employee</label>
           <select
@@ -1116,7 +1136,7 @@ export default function PayrollEditorMockupView({
           {isEditing ? <X className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
           {isEditing ? 'Cancel Edit' : `Edit ${isSeparatePayoutMode ? separatePayoutConfig?.title : documentProfile.documentType}`}
         </button>
-      </div>
+      </div>}
 
       {isSeparatePayoutMode && separatePayoutConfig && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-left text-xs shadow-xs">
@@ -1186,44 +1206,51 @@ export default function PayrollEditorMockupView({
         </div>
       )}
 
-      <article className="mx-auto max-w-5xl rounded border border-[#e3d3c4] bg-[#fffdfa] p-5 text-[#5a352b] shadow-sm sm:p-8">
-        <header className="flex flex-col gap-4 border-b border-[#eadfd6] pb-6 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 className="text-xl font-bold tracking-tight text-primary">{documentProfile.documentType.toUpperCase()}</h2>
-            <p className="mt-1 text-xs text-on-surface-variant">{selectedPayPeriod}</p>
-            <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
-              <CalendarDays className="w-3.5 h-3.5" /> {activeEntity?.name || 'Active Entity'}
-            </span>
-            <span className={`ml-2 mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+      <article className="mx-auto max-w-6xl overflow-hidden rounded-xl border border-neutral-border bg-white text-on-background shadow-sm">
+        <header className="border-b-4 border-primary bg-surface-container-low p-5 sm:p-8">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch lg:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="hidden h-14 w-1 rounded-full bg-primary sm:block" />
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">{activeEntity?.name || 'RedPoint Workspace'}</p>
+                <h2 className="mt-1 text-3xl font-black tracking-tight text-primary">{documentProfile.documentType.toUpperCase()}</h2>
+                <p className="mt-1 text-xs font-semibold text-on-surface-variant">{selectedPayPeriod}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+                    <CalendarDays className="h-3.5 w-3.5" /> Active entity
+                  </span>
+                  <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
               documentProfile.isPaymentVoucher ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
             }`}>
-              {documentProfile.compensationLabel}
-            </span>
-          </div>
-          <div className="text-left text-xs sm:text-right">
-            <p className="font-bold text-primary">{activeEntity?.name || 'Red Point Sdn Bhd'}</p>
-            {displaySettings.showCompanyAddress && (
-              <p className="mt-1 max-w-xs text-[10px] leading-relaxed text-on-surface-variant">
-                {activeEntity?.address || 'Company address not configured'}
-              </p>
-            )}
+                    {documentProfile.compensationLabel}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-lg border border-primary/20 bg-primary px-5 py-4 text-left text-white lg:min-w-[220px] lg:text-right">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/75">Payment period</p>
+              <p className="mt-1 font-mono text-lg font-bold">{selectedPayPeriod}</p>
+              <p className="mt-3 text-xs font-semibold text-white/80">{activeEntity?.name || 'Active Entity'}</p>
+            </div>
           </div>
         </header>
 
-        <section className="grid grid-cols-1 gap-x-10 gap-y-4 border-b border-[#eadfd6] py-6 text-xs sm:grid-cols-2">
+        <section className="m-4 grid grid-cols-1 gap-x-10 gap-y-4 rounded-xl border border-neutral-border bg-surface-container-low p-5 text-xs sm:m-6 sm:grid-cols-2 sm:p-6 lg:grid-cols-3">
           <div className="space-y-3">
-            <div><span className="block text-[10px] text-on-surface-variant">{documentProfile.isPaymentVoucher ? 'Recipient Name' : 'Employee Name'}</span><strong className="block mt-0.5 text-primary">{effectiveEmployee.name}</strong></div>
-            {displaySettings.showDesignation && <div><span className="block text-[10px] text-on-surface-variant">{documentFieldLabels.designation}</span><strong className="block mt-0.5 text-primary">{effectiveEmployee.designation}</strong></div>}
-            {displaySettings.showDepartment && <div><span className="block text-[10px] text-on-surface-variant">Department</span><strong className="block mt-0.5 text-primary">{effectiveEmployee.department}</strong></div>}
-            {displaySettings.showNricPassport && <div><span className="block text-[10px] text-on-surface-variant">NRIC / Passport</span><strong className="block mt-0.5 font-mono text-primary">{effectiveEmployee.nricPassport || 'N/A'}</strong></div>}
-            {displaySettings.showDateJoined && <div><span className="block text-[10px] text-on-surface-variant">{documentFieldLabels.dateJoined}</span><strong className="block mt-0.5 text-primary">{formatToDDMMMYYYY(effectiveEmployee.dateOfJoined)}</strong></div>}
-            {displaySettings.showTin && <div><span className="block text-[10px] text-on-surface-variant">TIN / Tax Number</span><strong className="block mt-0.5 font-mono text-primary">{effectiveEmployee.taxNumber || 'N/A'}</strong></div>}
+            <div><span className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">{documentProfile.isPaymentVoucher ? 'Recipient Name' : 'Employee Name'}</span><strong className="mt-1 block text-base text-on-background">{effectiveEmployee.name}</strong></div>
+            {displaySettings.showDesignation && <div><span className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">{documentFieldLabels.designation}</span><strong className="mt-1 block text-on-background">{effectiveEmployee.designation}</strong></div>}
+            {displaySettings.showDepartment && <div><span className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Department</span><strong className="mt-1 block text-on-background">{effectiveEmployee.department}</strong></div>}
           </div>
           <div className="space-y-3">
-            {displaySettings.showEmail && <div><span className="block text-[10px] text-on-surface-variant">Email Address</span><strong className="block mt-0.5 break-all text-primary">{effectiveEmployee.email}</strong></div>}
-            {displaySettings.showBankAccount && <div><span className="block text-[10px] text-on-surface-variant">Bank Account</span><strong className="block mt-0.5 text-primary">{effectiveEmployee.bankName || 'N/A'} <span className="font-mono">- {effectiveEmployee.accountNo || 'N/A'}</span></strong></div>}
+            {displaySettings.showNricPassport && <div><span className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">NRIC / Passport</span><strong className="mt-1 block font-mono text-on-background">{effectiveEmployee.nricPassport || 'N/A'}</strong></div>}
+            {displaySettings.showDateJoined && <div><span className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">{documentFieldLabels.dateJoined}</span><strong className="mt-1 block text-on-background">{formatToDDMMMYYYY(effectiveEmployee.dateOfJoined)}</strong></div>}
+            {displaySettings.showTin && <div><span className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">TIN / Tax Number</span><strong className="mt-1 block font-mono text-on-background">{effectiveEmployee.taxNumber || 'N/A'}</strong></div>}
+          </div>
+          <div className="space-y-3 border-t border-neutral-border pt-4 sm:col-span-2 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+            {displaySettings.showEmail && <div><span className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Email Address</span><strong className="mt-1 block break-all text-on-background">{effectiveEmployee.email}</strong></div>}
+            {displaySettings.showBankAccount && <div><span className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Bank Account</span><strong className="mt-1 block text-on-background">{effectiveEmployee.bankName || 'N/A'} <span className="font-mono">- {effectiveEmployee.accountNo || 'N/A'}</span></strong></div>}
             <div>
-              <span className="block text-[10px] text-on-surface-variant">Payment Date</span>
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Payment Date</span>
               {isEditing ? (
                 <input
                   type="date"
@@ -1232,18 +1259,18 @@ export default function PayrollEditorMockupView({
                   className="mt-1 rounded border border-neutral-border bg-white px-2 py-1 font-mono text-xs outline-none focus:border-primary"
                 />
               ) : (
-                <strong className="block mt-0.5 text-primary">{formatToDDMMMYYYY(activeDraft.paymentDate)}</strong>
+                <strong className="mt-1 block text-on-background">{formatToDDMMMYYYY(activeDraft.paymentDate)}</strong>
               )}
             </div>
-            {displaySettings.showEpfNumber && <div><span className="block text-[10px] text-on-surface-variant">EPF Member Number</span><strong className="block mt-0.5 font-mono text-primary">{effectiveEmployee.epfNumber || 'N/A'}</strong></div>}
-            {displaySettings.showLastWorkingDay && <div><span className="block text-[10px] text-on-surface-variant">Last Working Day</span><strong className="block mt-0.5 text-primary">{lastWorkingDay ? formatToDDMMMYYYY(lastWorkingDay) : 'N/A'}</strong></div>}
+            {displaySettings.showEpfNumber && <div><span className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">EPF Member Number</span><strong className="mt-1 block font-mono text-on-background">{effectiveEmployee.epfNumber || 'N/A'}</strong></div>}
+            {displaySettings.showLastWorkingDay && <div><span className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Last Working Day</span><strong className="mt-1 block text-primary">{lastWorkingDay ? formatToDDMMMYYYY(lastWorkingDay) : 'N/A'}</strong></div>}
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-8 border-b border-[#eadfd6] py-6 lg:grid-cols-2 lg:gap-10">
+        <section className="grid grid-cols-1 gap-5 border-b border-neutral-border px-4 pb-6 sm:px-6 lg:grid-cols-2 lg:gap-6">
           <div>
-            <h3 className="flex items-center gap-2 border-b border-[#eadfd6] pb-2 text-sm font-bold text-green-700">
-              <span className="h-2 w-2 rounded-full bg-green-600" /> Earnings & Additions
+            <h3 className="rounded-lg bg-primary px-3 py-2 text-xs font-black uppercase tracking-wider text-white">
+              Earnings & Additions
             </h3>
             <div className="mt-1">
             {isSeparatePayoutMode && separatePayoutConfig ? (
@@ -1339,9 +1366,9 @@ export default function PayrollEditorMockupView({
           </div>
 
           <div>
-            <div className="flex items-center justify-between gap-3 border-b border-[#eadfd6] pb-2">
-              <h3 className="flex items-center gap-2 text-sm font-bold text-red-700">
-                <span className="h-2 w-2 rounded-full bg-red-600" /> Deductions
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="flex-1 rounded-lg bg-surface-container-highest px-3 py-2 text-xs font-black uppercase tracking-wider text-primary">
+                Deductions
               </h3>
               {isEditing && documentProfile.statutoryEnabled && (
                 <button
