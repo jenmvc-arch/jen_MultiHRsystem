@@ -15,6 +15,7 @@
 var CONFIG = {
   SPREADSHEET_ID: "1_REPLACE_WITH_YOUR_ACTUAL_SPREADSHEET_ID_HERE", // Set your Google Spreadsheet ID
   DRIVE_FOLDER_ID: "", // Optional Google Drive Folder ID for uploaded files
+  API_KEY: "REPLACE_WITH_A_LONG_RANDOM_SERVER_KEY",
   SHEETS: {
     EMPLOYEES: "employees",
     CANDIDATES: "candidates",
@@ -48,6 +49,7 @@ function getSpreadsheet() {
 function doGet(e) {
   var logHeader = "[doGet]";
   try {
+    requireApiKey(e && e.parameter && e.parameter.apiKey);
     console.log(logHeader, "Initializing database read request...");
     initializeDatabase();
     var ss = getSpreadsheet();
@@ -59,7 +61,6 @@ function doGet(e) {
       CONFIG.SHEETS.ENTITIES,
       CONFIG.SHEETS.EMPLOYEES,
       CONFIG.SHEETS.PERFORMANCES,
-      CONFIG.SHEETS.USERS,
       CONFIG.SHEETS.AUDIT_LOGS,
       CONFIG.SHEETS.CANDIDATES,
       CONFIG.SHEETS.PAYROLL
@@ -97,12 +98,14 @@ function doGet(e) {
       }
       result[sheetName] = rows;
     });
+    // Credentials are only used by the server-side authenticate action.
+    result.users = [];
 
     console.log(logHeader, "Data load successful. Entity count:", (result.corporate_entities || []).length, "Employee count:", (result.employees || []).length);
     return responseJSON({ success: true, data: result });
   } catch (error) {
     console.error(logHeader, "Fatal error reading database:", error.toString(), error.stack);
-    return responseJSON({ success: false, error: error.toString(), stack: error.stack });
+    return responseJSON({ success: false, error: error.toString() });
   }
 }
 
@@ -115,7 +118,7 @@ function doPost(e) {
   
   try {
     // Acquire concurrency lock to prevent simultaneous write conflicts (Wait up to 30 seconds)
-    var acquired = lock.waitLock(30000);
+    var acquired = lock.tryLock(30000);
     if (!acquired) {
       throw new Error("Lock timeout: Another save operation is currently in progress. Please retry.");
     }
@@ -125,6 +128,7 @@ function doPost(e) {
     }
 
     var payload = JSON.parse(e.postData.contents);
+    requireApiKey(payload.apiKey);
     var action = payload.action;
     var data = payload.data || {};
     var sheetName = payload.sheetName;
@@ -136,6 +140,36 @@ function doPost(e) {
     if (action === "diagnose") {
       var diagResults = runDiagnostics();
       return responseJSON({ success: true, diagnostics: diagResults });
+    }
+
+    if (action === "authenticate") {
+      var authSpreadsheet = getSpreadsheet();
+      var usersSheet = authSpreadsheet.getSheetByName(CONFIG.SHEETS.USERS);
+      if (!usersSheet) throw new Error("Users sheet is not configured.");
+      var userRows = usersSheet.getDataRange().getValues();
+      var userHeaders = userRows[0] || [];
+      var emailIndex = userHeaders.indexOf("email");
+      var passwordIndex = userHeaders.indexOf("password");
+      var nameIndex = userHeaders.indexOf("name");
+      var roleIndex = userHeaders.indexOf("role");
+      var requestedUsername = String(payload.username || "").trim().toLowerCase();
+      var requestedPassword = String(payload.password || "");
+      var matchedUser = null;
+      for (var userRowIndex = 1; userRowIndex < userRows.length; userRowIndex++) {
+        var userRow = userRows[userRowIndex];
+        if (
+          String(userRow[emailIndex] || "").trim().toLowerCase() === requestedUsername
+          && String(userRow[passwordIndex] || "") === requestedPassword
+        ) {
+          matchedUser = {
+            email: String(userRow[emailIndex] || ""),
+            name: String(userRow[nameIndex] || ""),
+            role: String(userRow[roleIndex] || "")
+          };
+          break;
+        }
+      }
+      return responseJSON({ success: true, user: matchedUser });
     }
 
     // 2. File Upload Action
@@ -368,7 +402,7 @@ function doPost(e) {
 
   } catch (error) {
     console.error(logHeader, "Error executing doPost action:", error.toString(), error.stack);
-    return responseJSON({ success: false, error: error.toString(), stack: error.stack });
+    return responseJSON({ success: false, error: error.toString() });
   } finally {
     try {
       lock.releaseLock();
@@ -404,6 +438,16 @@ function validatePayload(sheetName, data, action) {
       if (!data.name || String(data.name).trim() === "") throw new Error("Validation Error: Candidate name is required.");
       if (!data.email || String(data.email).trim() === "") throw new Error("Validation Error: Candidate email is required.");
     }
+  }
+}
+
+function requireApiKey(providedKey) {
+  var configuredKey = String(CONFIG.API_KEY || "");
+  if (!configuredKey || configuredKey.indexOf("REPLACE_WITH_") === 0) {
+    throw new Error("Apps Script API key is not configured.");
+  }
+  if (String(providedKey || "") !== configuredKey) {
+    throw new Error("Unauthorized Google Sheets request.");
   }
 }
 

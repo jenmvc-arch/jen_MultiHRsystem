@@ -15,8 +15,11 @@ import {
   handleEmployeeAccountList,
   handleAdminEmailTest,
   handleBusinessEmailNotification,
+  handleGoogleSheetsLogin,
 } from './api/_lib/employeeAccountHandlers';
 import { handleExport } from './api/_lib/exportHandlers';
+import { handleGoogleSheetsProxy } from './api/_lib/googleSheetsServer';
+import { requireAdminSession } from './api/_lib/employeeAccountServer';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -25,6 +28,7 @@ app.use(express.json());
 
 // Secure admin session and employee-account management routes.
 app.post('/api/auth/admin-login', handleAdminLogin);
+app.post('/api/auth/google-login', handleGoogleSheetsLogin);
 app.post('/api/auth/logout', handleAdminLogout);
 app.get('/api/auth/session', handleAdminSession);
 app.post('/api/auth/profile', handleAdminProfile);
@@ -47,6 +51,7 @@ app.post('/api/admin/employee-accounts/share', (req, res) => (
 app.post('/api/admin/exports', handleExport);
 app.post('/api/admin/email/test', handleAdminEmailTest);
 app.post('/api/admin/email/notification', handleBusinessEmailNotification);
+app.post('/api/google-sheets', handleGoogleSheetsProxy);
 
 // API Endpoint to generate PDF from the payslip client view
 app.get('/api/generate-pdf', async (req, res) => {
@@ -61,6 +66,10 @@ app.get('/api/generate-pdf', async (req, res) => {
 
   let browser;
   try {
+    await requireAdminSession(req);
+    const safeEmployeeId = String(employeeId).replace(/[^a-zA-Z0-9._@-]/g, '_');
+    console.log(`[PDF Generator] Starting PDF generation for employee ID: ${safeEmployeeId}`);
+
     // Launch headless Chromium
     browser = await puppeteer.launch({
       headless: true,
@@ -68,10 +77,15 @@ app.get('/api/generate-pdf', async (req, res) => {
     });
 
     const page = await browser.newPage();
+    if (req.headers.cookie) {
+      await page.setExtraHTTPHeaders({ Cookie: req.headers.cookie });
+    }
 
     // Construct the print-view URL
     // We point to localhost:3000 because Vite runs on port 3000 in dev
-    const targetUrl = `http://localhost:3000/?print=true&employeeId=${employeeId}`;
+    const targetUrl = new URL('http://localhost:3000/');
+    targetUrl.searchParams.set('print', 'true');
+    targetUrl.searchParams.set('employeeId', safeEmployeeId);
     console.log(`[PDF Generator] Navigating to: ${targetUrl}`);
 
     // Navigate to the target URL
@@ -101,9 +115,13 @@ app.get('/api/generate-pdf', async (req, res) => {
     // Stream the PDF buffer back to the client
     const buffer = Buffer.from(pdfBuffer);
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="Payslip_${employeeId}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="Payslip_${safeEmployeeId}.pdf"`);
     res.send(buffer);
   } catch (error: any) {
+    if (error?.statusCode === 401 || error?.statusCode === 403) {
+      res.status(error.statusCode).send(error.message);
+      return;
+    }
     console.error('[PDF Generator] PDF generation failed:', error);
     res.status(500).send(`PDF generation failed: ${error.message || error}`);
   } finally {

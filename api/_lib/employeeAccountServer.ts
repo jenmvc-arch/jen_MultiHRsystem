@@ -471,6 +471,19 @@ export const requireAdminSession = async (req: any): Promise<AdminSessionActor> 
   const session = getAdminSession(req);
   if (!session) throw Object.assign(new Error('An authenticated admin session is required.'), { statusCode: 401 });
 
+  const mainConfig = getMainSupabaseConfig();
+  const googleOnlySession = (
+    (!mainConfig.url || !mainConfig.serviceRoleKey)
+    && !!process.env.GOOGLE_SCRIPT_API_KEY
+    && !!(process.env.GOOGLE_SCRIPT_URL || process.env.VITE_GOOGLE_SCRIPT_URL)
+  );
+  if (googleOnlySession) {
+    if (!isAdminPortalRole(session.role)) {
+      throw Object.assign(new Error('This account is not authorized for the admin console.'), { statusCode: 403 });
+    }
+    return session;
+  }
+
   const current = await findAdminUser(session.username);
   if (!current || !isAdminPortalRole(current.role)) {
     throw Object.assign(new Error('This admin account is no longer active.'), { statusCode: 403 });
@@ -995,9 +1008,14 @@ export const loadEmployeeAuthProfile = async (req: any) => {
 
 export const completeEmployeeAuthSetup = async (req: any) => {
   const { user } = await getEmployeeAuthUser(req);
+  const newPassword = String(req.body?.newPassword || '');
+  if (newPassword.length < 8) {
+    throw otpError('The new password must be at least 8 characters.', 400);
+  }
 
   const employeeAdmin = createEmployeeAdminClient();
   const updatedUser = await employeeAdmin.auth.admin.updateUserById(user.id, {
+    password: newPassword,
     user_metadata: {
       ...(user.user_metadata || {}),
       must_change_password: false,

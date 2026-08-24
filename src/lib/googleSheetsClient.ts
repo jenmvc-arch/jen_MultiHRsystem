@@ -28,10 +28,14 @@ export const googleSheetsClient = {
     if (!targetUrl) {
       throw new Error('Google Sheets client is not configured.');
     }
-    const response = await fetch(targetUrl, {
-      method: 'GET'
+    const response = await fetch('/api/google-sheets', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'loadData', targetUrl }),
     });
-    const result = await response.json();
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Google Sheets request failed.');
     if (!result.success) {
       throw new Error(result.error || 'Failed to load data from Google Sheets');
     }
@@ -43,17 +47,19 @@ export const googleSheetsClient = {
     if (!targetUrl) return;
     console.log('[Google Sheets Client] Inserting record:', { sheetName, data });
     console.log('[Google Sheets Client] Target Web App URL:', targetUrl);
-    const response = await fetch(targetUrl, {
+    const response = await fetch('/api/google-sheets', {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'insert',
         sheetName,
-        data
+        data,
+        targetUrl,
       }),
-      redirect: 'follow'
     });
-    const result = await response.json();
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Google Sheets request failed.');
     if (!result.success) {
       console.error('[Google Sheets Client Error]', result.error, result.stack);
       throw new Error(result.error || `Failed to insert record into ${sheetName}`);
@@ -66,19 +72,21 @@ export const googleSheetsClient = {
     if (!targetUrl) return;
     console.log('[Google Sheets Client] Updating record:', { sheetName, keyName, keyValue, data });
     console.log('[Google Sheets Client] Target Web App URL:', targetUrl);
-    const response = await fetch(targetUrl, {
+    const response = await fetch('/api/google-sheets', {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'update',
         sheetName,
         keyName,
         keyValue,
-        data
+        data,
+        targetUrl,
       }),
-      redirect: 'follow'
     });
-    const result = await response.json();
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Google Sheets request failed.');
     if (!result.success) {
       console.error('[Google Sheets Client Error]', result.error, result.stack);
       throw new Error(result.error || `Failed to update record in ${sheetName}`);
@@ -91,18 +99,20 @@ export const googleSheetsClient = {
     if (!targetUrl) return;
     console.log('[Google Sheets Client] Deleting record:', { sheetName, keyName, keyValue });
     console.log('[Google Sheets Client] Target Web App URL:', targetUrl);
-    const response = await fetch(targetUrl, {
+    const response = await fetch('/api/google-sheets', {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'delete',
         sheetName,
         keyName,
-        keyValue
+        keyValue,
+        targetUrl,
       }),
-      redirect: 'follow'
     });
-    const result = await response.json();
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Google Sheets request failed.');
     if (!result.success) {
       console.error('[Google Sheets Client Error]', result.error, result.stack);
       throw new Error(result.error || `Failed to delete record from ${sheetName}`);
@@ -115,18 +125,20 @@ export const googleSheetsClient = {
     if (!targetUrl) return;
     console.log('[Google Sheets Client] Upserting record:', { sheetName, query, data });
     console.log('[Google Sheets Client] Target Web App URL:', targetUrl);
-    const response = await fetch(targetUrl, {
+    const response = await fetch('/api/google-sheets', {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'upsert',
         sheetName,
         query,
-        data
+        data,
+        targetUrl,
       }),
-      redirect: 'follow'
     });
-    const result = await response.json();
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Google Sheets request failed.');
     if (!result.success) {
       console.error('[Google Sheets Client Error]', result.error, result.stack);
       throw new Error(result.error || `Failed to upsert record in ${sheetName}`);
@@ -140,15 +152,17 @@ export const googleSheetsClient = {
       throw new Error('Google Sheets client is not configured.');
     }
     console.log('[Google Sheets Client] Running Backend Diagnostics on:', targetUrl);
-    const response = await fetch(targetUrl, {
+    const response = await fetch('/api/google-sheets', {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        action: 'diagnose'
+        action: 'diagnose',
+        targetUrl,
       }),
-      redirect: 'follow'
     });
-    const result = await response.json();
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Google Sheets request failed.');
     if (!result.success) {
       throw new Error(result.error || 'Diagnostic endpoint check failed.');
     }
@@ -165,18 +179,20 @@ export const googleSheetsClient = {
       reader.onload = async () => {
         try {
           const base64 = (reader.result as string).split(',')[1];
-          const response = await fetch(targetUrl, {
+          const response = await fetch('/api/google-sheets', {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               action: 'upload_file',
               base64,
               filename: file.name,
-              contentType: file.type
+              contentType: file.type,
+              targetUrl,
             }),
-            redirect: 'follow'
           });
-          const result = await response.json();
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(result.error || 'Google Sheets request failed.');
           if (result.success && result.url) {
             resolve(result.url);
           } else {

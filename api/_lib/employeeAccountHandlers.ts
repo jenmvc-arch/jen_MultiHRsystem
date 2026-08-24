@@ -20,6 +20,8 @@ import {
   verifyEmployeeOtp,
 } from './employeeAccountServer.js';
 import { sendEmailTemplate } from './email/emailService.js';
+import { authenticateAgainstGoogleSheets } from './googleSheetsServer.js';
+import { isAdminPortalRole } from '../../src/lib/userRoles.js';
 
 const sendError = (res: any, error: any) => {
   const message = error instanceof Error ? error.message : 'Request failed.';
@@ -52,6 +54,41 @@ export async function handleAdminLogin(req: any, res: any) {
         email: actor.username,
         name: actor.name,
         role: actor.role,
+      },
+    });
+  } catch (error) {
+    sendError(res, error);
+  }
+}
+
+export async function handleGoogleSheetsLogin(req: any, res: any) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    res.status(405).json({ error: 'Method not allowed.' });
+    return;
+  }
+  try {
+    const username = String(req.body?.username || '').trim();
+    const password = String(req.body?.password || '');
+    if (!username || !password) {
+      res.status(400).json({ error: 'username and password are required.' });
+      return;
+    }
+    const user = await authenticateAgainstGoogleSheets(username, password);
+    if (!user || !isAdminPortalRole(String(user.role || ''))) {
+      res.status(401).json({ error: 'Invalid username or password.' });
+      return;
+    }
+    setAdminSessionCookie(res, {
+      username: String(user.email || username),
+      name: String(user.name || ''),
+      role: String(user.role || ''),
+    });
+    res.status(200).json({
+      user: {
+        email: String(user.email || username),
+        name: String(user.name || ''),
+        role: String(user.role || ''),
       },
     });
   } catch (error) {

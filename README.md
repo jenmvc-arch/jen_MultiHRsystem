@@ -94,8 +94,8 @@ function doGet(e) {
 ```
 
 3. Replace `CONFIG.SPREADSHEET_ID` with your actual Google Spreadsheet ID at the top of the file, save, and click **Deploy -> New Deployment**.
-4. Configure as a **Web App**, set Execute as to **"Me"**, and Who has access to **"Anyone"**.
-5. Copy the generated Web App URL into `VITE_GOOGLE_SCRIPT_URL` in `.env.local` / Vercel secrets. Web App URL.
+4. Set a long random `CONFIG.API_KEY` in `google_apps_script.gs`, then configure the deployment as a **Web App** executed as **"Me"**. The endpoint may remain accessible to anonymous requests because the API key is checked server-side, but the key must never be placed in a `VITE_` variable.
+5. Configure `GOOGLE_SCRIPT_URL`, `GOOGLE_SCRIPT_API_KEY`, and optionally `GOOGLE_SCRIPT_ALLOWED_URLS` in the server environment. Keep `VITE_GOOGLE_SCRIPT_URL` for frontend feature detection only; browser calls go through `/api/google-sheets`.
 
 ### 3. Add Account Details (Optional)
 To log in with the default admin accounts on your spreadsheet, add a row to the **`users`** sheet in Google Sheets:

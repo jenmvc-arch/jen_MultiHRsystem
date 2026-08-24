@@ -234,6 +234,35 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
     if (loginPortal === 'admin') {
       try {
+        if (isGoogleConfigured && !isSupabaseConfigured) {
+          const googleResponse = await fetch('/api/auth/google-login', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: email.trim(),
+              password,
+            }),
+          });
+          const googlePayload = await googleResponse.json().catch(() => ({}));
+          if (googleResponse.ok && googlePayload.user) {
+            setIsLoading(false);
+            onLoginSuccess({
+              email: googlePayload.user.email,
+              password: '',
+              name: googlePayload.user.name,
+              role: googlePayload.user.role,
+              profileLoadedFromServer: true,
+            });
+            return;
+          }
+          if (googleResponse.status === 401 || googleResponse.status === 403) {
+            setIsLoading(false);
+            setError(googlePayload.error || 'Invalid username or password.');
+            return;
+          }
+        }
+
         const secureResponse = await fetch('/api/auth/admin-login', {
           method: 'POST',
           credentials: 'include',

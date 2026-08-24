@@ -256,6 +256,10 @@ export default function App() {
   };
 
   const handleSignOut = () => {
+    void fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => undefined);
     void supabase?.auth.signOut({ scope: 'local' });
     void employeeSupabase?.auth.signOut({ scope: 'local' });
     localStorage.removeItem('hr-nexus-auth');
@@ -311,7 +315,7 @@ export default function App() {
   });
   const [payrollRecords2026, setPayrollRecords2026] = useState<PayrollRecord2026[]>([]);
   const [isSeeding, setIsSeeding] = useState(false);
-  const [isLoadingDb, setIsLoadingDb] = useState(isGoogleConfigured);
+  const [isLoadingDb, setIsLoadingDb] = useState(false);
 
   // Offline persistence sync
   React.useEffect(() => {
@@ -800,11 +804,16 @@ export default function App() {
 
   // Load data from Supabase or Google Sheets dynamically if configured
   useEffect(() => {
+    if (isGoogleConfigured && !isAuthenticated) {
+      setIsLoadingDb(false);
+      return;
+    }
     if (!isSupabaseConfigured && !isGoogleConfigured) {
       setIsLoadingDb(false);
       return;
     }
 
+    setIsLoadingDb(true);
     async function loadData() {
       try {
         let mainPayload: any = null;
@@ -1268,7 +1277,7 @@ export default function App() {
     }
 
     loadData();
-  }, []);
+  }, [isAuthenticated]);
 
   // Active corporate views
   const activeEntity = entities.find(e => e.id === activeEntityId) || entities[0];
@@ -2233,13 +2242,33 @@ export default function App() {
     );
   }
 
+  if (isPrintMode && !isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center text-sm text-neutral-600">
+        Validating secure print session...
+      </div>
+    );
+  }
+
   if (isPrintMode) {
     const params = new URLSearchParams(window.location.search);
     const empId = params.get('employeeId') || selectedEmployeeId;
+    const printableEmployees = isEmployeeAccount
+      ? payrollEmployeesWithHistory.filter((employee) => (
+        employee.email.toLowerCase() === String(currentUserEmail || '').toLowerCase()
+      ))
+      : payrollEmployeesWithHistory;
+    if (!printableEmployees.some((employee) => employee.id === empId)) {
+      return (
+        <div className="min-h-screen bg-white flex items-center justify-center text-sm text-neutral-600">
+          This payslip is not available for the current account.
+        </div>
+      );
+    }
     return (
       <div style={getThemeStyles(activeEntity?.theme)} className="bg-white min-h-screen p-0">
         <PayslipDocumentView 
-          employees={currentActiveEmployees}
+          employees={printableEmployees}
           selectedEmployeeId={empId}
           onBack={() => {}}
           onShowNotification={() => {}}
@@ -2370,39 +2399,28 @@ export default function App() {
             }
 
             const employeeAuthClient = employeeSupabase || supabase;
-            if (employeeAuthClient) {
-              const { error: passwordError } = await employeeAuthClient.auth.updateUser({
-                password: newPassword,
-                data: {
-                  must_change_password: false,
-                },
-              });
-              if (passwordError) {
-                triggerNotification('Setup Failed', passwordError.message, 'info');
-                return;
-              }
-
-              const {
-                data: { session },
-              } = await employeeAuthClient.auth.getSession();
-              if (session?.access_token) {
-                const setupResponse = await fetch('/api/employee-auth/complete-setup', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${session.access_token}`,
-                  },
-                });
-                if (!setupResponse.ok) {
-                  const setupPayload = await setupResponse.json().catch(() => ({}));
-                  triggerNotification(
-                    'Setup Sync Failed',
-                    setupPayload.error || 'Your password was updated, but the employee account status could not be synchronized.',
-                    'info'
-                  );
-                  return;
-                }
-              }
+            const {
+              data: { session },
+            } = await employeeAuthClient?.auth.getSession() || { data: { session: null } };
+            const setupResponse = await fetch('/api/employee-auth/complete-setup', {
+              method: 'POST',
+              credentials: 'include',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(session?.access_token
+                  ? { Authorization: `Bearer ${session.access_token}` }
+                  : {}),
+              },
+              body: JSON.stringify({ newPassword }),
+            });
+            if (!setupResponse.ok) {
+              const setupPayload = await setupResponse.json().catch(() => ({}));
+              triggerNotification(
+                'Setup Failed',
+                setupPayload.error || 'Your password could not be updated.',
+                'info'
+              );
+              return;
             }
 
             localStorage.setItem('hr-nexus-user-must-change-password', 'false');
