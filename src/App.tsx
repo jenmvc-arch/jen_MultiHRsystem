@@ -474,7 +474,6 @@ export default function App() {
   const payrollRecordsForActiveEntity = React.useMemo(() => {
     return payrollRecords2026.filter(r => payrollEmployeesWithHistory.some(e => (
       e.email &&
-      !isPendingEmployeeEmail(e.email) &&
       e.email.toLowerCase() === r.employeeEmail.toLowerCase()
     )));
   }, [payrollRecords2026, payrollEmployeesWithHistory]);
