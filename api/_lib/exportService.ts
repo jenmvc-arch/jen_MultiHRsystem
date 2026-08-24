@@ -54,6 +54,21 @@ const manifest = (module: ExportModule) => module === 'employees'
     : { title: 'Performance Report', columns: performanceColumns };
 
 const normalize = (value: unknown) => String(value || '').trim().toLowerCase();
+
+const entityValues = (row: Row) => [
+  row.entity_id,
+  row.entity_name,
+  row.entityId,
+  row.entityName,
+].map(normalize).filter(Boolean);
+
+export const matchesExportEntity = (row: Row, entityId: unknown, aliases: unknown[] = []) => {
+  const target = normalize(entityId);
+  if (!target) return true;
+  const targets = new Set([target, ...aliases.map(normalize).filter(Boolean)]);
+  return entityValues(row).some(value => targets.has(value));
+};
+
 export const safeFilename = (value: string, extension: string) => {
   const base = String(value || 'HRMS_Export')
     .replace(/\.[a-z0-9]+$/i, '')
@@ -209,7 +224,20 @@ async function loadRows(actor: AdminSessionActor, request: ExportRequest, client
   if (employeeResult.error) throw new Error(employeeResult.error.message);
   let employees = (employeeResult.data || []) as Row[];
   if (isEmployee) employees = employees.filter(row => normalize(row.email) === normalize(actor.username));
-  if (filters.entityId) employees = employees.filter(row => row.entity_id === filters.entityId);
+  let entityAliases: string[] = [];
+  if (filters.entityId) {
+    const entityResult = await client.from('corporate_entities').select('id,name');
+    if (!entityResult.error) {
+      const requestedEntity = normalize(filters.entityId);
+      const matchedEntity = (entityResult.data || []).find((entity: Row) => (
+        normalize(entity.id) === requestedEntity || normalize(entity.name) === requestedEntity
+      ));
+      if (matchedEntity) {
+        entityAliases = [matchedEntity.id, matchedEntity.name].filter(Boolean);
+      }
+    }
+    employees = employees.filter(row => matchesExportEntity(row, filters.entityId, entityAliases));
+  }
   employees = applyEmployeeFilters(employees, filters);
 
   const selected = new Set((request.selectedRecordIds || []).map(normalize));
@@ -230,7 +258,11 @@ async function loadRows(actor: AdminSessionActor, request: ExportRequest, client
       ...row,
       employee_name: employeeByEmail.get(normalize(row.employee_email))?.name || row.employee_email,
       department: employeeByEmail.get(normalize(row.employee_email))?.department || '',
-      entity_name: employeeByEmail.get(normalize(row.employee_email))?.entity_id || '',
+      entity_name: employeeByEmail.get(normalize(row.employee_email))?.entity_id
+        || employeeByEmail.get(normalize(row.employee_email))?.entity_name
+        || row.entity_name
+        || row.entity_id
+        || '',
     })).filter((row: Row) => (
       employeeByEmail.has(normalize(row.employee_email))
       && normalize(row.status) === 'processed'

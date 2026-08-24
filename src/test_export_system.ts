@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { buildPayrollFileExportRow, csvEscape, safeFilename, workbookBuffer } from '../api/_lib/exportService';
+import { buildPayrollFileExportRow, csvEscape, matchesExportEntity, safeFilename, workbookBuffer } from '../api/_lib/exportService';
 import { canExportSensitive, getExportPermissions, hasExportPermission } from './lib/exportPermissions';
 import { PAYROLL_FILE_EXPORT_COLUMNS } from './lib/exportTypes';
 import * as XLSX from 'xlsx';
@@ -8,6 +8,10 @@ assert.equal(csvEscape('Tan, Mei "Ling"'), '"Tan, Mei ""Ling"""');
 assert.equal(csvEscape('张伟'), '张伟');
 assert.equal(safeFilename('Payroll Details / August 2026', 'xlsx'), 'Payroll_Details_August_2026.xlsx');
 assert.equal(safeFilename('Employee_EMP0001_Profile.pdf', 'pdf'), 'Employee_EMP0001_Profile.pdf');
+assert.equal(matchesExportEntity({ entity_id: 'ENT-92' }, 'ENT-92'), true);
+assert.equal(matchesExportEntity({ entity_name: 'Red Point Sdn Bhd' }, 'Red Point Sdn Bhd'), true);
+assert.equal(matchesExportEntity({ entity_name: 'Red Point Sdn Bhd' }, 'ENT-92', ['Red Point Sdn Bhd']), true);
+assert.equal(matchesExportEntity({ entityId: 'ENT-86' }, 'ENT-92'), false);
 
 assert.equal(hasExportPermission('Global Administrator', 'payroll.export'), true);
 assert.equal(hasExportPermission('Leader', 'payroll.export'), false);

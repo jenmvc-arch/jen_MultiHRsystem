@@ -440,6 +440,13 @@ export default function App() {
       .filter(e => e.entityId === activeEntityId);
   }, [employeesWithHistory, activeEntityId]);
 
+  // Payroll uses pay-period eligibility rather than today's operational
+  // active-only filter, so valid records are not hidden for employees on
+  // leave or with a period-specific status change.
+  const payrollEmployeesWithHistory = React.useMemo(() => (
+    employeesWithHistory.filter(e => e.entityId === activeEntityId)
+  ), [employeesWithHistory, activeEntityId]);
+
   const directoryEmployees = React.useMemo(() => (
     employees.filter(e => e.entityId === activeEntityId)
   ), [employees, activeEntityId]);
@@ -459,6 +466,14 @@ export default function App() {
       e.email.toLowerCase() === r.employeeEmail.toLowerCase()
     )));
   }, [payrollRecords2026, filteredEmployees]);
+
+  const payrollRecordsForActiveEntity = React.useMemo(() => {
+    return payrollRecords2026.filter(r => payrollEmployeesWithHistory.some(e => (
+      e.email &&
+      !isPendingEmployeeEmail(e.email) &&
+      e.email.toLowerCase() === r.employeeEmail.toLowerCase()
+    )));
+  }, [payrollRecords2026, payrollEmployeesWithHistory]);
 
   // Reset selectedEmployeeId if the employee doesn't belong to the active entity
   React.useEffect(() => {
@@ -2599,8 +2614,8 @@ export default function App() {
 
           {currentTab === 'payroll' && (
             <PayrollView 
-	              employees={filteredEmployeesWithHistory}
-	              payrollRecords2026={filteredPayrollRecords2026}
+	              employees={payrollEmployeesWithHistory}
+	              payrollRecords2026={payrollRecordsForActiveEntity}
 	              onUpdateEmployee={handleUpdateEmployeeSalary}
 	              onSavePayrollRecord={handleSavePayrollRecord2026}
 	              onShowNotification={triggerNotification}
@@ -2611,8 +2626,8 @@ export default function App() {
 
           {currentTab === 'payroll-mockup' && (
             <PayrollEditorMockupView
-              employees={filteredEmployeesWithHistory}
-              payrollRecords2026={filteredPayrollRecords2026}
+              employees={payrollEmployeesWithHistory}
+              payrollRecords2026={payrollRecordsForActiveEntity}
               activeEntity={activeEntity}
               onBack={() => handleTabChange('payroll')}
               onShowNotification={triggerNotification}
@@ -2621,7 +2636,7 @@ export default function App() {
 
           {currentTab === 'payslip-viewer' && (
             <PayslipDocumentView 
-              employees={filteredEmployeesWithHistory}
+              employees={payrollEmployeesWithHistory}
               selectedEmployeeId={selectedEmployeeId}
               onBack={() => handleTabChange('payroll')}
               onShowNotification={triggerNotification}
