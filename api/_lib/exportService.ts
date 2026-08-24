@@ -5,7 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AdminSessionActor } from './employeeAccountServer.js';
 import { createMainAdminClient } from './employeeAccountServer.js';
 import { canExportSensitive, hasExportPermission, EXPORT_PERMISSIONS } from '../../src/lib/exportPermissions.js';
-import { PAYROLL_FILE_EXPORT_COLUMNS } from '../../src/lib/exportTypes.js';
+import { PAYROLL_FILE_EXPORT_COLUMNS, PAYROLL_XLSX_TEMPLATE_COLUMNS } from '../../src/lib/exportTypes.js';
 import type { ExportColumn, ExportFilterSet, ExportFormat, ExportModule, ExportRequest } from '../../src/lib/exportTypes.js';
 
 const MAX_ROWS = 5000;
@@ -214,6 +214,10 @@ export const buildPayrollFileExportRow = (row: Row, employee: Row | undefined, s
     socso_employer: numericValue(row.socso_employer),
     eis_employer: numericValue(row.eis_employer),
     payment_description: paymentDescription,
+    total_cost_pax: numericValue(grossPay)
+      + numericValue(row.epf_employer)
+      + numericValue(row.socso_employer)
+      + numericValue(row.eis_employer),
   };
 };
 
@@ -364,6 +368,13 @@ const formatPayrollPeriod = (month: unknown, year: unknown) => {
   return `${monthName} ${year || ''}`.trim();
 };
 
+const formatPayrollShortPeriod = (month: unknown, year: unknown) => {
+  const monthNumber = Number(month);
+  const monthName = payrollMonthNames[monthNumber - 1] || 'Payroll';
+  const yearText = String(year || '').trim();
+  return `${monthName.slice(0, 3)}-${yearText.slice(-2)}`.replace(/-$/, '');
+};
+
 const columnLetter = (index: number) => {
   let value = index + 1;
   let result = '';
@@ -396,9 +407,14 @@ const payrollCellStyle = (column: ExportColumn, group = false) => ({
   numFmt: column.type === 'currency' ? '[$RM]#,##0.00' : column.type === 'number' ? '0' : '@',
 });
 
-const stylePayrollTemplateSheet = (sheet: XLSX.WorkSheet, columns: ExportColumn[], dataRowCount: number) => {
+const stylePayrollTemplateSheet = (
+  sheet: XLSX.WorkSheet,
+  columns: ExportColumn[],
+  dataRowCount: number,
+  summaryEndRow: number,
+) => {
   const lastColumn = columnLetter(columns.length - 1);
-  const lastRow = 7 + dataRowCount;
+  const dataEndRow = 7 + dataRowCount;
   sheet['!freeze'] = { xSplit: 0, ySplit: 7 };
   sheet['!cols'] = columns.map(column => {
     const widths: Record<string, number> = {
@@ -422,7 +438,7 @@ const stylePayrollTemplateSheet = (sheet: XLSX.WorkSheet, columns: ExportColumn[
     { hpt: 34 },
     { hpt: 42 },
   ];
-  sheet['!autofilter'] = { ref: `A7:${lastColumn}${lastRow}` };
+  sheet['!autofilter'] = { ref: `A7:${lastColumn}${dataEndRow}` };
 
   columns.forEach((column, index) => {
     const letter = columnLetter(index);
@@ -431,7 +447,7 @@ const stylePayrollTemplateSheet = (sheet: XLSX.WorkSheet, columns: ExportColumn[
     const bottomCell = sheet[`${letter}7`];
     if (topCell) topCell.s = payrollCellStyle(column, Boolean(group));
     if (bottomCell) bottomCell.s = payrollCellStyle(column);
-    for (let row = 8; row <= lastRow; row += 1) {
+    for (let row = 8; row <= summaryEndRow; row += 1) {
       const dataCell = sheet[`${letter}${row}`];
       if (!dataCell) continue;
       dataCell.s = { font: { name: 'Century Gothic', sz: 10 } };
@@ -440,24 +456,97 @@ const stylePayrollTemplateSheet = (sheet: XLSX.WorkSheet, columns: ExportColumn[
       if (column.key === 'nric_passport' || column.key === 'account_no') dataCell.z = '@';
     }
   });
+
+  for (let row = summaryEndRow - 7; row <= summaryEndRow; row += 1) {
+    columns.forEach((column, index) => {
+      const cell = sheet[`${columnLetter(index)}${row}`];
+      if (!cell) return;
+      cell.s = {
+        ...payrollCellStyle(column),
+        font: { name: 'Century Gothic', sz: 10, bold: true },
+      };
+    });
+  }
 };
 
-const payrollWorkbookBuffer = (title: string, rows: Row[], columns: ExportColumn[]) => {
+const setPayrollFormula = (sheet: XLSX.WorkSheet, address: string, formula: string, cachedValue: number) => {
+  sheet[address] = {
+    t: 'n',
+    f: formula.replace(/^=/, ''),
+    v: cachedValue,
+  };
+};
+
+const sumFormula = (column: string, firstRow: number, lastRow: number) => `SUM(${column}${firstRow}:${column}${lastRow})`;
+
+const redactSensitivePayrollRows = (rows: Row[], columns: ExportColumn[], sensitiveAllowed: boolean) => {
+  if (sensitiveAllowed) return rows;
+  const sensitiveKeys = columns.filter(column => column.sensitive).map(column => column.key);
+  return rows.map(row => {
+    const redacted = { ...row };
+    sensitiveKeys.forEach(key => {
+      redacted[key] = '';
+    });
+    return redacted;
+  });
+};
+
+const payrollWorkbookBuffer = (
+  title: string,
+  rows: Row[],
+  columns: ExportColumn[],
+  sensitiveAllowed = true,
+) => {
   const period = rows[0]?.payroll_month && rows[0]?.payroll_year
     ? formatPayrollPeriod(rows[0].payroll_month, rows[0].payroll_year)
     : '';
+  const shortPeriod = rows[0]?.payroll_month && rows[0]?.payroll_year
+    ? formatPayrollShortPeriod(rows[0].payroll_month, rows[0].payroll_year)
+    : title;
   const companyNames = [...new Set(rows.map(row => String(row.entity_name || '').trim()).filter(Boolean))];
   const companyName = companyNames.length === 1 ? companyNames[0] : companyNames.length > 1 ? 'Multiple Entities' : '';
+  const dataStartRow = 8;
+  const dataEndRow = dataStartRow + rows.length - 1;
+  const blankSummaryRow = dataEndRow + 1;
+  const totalRow = blankSummaryRow + 1;
+  const nettPayRow = totalRow + 1;
+  const epfSummaryRow = nettPayRow + 1;
+  const socsoSummaryRow = epfSummaryRow + 1;
+  const lindungSummaryRow = socsoSummaryRow + 1;
+  const eisSummaryRow = lindungSummaryRow + 1;
+  const grandCostRow = eisSummaryRow + 1;
+  const grandStatutoriesRow = grandCostRow + 1;
+  const summaryEndRow = grandStatutoriesRow;
+  const visibleRows = redactSensitivePayrollRows(rows, columns, sensitiveAllowed);
+  const numericKeys = new Set(columns.filter(column => column.type === 'currency').map(column => column.key));
+  const valuesForRows = visibleRows.map(row => columns.map(column => row[column.key]));
   const values = [
     [null, 'Company Name:', companyName],
-    [null, 'Description', 'Payroll File'],
+    [null, 'Description', `${shortPeriod} Payroll Summary`],
     [null, 'Date', period],
     [],
     [],
     columns.map(column => payrollHeaderGroups[column.key] || column.label),
     columns.map(column => payrollHeaderGroups[column.key] ? column.label : null),
-    ...toMatrix(rows, columns),
+    ...valuesForRows,
+    [],
+    Array(columns.length).fill(null),
+    Array(columns.length).fill(null),
+    Array(columns.length).fill(null),
+    Array(columns.length).fill(null),
+    Array(columns.length).fill(null),
+    Array(columns.length).fill(null),
+    Array(columns.length).fill(null),
+    Array(columns.length).fill(null),
   ];
+  values[totalRow - 1][1] = 'TOTAL';
+  values[nettPayRow - 1][1] = 'NETT PAY TO EMPLOYEE';
+  values[epfSummaryRow - 1][1] = 'EPF (EMPLOYEE + EMPLOYER)';
+  values[socsoSummaryRow - 1][1] = 'SOCSO (EMPLOYEE + EMPLOYER)';
+  values[lindungSummaryRow - 1][1] = 'LINDUNG 24 Jam';
+  values[eisSummaryRow - 1][1] = 'EIS (EMPLOYEE + EMPLOYER)';
+  values[grandCostRow - 1][1] = 'GRAND TOTAL COST';
+  values[grandStatutoriesRow - 1][1] = 'GRAND TOTAL OF STATUTORIES';
   const sheet = XLSX.utils.aoa_to_sheet(values);
   const merges: any[] = [];
   let groupStart = 0;
@@ -477,8 +566,58 @@ const payrollWorkbookBuffer = (title: string, rows: Row[], columns: ExportColumn
     if (payrollHeaderGroups[column.key]) return;
     sheet[`${columnLetter(index)}6`].v = column.label;
   });
+
+  const columnIndex = new Map(columns.map((column, index) => [column.key, index]));
+  const cellAddress = (key: string, row: number) => {
+    const index = columnIndex.get(key);
+    return index === undefined ? null : `${columnLetter(index)}${row}`;
+  };
+  const rowValues = (row: number) => visibleRows[row - dataStartRow];
+  const formulaValue = (key: string, row: number) => numericValue(rowValues(row)?.[key]);
+
+  if (sensitiveAllowed) {
+    for (let row = dataStartRow; row <= dataEndRow; row += 1) {
+      const address = cellAddress('total_cost_pax', row);
+      if (address) {
+        const rowData = rowValues(row);
+        setPayrollFormula(
+          sheet,
+          address,
+          `=M${row}+U${row}+V${row}+W${row}`,
+          numericValue(rowData?.gross_pay)
+            + numericValue(rowData?.epf_employer)
+            + numericValue(rowData?.socso_employer)
+            + numericValue(rowData?.eis_employer),
+        );
+      }
+    }
+  }
+
+  const summaryFormula = (key: string, row: number, formula: string, cachedValue: number) => {
+    if (!sensitiveAllowed) return;
+    const address = cellAddress(key, row);
+    if (address) setPayrollFormula(sheet, address, `=${formula}`, cachedValue);
+  };
+
+  if (sensitiveAllowed) {
+    columns.forEach(column => {
+      if (!numericKeys.has(column.key) || column.key === 'total_cost_pax') return;
+      const address = cellAddress(column.key, totalRow);
+      if (address) setPayrollFormula(sheet, address, `=${sumFormula(columnLetter(columnIndex.get(column.key) || 0), dataStartRow, dataEndRow)}`, visibleRows.reduce((sum, row) => sum + numericValue(row[column.key]), 0));
+    });
+    summaryFormula('net_pay', nettPayRow, sumFormula('T', dataStartRow, dataEndRow), visibleRows.reduce((sum, row) => sum + formulaValue('net_pay', dataStartRow + visibleRows.indexOf(row)), 0));
+    summaryFormula('epf_employee', epfSummaryRow, `${sumFormula('N', dataStartRow, dataEndRow)}+${sumFormula('U', dataStartRow, dataEndRow)}`, visibleRows.reduce((sum, row) => sum + numericValue(row.epf_employee) + numericValue(row.epf_employer), 0));
+    summaryFormula('socso_employee', socsoSummaryRow, `${sumFormula('O', dataStartRow, dataEndRow)}+${sumFormula('V', dataStartRow, dataEndRow)}`, visibleRows.reduce((sum, row) => sum + numericValue(row.socso_employee) + numericValue(row.socso_employer), 0));
+    summaryFormula('skbbk_employee', lindungSummaryRow, sumFormula('P', dataStartRow, dataEndRow), visibleRows.reduce((sum, row) => sum + numericValue(row.skbbk_employee), 0));
+    summaryFormula('eis_employee', eisSummaryRow, `${sumFormula('Q', dataStartRow, dataEndRow)}+${sumFormula('W', dataStartRow, dataEndRow)}`, visibleRows.reduce((sum, row) => sum + numericValue(row.eis_employee) + numericValue(row.eis_employer), 0));
+    summaryFormula('total_cost_pax', grandCostRow, sumFormula('Y', dataStartRow, dataEndRow), visibleRows.reduce((sum, row) => sum + numericValue(row.total_cost_pax), 0));
+    summaryFormula('total_cost_pax', grandStatutoriesRow, `N${epfSummaryRow}+O${socsoSummaryRow}+P${lindungSummaryRow}+Q${eisSummaryRow}`, visibleRows.reduce((sum, row) => sum + numericValue(row.epf_employee) + numericValue(row.epf_employer) + numericValue(row.socso_employee) + numericValue(row.socso_employer) + numericValue(row.skbbk_employee) + numericValue(row.eis_employee) + numericValue(row.eis_employer), 0));
+    const totalCostAddress = cellAddress('total_cost_pax', totalRow);
+    if (totalCostAddress) setPayrollFormula(sheet, totalCostAddress, `=${sumFormula('Y', dataStartRow, dataEndRow)}`, visibleRows.reduce((sum, row) => sum + numericValue(row.total_cost_pax), 0));
+  }
+
   sheet['!merges'] = merges;
-  stylePayrollTemplateSheet(sheet, columns, rows.length);
+  stylePayrollTemplateSheet(sheet, columns, rows.length, summaryEndRow);
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, sheet, title.slice(0, 31));
   return XLSX.write(book, { type: 'buffer', bookType: 'xlsx', cellStyles: true }) as Buffer;
@@ -489,8 +628,9 @@ export const workbookBuffer = (
   rows: Row[],
   columns: ExportColumn[],
   module: ExportModule = 'employees',
+  sensitiveAllowed = true,
 ) => {
-  if (module === 'payroll' || module === 'payslips') return payrollWorkbookBuffer(title, rows, columns);
+  if (module === 'payroll' || module === 'payslips') return payrollWorkbookBuffer(title, rows, columns, sensitiveAllowed);
   const sheet = XLSX.utils.aoa_to_sheet([columns.map(column => column.label), ...toMatrix(rows, columns)]);
   sheet['!freeze'] = { xSplit: 0, ySplit: 1 };
   sheet['!cols'] = columns.map(column => ({ wch: Math.min(32, Math.max(12, column.label.length + 2)) }));
@@ -506,7 +646,10 @@ export async function executeExport(actor: AdminSessionActor, request: ExportReq
   const permission = EXPORT_PERMISSIONS[request.module];
   if (!hasExportPermission(actor.role, permission)) throw Object.assign(new Error('You do not have permission to export this module.'), { statusCode: 403 });
   const sensitiveAllowed = canExportSensitive(actor.role, request.module);
-  const columns = selectedColumns(request.module, request.columns, sensitiveAllowed);
+  const isPayrollWorkbook = request.format === 'xlsx' && (request.module === 'payroll' || request.module === 'payslips');
+  const columns = isPayrollWorkbook
+    ? PAYROLL_XLSX_TEMPLATE_COLUMNS
+    : selectedColumns(request.module, request.columns, sensitiveAllowed);
   const client = createMainAdminClient();
   const rows = await loadRows(actor, request, client);
   if (!rows.length) throw Object.assign(new Error('No records are available for export.'), { statusCode: 404 });
@@ -523,9 +666,9 @@ export async function executeExport(actor: AdminSessionActor, request: ExportReq
     buffer = Buffer.from(lines.join('\n'), 'utf8');
   } else if (request.format === 'xlsx') {
     const sheetTitle = request.module === 'payroll' || request.module === 'payslips'
-      ? formatPayrollPeriod(rows[0]?.payroll_month, rows[0]?.payroll_year)
+      ? `${formatPayrollShortPeriod(rows[0]?.payroll_month, rows[0]?.payroll_year)} Payroll Summary`
       : manifest(request.module).title;
-    buffer = workbookBuffer(sheetTitle, rows, columns, request.module);
+    buffer = workbookBuffer(sheetTitle, rows, columns, request.module, sensitiveAllowed);
     extension = 'xlsx';
   } else {
     buffer = await renderPdf(manifest(request.module).title, rows, columns, actor, request.includeFilters ? request.filters : undefined);

@@ -51,6 +51,34 @@ export const PAYROLL_FILE_EXPORT_COLUMNS: ExportColumn[] = [
   { key: 'payment_description', label: 'Payment Description' },
 ];
 
+export const PAYROLL_XLSX_TEMPLATE_COLUMNS: ExportColumn[] = [
+  { key: 'serial_no', label: 'S/N', type: 'number' },
+  { key: 'employee_name', label: 'Employee name' },
+  { key: 'employment_type', label: 'Employment type' },
+  { key: 'payment_mode', label: 'Payment mode' },
+  { key: 'nric_passport', label: 'IC / Passport number', sensitive: true },
+  { key: 'bank_name', label: 'Bank name', sensitive: true },
+  { key: 'account_no', label: 'Bank account number', sensitive: true },
+  { key: 'basic_salary', label: 'Basic salary', sensitive: true, type: 'currency' },
+  { key: 'commission_amount', label: 'Commission', sensitive: true, type: 'currency' },
+  { key: 'allowances', label: 'Allowances', sensitive: true, type: 'currency' },
+  { key: 'unpaid_leave', label: 'Unpaid leave', sensitive: true, type: 'currency' },
+  { key: 'incomplete_month_deduction', label: 'Incomplete-month deduction', sensitive: true, type: 'currency' },
+  { key: 'gross_pay', label: 'Gross Pay', sensitive: true, type: 'currency' },
+  { key: 'epf_employee', label: 'Employee EPF', sensitive: true, type: 'currency' },
+  { key: 'socso_employee', label: 'Employee SOCSO', sensitive: true, type: 'currency' },
+  { key: 'skbbk_employee', label: 'Employee LINDUNG 24 Jam', sensitive: true, type: 'currency' },
+  { key: 'eis_employee', label: 'Employee EIS', sensitive: true, type: 'currency' },
+  { key: 'actual_pcb_deducted', label: 'PCB', sensitive: true, type: 'currency' },
+  { key: 'total_deduction', label: 'Total deduction', sensitive: true, type: 'currency' },
+  { key: 'net_pay', label: 'Net Pay', sensitive: true, type: 'currency' },
+  { key: 'epf_employer', label: 'Employer EPF', sensitive: true, type: 'currency' },
+  { key: 'socso_employer', label: 'Employer SOCSO', sensitive: true, type: 'currency' },
+  { key: 'eis_employer', label: 'Employer EIS', sensitive: true, type: 'currency' },
+  { key: 'payment_description', label: 'Payment description' },
+  { key: 'total_cost_pax', label: 'Total Cost / pax', sensitive: true, type: 'currency' },
+];
+
 export interface ExportRequest {
   module: ExportModule;
   format: ExportFormat;
