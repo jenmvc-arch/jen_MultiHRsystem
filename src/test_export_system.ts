@@ -141,6 +141,7 @@ const legacySchemaPayrollRow = buildPayrollFileExportRow(
 assert.equal(legacySchemaPayrollRow.allowances, 300);
 assert.equal(legacySchemaPayrollRow.gross_pay, 5180);
 assert.equal(legacySchemaPayrollRow.net_pay, 4780);
+assert.equal(legacySchemaPayrollRow.actual_pcb_deducted, 100);
 assert.equal(legacySchemaPayrollRow.total_deduction, 400);
 
 const grossPayV2Row = buildPayrollFileExportRow(
@@ -171,6 +172,32 @@ const grossPayV2Row = buildPayrollFileExportRow(
 assert.equal(grossPayV2Row.gross_pay, 5450);
 assert.equal(grossPayV2Row.total_cost_pax, 6190);
 
+const legacyStatutoryAliasRow = buildPayrollFileExportRow(
+  {
+    employee_email: 'legacy-alias@example.com',
+    payroll_month: 8,
+    payroll_year: 2026,
+    basic_salary: 5000,
+    gross_pay: 5000,
+    epf_employee: 550,
+    socso_employee: 20,
+    lindung24_employee: 15,
+    eis_employee: 10,
+    actual_pcb_deducted: 0,
+    tax_pcb: 100,
+    net_pay: 4305,
+    epf_employer: 650,
+    socso_employer: 70,
+    eis_employer: 20,
+  },
+  { name: 'Legacy Alias Employee', employment_type: 'Permanent' },
+  3,
+);
+assert.equal(legacyStatutoryAliasRow.skbbk_employee, 15);
+assert.equal(legacyStatutoryAliasRow.actual_pcb_deducted, 100);
+assert.equal(legacyStatutoryAliasRow.total_deduction, 695);
+assert.equal(legacyStatutoryAliasRow.net_pay, 4305);
+
 const separatePayoutRow = buildPayrollFileExportRow(
   {
     employee_email: 'bonus@example.com',
@@ -190,7 +217,7 @@ const separatePayoutRow = buildPayrollFileExportRow(
     payout_description: 'Performance bonus',
   },
   { name: 'Separate Payout Employee', employment_type: 'Permanent' },
-  3,
+  4,
 );
 assert.equal(separatePayoutRow.gross_pay, 1000);
 assert.equal(separatePayoutRow.total_cost_pax, 1140);

@@ -126,6 +126,12 @@ const numericValue = (value: unknown) => Number(value || 0);
 const sumFields = (row: Row, fields: string[]) =>
   fields.reduce((total, field) => total + numericValue(row[field]), 0);
 
+const preferPopulatedNumericValue = (primary: unknown, fallback: unknown) => {
+  if (primary !== undefined && primary !== null && numericValue(primary) !== 0) return numericValue(primary);
+  if (fallback !== undefined && fallback !== null && numericValue(fallback) !== 0) return numericValue(fallback);
+  return numericValue(primary ?? fallback);
+};
+
 export const buildPayrollFileExportRow = (row: Row, employee: Row | undefined, serialNo: number): Row => {
   const allowanceFields = [
     'allowance_general',
@@ -169,18 +175,21 @@ export const buildPayrollFileExportRow = (row: Row, employee: Row | undefined, s
     ? Math.max(0, numericValue(row.basic_salary) + allowances + numericValue(row.commission_amount) - numericValue(row.unpaid_leave) - numericValue(row.incomplete_month_deduction ?? row.proration_deduction))
     : calculatedLegacyGross);
   const persistedNetPay = row.net_pay ?? row.net_salary;
+  const actualPcbDeducted = preferPopulatedNumericValue(row.actual_pcb_deducted, row.tax_pcb);
+  const skbbkEmployee = row.skbbk_employee !== undefined && row.skbbk_employee !== null
+    ? preferPopulatedNumericValue(row.skbbk_employee, row.lindung24_employee)
+    : numericValue(row.lindung24_employee ?? employee?.skbbk_employee ?? employee?.lindung24_employee);
   const totalDeduction = row.total_deduction ?? (persistedNetPay !== undefined && persistedNetPay !== null
     ? Math.max(0, grossPay + numericValue(row.reimbursement_amount) - numericValue(persistedNetPay))
-    : sumFields(row, [
-    'actual_pcb_deducted',
-    'epf_employee',
-    'socso_employee',
-    'lindung24_employee',
-    'eis_employee',
-    'deduction_in_lieu',
-    'deduction_cp38',
-    'deduction_others',
-  ]) + (isGrossPayV2 ? 0 : numericValue(row.unpaid_leave)));
+    : actualPcbDeducted
+      + numericValue(row.epf_employee)
+      + numericValue(row.socso_employee)
+      + skbbkEmployee
+      + numericValue(row.eis_employee)
+      + numericValue(row.deduction_in_lieu)
+      + numericValue(row.deduction_cp38)
+      + numericValue(row.deduction_others)
+      + (isGrossPayV2 ? 0 : numericValue(row.unpaid_leave)));
   const paymentDescription = row.payment_description
     || row.payout_description
     || row.payout_title
@@ -205,9 +214,9 @@ export const buildPayrollFileExportRow = (row: Row, employee: Row | undefined, s
     gross_pay: numericValue(grossPay),
     epf_employee: numericValue(row.epf_employee),
     socso_employee: numericValue(row.socso_employee),
-    skbbk_employee: numericValue(row.skbbk_employee ?? employee?.skbbk_employee),
+    skbbk_employee: skbbkEmployee,
     eis_employee: numericValue(row.eis_employee),
-    actual_pcb_deducted: numericValue(row.actual_pcb_deducted),
+    actual_pcb_deducted: actualPcbDeducted,
     total_deduction: numericValue(totalDeduction),
     net_pay: numericValue(persistedNetPay),
     epf_employer: numericValue(row.epf_employer),
