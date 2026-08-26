@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { buildPayrollFileExportRow, csvEscape, matchesExportEntity, safeFilename, workbookBuffer } from '../api/_lib/exportService';
+import { buildPayrollFileExportRow, csvEscape, matchesExportEntity, renderPayrollPdf, safeFilename, workbookBuffer } from '../api/_lib/exportService';
 import { canExportSensitive, getExportPermissions, hasExportPermission } from './lib/exportPermissions';
 import { PAYROLL_FILE_EXPORT_COLUMNS, PAYROLL_XLSX_TEMPLATE_COLUMNS } from './lib/exportTypes';
+import { PDFDocument } from 'pdf-lib';
 import * as XLSX from 'xlsx';
 
 assert.equal(csvEscape('Tan, Mei "Ling"'), '"Tan, Mei ""Ling"""');
@@ -238,5 +239,23 @@ assert.equal(restrictedSheet['E8']?.v, '');
 assert.equal(restrictedSheet['H8']?.v, '');
 assert.equal(restrictedSheet['Y8']?.v, '');
 assert.equal(restrictedSheet['Y17']?.v ?? '', '');
+
+const payrollPdfBytes = await renderPayrollPdf(
+  'August 2026 Payroll Summary',
+  [payrollExportRow, grossPayV2Row, separatePayoutRow],
+);
+const payrollPdf = await PDFDocument.load(payrollPdfBytes);
+assert.equal(payrollPdf.getPageCount(), 7);
+payrollPdf.getPages().forEach(page => {
+  assert.equal(Math.round(page.getWidth() * 100) / 100, 595.28);
+  assert.equal(Math.round(page.getHeight() * 100) / 100, 841.89);
+});
+
+const restrictedPayrollPdf = await PDFDocument.load(await renderPayrollPdf(
+  'August 2026 Payroll Summary',
+  [payrollExportRow],
+  false,
+));
+assert.equal(restrictedPayrollPdf.getPageCount(), 7);
 
 console.log('Export system tests passed.');

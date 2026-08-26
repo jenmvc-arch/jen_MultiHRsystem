@@ -347,6 +347,289 @@ const payrollHeaderGroups: Record<string, string> = {
   eis_employer: 'EMPLOYER CONTRIBUTIONS',
 };
 
+const payrollPdfGroups = [
+  ['serial_no', 'employee_name', 'employment_type'],
+  ['payment_mode', 'nric_passport', 'bank_name'],
+  ['account_no', 'basic_salary', 'commission_amount', 'allowances', 'unpaid_leave'],
+  ['incomplete_month_deduction', 'gross_pay', 'epf_employee', 'socso_employee'],
+  ['skbbk_employee', 'eis_employee', 'actual_pcb_deducted', 'total_deduction', 'net_pay'],
+  ['epf_employer', 'socso_employer', 'eis_employer', 'payment_description'],
+  ['total_cost_pax'],
+] as const;
+
+const payrollPdfColumnWidths: Record<string, number> = {
+  serial_no: 26,
+  employee_name: 260,
+  employment_type: 143,
+  payment_mode: 90,
+  nric_passport: 122,
+  bank_name: 183,
+  account_no: 129,
+  basic_salary: 76,
+  commission_amount: 72,
+  allowances: 70,
+  unpaid_leave: 79,
+  incomplete_month_deduction: 170,
+  gross_pay: 76,
+  epf_employee: 81,
+  socso_employee: 104,
+  skbbk_employee: 159,
+  eis_employee: 78,
+  actual_pcb_deducted: 86,
+  total_deduction: 93,
+  net_pay: 76,
+  epf_employer: 78,
+  socso_employer: 100,
+  eis_employer: 74,
+  payment_description: 146,
+  total_cost_pax: 99,
+};
+
+const payrollPdfColors: Record<string, ReturnType<typeof rgb>> = {
+  header: rgb(0.757, 0.898, 0.961),
+  identity: rgb(0.867, 0.922, 0.969),
+  earnings: rgb(0.918, 0.949, 0.973),
+  employeeContribution: rgb(0.988, 0.894, 0.839),
+  netPay: rgb(0.776, 0.878, 0.706),
+  employerContribution: rgb(0.851, 0.851, 0.851),
+  white: rgb(1, 1, 1),
+};
+
+const payrollPdfBand = (key: string) => {
+  if (['serial_no', 'employee_name', 'employment_type', 'payment_mode', 'nric_passport', 'bank_name', 'account_no'].includes(key)) return 'identity';
+  if (['basic_salary', 'commission_amount', 'allowances', 'unpaid_leave', 'incomplete_month_deduction', 'gross_pay'].includes(key)) return 'earnings';
+  if (['epf_employee', 'socso_employee', 'skbbk_employee', 'eis_employee', 'actual_pcb_deducted', 'total_deduction'].includes(key)) return 'employeeContribution';
+  if (key === 'net_pay') return 'netPay';
+  if (['epf_employer', 'socso_employer', 'eis_employer'].includes(key)) return 'employerContribution';
+  return 'white';
+};
+
+const payrollPdfHeaderColor = (key: string) => {
+  const band = payrollPdfBand(key);
+  return band === 'identity' || band === 'earnings' ? payrollPdfColors.header : payrollPdfColors[band];
+};
+
+const payrollPdfCurrency = (value: unknown) => {
+  const number = numericValue(value);
+  return number === 0 ? '-' : number.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const payrollPdfText = (value: unknown) => String(value ?? '');
+
+const payrollPdfDrawTextFit = (
+  page: any,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  font: any,
+  options: { size: number; minSize?: number; align?: 'left' | 'center' | 'right'; color?: ReturnType<typeof rgb> },
+) => {
+  const minSize = options.minSize || 4.5;
+  let size = options.size;
+  while (size > minSize && font.widthOfTextAtSize(text, size) > width) size -= 0.25;
+  const textWidth = font.widthOfTextAtSize(text, size);
+  const align = options.align || 'center';
+  const textX = align === 'left' ? x : align === 'right' ? x + width - textWidth : x + (width - textWidth) / 2;
+  page.drawText(text, {
+    x: textX,
+    y,
+    size,
+    font,
+    color: options.color || rgb(0, 0, 0),
+  });
+};
+
+const payrollPdfDrawCell = (
+  page: any,
+  key: string,
+  value: unknown,
+  x: number,
+  top: number,
+  width: number,
+  height: number,
+  font: any,
+  bold: any,
+  header = false,
+) => {
+  const band = payrollPdfBand(key);
+  page.drawRectangle({
+    x,
+    y: top - height,
+    width,
+    height,
+    borderWidth: 0.35,
+    borderColor: rgb(0, 0, 0),
+    color: header ? payrollPdfHeaderColor(key) : payrollPdfColors[band],
+  });
+  const text = payrollPdfText(value);
+  if (!header && ['basic_salary', 'commission_amount', 'allowances', 'unpaid_leave', 'incomplete_month_deduction', 'gross_pay', 'epf_employee', 'socso_employee', 'skbbk_employee', 'eis_employee', 'actual_pcb_deducted', 'total_deduction', 'net_pay', 'epf_employer', 'socso_employer', 'eis_employer', 'total_cost_pax'].includes(key)) {
+    if (value === '' || value === null || value === undefined) return;
+    payrollPdfDrawTextFit(page, 'RM', x + 3, top - height + 5, 18, font, { size: 6.4, minSize: 5.2, align: 'left' });
+    payrollPdfDrawTextFit(page, payrollPdfCurrency(value), x + 20, top - height + 5, width - 23, font, { size: 7.5, minSize: 4.5, align: 'right' });
+    return;
+  }
+  payrollPdfDrawTextFit(page, payrollPdfText(text), x + 2, top - height + (height - 7) / 2, width - 4, header ? bold : font, {
+    size: header ? 7.3 : 7.2,
+    minSize: header ? 4.5 : 4.4,
+    align: key === 'serial_no' ? 'center' : 'center',
+  });
+};
+
+const payrollPdfSummaryRows = [
+  ['NETT PAY TO EMPLOYEE', 'net_pay'],
+  ['EPF (EMPLOYEE + EMPLOYER)', 'epf_total'],
+  ['SOCSO  (EMPLOYEE + EMPLOYER)', 'socso_total'],
+  ['LINDUNG 24 Jam', 'lindung_total'],
+  ['EIS  (EMPLOYEE + EMPLOYER)', 'eis_total'],
+  ['GRAND TOTAL COST', 'grand_cost'],
+  ['GRAND TOTAL OF STATUTORIES', 'grand_statutories'],
+] as const;
+
+const payrollPdfSummaryValue = (rows: Row[], key: typeof payrollPdfSummaryRows[number][1]) => {
+  if (key === 'net_pay') return rows.reduce((sum, row) => sum + numericValue(row.net_pay), 0);
+  if (key === 'epf_total') return rows.reduce((sum, row) => sum + numericValue(row.epf_employee) + numericValue(row.epf_employer), 0);
+  if (key === 'socso_total') return rows.reduce((sum, row) => sum + numericValue(row.socso_employee) + numericValue(row.socso_employer), 0);
+  if (key === 'lindung_total') return rows.reduce((sum, row) => sum + numericValue(row.skbbk_employee), 0);
+  if (key === 'eis_total') return rows.reduce((sum, row) => sum + numericValue(row.eis_employee) + numericValue(row.eis_employer), 0);
+  if (key === 'grand_cost') return rows.reduce((sum, row) => sum + numericValue(row.total_cost_pax), 0);
+  return payrollPdfSummaryValue(rows, 'epf_total')
+    + payrollPdfSummaryValue(rows, 'socso_total')
+    + payrollPdfSummaryValue(rows, 'lindung_total')
+    + payrollPdfSummaryValue(rows, 'eis_total');
+};
+
+export async function renderPayrollPdf(
+  title: string,
+  rows: Row[],
+  sensitiveAllowed = true,
+) {
+  const pdf = await PDFDocument.create();
+  const regularFont = await pdf.embedFont(StandardFonts.TimesRoman);
+  const boldFont = await pdf.embedFont(StandardFonts.TimesRomanBold);
+  const italicBoldFont = await pdf.embedFont(StandardFonts.TimesRomanBoldItalic);
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const pageMargin = 42;
+  const dataHeaderHeight = 27;
+  const dataRowHeight = 18;
+  const visibleRows = redactSensitivePayrollRows(rows, PAYROLL_XLSX_TEMPLATE_COLUMNS, sensitiveAllowed);
+  const companyNames = [...new Set(rows.map(row => String(row.entity_name || '').trim()).filter(Boolean))];
+  const companyName = companyNames.length === 1 ? companyNames[0] : companyNames.length > 1 ? 'Multiple Entities' : '';
+  const dataGroups = payrollPdfGroups.map(group => group.map(key => PAYROLL_XLSX_TEMPLATE_COLUMNS.find(column => column.key === key)!));
+  const drawPayrollTable = (page: any, group: ExportColumn[], x: number, top: number) => {
+    let currentX = x;
+    group.forEach(column => {
+      const width = payrollPdfColumnWidths[column.key];
+      payrollPdfDrawCell(page, column.key, column.label, currentX, top, width, dataHeaderHeight, regularFont, boldFont, true);
+      currentX += width;
+    });
+    let currentTop = top - dataHeaderHeight;
+    visibleRows.forEach(row => {
+      let rowX = x;
+      group.forEach(column => {
+        payrollPdfDrawCell(page, column.key, row[column.key], rowX, currentTop, payrollPdfColumnWidths[column.key], dataRowHeight, regularFont, boldFont);
+        rowX += payrollPdfColumnWidths[column.key];
+      });
+      currentTop -= dataRowHeight;
+    });
+    return top - dataHeaderHeight - visibleRows.length * dataRowHeight;
+  };
+  const firstGroupWidth = payrollPdfGroups[0].reduce((sum, key) => sum + payrollPdfColumnWidths[key], 0);
+  const firstTableX = (pageWidth - firstGroupWidth) / 2;
+  const firstTableTop = pageHeight - 145;
+
+  dataGroups.forEach((group, index) => {
+    const page = pdf.addPage([pageWidth, pageHeight]);
+    const groupWidth = group.reduce((sum, column) => sum + payrollPdfColumnWidths[column.key], 0);
+    const x = (pageWidth - groupWidth) / 2;
+    const tableTop = index === 0 ? firstTableTop : (pageHeight + dataHeaderHeight + visibleRows.length * dataRowHeight) / 2;
+    if (index === 0) {
+      const titleX = Math.max(pageMargin, firstTableX - 5);
+      payrollPdfDrawTextFit(page, companyName, titleX, pageHeight - 71, firstGroupWidth + 10, italicBoldFont, {
+        size: 16,
+        minSize: 11,
+        align: 'left',
+      });
+      payrollPdfDrawTextFit(page, title, titleX, pageHeight - 94, firstGroupWidth + 10, italicBoldFont, {
+        size: 11,
+        minSize: 8,
+        align: 'left',
+      });
+    }
+    const tableBottom = drawPayrollTable(page, group, index === 0 ? firstTableX : x, tableTop);
+
+    if (index !== 0) return;
+
+    const summaryWidth = 403;
+    const summaryX = (pageWidth - summaryWidth) / 2;
+    const summaryLabelWidth = 294;
+    const summaryValueWidth = summaryWidth - summaryLabelWidth;
+    const summaryHeaderHeight = 27;
+    const summaryRowHeight = 25;
+    let summaryTop = tableBottom - 27;
+    page.drawRectangle({
+      x: summaryX,
+      y: summaryTop - summaryHeaderHeight,
+      width: summaryWidth,
+      height: summaryHeaderHeight,
+      borderWidth: 0.9,
+      borderColor: rgb(0, 0, 0),
+      color: payrollPdfColors.white,
+    });
+    payrollPdfDrawTextFit(page, 'TOTAL', summaryX, summaryTop - summaryHeaderHeight + 9, summaryWidth, boldFont, {
+      size: 10,
+      minSize: 7,
+      align: 'center',
+    });
+    summaryTop -= summaryHeaderHeight;
+    payrollPdfSummaryRows.forEach(([label, key], rowIndex) => {
+      const isGrand = rowIndex >= 5;
+      page.drawRectangle({
+        x: summaryX,
+        y: summaryTop - summaryRowHeight,
+        width: summaryLabelWidth,
+        height: summaryRowHeight,
+        borderWidth: isGrand ? 0.8 : 0.35,
+        borderColor: rgb(0, 0, 0),
+        color: payrollPdfColors.white,
+      });
+      page.drawRectangle({
+        x: summaryX + summaryLabelWidth,
+        y: summaryTop - summaryRowHeight,
+        width: summaryValueWidth,
+        height: summaryRowHeight,
+        borderWidth: isGrand ? 0.8 : 0.35,
+        borderColor: rgb(0, 0, 0),
+        color: payrollPdfColors.white,
+      });
+      payrollPdfDrawTextFit(page, label, summaryX + 2, summaryTop - summaryRowHeight + 8, summaryLabelWidth - 4, isGrand ? boldFont : regularFont, {
+        size: 9.2,
+        minSize: 6,
+        align: 'left',
+      });
+      if (sensitiveAllowed) {
+        payrollPdfDrawTextFit(page, 'RM', summaryX + summaryLabelWidth + 4, summaryTop - summaryRowHeight + 8, 20, isGrand ? boldFont : regularFont, {
+          size: 8,
+          minSize: 6,
+          align: 'left',
+        });
+        payrollPdfDrawTextFit(page, payrollPdfCurrency(payrollPdfSummaryValue(visibleRows, key)), summaryX + summaryLabelWidth + 24, summaryTop - summaryRowHeight + 8, summaryValueWidth - 28, isGrand ? boldFont : regularFont, {
+          size: 9,
+          minSize: 6,
+          align: 'right',
+        });
+      }
+      summaryTop -= summaryRowHeight;
+    });
+  });
+
+  pdf.setTitle(title);
+  pdf.setSubject('Payroll Summary');
+  pdf.setAuthor('RedPoint Remote HR System');
+  return Buffer.from(await pdf.save());
+}
+
 const payrollMonthNames = [
   'January',
   'February',
@@ -646,8 +929,9 @@ export async function executeExport(actor: AdminSessionActor, request: ExportReq
   const permission = EXPORT_PERMISSIONS[request.module];
   if (!hasExportPermission(actor.role, permission)) throw Object.assign(new Error('You do not have permission to export this module.'), { statusCode: 403 });
   const sensitiveAllowed = canExportSensitive(actor.role, request.module);
-  const isPayrollWorkbook = request.format === 'xlsx' && (request.module === 'payroll' || request.module === 'payslips');
-  const columns = isPayrollWorkbook
+  const isPayrollTemplateExport = (request.format === 'xlsx' || request.format === 'pdf')
+    && (request.module === 'payroll' || request.module === 'payslips');
+  const columns = isPayrollTemplateExport
     ? PAYROLL_XLSX_TEMPLATE_COLUMNS
     : selectedColumns(request.module, request.columns, sensitiveAllowed);
   const client = createMainAdminClient();
@@ -670,6 +954,9 @@ export async function executeExport(actor: AdminSessionActor, request: ExportReq
       : manifest(request.module).title;
     buffer = workbookBuffer(sheetTitle, rows, columns, request.module, sensitiveAllowed);
     extension = 'xlsx';
+  } else if (isPayrollTemplateExport) {
+    const pdfTitle = `${formatPayrollPeriod(rows[0]?.payroll_month, rows[0]?.payroll_year)} Payroll Summary`;
+    buffer = await renderPayrollPdf(pdfTitle, rows, sensitiveAllowed);
   } else {
     buffer = await renderPdf(manifest(request.module).title, rows, columns, actor, request.includeFilters ? request.filters : undefined);
   }
