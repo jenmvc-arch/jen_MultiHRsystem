@@ -415,10 +415,33 @@ export default function JobApplicationForm({
               <FileCheck className="w-8 h-8 text-white/80 shrink-0" />
             </div>
 
+            <nav className="sticky top-0 z-10 overflow-x-auto border-b border-neutral-border bg-white/95 px-4 py-2 backdrop-blur sm:px-6" aria-label="Application form sections">
+              <div className="flex min-w-max gap-1">
+                {[
+                  ['application-details', 'Application'],
+                  ['personal-information', 'Personal'],
+                  ['transportation', 'Mobility'],
+                  ['education', 'Education'],
+                  ['language', 'Language'],
+                  ['skills', 'Skills'],
+                  ['employment-history', 'Employment'],
+                  ['compensation', 'Compensation'],
+                ].map(([id, label], index) => (
+                  <a
+                    key={id}
+                    href={`#${id}`}
+                    className="rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-on-surface-variant transition-colors hover:bg-primary/10 hover:text-primary"
+                  >
+                    {index + 1}. {label}
+                  </a>
+                ))}
+              </div>
+            </nav>
+
             <div className="p-6 sm:p-8 space-y-8">
               
               {/* SECTION 1: APPLICATION DETAILS */}
-              <div className="space-y-4">
+              <div id="application-details" className="scroll-mt-16 space-y-4">
                 <div className="flex items-center gap-2 border-b border-neutral-100 pb-2">
                   <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">1</div>
                   <h3 className="font-bold text-sm text-on-background uppercase tracking-wide">Application Details</h3>
@@ -489,7 +512,7 @@ export default function JobApplicationForm({
               </div>
 
               {/* SECTION 2: PERSONAL INFORMATION */}
-              <div className="space-y-4">
+              <div id="personal-information" className="scroll-mt-16 space-y-4">
                 <div className="flex items-center gap-2 border-b border-neutral-100 pb-2">
                   <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">2</div>
                   <h3 className="font-bold text-sm text-on-background uppercase tracking-wide">Personal Information</h3>
@@ -683,7 +706,7 @@ export default function JobApplicationForm({
               </div>
 
               {/* SECTION 3: TRANSPORTATION & MOBILITY */}
-              <div className="space-y-4">
+              <div id="transportation" className="scroll-mt-16 space-y-4">
                 <div className="flex items-center gap-2 border-b border-neutral-100 pb-2">
                   <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">3</div>
                   <h3 className="font-bold text-sm text-on-background uppercase tracking-wide">Transportation & Mobility</h3>
@@ -746,7 +769,7 @@ export default function JobApplicationForm({
               </div>
 
               {/* SECTION 4: EDUCATION BACKGROUND */}
-              <div className="space-y-4">
+              <div id="education" className="scroll-mt-16 space-y-4">
                 <div className="flex items-center gap-2 border-b border-neutral-100 pb-2">
                   <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">4</div>
                   <h3 className="font-bold text-sm text-on-background uppercase tracking-wide">Education Background</h3>
@@ -809,7 +832,7 @@ export default function JobApplicationForm({
               </div>
 
               {/* SECTION 5: LANGUAGE PROFICIENCY */}
-              <div className="space-y-4">
+              <div id="language" className="scroll-mt-16 space-y-4">
                 <div className="flex items-center gap-2 border-b border-neutral-100 pb-2">
                   <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">5</div>
                   <h3 className="font-bold text-sm text-on-background uppercase tracking-wide">Language Proficiency</h3>
@@ -1001,7 +1024,7 @@ export default function JobApplicationForm({
               </div>
 
               {/* SECTION 6: SKILLS & PERSONALITY ASSESSMENT */}
-              <div className="space-y-4">
+              <div id="skills" className="scroll-mt-16 space-y-4">
                 <div className="flex items-center gap-2 border-b border-neutral-100 pb-2">
                   <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">6</div>
                   <h3 className="font-bold text-sm text-on-background uppercase tracking-wide">Skills & Personality Assessment</h3>
@@ -1055,7 +1078,7 @@ export default function JobApplicationForm({
               </div>
 
               {/* SECTION 7: EMPLOYMENT HISTORY */}
-              <div className="space-y-4">
+              <div id="employment-history" className="scroll-mt-16 space-y-4">
                 <div className="flex items-center gap-2 border-b border-neutral-100 pb-2">
                   <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">7</div>
                   <h3 className="font-bold text-sm text-on-background uppercase tracking-wide">Employment History</h3>
@@ -1221,7 +1244,7 @@ export default function JobApplicationForm({
               </div>
 
               {/* SECTION 8: COMPENSATION & AVAILABILITY */}
-              <div className="space-y-4">
+              <div id="compensation" className="scroll-mt-16 space-y-4">
                 <div className="flex items-center gap-2 border-b border-neutral-100 pb-2">
                   <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">8</div>
                   <h3 className="font-bold text-sm text-on-background uppercase tracking-wide">Compensation & Availability</h3>

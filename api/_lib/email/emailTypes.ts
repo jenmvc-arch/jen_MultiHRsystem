@@ -6,6 +6,8 @@ export type EmailType =
   | 'leave_decision'
   | 'claim_decision'
   | 'payslip_notification'
+  | 'employee_request_created'
+  | 'employee_request_updated'
   | 'test_email';
 
 export type EmailDeliveryStatus = 'sent' | 'failed';

@@ -16,6 +16,7 @@ export interface SheetsDataPayload {
   corporate_entities: any[];
   employees: any[];
   performances: any[];
+  appraisal_access_grants: any[];
   users: any[];
   audit_logs: any[];
   candidates?: any[];

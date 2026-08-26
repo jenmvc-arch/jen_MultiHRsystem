@@ -108,7 +108,7 @@ function normalizeLeaveGroup(group: LeaveGroup): LeaveGroup {
   };
 }
 
-function loadLocalWorkspace(entityId: string): LeaveWorkspaceData {
+function loadLocalWorkspace(entityId: string, employeeId?: string): LeaveWorkspaceData {
   const configs = readJson<LeaveConfig[]>(
     `leave_configs_${entityId}`,
     DEFAULT_LEAVE_CONFIGS,
@@ -145,7 +145,8 @@ function loadLocalWorkspace(entityId: string): LeaveWorkspaceData {
     `public_holidays_${entityId}`,
     DEFAULT_PUBLIC_HOLIDAYS,
   );
-  const requests = readJson<LeaveRequest[]>(`leave_requests_${entityId}`, []);
+  const requests = readJson<LeaveRequest[]>(`leave_requests_${entityId}`, [])
+    .filter((request) => !employeeId || request.employeeId === employeeId);
   const offInLieuRequests = readJson<OffInLieuRequest[]>(
     `off_in_lieu_requests_${entityId}`,
     [],
@@ -216,9 +217,13 @@ function persistLocalWorkspace(entityId: string, workspace: LeaveWorkspaceData) 
   writeJson(`leave_payroll_deductions_${entityId}`, workspace.payrollDeductions);
 }
 
-async function selectTable(table: string, entityId: string): Promise<any[]> {
+async function selectTable(table: string, entityId: string, employeeId?: string): Promise<any[]> {
   if (!employeeSupabase) return [];
-  const result = await employeeSupabase.from(table).select('*').eq('entity_id', entityId);
+  let query = employeeSupabase.from(table).select('*').eq('entity_id', entityId);
+  if (table === 'leave_requests' && employeeId) {
+    query = query.eq('employee_id', employeeId);
+  }
+  const result = await query;
   if (result.error) {
     if (/relation .* does not exist|schema cache|could not find the table/i.test(result.error.message || '')) {
       return [];
@@ -314,8 +319,9 @@ function mapRowsToWorkspace(entityId: string, rows: Record<string, any[]>): Leav
   };
 }
 
-export async function loadLeaveWorkspace(entityId: string): Promise<LeaveWorkspaceData> {
-  const localFallback = loadLocalWorkspace(entityId);
+export async function loadLeaveWorkspace(entityId: string, options?: { employeeId?: string }): Promise<LeaveWorkspaceData> {
+  const employeeId = options?.employeeId;
+  const localFallback = loadLocalWorkspace(entityId, employeeId);
   if (!entityId || !isEmployeeSupabaseConfigured || !employeeSupabase) return localFallback;
 
   try {
@@ -326,7 +332,7 @@ export async function loadLeaveWorkspace(entityId: string): Promise<LeaveWorkspa
       selectTable('leave_groups', entityId),
       selectTable('leave_group_items', entityId),
       selectTable('employee_leave_group_assignments', entityId),
-      selectTable('leave_requests', entityId),
+      selectTable('leave_requests', entityId, employeeId),
       selectTable('off_in_lieu_requests', entityId),
       selectTable('off_in_lieu_entries', entityId),
       selectTable('leave_balance_ledger', entityId),
@@ -357,7 +363,7 @@ export async function loadLeaveWorkspace(entityId: string): Promise<LeaveWorkspa
     });
     const hasRemoteData = types.length + policies.length + carry.length + groups.length + requests.length + offRequests.length + workGroups.length + holidayGroups.length > 0;
     const needsScheduleOrHolidaySeed = workGroups.length === 0 || workDays.length === 0 || holidayGroups.length === 0 || holidays.length === 0;
-    if (hasLegacyLeaveData(entityId) && typeof localStorage !== 'undefined' && localStorage.getItem(`leave_legacy_imported_${entityId}`) !== 'true') {
+    if (!employeeId && hasLegacyLeaveData(entityId) && typeof localStorage !== 'undefined' && localStorage.getItem(`leave_legacy_imported_${entityId}`) !== 'true') {
       const merged: LeaveWorkspaceData = {
         ...workspace,
         requests: [
@@ -381,7 +387,7 @@ export async function loadLeaveWorkspace(entityId: string): Promise<LeaveWorkspa
       localStorage.setItem(`leave_legacy_imported_${entityId}`, 'true');
       return merged;
     }
-    if (!hasRemoteData) {
+    if (!employeeId && !hasRemoteData) {
       await importLegacyLeaveData(entityId, localFallback);
       return localFallback;
     }

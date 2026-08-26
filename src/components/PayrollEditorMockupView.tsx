@@ -47,6 +47,7 @@ import {
   type YtdBreakdown
 } from '../data';
 import { formatToDDMMMYYYY, getGmt8Timestamp } from '../lib/dateUtils';
+import { useFeedback } from './GlobalFeedbackSystem';
 
 interface PayrollEditorMockupViewProps {
   employees: Employee[];
@@ -396,6 +397,7 @@ export default function PayrollEditorMockupView({
   onBack,
   onShowNotification
 }: PayrollEditorMockupViewProps) {
+  const { confirmAction, showUndoToast } = useFeedback();
   const now = new Date();
   const isEmbedded = mode === 'embedded';
   const [internalSelectedPayPeriod, setInternalSelectedPayPeriod] = useState(
@@ -794,6 +796,16 @@ export default function PayrollEditorMockupView({
       return;
     }
 
+    if (persistedPayrollRecord) {
+      const confirmed = await confirmAction({
+        title: 'Overwrite Payroll Record',
+        message: `A payroll record already exists for ${rawActiveEmployee.name} in ${selectedPayPeriod}. Saving will replace the current values in Payroll File.`,
+        type: 'warning',
+        confirmLabel: 'Overwrite Record',
+      });
+      if (!confirmed) return;
+    }
+
     try {
       await onSavePayrollRecord(recordToSave);
     } catch (error: any) {
@@ -804,12 +816,29 @@ export default function PayrollEditorMockupView({
     setDemoDrafts(previous => ({ ...previous, [draftKey]: editingDraft }));
     setIsEditing(false);
     setEditingDraft(null);
-    onShowNotification(
-      `${recordToSave.documentType || documentProfile.documentType} Saved and Processed`,
-      isSeparatePayoutMode
-        ? `${recordToSave.payoutTitle || 'Separate payout'} was saved to Payroll File.`
-        : `Your ${documentProfile.documentType.toLowerCase()} was saved to Payroll File.`
-    );
+    if (persistedPayrollRecord) {
+      showUndoToast({
+        title: `${recordToSave.documentType || documentProfile.documentType} Saved`,
+        message: 'The previous payroll values were replaced in Payroll File.',
+        type: 'success',
+        action: {
+          label: 'Undo',
+          expiresAt: Date.now() + 8_000,
+          undo: async () => {
+            await onSavePayrollRecord(persistedPayrollRecord);
+            onGeneratedPayrollRecord?.(persistedPayrollRecord);
+            onShowNotification('Payroll Save Reverted', 'The previous payroll values were restored.');
+          },
+        },
+      });
+    } else {
+      onShowNotification(
+        `${recordToSave.documentType || documentProfile.documentType} Saved and Processed`,
+        isSeparatePayoutMode
+          ? `${recordToSave.payoutTitle || 'Separate payout'} was saved to Payroll File.`
+          : `Your ${documentProfile.documentType.toLowerCase()} was saved to Payroll File.`
+      );
+    }
     onGeneratedPayrollRecord?.(recordToSave);
   };
 

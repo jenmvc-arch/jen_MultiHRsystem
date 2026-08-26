@@ -517,16 +517,16 @@ export default function PayrollView({
       </div>
 
       <section className="rounded-xl border border-neutral-border bg-white p-4 shadow-xs sm:p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-4 border-b border-neutral-border/60 pb-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
             <div className="rounded-lg bg-primary/10 p-2.5 text-primary">
               <Building2 className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-xs font-black uppercase tracking-[0.16em] text-primary">Active Corporate Entity</h2>
+              <h2 className="text-xs font-black uppercase tracking-[0.16em] text-primary">Payroll Workspace</h2>
               <p className="mt-1 text-base font-bold text-on-background">{activeEntity?.name || 'All Subsidiaries'}</p>
               <p className="mt-1 text-xs text-on-surface-variant">
-                Employees are isolated to this entity when entity-specific records exist.
+                Entity isolation and payroll filters apply to the current session.
               </p>
             </div>
           </div>
@@ -534,12 +534,10 @@ export default function PayrollView({
             <Check className="h-3.5 w-3.5" /> Workspace isolated
           </span>
         </div>
-      </section>
 
-      <section className="rounded-xl border border-neutral-border bg-white p-4 shadow-xs sm:p-5">
-        <div className="mb-4 flex items-center gap-2 border-b border-neutral-border/60 pb-3">
+        <div className="mb-4 flex items-center gap-2 pt-4">
           <Users className="h-4 w-4 text-primary" />
-          <h2 className="text-xs font-black uppercase tracking-[0.16em] text-primary">Payroll Workspace Filters</h2>
+          <h2 className="text-xs font-black uppercase tracking-[0.16em] text-primary">Workspace Filters</h2>
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[1.6fr_1fr_1fr_1.1fr]">
           <label className="block text-left">

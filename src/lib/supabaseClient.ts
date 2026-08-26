@@ -38,6 +38,7 @@ export interface SupabaseDataPayload {
   corporate_entities: any[];
   employees: any[];
   performances: any[];
+  appraisal_access_grants: any[];
   users: any[];
   audit_logs: any[];
   candidates?: any[];
@@ -99,11 +100,12 @@ export const supabaseClient = {
     }
     console.log('[Supabase Client] Fetching all tables...');
 
-    const [entitiesRes, employeesRes, candidatesRes, performancesRes, payrollRes, logsRes] = await Promise.all([
+    const [entitiesRes, employeesRes, candidatesRes, performancesRes, appraisalAccessRes, payrollRes, logsRes] = await Promise.all([
       supabase.from('corporate_entities').select('*'),
       supabase.from('employees').select('*'),
       supabase.from('candidates').select('*'),
       supabase.from('performances').select('*'),
+      supabase.from('appraisal_access_grants').select('*'),
       supabase.from('payroll_records_2026').select('*'),
       supabase.from('audit_logs').select('*')
     ]);
@@ -116,6 +118,7 @@ export const supabaseClient = {
       employees: (employeesRes.data || []).map(toCamelCase),
       candidates: (candidatesRes.data || []).map(toCamelCase),
       performances: (performancesRes.data || []).map(toCamelCase),
+      appraisal_access_grants: (appraisalAccessRes.data || []).map(toCamelCase),
       payroll_records_2026: (payrollRes.data || []).map(toCamelCase),
       // Credentials are server-only. LoginView uses the secure admin session
       // endpoint or employee Auth instead of loading public.users.password.

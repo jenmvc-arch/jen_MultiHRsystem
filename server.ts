@@ -17,6 +17,19 @@ import {
   handleBusinessEmailNotification,
   handleGoogleSheetsLogin,
 } from './api/_lib/employeeAccountHandlers';
+import {
+  handleAdminEmployeeRequests,
+  handleAdminEmployeeRequestUpdate,
+  handleAdminProfileChangeUpdate,
+  handleEmployeePortalBootstrap,
+  handleEmployeePortalMessage,
+  handleEmployeePortalNotificationRead,
+  handleEmployeePortalProfile,
+  handleEmployeePortalProfileChange,
+  handleEmployeePortalRequest,
+  handleEmployeePortalLeaveRequests,
+  handleEmployeePortalReopen,
+} from './api/_lib/employeeServiceHandlers';
 import { handleExport } from './api/_lib/exportHandlers';
 import { handleGoogleSheetsProxy } from './api/_lib/googleSheetsServer';
 import { requireAdminSession } from './api/_lib/employeeAccountServer';
@@ -51,6 +64,18 @@ app.post('/api/admin/employee-accounts/share', (req, res) => (
 app.post('/api/admin/exports', handleExport);
 app.post('/api/admin/email/test', handleAdminEmailTest);
 app.post('/api/admin/email/notification', handleBusinessEmailNotification);
+app.get('/api/employee-portal/bootstrap', handleEmployeePortalBootstrap);
+app.patch('/api/employee-portal/profile', handleEmployeePortalProfile);
+app.post('/api/employee-portal/requests', handleEmployeePortalRequest);
+app.get('/api/employee-portal/leave-requests', handleEmployeePortalLeaveRequests);
+app.post('/api/employee-portal/leave-requests', handleEmployeePortalLeaveRequests);
+app.post('/api/employee-portal/request-message', handleEmployeePortalMessage);
+app.post('/api/employee-portal/reopen-request', handleEmployeePortalReopen);
+app.post('/api/employee-portal/profile-change-requests', handleEmployeePortalProfileChange);
+app.post('/api/employee-portal/notifications/read', handleEmployeePortalNotificationRead);
+app.get('/api/admin/employee-requests', handleAdminEmployeeRequests);
+app.post('/api/admin/employee-requests/update', handleAdminEmployeeRequestUpdate);
+app.post('/api/admin/profile-change-requests/update', handleAdminProfileChangeUpdate);
 app.post('/api/google-sheets', handleGoogleSheetsProxy);
 
 // API Endpoint to generate PDF from the payslip client view

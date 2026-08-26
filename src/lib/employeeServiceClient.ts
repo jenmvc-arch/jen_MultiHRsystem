@@ -1,0 +1,115 @@
+import {
+  EmployeeNotification,
+  EmployeePortalBootstrap,
+  EmployeeProfileChangeRequest,
+  EmployeeProfileChangeType,
+  EmployeeServiceMessage,
+  EmployeeServiceRequest,
+  EmployeeServiceRequestCategory,
+  EmployeeServiceRequestPriority,
+  EmployeeServiceRequestStatus,
+} from './employeeServiceTypes';
+import { LeaveRequest } from './leaveDomain';
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers || {}),
+    },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || `Employee portal request failed with status ${response.status}.`);
+  }
+  return payload as T;
+}
+
+export const loadEmployeePortalBootstrap = () =>
+  request<EmployeePortalBootstrap>('/api/employee-portal/bootstrap');
+
+export const updateEmployeePortalProfile = (updates: Record<string, unknown>) =>
+  request<{ employee: Record<string, unknown> }>('/api/employee-portal/profile', {
+    method: 'PATCH',
+    body: JSON.stringify({ updates }),
+  });
+
+export const createEmployeeServiceRequest = (input: {
+  category: EmployeeServiceRequestCategory;
+  subject: string;
+  description: string;
+  priority: EmployeeServiceRequestPriority;
+}) => request<{ request: EmployeeServiceRequest }>('/api/employee-portal/requests', {
+  method: 'POST',
+  body: JSON.stringify(input),
+});
+
+export const addEmployeeServiceMessage = (requestId: string, body: string) =>
+  request<{ message: EmployeeServiceMessage; request?: EmployeeServiceRequest }>('/api/employee-portal/request-message', {
+    method: 'POST',
+    body: JSON.stringify({ requestId, body }),
+  });
+
+export const reopenEmployeeServiceRequest = (requestId: string) =>
+  request<{ request: EmployeeServiceRequest }>('/api/employee-portal/reopen-request', {
+    method: 'POST',
+    body: JSON.stringify({ requestId }),
+  });
+
+export const createEmployeeProfileChangeRequest = (input: {
+  changeType: EmployeeProfileChangeType;
+  requestedValues: Record<string, unknown>;
+}) => request<{ request: EmployeeProfileChangeRequest }>('/api/employee-portal/profile-change-requests', {
+  method: 'POST',
+  body: JSON.stringify(input),
+});
+
+export const markEmployeeNotificationRead = (notificationId: string) =>
+  request<{ notification: EmployeeNotification }>('/api/employee-portal/notifications/read', {
+    method: 'POST',
+    body: JSON.stringify({ notificationId }),
+  });
+
+export const loadEmployeeLeaveRequests = () =>
+  request<{ requests: LeaveRequest[] }>('/api/employee-portal/leave-requests');
+
+export const createEmployeeLeaveRequest = (input: {
+  leaveTypeId: string;
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  reason: string;
+}) => request<{ request: LeaveRequest }>('/api/employee-portal/leave-requests', {
+  method: 'POST',
+  body: JSON.stringify(input),
+});
+
+export const listAdminEmployeeRequests = (query = '') =>
+  request<{ requests: EmployeeServiceRequest[]; profileChanges: EmployeeProfileChangeRequest[] }>(
+    `/api/admin/employee-requests${query ? `?${query}` : ''}`
+  );
+
+export const updateAdminEmployeeRequest = (input: {
+  requestId: string;
+  status?: EmployeeServiceRequestStatus;
+  assignedTo?: string;
+  message?: string;
+}) => request<{ request: EmployeeServiceRequest }>('/api/admin/employee-requests/update', {
+  method: 'POST',
+  body: JSON.stringify(input),
+});
+
+export const updateAdminProfileChangeRequest = (input: {
+  requestId: string;
+  status: 'Approved' | 'Rejected';
+  reviewNote?: string;
+}) => request<{ request: EmployeeProfileChangeRequest; employee?: Record<string, unknown> }>(
+  '/api/admin/profile-change-requests/update',
+  {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }
+);

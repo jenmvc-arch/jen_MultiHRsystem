@@ -36,7 +36,6 @@ interface DashboardViewProps {
   payrollRecords2026?: PayrollRecord2026[];
   onNavigate: (tab: any) => void;
   onOpenNewEmployeeModal: () => void;
-  onOpenRequestModal: () => void;
   activeEntityId?: string;
   onChangeActiveEntity?: (id: string) => void;
 }
@@ -49,7 +48,6 @@ export default function DashboardView({
   payrollRecords2026,
   onNavigate,
   onOpenNewEmployeeModal,
-  onOpenRequestModal,
   activeEntityId,
   onChangeActiveEntity
 }: DashboardViewProps) {
@@ -204,15 +202,6 @@ export default function DashboardView({
           <p className="mt-1 max-w-2xl text-sm text-on-surface-variant">
             {activeEntity?.name || 'Your company'} at a glance. You have <span className="font-semibold text-primary">{reviewsPendingCount} performance reviews</span> pending for the {currentMonthName} pay period.
           </p>
-        </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={onOpenRequestModal}
-            className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-primary-container"
-          >
-            <Plus className="w-4 h-4" />
-            New Request
-          </button>
         </div>
       </div>
 
@@ -656,12 +645,5 @@ export default function DashboardView({
 
       </div>
     </div>
-  );
-}
-
-// Simple Plus icon helper to prevent import issue
-function Plus(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M5 12h14" /><path d="M12 5v14" /></svg>
   );
 }

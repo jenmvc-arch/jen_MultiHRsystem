@@ -28,6 +28,7 @@ export default function SocsoConfigAdminView() {
     confirmAction,
     showError,
     showSuccess,
+    showUndoToast,
   } = useFeedback();
   const [configs, setConfigs] = useState<SOCSOConfiguration[]>([]);
   const [brackets, setBrackets] = useState<SOCSOBracket[]>([]);
@@ -158,13 +159,21 @@ export default function SocsoConfigAdminView() {
     showSuccess('Statutory configuration draft created successfully with auto-populated PERKESO brackets!', 'Configuration Created');
   };
 
-  const handleApprove = (id: string) => {
+  const handleApprove = async (id: string) => {
     const continuityErrors = validateBracketsContinuity(id);
     if (continuityErrors.length > 0) {
       showError(`Cannot approve configuration due to continuity errors:\n${continuityErrors.join('\n')}`, 'Approval Blocked');
       return;
     }
 
+    const previousConfigs = configs;
+    const confirmed = await confirmAction({
+      title: 'Approve SOCSO Configuration',
+      message: 'Approve this statutory configuration and make it available for payroll use? Review the bracket continuity report before continuing.',
+      type: 'warning',
+      confirmLabel: 'Approve Configuration',
+    });
+    if (!confirmed) return;
     const updated = configs.map(c => {
       if (c.id === id) {
         return {
@@ -179,10 +188,32 @@ export default function SocsoConfigAdminView() {
     });
 
     saveToStorage(updated, brackets);
-    showSuccess('Configuration status updated to Approved.', 'Configuration Approved');
+    showUndoToast({
+      title: 'Configuration Approved',
+      message: 'The SOCSO configuration is now approved for payroll use.',
+      type: 'success',
+      action: {
+        label: 'Undo',
+        expiresAt: Date.now() + 8_000,
+        undo: async () => {
+          saveToStorage(previousConfigs, brackets);
+          showSuccess('Configuration approval reverted.', 'Approval Reverted');
+        },
+      },
+    });
   };
 
-  const handleDeactivate = (id: string) => {
+  const handleDeactivate = async (id: string) => {
+    const config = configs.find((item) => item.id === id);
+    if (!config) return;
+    const previousConfigs = configs;
+    const confirmed = await confirmAction({
+      title: 'Disable SOCSO Configuration',
+      message: `Disable the ${config.id} SOCSO configuration? Payroll calculations will stop using it until another approved configuration is active.`,
+      type: 'danger',
+      confirmLabel: 'Disable Configuration',
+    });
+    if (!confirmed) return;
     const updated = configs.map(c => {
       if (c.id === id) {
         return {
@@ -195,7 +226,19 @@ export default function SocsoConfigAdminView() {
     });
 
     saveToStorage(updated, brackets);
-    showSuccess('Configuration deactivated.', 'Configuration Deactivated');
+    showUndoToast({
+      title: 'Configuration Disabled',
+      message: `${config.id} was disabled.`,
+      type: 'success',
+      action: {
+        label: 'Undo',
+        expiresAt: Date.now() + 8_000,
+        undo: async () => {
+          saveToStorage(previousConfigs, brackets);
+          showSuccess('Configuration re-enabled.', 'Disable Reverted');
+        },
+      },
+    });
   };
 
   const handleDelete = async (id: string) => {
@@ -206,10 +249,24 @@ export default function SocsoConfigAdminView() {
       confirmLabel: 'Delete Configuration',
     });
     if (!confirmed) return;
+    const previousConfigs = configs;
+    const previousBrackets = brackets;
     const updatedConfigs = configs.filter(c => c.id !== id);
     const updatedBrackets = brackets.filter(b => b.configurationId !== id);
     saveToStorage(updatedConfigs, updatedBrackets);
-    showSuccess('Configuration and associated brackets were deleted.', 'Configuration Deleted');
+    showUndoToast({
+      title: 'Configuration Deleted',
+      message: 'The configuration and associated brackets were deleted.',
+      type: 'success',
+      action: {
+        label: 'Undo',
+        expiresAt: Date.now() + 8_000,
+        undo: async () => {
+          saveToStorage(previousConfigs, previousBrackets);
+          showSuccess('Configuration restored.', 'Delete Reverted');
+        },
+      },
+    });
   };
 
   const handleImportCsv = () => {
@@ -476,7 +533,17 @@ export default function SocsoConfigAdminView() {
     reader.readAsText(file);
   };
 
-  const handleApproveSchedule = (scheduleId: string) => {
+  const handleApproveSchedule = async (scheduleId: string) => {
+    const schedule = schedules.find((item) => item.id === scheduleId);
+    if (!schedule) return;
+    const previousSchedules = schedules;
+    const confirmed = await confirmAction({
+      title: 'Approve SOCSO Schedule',
+      message: `Approve the imported ${schedule.id} schedule for activation review?`,
+      type: 'warning',
+      confirmLabel: 'Approve Schedule',
+    });
+    if (!confirmed) return;
     const updated = schedules.map(s => {
       if (s.id === scheduleId) {
         return {
@@ -489,10 +556,32 @@ export default function SocsoConfigAdminView() {
       return s;
     });
     saveSchedulesToStorage(updated, scheduleBrackets);
-    showSuccess('Schedule approved successfully!', 'Schedule Approved');
+    showUndoToast({
+      title: 'Schedule Approved',
+      message: `${schedule.id} is ready for activation.`,
+      type: 'success',
+      action: {
+        label: 'Undo',
+        expiresAt: Date.now() + 8_000,
+        undo: async () => {
+          saveSchedulesToStorage(previousSchedules, scheduleBrackets);
+          showSuccess('Schedule approval reverted.', 'Approval Reverted');
+        },
+      },
+    });
   };
 
-  const handleActivateSchedule = (scheduleId: string) => {
+  const handleActivateSchedule = async (scheduleId: string) => {
+    const schedule = schedules.find((item) => item.id === scheduleId);
+    if (!schedule) return;
+    const previousSchedules = schedules;
+    const confirmed = await confirmAction({
+      title: 'Activate SOCSO Schedule',
+      message: `Activate ${schedule.id}? The currently active schedule, if any, will be archived and payroll calculations will use this schedule.`,
+      type: 'danger',
+      confirmLabel: 'Activate Schedule',
+    });
+    if (!confirmed) return;
     const updated = schedules.map(s => {
       if (s.id === scheduleId) {
         return {
@@ -511,7 +600,19 @@ export default function SocsoConfigAdminView() {
       return s;
     });
     saveSchedulesToStorage(updated, scheduleBrackets);
-    showSuccess('Schedule activated successfully! All other active schedules have been archived.', 'Schedule Activated');
+    showUndoToast({
+      title: 'Schedule Activated',
+      message: `${schedule.id} is active. Any previous active schedule was archived.`,
+      type: 'success',
+      action: {
+        label: 'Undo',
+        expiresAt: Date.now() + 8_000,
+        undo: async () => {
+          saveSchedulesToStorage(previousSchedules, scheduleBrackets);
+          showSuccess('Schedule activation reverted.', 'Activation Reverted');
+        },
+      },
+    });
   };
 
   const getComparison = () => {

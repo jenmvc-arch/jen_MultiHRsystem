@@ -52,7 +52,7 @@ export default function DepartmentRoleView({
   employees,
   onUpdateEmployee
 }: DepartmentRoleViewProps) {
-  const { confirmAction } = useFeedback();
+  const { confirmAction, showUndoToast } = useFeedback();
   const [departments, setDepartments] = useState<string[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
 
@@ -153,9 +153,22 @@ export default function DepartmentRoleView({
       confirmLabel: 'Delete Department',
     });
     if (!confirmed) return;
+    const previousDepartments = departments;
     const updated = departments.filter((_, i) => i !== index);
     saveDepartments(updated);
-    onShowNotification('Department Deleted', `"${name}" removed.`, 'success');
+    showUndoToast({
+      title: 'Department Deleted',
+      message: `"${name}" was removed from the directory.`,
+      type: 'success',
+      action: {
+        label: 'Undo',
+        expiresAt: Date.now() + 8_000,
+        undo: async () => {
+          saveDepartments(previousDepartments);
+          onShowNotification('Department Restored', `"${name}" is available again.`, 'success');
+        },
+      },
+    });
   };
 
   // Delete Role
@@ -167,9 +180,22 @@ export default function DepartmentRoleView({
       confirmLabel: 'Delete Designation',
     });
     if (!confirmed) return;
+    const previousRoles = roles;
     const updated = roles.filter((_, i) => i !== index);
     saveRoles(updated);
-    onShowNotification('Role Deleted', `"${name}" removed.`, 'success');
+    showUndoToast({
+      title: 'Designation Deleted',
+      message: `"${name}" was removed from the directory.`,
+      type: 'success',
+      action: {
+        label: 'Undo',
+        expiresAt: Date.now() + 8_000,
+        undo: async () => {
+          saveRoles(previousRoles);
+          onShowNotification('Designation Restored', `"${name}" is available again.`, 'success');
+        },
+      },
+    });
   };
 
   // Start Edit Dept

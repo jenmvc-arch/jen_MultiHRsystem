@@ -90,6 +90,7 @@ interface HireOnboardingViewProps {
   candidates: Candidate[];
   onAddCandidate: (newCandidate: Candidate) => Promise<void>;
   onDeleteCandidate: (id: string) => Promise<void>;
+  onRestoreCandidate: (candidate: Candidate) => Promise<void>;
   onUpdateCandidate: (id: string, updates: Partial<Candidate>) => Promise<void>;
   onUpdateEmployee?: (id: string, updates: Partial<Employee>) => Promise<void>;
   currentUserName?: string | null;
@@ -155,13 +156,14 @@ export default function HireOnboardingView({
   candidates,
   onAddCandidate,
   onDeleteCandidate,
+  onRestoreCandidate,
   onUpdateCandidate,
   onUpdateEmployee,
   currentUserName,
   currentUserEmail,
   currentUserRole,
 }: HireOnboardingViewProps) {
-  const { confirmAction } = useFeedback();
+  const { confirmAction, showUndoToast } = useFeedback();
   const [tasks, setTasks] = useState<OnboardingTask[]>(INITIAL_ONBOARDING_TASKS);
   const [selectedCandidateId, setSelectedCandidateId] = useState('');
   const [activeTab, setActiveTab] = useState<HireOnboardingSection>(() => (
@@ -350,6 +352,33 @@ export default function HireOnboardingView({
     return nextData;
   };
 
+  const restoreCandidateTransition = async (
+    candidate: Candidate,
+    previousCandidate: Candidate,
+    previousPipelineData: HiringPipelineData,
+    currentStatus: CandidatePipelineStatus,
+    previousStatus: CandidatePipelineStatus,
+    notes: string,
+  ) => {
+    await onUpdateCandidate(candidate.id, {
+      stage: previousCandidate.stage,
+      pipelineStatus: previousCandidate.pipelineStatus,
+      pipelineUpdatedAt: previousCandidate.pipelineUpdatedAt,
+      kivNotes: previousCandidate.kivNotes,
+      kivFollowUpDate: previousCandidate.kivFollowUpDate,
+      rejectionReason: previousCandidate.rejectionReason,
+    });
+    const restoredData = await recordPipelineEvent(previousPipelineData, {
+      candidateId: candidate.id,
+      fromStatus: currentStatus,
+      toStatus: previousStatus,
+      eventType: 'status_reverted',
+      notes,
+      actorName,
+    });
+    setPipelineData(restoredData);
+  };
+
   const handleApplicationSubmit = async (formData: any) => {
     const timestamp = nowIso();
     const newCandidate: Candidate = {
@@ -395,6 +424,8 @@ export default function HireOnboardingView({
   };
 
   const handleReject = async (candidate: Candidate, reason = '') => {
+    const previousPipelineData = pipelineData;
+    const previousStatus = getStatus(candidate);
     const confirmed = await confirmAction({
       title: 'Reject Candidate',
       message: `Are you sure you want to reject ${candidate.name}? The decision will be recorded in the hiring history.`,
@@ -410,18 +441,78 @@ export default function HireOnboardingView({
         );
       },
     });
-    if (confirmed) onShowNotification('Candidate Rejected', `${candidate.name} was moved to the final rejected state.`);
+    if (confirmed) {
+      showUndoToast({
+        title: 'Candidate Rejected',
+        message: `${candidate.name} was moved to the final rejected state.`,
+        type: 'success',
+        action: {
+          label: 'Undo',
+          expiresAt: Date.now() + 8_000,
+          undo: async () => {
+            await onUpdateCandidate(candidate.id, {
+              stage: candidate.stage,
+              pipelineStatus: candidate.pipelineStatus,
+              pipelineUpdatedAt: candidate.pipelineUpdatedAt,
+              rejectionReason: candidate.rejectionReason,
+            });
+            const nextData = await recordPipelineEvent(previousPipelineData, {
+              candidateId: candidate.id,
+              fromStatus: 'rejected',
+              toStatus: previousStatus,
+              eventType: 'status_reverted',
+              notes: 'Rejected decision was reverted from the undo action.',
+              actorName,
+            });
+            setPipelineData(nextData);
+            onShowNotification('Candidate Rejection Reverted', `${candidate.name} returned to ${getPipelineStatusLabel(previousStatus)}.`);
+          },
+        },
+      });
+    }
   };
 
   const handleKiv = async (candidate: Candidate, notes: string, followUpDate: string) => {
+    const previousCandidate = { ...candidate };
+    const previousPipelineData = pipelineData;
+    const previousStatus = getStatus(candidate);
+    const confirmed = await confirmAction({
+      title: 'Move Candidate to KIV',
+      message: `Move ${candidate.name} to KIV? The candidate will leave the active interview queue until follow-up.`,
+      type: 'warning',
+      confirmLabel: 'Move to KIV',
+      onConfirm: async () => {
+        await transitionCandidate(
+          candidate,
+          'kiv',
+          { kivNotes: notes, kivFollowUpDate: followUpDate || undefined },
+          'kiv',
+          notes || undefined,
+        );
+      },
+    });
+    if (!confirmed) return;
     try {
-      await transitionCandidate(
-        candidate,
-        'kiv',
-        { kivNotes: notes, kivFollowUpDate: followUpDate || undefined },
-        'kiv',
-        notes || undefined,
-      );
+      showUndoToast({
+        title: 'Candidate Moved to KIV',
+        message: `${candidate.name} is now in the KIV queue.`,
+        type: 'success',
+        action: {
+          label: 'Undo',
+          expiresAt: Date.now() + 8_000,
+          undo: async () => {
+            await restoreCandidateTransition(
+              candidate,
+              previousCandidate,
+              previousPipelineData,
+              'kiv',
+              previousStatus,
+              'KIV decision was reverted from the undo action.',
+            );
+            onShowNotification('KIV Decision Reverted', `${candidate.name} returned to ${getPipelineStatusLabel(previousStatus)}.`);
+          },
+        },
+      });
       onShowNotification('Candidate Moved to KIV', `${candidate.name} is now in the KIV queue.`);
       setStatusModal(null);
     } catch (error: any) {
@@ -431,6 +522,8 @@ export default function HireOnboardingView({
 
   const handleDeleteSelectedCandidate = async () => {
     if (!selectedCandidate || activeQueue !== 'applied') return;
+    const deletedCandidate = selectedCandidate;
+    const previousPipelineData = pipelineData;
     const confirmed = await confirmAction({
       title: 'Delete Candidate',
       message: `Are you sure you want to delete ${selectedCandidate.name}? This will remove the candidate and related pipeline history.`,
@@ -442,7 +535,21 @@ export default function HireOnboardingView({
           await onDeleteCandidate(selectedCandidate.id);
           setPipelineData(deleteCandidatePipelineData(pipelineData, selectedCandidate.id));
           setSelectedCandidateId('');
-          onShowNotification('Candidate Deleted', `${selectedCandidate.name} was removed from the hiring pipeline.`);
+          showUndoToast({
+            title: 'Candidate Deleted',
+            message: `${deletedCandidate.name} was removed from the hiring pipeline.`,
+            type: 'success',
+            action: {
+              label: 'Undo',
+              expiresAt: Date.now() + 8_000,
+              undo: async () => {
+                await onRestoreCandidate(deletedCandidate);
+                setPipelineData(previousPipelineData);
+                setSelectedCandidateId(deletedCandidate.id);
+                onShowNotification('Candidate Restored', `${deletedCandidate.name} is back in the hiring pipeline.`);
+              },
+            },
+          });
         } finally {
           setIsSaving(false);
         }
@@ -504,12 +611,45 @@ export default function HireOnboardingView({
   ) => {
     const interview = getCandidateInterview(pipelineData, candidate.id);
     if (!interview) return;
+    const previousCandidate = { ...candidate };
+    const previousPipelineData = pipelineData;
+    const previousStatus = getStatus(candidate);
     const interviewStatus = action === 'no_show' ? 'no_show' : action === 'withdrew' ? 'withdrew' : 'kiv';
     const nextInterview = { ...interview, status: interviewStatus as CandidateInterview['status'], updatedAt: nowIso() };
+    const nextStatus = action === 'kiv' ? 'kiv' : action === 'no_show' ? 'interview_no_show' : 'interview_withdrew';
+    const confirmed = await confirmAction({
+      title: 'Update Interview Status',
+      message: `Mark ${candidate.name}'s interview as ${getPipelineStatusLabel(nextStatus)}? This updates the candidate pipeline and interview history.`,
+      type: action === 'kiv' ? 'warning' : 'danger',
+      confirmLabel: 'Update Interview',
+      onConfirm: async () => {
+        const nextData = await saveInterview(pipelineData, nextInterview);
+        await transitionCandidate(candidate, nextStatus, action === 'kiv' ? { kivNotes: notes } : {}, `interview_${action}`, notes, nextData);
+      },
+    });
+    if (!confirmed) return;
     try {
-      const nextData = await saveInterview(pipelineData, nextInterview);
-      const nextStatus = action === 'kiv' ? 'kiv' : action === 'no_show' ? 'interview_no_show' : 'interview_withdrew';
-      await transitionCandidate(candidate, nextStatus, action === 'kiv' ? { kivNotes: notes } : {}, `interview_${action}`, notes, nextData);
+      showUndoToast({
+        title: 'Interview Status Updated',
+        message: `${candidate.name} was marked as ${getPipelineStatusLabel(nextStatus)}.`,
+        type: 'success',
+        action: {
+          label: 'Undo',
+          expiresAt: Date.now() + 8_000,
+          undo: async () => {
+            await saveInterview(previousPipelineData, interview);
+            await restoreCandidateTransition(
+              candidate,
+              previousCandidate,
+              previousPipelineData,
+              nextStatus,
+              previousStatus,
+              'Interview status was reverted from the undo action.',
+            );
+            onShowNotification('Interview Status Reverted', `${candidate.name} returned to ${getPipelineStatusLabel(previousStatus)}.`);
+          },
+        },
+      });
       setStatusModal(null);
       onShowNotification('Interview Status Updated', `${candidate.name} was marked as ${getPipelineStatusLabel(nextStatus)}.`);
     } catch (error: any) {
@@ -520,14 +660,47 @@ export default function HireOnboardingView({
   const handleCancelInterview = async (candidate: Candidate, notes: string) => {
     const interview = getCandidateInterview(pipelineData, candidate.id);
     if (!interview) return;
+    const previousCandidate = { ...candidate };
+    const previousPipelineData = pipelineData;
+    const previousStatus = getStatus(candidate);
+    const confirmed = await confirmAction({
+      title: 'Cancel Interview',
+      message: `Cancel ${candidate.name}'s interview on ${interview.scheduledDate} at ${interview.scheduledTime}? Any notification already sent cannot be recalled.`,
+      type: 'danger',
+      confirmLabel: 'Cancel Interview',
+      onConfirm: async () => {
+        const nextData = await saveInterview(pipelineData, {
+          ...interview,
+          status: 'cancelled',
+          cancellationReason: notes || undefined,
+          updatedAt: nowIso(),
+        });
+        await transitionCandidate(candidate, 'interview_cancelled', {}, 'interview_cancelled', notes || undefined, nextData);
+      },
+    });
+    if (!confirmed) return;
     try {
-      const nextData = await saveInterview(pipelineData, {
-        ...interview,
-        status: 'cancelled',
-        cancellationReason: notes || undefined,
-        updatedAt: nowIso(),
+      showUndoToast({
+        title: 'Interview Cancelled',
+        message: `${candidate.name}'s interview was cancelled. External notifications cannot be recalled.`,
+        type: 'success',
+        action: {
+          label: 'Undo',
+          expiresAt: Date.now() + 8_000,
+          undo: async () => {
+            await saveInterview(previousPipelineData, interview);
+            await restoreCandidateTransition(
+              candidate,
+              previousCandidate,
+              previousPipelineData,
+              'interview_cancelled',
+              previousStatus,
+              'Interview cancellation was reverted from the undo action.',
+            );
+            onShowNotification('Interview Cancellation Reverted', `${candidate.name}'s interview is active again.`);
+          },
+        },
       });
-      await transitionCandidate(candidate, 'interview_cancelled', {}, 'interview_cancelled', notes || undefined, nextData);
       setStatusModal(null);
       onShowNotification('Interview Cancelled', `${candidate.name}'s interview was cancelled.`);
     } catch (error: any) {
@@ -597,6 +770,9 @@ export default function HireOnboardingView({
       onShowNotification('Offer Action Blocked', 'The offer must be marked Offer Sent before it can be accepted.');
       return;
     }
+    const previousCandidate = { ...candidate };
+    const previousPipelineData = pipelineData;
+    const previousStatus = getStatus(candidate);
     const confirmed = await confirmAction({
       title: nextStatus === 'offer_rejected' ? 'Reject Offer' : 'Update Offer Status',
       message: nextStatus === 'offer_rejected'
@@ -621,6 +797,29 @@ export default function HireOnboardingView({
       },
     });
     if (confirmed) {
+      showUndoToast({
+        title: nextStatus === 'offer_accepted' ? 'Offer Accepted' : 'Offer Status Updated',
+        message: nextStatus === 'offer_accepted'
+          ? `${candidate.name} moved to Onboarding. Undo restores the internal status; any shared handoff link remains subject to its existing access rules.`
+          : `${candidate.name} is now ${getOfferStatusLabel(nextStatus)}.`,
+        type: 'success',
+        action: {
+          label: 'Undo',
+          expiresAt: Date.now() + 8_000,
+          undo: async () => {
+            await saveOffer(previousPipelineData, offer);
+            await restoreCandidateTransition(
+              candidate,
+              previousCandidate,
+              previousPipelineData,
+              nextStatus === 'offer_accepted' ? 'onboarding' : nextStatus,
+              previousStatus,
+              'Offer status was reverted from the undo action.',
+            );
+            onShowNotification('Offer Status Reverted', `${candidate.name} returned to ${getPipelineStatusLabel(previousStatus)}.`);
+          },
+        },
+      });
       onShowNotification(
         nextStatus === 'offer_accepted' ? 'Offer Accepted' : 'Offer Status Updated',
         nextStatus === 'offer_accepted'

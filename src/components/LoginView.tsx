@@ -35,6 +35,9 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [password, setPassword] = useState('');
   const [employeeOtp, setEmployeeOtp] = useState('');
   const [otpRequested, setOtpRequested] = useState(false);
+  const [employeeRecoveryMode, setEmployeeRecoveryMode] = useState(false);
+  const [recoveryPassword, setRecoveryPassword] = useState('');
+  const [recoveryPasswordConfirm, setRecoveryPasswordConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +93,9 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     setAuthNotice(null);
     setOtpRequested(false);
     setEmployeeOtp('');
+    setEmployeeRecoveryMode(false);
+    setRecoveryPassword('');
+    setRecoveryPasswordConfirm('');
   };
 
   useEffect(() => {
@@ -101,44 +107,30 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       if (cancelled || authError || !data.user?.email) return;
 
       setIsLoading(true);
-      if (!supabase) {
-        await employeeAuthClient.auth.signOut({ scope: 'local' });
-        setIsLoading(false);
-        setError('The employee directory database is not configured for this sign-in.');
-        return;
-      }
-      const [
-        { data: employee, error: employeeError },
-        { data: candidate, error: candidateError },
-      ] = await Promise.all([
-        supabase
-          .from('employees')
-          .select('email, name')
-          .ilike('email', data.user.email)
-          .maybeSingle(),
-        supabase
-          .from('candidates')
-          .select('email, name')
-          .ilike('email', data.user.email)
-          .maybeSingle(),
-      ]);
-
+      const { data: sessionData } = await employeeAuthClient.auth.getSession();
+      const profileResponse = await fetch('/api/employee-auth/profile', {
+        credentials: 'include',
+        headers: sessionData.session?.access_token
+          ? { Authorization: `Bearer ${sessionData.session.access_token}` }
+          : undefined,
+      });
+      const profile = await profileResponse.json().catch(() => ({}));
       if (cancelled) return;
       setIsLoading(false);
-      const signer = employee || candidate;
-      if (employeeError || candidateError || !signer) {
+      if (!profileResponse.ok || !profile.employeeId) {
         await employeeAuthClient.auth.signOut({ scope: 'local' });
-        setError('This secure sign-in link is not connected to an employee onboarding account.');
+        setError(profile.error || 'This employee account is not linked to an active employee profile.');
         return;
       }
 
-      const signedInUser = await loadEmployeeAccountProfile(employeeAuthClient, {
-        email: signer.email,
+      onLoginSuccess({
+        email: profile.email || data.user.email,
         password: '',
-        name: signer.name,
-        role: employee ? 'Employee' : 'Candidate',
+        name: data.user.user_metadata?.name || profile.email || data.user.email,
+        role: 'Employee',
+        mustChangePassword: Boolean(profile.mustChangePassword),
+        profileLoadedFromServer: true,
       });
-      onLoginSuccess(signedInUser);
     });
 
     return () => {
@@ -165,19 +157,16 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         return;
       }
 
-      const response = await fetch('/api/employee-auth/otp/request', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: signerEmail, purpose: 'login', name: matchedUser.name }),
+      const { error: signInError } = await employeeAuthClient.auth.signInWithPassword({
+        email: signerEmail,
+        password,
       });
-      const payload = await response.json().catch(() => ({}));
       setIsLoading(false);
-      if (!response.ok) {
-        setError(payload.error || 'The verification code could not be sent.');
+      if (signInError) {
+        setError(signInError.message || 'Invalid employee email or password.');
         return;
       }
-      setOtpRequested(true);
-      setAuthNotice(`A verification code has been sent to ${signerEmail}.`);
+      onLoginSuccess(await loadEmployeeAccountProfile(employeeAuthClient, matchedUser));
       return;
     }
 
@@ -194,19 +183,45 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     setAuthNotice(null);
 
     // Validate inputs
-    if (!email.trim() || (loginPortal === 'admin' && !password)) {
-      setError(loginPortal === 'admin' ? 'Please fill in all fields.' : 'Please enter your employee email.');
+    if (!email.trim() || (loginPortal === 'admin' && !password) || (loginPortal === 'employee' && !employeeRecoveryMode && !password)) {
+      setError(loginPortal === 'admin' ? 'Please fill in all fields.' : 'Please enter your employee email and password.');
       return;
     }
 
     setIsLoading(true);
 
-    if (loginPortal === 'employee' && otpRequested) {
+    if (loginPortal === 'employee' && employeeRecoveryMode) {
+      if (!otpRequested) {
+        const response = await fetch('/api/employee-auth/otp/request', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim(), purpose: 'password_reset' }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        setIsLoading(false);
+        if (!response.ok) {
+          setError(payload.error || 'The password reset code could not be sent.');
+          return;
+        }
+        setOtpRequested(true);
+        setAuthNotice(`A password reset code was sent to ${email.trim().toLowerCase()}.`);
+        return;
+      }
+
+      if (recoveryPassword.length < 8 || recoveryPassword !== recoveryPasswordConfirm) {
+        setIsLoading(false);
+        setError(recoveryPassword.length < 8
+          ? 'The new password must be at least 8 characters.'
+          : 'The new password and confirmation do not match.');
+        return;
+      }
+
       const response = await fetch('/api/employee-auth/otp/verify', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), otp: employeeOtp, purpose: 'login' }),
+        body: JSON.stringify({ email: email.trim(), otp: employeeOtp, purpose: 'password_reset' }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -214,21 +229,59 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         setError(payload.error || 'The verification code is invalid.');
         return;
       }
-      const client = employeeSupabase || supabase;
-      if (client) await client.auth.signOut({ scope: 'local' });
-      const profileResponse = await fetch('/api/employee-auth/profile', {
+      const setupResponse = await fetch('/api/employee-auth/complete-setup', {
+        method: 'POST',
         credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword: recoveryPassword }),
       });
-      const profile = await profileResponse.json().catch(() => ({}));
+      const profile = await setupResponse.json().catch(() => ({}));
+      if (!setupResponse.ok) {
+        setIsLoading(false);
+        setError(profile.error || 'The password could not be reset.');
+        return;
+      }
       setIsLoading(false);
       onLoginSuccess({
         email: profile.email || email.trim().toLowerCase(),
         password: '',
-        name: profile.name || email.trim(),
+        name: email.trim(),
         role: 'Employee',
-        mustChangePassword: Boolean(profile.mustChangePassword),
+        mustChangePassword: false,
         profileLoadedFromServer: true,
       });
+      return;
+    }
+
+    if (loginPortal === 'employee') {
+      const employeeAuthClient = employeeSupabase || supabase;
+      if (!employeeAuthClient) {
+        setIsLoading(false);
+        setError('Secure employee login is unavailable. Please contact HR.');
+        return;
+      }
+      const { data: authData, error: signInError } = await employeeAuthClient.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
+      if (signInError || !authData.user) {
+        setIsLoading(false);
+        setError(signInError?.message || 'Invalid employee email or password.');
+        return;
+      }
+      const profile = await loadEmployeeAccountProfile(employeeAuthClient, {
+        email: authData.user.email || email.trim().toLowerCase(),
+        password: '',
+        name: authData.user.user_metadata?.name || email.trim(),
+        role: 'Employee',
+      });
+      setIsLoading(false);
+      if (!profile.profileLoadedFromServer) {
+        await employeeAuthClient.auth.signOut({ scope: 'local' });
+        setError('The employee account could not be verified with the HR system.');
+        return;
+      }
+      onLoginSuccess(profile);
       return;
     }
 
@@ -536,7 +589,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             </div>
 
             {/* Password Input Group */}
-            {loginPortal === 'admin' && <div>
+            {(loginPortal === 'admin' || (loginPortal === 'employee' && !employeeRecoveryMode)) && <div>
               <label className="block text-sm font-semibold text-[#333333] mb-1.5">
                 Password
               </label>
@@ -563,10 +616,10 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
               </div>
             </div>}
 
-            {loginPortal === 'employee' && otpRequested && (
+            {loginPortal === 'employee' && employeeRecoveryMode && otpRequested && (
               <div>
                 <label className="block text-sm font-semibold text-[#333333] mb-1.5">
-                  Verification Code
+                  OTP Verification Code
                 </label>
                 <input
                   type="text"
@@ -580,6 +633,39 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                   className="w-full h-12 px-4 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] placeholder-gray-400 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all"
                 />
               </div>
+            )}
+
+            {loginPortal === 'employee' && employeeRecoveryMode && otpRequested && (
+              <>
+                <div>
+                  <label className="block text-sm font-semibold text-[#333333] mb-1.5">
+                    New Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    value={recoveryPassword}
+                    onChange={(e) => setRecoveryPassword(e.target.value)}
+                    placeholder="At least 8 characters"
+                    className="w-full h-12 px-4 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] placeholder-gray-400 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-[#333333] mb-1.5">
+                    Confirm New Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    value={recoveryPasswordConfirm}
+                    onChange={(e) => setRecoveryPasswordConfirm(e.target.value)}
+                    placeholder="Repeat your new password"
+                    className="w-full h-12 px-4 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] placeholder-gray-400 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all"
+                  />
+                </div>
+              </>
             )}
 
             {/* Remember Me & Forgot Password */}
@@ -598,17 +684,34 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                 href="#forgot" 
                 onClick={(e) => {
                   e.preventDefault();
+                  if (loginPortal === 'employee' && !employeeRecoveryMode) {
+                    setEmployeeRecoveryMode(true);
+                    setOtpRequested(false);
+                    setEmployeeOtp('');
+                    setPassword('');
+                    setError(null);
+                    setAuthNotice('Enter your company email and request a password reset code.');
+                    return;
+                  }
+                  if (loginPortal === 'employee' && employeeRecoveryMode) {
+                    setEmployeeRecoveryMode(false);
+                    setOtpRequested(false);
+                    setEmployeeOtp('');
+                    setRecoveryPassword('');
+                    setRecoveryPasswordConfirm('');
+                    setError(null);
+                    setAuthNotice(null);
+                    return;
+                  }
                   void showInfoModal({
-                    title: loginPortal === 'admin' ? 'Admin Account Access' : 'Employee Account Access',
-                    message: loginPortal === 'admin'
-                      ? 'Admin accounts are provisioned by HR.\n\nDemo Admin Username: hr.redpoint\nPassword: admin123#'
-                      : 'Employee accounts use the company-issued username and temporary password.\n\nIf you do not have your credentials, please contact HR.',
+                    title: 'Admin Account Access',
+                    message: 'Admin accounts are provisioned by HR.\n\nDemo Admin Username: hr.redpoint\nPassword: admin123#',
                     acknowledgeLabel: 'Return to Sign In',
                   });
                 }}
                 className="text-sm text-[#A32626] hover:text-[#8F1F1F] font-semibold transition-colors"
               >
-                Forgot Password?
+                {employeeRecoveryMode ? 'Back to sign in' : 'Forgot Password?'}
               </a>
             </div>
 
@@ -629,7 +732,9 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                   Authenticating...
                 </>
               ) : (
-                'Sign In'
+                employeeRecoveryMode
+                  ? (otpRequested ? 'Reset Password' : 'Send Reset Code')
+                  : 'Sign In'
               )}
             </button>
 

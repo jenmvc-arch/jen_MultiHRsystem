@@ -10,14 +10,24 @@ import {
   ChevronRight,
   Clock,
   FileCheck2,
+  Lock,
   Search,
   Star,
   TrendingUp,
 } from 'lucide-react';
-import { Employee, EmployeePerformance, ReviewCycle } from '../types';
+import { AppraisalAccessGrant, AppraisalAccessStatus, Employee, EmployeePerformance, ReviewCycle } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
 import PerformanceAnalytics from './PerformanceAnalytics';
 import PerformanceAppraisalForm from './PerformanceAppraisalForm';
+import {
+  createAppraisalAccessGrant,
+  getAppraisalAccessGrant,
+  getAppraisalAccessStatus,
+  ResolvedAppraisalAccessStatus,
+  upsertAppraisalAccessGrant,
+} from '../lib/appraisalAccess';
+import { createUndoableAction } from '../lib/undoableAction';
+import { useFeedback } from './GlobalFeedbackSystem';
 import {
   calculateAppraisalScores,
   loadAppraisalDraft,
@@ -28,6 +38,8 @@ interface PerformanceViewProps {
   employees: Employee[];
   performances: EmployeePerformance[];
   reviewCycles: ReviewCycle[];
+  appraisalAccessGrants: AppraisalAccessGrant[];
+  onUpdateAppraisalAccess: (grants: AppraisalAccessGrant[]) => Promise<void>;
   onSavePerformance: (perf: EmployeePerformance) => void;
   onShowNotification: (title: string, message: string) => void;
 }
@@ -71,9 +83,12 @@ export default function PerformanceView({
   employees,
   performances,
   reviewCycles,
+  appraisalAccessGrants,
+  onUpdateAppraisalAccess,
   onSavePerformance,
   onShowNotification,
 }: PerformanceViewProps) {
+  const { confirmAction, showUndoToast } = useFeedback();
   const availableReviewCycles = reviewCycles.length > 0 ? reviewCycles : [FALLBACK_REVIEW_CYCLE];
   const [activeSubTab, setActiveSubTab] = useState<'appraisals' | 'cycles' | 'analytics'>('appraisals');
   const [searchQuery, setSearchQuery] = useState('');
@@ -81,6 +96,8 @@ export default function PerformanceView({
   const [selectedCycleId, setSelectedCycleId] = useState(availableReviewCycles[0]?.id || FALLBACK_REVIEW_CYCLE.id);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [draftRefreshKey, setDraftRefreshKey] = useState(0);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
+  const [isAccessUpdating, setIsAccessUpdating] = useState(false);
 
   const selectedCycle = availableReviewCycles.find((cycle) => cycle.id === selectedCycleId) || availableReviewCycles[0] || FALLBACK_REVIEW_CYCLE;
   const departments = useMemo(() => (
@@ -93,8 +110,15 @@ export default function PerformanceView({
     ) || createEmptyPerformance(employee, selectedCycle.id);
     const draft = loadAppraisalDraft(employee, selectedCycle, performance);
     const scores = calculateAppraisalScores(draft);
-    return { employee, performance, draft, scores };
-  }), [employees, performances, selectedCycle, draftRefreshKey]);
+    const accessStatus = getAppraisalAccessStatus(
+      appraisalAccessGrants,
+      employee,
+      selectedCycle,
+      performance,
+      draft.status,
+    );
+    return { employee, performance, draft, scores, accessStatus };
+  }), [employees, performances, appraisalAccessGrants, selectedCycle, draftRefreshKey]);
 
   const filteredList = evaluationList.filter(({ employee }) => {
     const normalizedSearch = searchQuery.toLowerCase();
@@ -105,6 +129,95 @@ export default function PerformanceView({
       employee.email.toLowerCase().includes(normalizedSearch);
     return matchesDept && matchesSearch;
   });
+
+  const filteredEmployeeIds = filteredList.map(({ employee }) => employee.id);
+  const allVisibleSelected = filteredEmployeeIds.length > 0
+    && filteredEmployeeIds.every((employeeId) => selectedEmployeeIds.includes(employeeId));
+  const selectedVisibleRecords = filteredList.filter(({ employee }) => selectedEmployeeIds.includes(employee.id));
+
+  const accessLabel = (status: ResolvedAppraisalAccessStatus, draftStatus: PerformanceAppraisalDraft['status']) => {
+    if (status === 'historical' || draftStatus === 'Finalised') return 'Finalised';
+    if (draftStatus === 'Employee Submitted' || draftStatus === 'Pending Manager Review' || draftStatus === 'Agreed') return 'Submitted';
+    if (status === 'sent') return 'Sent';
+    if (status === 'open') return 'Open';
+    return 'Closed';
+  };
+
+  const accessTone = (status: string) => {
+    if (status === 'Sent') return 'bg-blue-100 text-blue-700';
+    if (status === 'Open') return 'bg-amber-100 text-amber-700';
+    if (status === 'Submitted') return 'bg-emerald-100 text-emerald-700';
+    if (status === 'Finalised') return 'bg-green-100 text-green-700';
+    return 'bg-gray-100 text-gray-700';
+  };
+
+  const updateAccess = async (
+    records: typeof evaluationList,
+    nextStatus: AppraisalAccessStatus,
+    bulk: boolean,
+  ) => {
+    const actionableRecords = records.filter(({ accessStatus }) => (
+      accessStatus !== 'historical'
+      && (nextStatus === 'open' ? accessStatus === 'closed' : accessStatus !== 'closed')
+    ));
+    if (actionableRecords.length === 0) {
+      onShowNotification('No Access Change', 'Completed appraisals remain available as historical read-only records.');
+      return;
+    }
+    const actionName = nextStatus === 'open' ? 'Open Appraisal' : 'Close Access';
+    const confirmed = await confirmAction({
+      title: `${actionName}${bulk ? ' for Selected Employees' : ''}`,
+      message: `${actionName} for ${selectedCycle.name} and ${actionableRecords.length} employee${actionableRecords.length === 1 ? '' : 's'}? ${
+        nextStatus === 'open'
+          ? 'Employees can view the prepared appraisal. They cannot edit or submit until you choose Send to Employee.'
+          : 'Employees will immediately lose access to the current appraisal form. Drafts and historical records will not be deleted.'
+      }`,
+      type: nextStatus === 'open' ? 'warning' : 'danger',
+      confirmLabel: actionName,
+    });
+    if (!confirmed || isAccessUpdating) return;
+
+    const previousGrants = appraisalAccessGrants.map((grant) => ({ ...grant }));
+    const now = new Date().toISOString();
+    const actor = 'Admin Console';
+    let nextGrants = [...appraisalAccessGrants];
+    actionableRecords.forEach(({ employee }) => {
+      const existing = getAppraisalAccessGrant(nextGrants, employee, selectedCycle.id);
+      const nextGrant: AppraisalAccessGrant = {
+        ...(existing || createAppraisalAccessGrant({
+          entityId: employee.entityId,
+          employeeId: employee.id,
+          reviewCycleId: selectedCycle.id,
+          actor,
+          now,
+        })),
+        status: nextStatus,
+        ...(nextStatus === 'open' && !existing?.openedAt
+          ? { openedAt: now, openedBy: actor }
+          : {}),
+        updatedAt: now,
+      };
+      nextGrants = upsertAppraisalAccessGrant(nextGrants, nextGrant);
+    });
+
+    setIsAccessUpdating(true);
+    try {
+      await onUpdateAppraisalAccess(nextGrants);
+      showUndoToast({
+        title: `${actionName} Complete`,
+        message: `${actionableRecords.length} access record${actionableRecords.length === 1 ? '' : 's'} updated. Undo is available for 8 seconds.`,
+        type: 'success',
+        action: createUndoableAction('Undo', async () => {
+          await onUpdateAppraisalAccess(previousGrants);
+        }),
+      });
+      setSelectedEmployeeIds([]);
+    } catch (error: any) {
+      onShowNotification('Remote Sync Failed', error?.message || 'The access change was kept locally but could not be synchronized remotely.');
+    } finally {
+      setIsAccessUpdating(false);
+    }
+  };
 
   const selectedRecord = selectedEmployeeId
     ? evaluationList.find(({ employee }) => employee.id === selectedEmployeeId || employee.email === selectedEmployeeId) || null
@@ -130,6 +243,24 @@ export default function PerformanceView({
           reviewCycle={selectedCycle}
           performance={selectedRecord.performance}
           mode="manager"
+          employeeAccessStatus={selectedRecord.accessStatus === 'historical' ? 'historical' : selectedRecord.accessStatus}
+          onAppraisalAccessChange={async (status) => {
+            const existing = getAppraisalAccessGrant(appraisalAccessGrants, selectedRecord.employee, selectedCycle.id);
+            const now = new Date().toISOString();
+            const nextGrant: AppraisalAccessGrant = {
+              ...(existing || createAppraisalAccessGrant({
+                entityId: selectedRecord.employee.entityId,
+                employeeId: selectedRecord.employee.id,
+                reviewCycleId: selectedCycle.id,
+                actor: 'Admin Console',
+                now,
+              })),
+              status,
+              ...(status === 'sent' ? { sentAt: now, sentBy: 'Admin Console' } : {}),
+              updatedAt: now,
+            };
+            await onUpdateAppraisalAccess(upsertAppraisalAccessGrant(appraisalAccessGrants, nextGrant));
+          }}
           onBack={() => setSelectedEmployeeId(null)}
           onDraftSaved={() => setDraftRefreshKey((key) => key + 1)}
           onSavePerformance={onSavePerformance}
@@ -251,12 +382,53 @@ export default function PerformanceView({
             </div>
           </div>
 
+          <div className="flex flex-col gap-3 border-b border-neutral-border bg-white px-4 py-3 text-xs md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-3">
+              <label className="inline-flex items-center gap-2 font-semibold text-on-surface">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={(event) => setSelectedEmployeeIds(event.target.checked ? filteredEmployeeIds : [])}
+                  aria-label="Select all visible employees"
+                  className="h-4 w-4 accent-primary"
+                />
+                Select visible
+              </label>
+              <span className="text-on-surface-variant">{selectedVisibleRecords.length} selected</span>
+            </div>
+            {selectedVisibleRecords.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={isAccessUpdating}
+                  onClick={() => void updateAccess(selectedVisibleRecords, 'open', true)}
+                  className="inline-flex items-center gap-1.5 rounded border border-amber-300 bg-amber-50 px-3 py-1.5 font-bold text-amber-700 disabled:cursor-wait disabled:opacity-50"
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                  Open Selected
+                </button>
+                <button
+                  type="button"
+                  disabled={isAccessUpdating}
+                  onClick={() => void updateAccess(selectedVisibleRecords, 'closed', true)}
+                  className="inline-flex items-center gap-1.5 rounded border border-red-200 bg-red-50 px-3 py-1.5 font-bold text-red-700 disabled:cursor-wait disabled:opacity-50"
+                >
+                  Close Selected
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left text-xs">
               <thead>
                 <tr className="border-b border-neutral-border bg-surface text-on-surface-variant">
+                  <th className="w-10 p-4">
+                    <span className="sr-only">Select</span>
+                  </th>
                   <th className="p-4 font-bold uppercase tracking-wider">Employee Details</th>
                   <th className="p-4 font-bold uppercase tracking-wider">Department</th>
+                  <th className="p-4 font-bold uppercase tracking-wider">Employee Access</th>
                   <th className="p-4 font-bold uppercase tracking-wider">Draft Status</th>
                   <th className="p-4 font-bold uppercase tracking-wider">Total Score</th>
                   <th className="p-4 font-bold uppercase tracking-wider">Final Rating</th>
@@ -264,8 +436,24 @@ export default function PerformanceView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-border/50">
-                {filteredList.map(({ employee, draft, scores }) => (
+                {filteredList.map(({ employee, draft, scores, accessStatus }) => {
+                  const resolvedAccessLabel = accessLabel(accessStatus, draft.status);
+                  const isHistorical = resolvedAccessLabel === 'Finalised';
+                  return (
                   <tr key={employee.id} className="transition-colors hover:bg-surface-container-low/50">
+                    <td className="p-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedEmployeeIds.includes(employee.id)}
+                        onChange={(event) => setSelectedEmployeeIds((current) => (
+                          event.target.checked
+                            ? Array.from(new Set([...current, employee.id]))
+                            : current.filter((id) => id !== employee.id)
+                        ))}
+                        aria-label={`Select ${employee.name}`}
+                        className="h-4 w-4 accent-primary"
+                      />
+                    </td>
                     <td className="flex items-center gap-3 p-4">
                       <EmployeeAvatar employee={employee} className="h-8 w-8 rounded-full" />
                       <div>
@@ -276,6 +464,11 @@ export default function PerformanceView({
                       </div>
                     </td>
                     <td className="p-4 font-medium text-on-surface">{employee.department}</td>
+                    <td className="p-4">
+                      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${accessTone(resolvedAccessLabel)}`}>
+                        {resolvedAccessLabel}
+                      </span>
+                    </td>
                     <td className="p-4">
                       <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${statusTone(draft.status)}`}>
                         <span className="h-1.5 w-1.5 rounded-full bg-current" />
@@ -301,16 +494,41 @@ export default function PerformanceView({
                       )}
                     </td>
                     <td className="p-4 text-right">
-                      <button
-                        onClick={() => setSelectedEmployeeId(employee.id)}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded bg-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-container"
-                      >
-                        <FileCheck2 className="h-3 w-3" />
-                        Open Appraisal
-                      </button>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {!isHistorical && (
+                          <button
+                            type="button"
+                            disabled={isAccessUpdating || accessStatus === 'open' || accessStatus === 'sent'}
+                            onClick={() => void updateAccess([{ employee, performance: {} as EmployeePerformance, draft, scores, accessStatus }], 'open', false)}
+                            className="inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold text-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Lock className="h-3 w-3" />
+                            Open Appraisal
+                          </button>
+                        )}
+                        {!isHistorical && accessStatus !== 'closed' && (
+                          <button
+                            type="button"
+                            disabled={isAccessUpdating}
+                            onClick={() => void updateAccess([{ employee, performance: {} as EmployeePerformance, draft, scores, accessStatus }], 'closed', false)}
+                            className="inline-flex items-center gap-1 rounded border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] font-bold text-red-700 disabled:cursor-wait disabled:opacity-50"
+                          >
+                            Close
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedEmployeeId(employee.id)}
+                          className="inline-flex cursor-pointer items-center gap-1 rounded bg-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-container"
+                        >
+                          <FileCheck2 className="h-3 w-3" />
+                          Edit Appraisal
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

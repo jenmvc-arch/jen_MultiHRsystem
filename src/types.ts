@@ -6,6 +6,7 @@
 export type AppTab =
   | 'dashboard'
   | 'employee-portal'
+  | 'employee-requests'
   | 'payroll'
   | 'payroll-mockup'
   | 'payslip-viewer'
@@ -250,6 +251,21 @@ export interface ReviewCycle {
   name: string;
   period: string;
   status: 'In Progress' | 'Upcoming' | 'Completed';
+}
+
+export type AppraisalAccessStatus = 'closed' | 'open' | 'sent';
+
+export interface AppraisalAccessGrant {
+  id: string;
+  entityId: string;
+  employeeId: string;
+  reviewCycleId: string;
+  status: AppraisalAccessStatus;
+  openedAt?: string;
+  openedBy?: string;
+  sentAt?: string;
+  sentBy?: string;
+  updatedAt: string;
 }
 
 export interface EmployeePerformance {

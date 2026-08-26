@@ -15,6 +15,10 @@ import {
   LoaderCircle,
   X,
 } from 'lucide-react';
+import { getUndoDuration } from '../lib/undoableAction';
+import type { UndoableAction } from '../lib/undoableAction';
+
+export type { UndoableAction } from '../lib/undoableAction';
 
 export type FeedbackTone = 'success' | 'error' | 'warning' | 'info';
 export type DialogTone = 'danger' | 'warning' | 'info';
@@ -24,6 +28,12 @@ export interface ToastOptions {
   title?: string;
   type?: FeedbackTone;
   duration?: number;
+  action?: ToastAction;
+}
+
+export interface ToastAction {
+  label: string;
+  onClick: () => void | Promise<void>;
 }
 
 export interface ConfirmOptions {
@@ -43,11 +53,15 @@ export interface InfoOptions {
 
 export interface FeedbackSystem {
   showToast: (options: ToastOptions) => string;
+  showUndoToast: (options: Omit<ToastOptions, 'action' | 'duration'> & {
+    action: UndoableAction;
+  }) => string;
   showSuccess: (message: string, title?: string) => string;
   showError: (message: string, title?: string) => string;
   showWarning: (message: string, title?: string) => string;
   showInfo: (message: string, title?: string) => string;
   dismissToast: (id: string) => void;
+  clearUndoToasts: () => void;
   confirmAction: (options: ConfirmOptions) => Promise<boolean>;
   showWarningDialog: (options: Omit<ConfirmOptions, 'type'>) => Promise<boolean>;
   showInfoModal: (options: InfoOptions) => Promise<void>;
@@ -58,6 +72,7 @@ interface ToastRecord {
   title: string;
   message: string;
   type: FeedbackTone;
+  action?: ToastAction;
 }
 
 type DialogState =
@@ -284,6 +299,7 @@ function FeedbackDialog({
 export function GlobalFeedbackProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastRecord[]>([]);
   const [dialog, setDialog] = useState<DialogState | null>(null);
+  const [processingToastId, setProcessingToastId] = useState<string | null>(null);
   const toastKeysRef = useRef(new Set<string>());
   const toastIdRef = useRef(0);
 
@@ -294,6 +310,15 @@ export function GlobalFeedbackProvider({ children }: { children: ReactNode }) {
         toastKeysRef.current.delete(`${removed.type}:${removed.title}:${removed.message}`);
       }
       return current.filter((toast) => toast.id !== id);
+    });
+  }, []);
+
+  const clearUndoToasts = useCallback(() => {
+    setToasts((current) => {
+      current
+        .filter((toast) => toast.action)
+        .forEach((toast) => toastKeysRef.current.delete(`${toast.type}:${toast.title}:${toast.message}`));
+      return current.filter((toast) => !toast.action);
     });
   }, []);
 
@@ -308,11 +333,40 @@ export function GlobalFeedbackProvider({ children }: { children: ReactNode }) {
 
     toastKeysRef.current.add(key);
     const id = `feedback-toast-${toastIdRef.current++}`;
-    setToasts((current) => [...current, { id, title, message, type }]);
+    setToasts((current) => [...current, {
+      id,
+      title,
+      message,
+      type,
+      action: options.action,
+    }]);
 
     window.setTimeout(() => dismissToast(id), options.duration || DEFAULT_TOAST_DURATION);
     return id;
   }, [dismissToast]);
+
+  const showUndoToast = useCallback((options: Omit<ToastOptions, 'action' | 'duration'> & {
+    action: UndoableAction;
+  }) => {
+    const remainingDuration = getUndoDuration(options.action);
+    if (remainingDuration === 0) return '';
+    setToasts((current) => {
+      const retained = current.filter((toast) => !toast.action);
+      current
+        .filter((toast) => toast.action)
+        .forEach((toast) => toastKeysRef.current.delete(`${toast.type}:${toast.title}:${toast.message}`));
+      return retained;
+    });
+    if (remainingDuration <= 0) return '';
+    return showToast({
+      ...options,
+      duration: remainingDuration,
+      action: {
+        label: options.action.label,
+        onClick: options.action.undo,
+      },
+    });
+  }, [showToast]);
 
   const showSuccess = useCallback((message: string, title?: string) => (
     showToast({ message, title, type: 'success' })
@@ -379,11 +433,13 @@ export function GlobalFeedbackProvider({ children }: { children: ReactNode }) {
 
   const feedbackValue: FeedbackSystem = {
     showToast,
+    showUndoToast,
     showSuccess,
     showError,
     showWarning,
     showInfo,
     dismissToast,
+    clearUndoToasts,
     confirmAction,
     showWarningDialog,
     showInfoModal,
@@ -413,6 +469,27 @@ export function GlobalFeedbackProvider({ children }: { children: ReactNode }) {
                 <div className="min-w-0 text-left">
                   <p className="text-sm font-bold leading-tight text-on-background">{toast.title}</p>
                   <p className="mt-1 text-sm leading-relaxed text-on-surface-variant">{toast.message}</p>
+                  {toast.action && (
+                    <button
+                      type="button"
+                      disabled={processingToastId === toast.id}
+                      onClick={async () => {
+                        if (processingToastId === toast.id) return;
+                        setProcessingToastId(toast.id);
+                        try {
+                          await toast.action?.onClick();
+                          dismissToast(toast.id);
+                        } catch (error) {
+                          showError(normalizeErrorMessage(error), 'Undo Failed');
+                        } finally {
+                          setProcessingToastId((current) => current === toast.id ? null : current);
+                        }
+                      }}
+                      className="mt-3 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-xs font-bold text-primary transition-colors hover:bg-primary/10 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {processingToastId === toast.id ? 'Restoring...' : toast.action.label}
+                    </button>
+                  )}
                 </div>
               </div>
               <button

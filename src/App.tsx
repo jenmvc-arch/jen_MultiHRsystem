@@ -20,7 +20,16 @@ import {
   Moon,
   Building2
 } from 'lucide-react';
-import { AppTab, Employee, EmployeePerformance, ReviewCycle, CorporateEntity, Candidate, PayrollRecord2026 } from './types';
+import {
+  AppTab,
+  AppraisalAccessGrant,
+  Employee,
+  EmployeePerformance,
+  ReviewCycle,
+  CorporateEntity,
+  Candidate,
+  PayrollRecord2026,
+} from './types';
 import { 
   INITIAL_EMPLOYEES, 
   INITIAL_REVIEW_CYCLES, 
@@ -46,6 +55,7 @@ import { getGmt8Timestamp, getGmt8DateString } from './lib/dateUtils';
 import { formatNricOrPassport } from './lib/employeeInput';
 import { getAppTabFromPath, getPathForAppTab } from './lib/appRoutes';
 import { isAdminPortalRole, isEmployeePortalRole } from './lib/userRoles';
+import { normalizeAppraisalAccessGrant } from './lib/appraisalAccess';
 
 import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
@@ -63,7 +73,8 @@ import FormsDirectoryView from './components/FormsDirectoryView';
 import HireOnboardingView from './components/HireOnboardingView';
 import DepartmentRoleView from './components/DepartmentRoleView';
 import SocsoConfigAdminView from './components/SocsoConfigAdminView';
-import EmployeePortalView from './components/EmployeePortalView';
+const EmployeePortalView = React.lazy(() => import('./components/EmployeePortalView'));
+const EmployeeRequestsView = React.lazy(() => import('./components/EmployeeRequestsView'));
 import AppAccessSettingsPreview from './components/AppAccessSettingsPreview';
 import LoginView from './components/LoginView';
 import JobApplicationForm from './components/JobApplicationForm';
@@ -71,6 +82,11 @@ import OnboardingForm from './components/OnboardingForm';
 import CandidateShareView from './components/CandidateShareView';
 import { useFeedback } from './components/GlobalFeedbackSystem';
 import { EntityContextProvider } from './context/EntityContext';
+import {
+  loadEmployeePortalBootstrap,
+  updateEmployeePortalProfile,
+} from './lib/employeeServiceClient';
+import { EmployeePortalBootstrap } from './lib/employeeServiceTypes';
 
 import { googleSheetsClient, isGoogleConfigured, SheetsDataPayload } from './lib/googleSheetsClient';
 import {
@@ -118,6 +134,92 @@ const withRemoteLoadTimeout = async <T,>(
   }
 };
 
+const mapEmployeePortalEmployee = (raw: Record<string, any>): Employee => ({
+  id: String(raw.id || raw.email || ''),
+  entityId: String(raw.entityId || raw.entity_id || ''),
+  name: String(raw.name || ''),
+  email: String(raw.email || '').toLowerCase(),
+  designation: String(raw.designation || ''),
+  department: String(raw.department || ''),
+  status: raw.status || 'Active',
+  bankName: String(raw.bankName || ''),
+  accountNo: String(raw.accountNo || ''),
+  basicSalary: Number(raw.basicSalary || 0),
+  housingAllowance: Number(raw.housingAllowance || 0),
+  transportAllowance: Number(raw.transportAllowance || 0),
+  overtime: Number(raw.overtime || 0),
+  performanceBonus: Number(raw.performanceBonus || 0),
+  allowanceGeneral: Number(raw.allowanceGeneral || 0),
+  allowanceTransport: Number(raw.allowanceTransport || 0),
+  allowanceParking: Number(raw.allowanceParking || 0),
+  allowanceMeal: Number(raw.allowanceMeal || 0),
+  allowanceAccommodation: Number(raw.allowanceAccommodation || 0),
+  allowancePhone: Number(raw.allowancePhone || 0),
+  reimbursementAmount: Number(raw.reimbursementAmount || 0),
+  bonusAmount: Number(raw.bonusAmount || 0),
+  commissionAmount: Number(raw.commissionAmount || 0),
+  backPayAmount: Number(raw.backPayAmount || 0),
+  awsAmount: Number(raw.awsAmount || 0),
+  compensationAmount: Number(raw.compensationAmount || 0),
+  deductionInLieu: Number(raw.deductionInLieu || 0),
+  deductionCp38: Number(raw.deductionCp38 || 0),
+  deductionOthers: Number(raw.deductionOthers || 0),
+  epfRateEmployee: Number(raw.epfRateEmployee ?? 11),
+  epfRateEmployer: Number(raw.epfRateEmployer ?? 13),
+  socsoEmployee: Number(raw.socsoEmployee || 0),
+  socsoEmployer: Number(raw.socsoEmployer || 0),
+  eisEmployee: Number(raw.eisEmployee || 0),
+  eisEmployer: Number(raw.eisEmployer || 0),
+  taxPcb: Number(raw.taxPcb || 0),
+  unpaidLeave: Number(raw.unpaidLeave || 0),
+  hrdCorp: Number(raw.hrdCorp || 0),
+  skbbkEmployee: Number(raw.skbbkEmployee || 0),
+  skbbkEmployer: Number(raw.skbbkEmployer || 0),
+  avatarUrl: String(raw.avatarUrl || ''),
+  gender: raw.gender || 'Male',
+  nricPassport: String(raw.nricPassport || ''),
+  nationality: String(raw.nationality || ''),
+  contactNumber: String(raw.contactNumber || ''),
+  taxNumber: String(raw.taxNumber || ''),
+  epfNumber: String(raw.epfNumber || ''),
+  employmentType: raw.employmentType || 'Confirmation',
+  maritalStatus: raw.maritalStatus || 'Single',
+  eligibleForStatutory: raw.eligibleForStatutory || 'Yes',
+  contractStatutoryTreatment: raw.contractStatutoryTreatment,
+  optInEpf: raw.optInEpf !== false,
+  optInSocso: raw.optInSocso !== false,
+  optInEis: raw.optInEis !== false,
+  optInPcb: raw.optInPcb !== false,
+  enableLindung24: raw.enableLindung24 === true,
+  emergencyContactName: String(raw.emergencyContactName || ''),
+  emergencyContactRelation: String(raw.emergencyContactRelation || ''),
+  emergencyContactPhone: String(raw.emergencyContactPhone || ''),
+  dateOfJoined: String(raw.dateOfJoined || ''),
+  dateOfConfirmation: String(raw.dateOfConfirmation || ''),
+  dateOfTermination: String(raw.dateOfTermination || ''),
+  careerHistory: Array.isArray(raw.careerHistory) ? raw.careerHistory : [],
+  dependants: Array.isArray(raw.dependants) ? raw.dependants : [],
+  spouseName: String(raw.spouseName || ''),
+  spouseNric: String(raw.spouseNric || ''),
+  spouseIsWorking: raw.spouseIsWorking || 'No',
+  spouseCompany: String(raw.spouseCompany || ''),
+  spousePosition: String(raw.spousePosition || ''),
+  hasDependants: raw.hasDependants || (Array.isArray(raw.dependants) && raw.dependants.length > 0 ? 'Yes' : 'No'),
+  icFrontUrl: String(raw.icFrontUrl || ''),
+  icBackUrl: String(raw.icBackUrl || ''),
+  educationCertUrl: String(raw.educationCertUrl || ''),
+  historicalPayrollRecords: Array.isArray(raw.historicalPayrollRecords) ? raw.historicalPayrollRecords : [],
+  effectiveDatedProfiles: Array.isArray(raw.effectiveDatedProfiles) ? raw.effectiveDatedProfiles : [],
+  historicalPcbResults: Array.isArray(raw.historicalPcbResults) ? raw.historicalPcbResults : [],
+  historicalVariances: Array.isArray(raw.historicalVariances) ? raw.historicalVariances : [],
+  tp1Declarations: Array.isArray(raw.tp1Declarations) ? raw.tp1Declarations : [],
+  tp3Data: raw.tp3Data,
+  salaryAdjustments: Array.isArray(raw.salaryAdjustments) ? raw.salaryAdjustments : [],
+  socsoProfile: raw.socsoProfile,
+  employee_pcb_history_ledger: Array.isArray(raw.employee_pcb_history_ledger) ? raw.employee_pcb_history_ledger : [],
+  employee_tp3_declarations: Array.isArray(raw.employee_tp3_declarations) ? raw.employee_tp3_declarations : [],
+});
+
 interface ErrorBoundaryProps {
   children: React.ReactNode;
   onError: (error: Error, info: React.ErrorInfo) => void;
@@ -150,7 +252,7 @@ class ErrorBoundary extends (React.Component as any) {
 }
 
 export default function App() {
-  const { showToast } = useFeedback();
+  const { showToast, clearUndoToasts } = useFeedback();
 
   useState(() => {
     seedSocsoConfigurationsAndBrackets();
@@ -299,6 +401,18 @@ export default function App() {
     }
     return INITIAL_REVIEW_CYCLES;
   });
+  const [appraisalAccessGrants, setAppraisalAccessGrants] = useState<AppraisalAccessGrant[]>(() => {
+    const saved = localStorage.getItem('offline_appraisal_access');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed.map(normalizeAppraisalAccessGrant) : [];
+      } catch (_error) {
+        return [];
+      }
+    }
+    return [];
+  });
   const [entities, setEntities] = useState<CorporateEntity[]>(() => {
     const saved = localStorage.getItem('offline_entities');
     if (saved) {
@@ -316,27 +430,39 @@ export default function App() {
   const [payrollRecords2026, setPayrollRecords2026] = useState<PayrollRecord2026[]>([]);
   const [isSeeding, setIsSeeding] = useState(false);
   const [isLoadingDb, setIsLoadingDb] = useState(false);
+  const [employeePortalBootstrap, setEmployeePortalBootstrap] = useState<EmployeePortalBootstrap | null>(null);
+  const [employeePortalLoadError, setEmployeePortalLoadError] = useState<string | null>(null);
 
   // Offline persistence sync
   React.useEffect(() => {
+    if (isEmployeePortalRole(currentUserRole) && !isEmployeePortalDemoPath) return;
     localStorage.setItem('offline_entities', JSON.stringify(entities));
-  }, [entities]);
+  }, [entities, currentUserRole, isEmployeePortalDemoPath]);
 
   React.useEffect(() => {
+    if (isEmployeePortalRole(currentUserRole) && !isEmployeePortalDemoPath) return;
     localStorage.setItem('offline_employees', JSON.stringify(employees));
-  }, [employees]);
+  }, [employees, currentUserRole, isEmployeePortalDemoPath]);
 
   React.useEffect(() => {
+    if (isEmployeePortalRole(currentUserRole) && !isEmployeePortalDemoPath) return;
     localStorage.setItem('offline_performances', JSON.stringify(performances));
-  }, [performances]);
+  }, [performances, currentUserRole, isEmployeePortalDemoPath]);
 
   React.useEffect(() => {
+    if (isEmployeePortalRole(currentUserRole) && !isEmployeePortalDemoPath) return;
     localStorage.setItem('offline_review_cycles', JSON.stringify(reviewCycles));
-  }, [reviewCycles]);
+  }, [reviewCycles, currentUserRole, isEmployeePortalDemoPath]);
 
   React.useEffect(() => {
+    if (isEmployeePortalRole(currentUserRole) && !isEmployeePortalDemoPath) return;
+    localStorage.setItem('offline_appraisal_access', JSON.stringify(appraisalAccessGrants));
+  }, [appraisalAccessGrants, currentUserRole, isEmployeePortalDemoPath]);
+
+  React.useEffect(() => {
+    if (isEmployeePortalRole(currentUserRole) && !isEmployeePortalDemoPath) return;
     localStorage.setItem('offline_candidates', JSON.stringify(candidates));
-  }, [candidates]);
+  }, [candidates, currentUserRole, isEmployeePortalDemoPath]);
 
   const employeesWithHistory = React.useMemo(() => {
     return employees.map(emp => {
@@ -803,7 +929,13 @@ export default function App() {
 
   // Load data from Supabase or Google Sheets dynamically if configured
   useEffect(() => {
-    if (isGoogleConfigured && !isAuthenticated) {
+    if (isEmployeePortalDemoPath) {
+      setIsLoadingDb(false);
+      setEmployeePortalBootstrap(null);
+      setEmployeePortalLoadError(null);
+      return;
+    }
+    if (!isAuthenticated) {
       setIsLoadingDb(false);
       return;
     }
@@ -815,6 +947,27 @@ export default function App() {
     setIsLoadingDb(true);
     async function loadData() {
       try {
+        if (isEmployeeAccount) {
+          setEmployeePortalLoadError(null);
+          const bootstrap = await withRemoteLoadTimeout(
+            loadEmployeePortalBootstrap(),
+            'Employee portal data load'
+          );
+          const portalEmployee = mapEmployeePortalEmployee(bootstrap.employee);
+          setEmployeePortalBootstrap(bootstrap);
+          setEmployees([portalEmployee]);
+          setPayrollRecords2026((bootstrap.payrollRecords || []) as unknown as PayrollRecord2026[]);
+          setPerformances((bootstrap.performances || []) as unknown as EmployeePerformance[]);
+          setAppraisalAccessGrants((bootstrap.appraisalAccessGrants || []).map(normalizeAppraisalAccessGrant));
+          setReviewCycles((bootstrap.reviewCycles || []) as unknown as ReviewCycle[]);
+          setEntities((bootstrap.entities || []) as unknown as CorporateEntity[]);
+          setCandidates([]);
+          setActiveEntityId(portalEmployee.entityId || '');
+          return;
+        }
+
+        setEmployeePortalBootstrap(null);
+        setEmployeePortalLoadError(null);
         let mainPayload: any = null;
         if (isSupabaseConfigured) {
           console.log('[App] Fetching database from Supabase...');
@@ -888,6 +1041,7 @@ export default function App() {
 
         const allRawEmployees: any[] = [];
         const allRawPerformances: any[] = [];
+        const allRawAppraisalAccessGrants: any[] = [];
         const allRawPayrollRecords: any[] = [];
         const allRawCandidates: any[] = [];
 
@@ -903,6 +1057,12 @@ export default function App() {
           if (payload.performances) {
             payload.performances.forEach((p: any) => {
               allRawPerformances.push(p);
+            });
+          }
+
+          if (payload.appraisal_access_grants) {
+            payload.appraisal_access_grants.forEach((grant: any) => {
+              allRawAppraisalAccessGrants.push(grant);
             });
           }
 
@@ -922,6 +1082,12 @@ export default function App() {
         // Deduplicate using Map to ensure zero overlap/duplicate keys
         const uniqueEmployees = Array.from(new Map(allRawEmployees.map(e => [String(e.id || e.email || '').toLowerCase(), e])).values());
         const uniquePerformances = Array.from(new Map(allRawPerformances.map(p => [`${String(p.employeeEmail || p.employeeId || '').toLowerCase()}_${p.reviewCycleId}`, p])).values());
+        const uniqueAppraisalAccessGrants = Array.from(new Map(
+          allRawAppraisalAccessGrants.map((grant: any) => [
+            `${String(grant.entityId || grant.entity_id || '').toLowerCase()}_${String(grant.employeeId || grant.employee_id || '').toLowerCase()}_${String(grant.reviewCycleId || grant.review_cycle_id || '')}`,
+            grant,
+          ])
+        ).values());
         const uniquePayrollRecords = Array.from(new Map(allRawPayrollRecords.map(r => [r.id || `${r.employeeEmail}_${r.payrollMonth}_${r.payrollYear}`, r])).values());
         const uniqueCandidates = Array.from(new Map(allRawCandidates.map(c => [c.id || c.email || c.name, c])).values());
 
@@ -1173,6 +1339,7 @@ export default function App() {
             }
           })()
         })));
+        setAppraisalAccessGrants(uniqueAppraisalAccessGrants.map(normalizeAppraisalAccessGrant));
 
         const parsedCandidates = uniqueCandidates.map((c: any) => {
           let resolvedEntityId = c.entityName || c.entityId || '';
@@ -1270,13 +1437,16 @@ export default function App() {
         })));
       } catch (err) {
         console.error('[Google Sheets Load] Error loading database tables:', err);
+        if (isEmployeeAccount) {
+          setEmployeePortalLoadError(err instanceof Error ? err.message : 'Employee portal data could not be loaded.');
+        }
       } finally {
         setIsLoadingDb(false);
       }
     }
 
     loadData();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isEmployeeAccount, isEmployeePortalDemoPath]);
 
   // Active corporate views
   const activeEntity = entities.find(e => e.id === activeEntityId) || entities[0];
@@ -1308,6 +1478,7 @@ export default function App() {
   };
 
   const handleTabChange = (tab: AppTab, options?: { replace?: boolean; search?: string }) => {
+    clearUndoToasts();
     setCurrentTab(tab);
     if (activeEntityId && tab !== 'payroll-mockup') {
       localStorage.setItem(`active_tab_${activeEntityId}`, tab);
@@ -1796,7 +1967,6 @@ export default function App() {
     }
 
     setEmployees(prev => prev.filter(e => e.id !== id));
-    setPerformances(prev => prev.filter(p => p.employeeId !== id));
   };
 
   const handleUpdateEmployeeSalary = async (id: string, updates: Partial<Employee>) => {
@@ -2055,6 +2225,37 @@ export default function App() {
     }
   };
 
+  const handleUpdateAppraisalAccess = async (nextGrants: AppraisalAccessGrant[]) => {
+    setAppraisalAccessGrants(nextGrants);
+
+    try {
+      if (isSupabaseConfigured) {
+        await Promise.all(nextGrants.map((grant) => supabaseClient.upsert('appraisal_access_grants', grant)));
+      } else if (isGoogleConfigured) {
+        await Promise.all(nextGrants.map(async (grant) => {
+          const scriptUrl = getScriptUrlForEntity(grant.entityId);
+          await googleSheetsClient.upsert(
+            'appraisal_access_grants',
+            {
+              entityId: grant.entityId,
+              employeeId: grant.employeeId,
+              reviewCycleId: grant.reviewCycleId,
+            },
+            grant,
+            scriptUrl,
+          );
+        }));
+      }
+    } catch (error: any) {
+      triggerNotification(
+        'Remote Sync Failed',
+        `Appraisal access remains available in this browser, but remote data was not synchronized. ${error?.message || ''}`.trim(),
+        'error',
+      );
+      throw error;
+    }
+  };
+
   const handleAddEntity = async (newEntity: CorporateEntity) => {
     setEntities(prev => [...prev, newEntity]);
 
@@ -2158,17 +2359,10 @@ export default function App() {
     (!isPendingEmployeeEmail(employee.email) && employee.email.toLowerCase() === employeePortalQueryEmployeeId.toLowerCase())
   ) || getCurrentActiveEmployees(SEED_EMPLOYEES)[0] || null;
   const employeePortalLiveEmployee = isEmployeeAccount
-    ? (
-      currentActiveEmployees.find(employee => (
-        !isPendingEmployeeEmail(employee.email) &&
-        employee.email.toLowerCase() === employeePortalSessionEmail
-      )) ||
-      getCurrentActiveEmployees(SEED_EMPLOYEES).find(employee => (
-        !isPendingEmployeeEmail(employee.email) &&
-        employee.email.toLowerCase() === employeePortalSessionEmail
-      )) ||
-      null
-    )
+    ? currentActiveEmployees.find(employee => (
+      !isPendingEmployeeEmail(employee.email) &&
+      employee.email.toLowerCase() === employeePortalSessionEmail
+    )) || null
     : null;
   const employeePortalEmployee = isEmployeePortalPreview
     ? employeePortalDemoEmployee
@@ -2177,14 +2371,14 @@ export default function App() {
   const employeePortalEmployees = employeePortalEmployee ? [employeePortalEmployee] : [];
   const employeePortalEntitiesSource = isEmployeePortalPreview
     ? SEED_ENTITIES
-    : (entities.length > 0 ? entities : SEED_ENTITIES);
+    : entities;
   const employeePortalEntity = employeePortalEmployee
     ? (
       employeePortalEntitiesSource.find(entity => entity.id === employeePortalEmployee.entityId) ||
       SEED_ENTITIES.find(entity => entity.id === employeePortalEmployee.entityId)
     )
     : null;
-  const employeePortalEntities = employeePortalEntity ? [employeePortalEntity] : employeePortalEntitiesSource;
+  const employeePortalEntities = employeePortalEntity ? [employeePortalEntity] : (isEmployeePortalPreview ? employeePortalEntitiesSource : []);
   const employeePortalPayrollRecords = employeePortalEmployeeEmail
     ? payrollRecords2026.filter(record => (
       !isPendingEmployeeEmail(employeePortalEmployeeEmail) &&
@@ -2204,11 +2398,24 @@ export default function App() {
   );
   const employeePortalPerformances = (isEmployeePortalPreview ? SEED_PERFORMANCES : performances)
     .filter(performance => employeePortalEmployeeKeys.has(performance.employeeId.toLowerCase()));
+  const employeePortalAccessGrants = (isEmployeePortalPreview
+    ? appraisalAccessGrants
+    : (employeePortalBootstrap?.appraisalAccessGrants || [])
+  ).map(normalizeAppraisalAccessGrant);
   const employeePortalReviewCycles = isEmployeePortalPreview
     ? SEED_REVIEW_CYCLES
     : (reviewCycles.length > 0 ? reviewCycles : SEED_REVIEW_CYCLES);
   const shouldRenderEmployeePortal = isEmployeePortalPreview || (isAuthenticated && isEmployeeAccount);
   const handleEmployeePortalUpdateEmployee = async (id: string, updates: Partial<Employee>) => {
+    if (isEmployeeAccount && !isEmployeePortalPreview) {
+      const result = await updateEmployeePortalProfile(updates as Record<string, unknown>);
+      const nextEmployee = mapEmployeePortalEmployee(result.employee);
+      setEmployees([nextEmployee]);
+      setEmployeePortalBootstrap((previous) => previous
+        ? { ...previous, employee: result.employee }
+        : previous);
+      return;
+    }
     const normalizedId = id.toLowerCase();
     const existingEmployee = employees.find(employee =>
       employee.id.toLowerCase() === normalizedId ||
@@ -2453,23 +2660,31 @@ export default function App() {
   if (shouldRenderEmployeePortal) {
     return (
       <ErrorBoundary onError={(err) => setGlobalError({ message: err.message, stack: err.stack })}>
-        <EmployeePortalView
-          employees={employeePortalEmployees}
-          candidates={employeePortalCandidates}
-          payrollRecords2026={employeePortalPayrollRecords}
-          entities={employeePortalEntities}
-          performances={employeePortalPerformances}
-          reviewCycles={employeePortalReviewCycles}
-          currentUserName={isEmployeePortalPreview ? employeePortalEmployee?.name || 'Employee' : currentUserName}
-          currentUserEmail={isEmployeePortalPreview ? employeePortalEmployee?.email || 'employee@redpoint.com' : currentUserEmail}
-          currentUserRole={isEmployeePortalPreview ? 'Employee' : currentUserRole}
-          onShowNotification={triggerNotification}
-          onUpdateEmployee={isEmployeePortalPreview ? async () => {} : handleEmployeePortalUpdateEmployee}
-          onSavePerformance={isEmployeePortalPreview ? () => {} : handleSavePerformance}
-          onSignOut={handleSignOut}
-          isPreviewMode={isEmployeePortalPreview}
-          previewEmployeeId={isEmployeePortalPreview ? employeePortalEmployee?.id || employeePortalQueryEmployeeId : undefined}
-        />
+        <React.Suspense fallback={<div className="min-h-screen bg-[#f7f1ea] p-8 text-sm text-[#74584f]">Loading employee portal...</div>}>
+          <EmployeePortalView
+            employees={employeePortalEmployees}
+            candidates={employeePortalCandidates}
+            payrollRecords2026={employeePortalPayrollRecords}
+            entities={employeePortalEntities}
+            performances={employeePortalPerformances}
+            appraisalAccessGrants={employeePortalAccessGrants}
+            reviewCycles={employeePortalReviewCycles}
+            serviceRequests={isEmployeePortalPreview ? [] : (employeePortalBootstrap?.serviceRequests || [])}
+            profileChangeRequests={isEmployeePortalPreview ? [] : (employeePortalBootstrap?.profileChangeRequests || [])}
+            notifications={isEmployeePortalPreview ? [] : (employeePortalBootstrap?.notifications || [])}
+            portalLoadError={isEmployeePortalPreview ? null : employeePortalLoadError}
+            isPortalLoading={isEmployeeAccount && isLoadingDb && !employeePortalBootstrap}
+            currentUserName={isEmployeePortalPreview ? employeePortalEmployee?.name || 'Employee' : currentUserName}
+            currentUserEmail={isEmployeePortalPreview ? employeePortalEmployee?.email || 'employee@redpoint.com' : currentUserEmail}
+            currentUserRole={isEmployeePortalPreview ? 'Employee' : currentUserRole}
+            onShowNotification={triggerNotification}
+            onUpdateEmployee={isEmployeePortalPreview ? async () => {} : handleEmployeePortalUpdateEmployee}
+            onSavePerformance={isEmployeePortalPreview ? () => {} : handleSavePerformance}
+            onSignOut={handleSignOut}
+            isPreviewMode={isEmployeePortalPreview}
+            previewEmployeeId={isEmployeePortalPreview ? employeePortalEmployee?.id || employeePortalQueryEmployeeId : undefined}
+          />
+        </React.Suspense>
       </ErrorBoundary>
     );
   }
@@ -2623,10 +2838,18 @@ export default function App() {
                 handleTabChange('directory');
                 triggerNotification('Directory Navigated', 'Click Add New Employee to register custom personnel.', 'info');
               }}
-              onOpenRequestModal={() => setIsRequestModalOpen(true)}
               activeEntityId={activeEntityId}
               onChangeActiveEntity={handleCorporateSwitch}
             />
+          )}
+
+          {currentTab === 'employee-requests' && (
+            <React.Suspense fallback={<div className="p-8 text-sm text-on-surface-variant">Loading employee request workspace...</div>}>
+              <EmployeeRequestsView
+                entities={entities}
+                onShowNotification={triggerNotification}
+              />
+            </React.Suspense>
           )}
 
           {currentTab === 'payroll' && (
@@ -2668,6 +2891,8 @@ export default function App() {
               employees={filteredEmployees}
               performances={filteredPerformances}
               reviewCycles={reviewCycles}
+              appraisalAccessGrants={appraisalAccessGrants}
+              onUpdateAppraisalAccess={handleUpdateAppraisalAccess}
               onSavePerformance={handleSavePerformance}
               onShowNotification={triggerNotification}
             />
@@ -2679,6 +2904,7 @@ export default function App() {
               entities={entities}
               onAddEmployee={handleAddEmployee}
               onDeleteEmployee={handleDeleteEmployee}
+              onRestoreEmployee={handleAddEmployee}
               onUpdateEmployee={handleUpdateEmployeeSalary}
               onShowNotification={triggerNotification}
               activeEntityId={activeEntityId}
@@ -2749,6 +2975,7 @@ export default function App() {
               candidates={filteredCandidates}
               onAddCandidate={handleAddCandidate}
               onDeleteCandidate={handleDeleteCandidate}
+              onRestoreCandidate={handleAddCandidate}
               onUpdateCandidate={handleUpdateCandidate}
               onUpdateEmployee={handleUpdateEmployeeSalary}
               currentUserName={currentUserName}

@@ -28,6 +28,7 @@ import {
   isCurrentEmploymentStatus
 } from '../data';
 import { getGmt8DateString } from '../lib/dateUtils';
+import { useFeedback } from './GlobalFeedbackSystem';
 import { FilePond, registerPlugin } from 'react-filepond';
 import 'filepond/dist/filepond.min.css';
 import FilePondPluginImagePreview from 'filepond-plugin-image-preview';
@@ -50,6 +51,7 @@ export default function EntitiesView({
   onUpdateEntity,
   onShowNotification
 }: EntitiesViewProps) {
+  const { showUndoToast } = useFeedback();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingEntity, setEditingEntity] = useState<CorporateEntity | null>(null);
@@ -163,10 +165,23 @@ export default function EntitiesView({
     };
 
     try {
+      const previousEntity = editingEntity;
       await onUpdateEntity(editingEntity.id, updates);
       setIsEditModalOpen(false);
       setEditingEntity(null);
-      onShowNotification('Subsidiary Updated', `Corporate details & branding for ${nameStr} have been updated.`);
+      showUndoToast({
+        title: 'Subsidiary Updated',
+        message: `Corporate details and branding for ${nameStr} were updated.`,
+        type: 'success',
+        action: {
+          label: 'Undo',
+          expiresAt: Date.now() + 8_000,
+          undo: async () => {
+            await onUpdateEntity(previousEntity.id, previousEntity);
+            onShowNotification('Subsidiary Update Reverted', `${previousEntity.name} was restored.`);
+          },
+        },
+      });
     } catch (err: any) {
       onShowNotification('Update Failed', err.message || `Corporate details for ${nameStr} could not be saved.`);
     }

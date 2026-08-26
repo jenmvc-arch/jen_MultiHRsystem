@@ -19,7 +19,8 @@ import {
   ClipboardList,
   UserPlus,
   Tags,
-  Clock3
+  Clock3,
+  MessageSquareText
 } from 'lucide-react';
 import { AppTab, CorporateEntity } from '../types';
 import { getDirectLogoUrl } from '../data';
@@ -54,6 +55,7 @@ export default function Sidebar({
     { id: 'work-shift-groups' as AppTab, label: 'Work & Shift Groups', icon: Clock3 },
     { id: 'performance' as AppTab, label: 'Performance Appraisal', icon: Award },
     { id: 'hire-onboarding' as AppTab, label: 'Hire & Onboarding', icon: UserPlus },
+    { id: 'employee-requests' as AppTab, label: 'Employee Requests', icon: MessageSquareText },
   ];
 
   const complianceItems = [
@@ -108,9 +110,6 @@ export default function Sidebar({
               {activeEntity?.name || 'Employer Console'}
             </div>
           )}
-          <div className="mt-1 truncate text-[9px] uppercase tracking-wider text-[#f7f0e0]/45">
-            Admin workspace
-          </div>
         </div>
       </div>
 

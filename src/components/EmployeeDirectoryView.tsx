@@ -195,6 +195,7 @@ interface EmployeeDirectoryViewProps {
   entities: CorporateEntity[];
   onAddEmployee: (emp: Employee) => void;
   onDeleteEmployee: (id: string) => Promise<void>;
+  onRestoreEmployee: (employee: Employee) => Promise<void>;
   onUpdateEmployee: (id: string, updates: Partial<Employee>) => Promise<void>;
   onShowNotification: (title: string, message: string, type?: 'success' | 'info') => void;
   activeEntityId?: string;
@@ -207,13 +208,14 @@ export default function EmployeeDirectoryView({
   entities,
   onAddEmployee,
   onDeleteEmployee,
+  onRestoreEmployee,
   onUpdateEmployee,
   onShowNotification,
   activeEntityId,
   currentUserEmail,
   currentUserRole
 }: EmployeeDirectoryViewProps) {
-  const { confirmAction } = useFeedback();
+  const { confirmAction, showUndoToast } = useFeedback();
   const activeEmployees = getCurrentActiveEmployees(employees);
   const [searchQuery, setSearchQuery] = useState('');
   const currentMonth = new Date().getMonth() + 1;
@@ -628,11 +630,35 @@ export default function EmployeeDirectoryView({
       dateOfTermination: isSeparationStatus(editStatus) ? todayIsoDate : ''
     };
 
+    const salaryChanged = Number(editBasicSalary) !== Number(selectedEmployee.basicSalary);
+    const statusChanged = editStatus !== selectedEmployee.status;
+    const confirmed = await confirmAction({
+      title: 'Save Employee Profile',
+      message: salaryChanged || statusChanged
+        ? `Save ${selectedEmployee.name}'s profile with ${statusChanged ? `status ${editStatus}` : 'the current status'}${salaryChanged ? ` and a basic salary of RM ${Number(editBasicSalary).toLocaleString()}` : ''}? Payroll and statutory calculations may change.`
+        : `Save the updated personal, payroll, and compliance details for ${selectedEmployee.name}?`,
+      type: salaryChanged || statusChanged ? 'warning' : 'info',
+      confirmLabel: 'Save Profile',
+    });
+    if (!confirmed) return;
+
     setSavingAction('general');
     try {
       await onUpdateEmployee(selectedEmployee.id, updates);
       setIsEditingGeneralInfo(false);
-      onShowNotification('Profile Saved', 'Employee personal and corporate profile updated successfully.');
+      showUndoToast({
+        title: 'Employee Profile Saved',
+        message: 'Personal, payroll, and compliance details were updated.',
+        type: 'success',
+        action: {
+          label: 'Undo',
+          expiresAt: Date.now() + 8_000,
+          undo: async () => {
+            await onUpdateEmployee(selectedEmployee.id, selectedEmployee);
+            onShowNotification('Profile Update Reverted', `${selectedEmployee.name}'s previous profile was restored.`);
+          },
+        },
+      });
     } catch (error) {
       console.error('[Employee Profile Save] Failed:', error);
     } finally {
@@ -954,6 +980,13 @@ export default function EmployeeDirectoryView({
       effectiveDatedProfiles: localEffectiveDatedProfiles
     };
     const currentStatus = getEffectiveEmploymentStatusForDate(stagedEmployee, todayIsoDate);
+    const confirmed = await confirmAction({
+      title: 'Save Career And Salary Changes',
+      message: `Save the staged career changes for ${selectedEmployee.name}? Status, salary, payroll eligibility, or reporting assignments may be affected.`,
+      type: 'warning',
+      confirmLabel: 'Save Career Changes',
+    });
+    if (!confirmed) return;
     setLocalStatus(currentStatus);
     setSavingAction('career');
     try {
@@ -969,10 +1002,19 @@ export default function EmployeeDirectoryView({
         effectiveDatedProfiles: localEffectiveDatedProfiles,
         dateOfTermination: getEffectiveTerminationDateForDate(stagedEmployee, todayIsoDate) || ''
       });
-      onShowNotification(
-        'Database Synced',
-        `Staged career and salary adjustments for ${selectedEmployee.name} were saved.`
-      );
+      showUndoToast({
+        title: 'Career Changes Saved',
+        message: `Staged career and salary adjustments for ${selectedEmployee.name} were saved.`,
+        type: 'success',
+        action: {
+          label: 'Undo',
+          expiresAt: Date.now() + 8_000,
+          undo: async () => {
+            await onUpdateEmployee(selectedEmployee.id, selectedEmployee);
+            onShowNotification('Career Changes Reverted', `${selectedEmployee.name}'s previous career and salary data was restored.`);
+          },
+        },
+      });
     } catch (error) {
       console.error('[Career Save] Failed:', error);
     } finally {
@@ -1406,18 +1448,32 @@ export default function EmployeeDirectoryView({
    };
 
   const handleDelete = async (id: string, name: string) => {
+    const deletedEmployee = employees.find((employee) => employee.id === id);
+    if (!deletedEmployee) return;
     const confirmed = await confirmAction({
-      title: 'Remove Employee',
-      message: `Are you sure you want to terminate/remove ${name} from the active payroll directory? This action will update their employment record.`,
+      title: 'Delete Employee Record',
+      message: `Delete ${name} permanently from the employee directory? For a normal departure, use the employee status workflow instead.`,
       type: 'danger',
-      confirmLabel: 'Remove Employee',
+      confirmLabel: 'Delete Employee',
     });
     if (!confirmed) return;
 
     setSavingAction(`delete:${id}`);
     try {
       await onDeleteEmployee(id);
-      onShowNotification('Employee Deleted', `${name} removed successfully.`);
+      showUndoToast({
+        title: 'Employee Deleted',
+        message: `${name} was removed from the employee directory.`,
+        type: 'success',
+        action: {
+          label: 'Undo',
+          expiresAt: Date.now() + 8_000,
+          undo: async () => {
+            await onRestoreEmployee(deletedEmployee);
+            onShowNotification('Employee Restored', `${name} is back in the employee directory.`);
+          },
+        },
+      });
       if (selectedEmployeeId === id) {
         setIsDetailOpen(false);
       }

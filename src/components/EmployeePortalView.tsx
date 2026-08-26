@@ -36,10 +36,21 @@ import {
   ClipboardList,
   Pencil,
 } from 'lucide-react';
-import { Candidate, Dependant, Employee, EmployeePerformance, CorporateEntity, PayrollRecord2026, ReviewCycle } from '../types';
+import {
+  AppraisalAccessGrant,
+  Candidate,
+  Dependant,
+  Employee,
+  EmployeePerformance,
+  CorporateEntity,
+  PayrollRecord2026,
+  ReviewCycle,
+} from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
 import PayslipDocumentView from './PayslipDocumentView';
 import PerformanceAppraisalForm from './PerformanceAppraisalForm';
+import { getAppraisalAccessStatus } from '../lib/appraisalAccess';
+import { loadAppraisalDraft } from '../lib/performanceAppraisalDraft';
 import { formatToDDMMMYYYY, getGmt8DateString, getGmt8LongDateString, getGmt8Timestamp } from '../lib/dateUtils';
 import { calculatePayslip, getPayrollDocumentProfile } from '../data';
 import {
@@ -62,7 +73,22 @@ import {
   WorkShiftGroup,
   WorkShiftGroupDay,
 } from '../lib/leaveDomain';
-import { loadLeaveWorkspace, persistLeaveWorkspace } from '../lib/leaveService';
+import { loadLeaveWorkspace } from '../lib/leaveService';
+import {
+  addEmployeeServiceMessage,
+  createEmployeeProfileChangeRequest,
+  createEmployeeServiceRequest,
+  createEmployeeLeaveRequest,
+  loadEmployeeLeaveRequests,
+  markEmployeeNotificationRead,
+  reopenEmployeeServiceRequest,
+} from '../lib/employeeServiceClient';
+import {
+  EmployeeNotification,
+  EmployeeProfileChangeRequest,
+  EmployeeServiceRequest,
+  EmployeeServiceRequestCategory,
+} from '../lib/employeeServiceTypes';
 
 const OnboardingPortalView = React.lazy(() => import('./OnboardingPortalView'));
 
@@ -76,16 +102,7 @@ type PortalSection =
   | 'documents'
   | 'support';
 
-interface SupportRequest {
-  id: string;
-  category: string;
-  subject: string;
-  description: string;
-  priority: 'Low' | 'Normal' | 'High';
-  status: 'Open' | 'In Progress' | 'Resolved';
-  createdAt: string;
-  updatedAt: string;
-}
+type SupportRequest = EmployeeServiceRequest;
 
 interface EmployeePortalViewProps {
   employees: Employee[];
@@ -93,6 +110,7 @@ interface EmployeePortalViewProps {
   payrollRecords2026: PayrollRecord2026[];
   entities: CorporateEntity[];
   performances: EmployeePerformance[];
+  appraisalAccessGrants: AppraisalAccessGrant[];
   reviewCycles: ReviewCycle[];
   currentUserName?: string | null;
   currentUserEmail?: string | null;
@@ -101,6 +119,11 @@ interface EmployeePortalViewProps {
   onUpdateEmployee: (id: string, updates: Partial<Employee>) => Promise<void>;
   onSavePerformance: (performance: EmployeePerformance) => void;
   onSignOut: () => void;
+  serviceRequests?: EmployeeServiceRequest[];
+  profileChangeRequests?: EmployeeProfileChangeRequest[];
+  notifications?: EmployeeNotification[];
+  portalLoadError?: string | null;
+  isPortalLoading?: boolean;
   isPreviewMode?: boolean;
   previewEmployeeId?: string;
 }
@@ -125,9 +148,13 @@ const SUPPORT_CATEGORIES = [
   'Payslip issue',
   'Leave question',
   'Document request',
-  'Bank details review',
+  'Bank details change',
+  'Statutory details change',
+  'IT / equipment',
+  'Suggestion',
+  'Confidential complaint',
   'Other',
-];
+] as EmployeeServiceRequestCategory[];
 
 const readJson = <T,>(key: string, fallback: T): T => {
   try {
@@ -164,6 +191,13 @@ const sortPayrollRecords = (records: PayrollRecord2026[]) =>
 const currency = (value: number) =>
   value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const maskSensitive = (value?: string | null) => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return 'Not provided';
+  if (normalized.length <= 4) return '****';
+  return `${'*'.repeat(Math.max(4, normalized.length - 4))}${normalized.slice(-4)}`;
+};
+
 const getEmployeeProfileDraft = (employee: Employee) => ({
   contactNumber: employee.contactNumber || '',
   emergencyContactName: employee.emergencyContactName || '',
@@ -189,6 +223,7 @@ export default function EmployeePortalView({
   payrollRecords2026,
   entities,
   performances,
+  appraisalAccessGrants,
   reviewCycles,
   currentUserName,
   currentUserEmail,
@@ -197,6 +232,11 @@ export default function EmployeePortalView({
   onUpdateEmployee,
   onSavePerformance,
   onSignOut,
+  serviceRequests = [],
+  profileChangeRequests = [],
+  notifications = [],
+  portalLoadError = null,
+  isPortalLoading = false,
   isPreviewMode = false,
   previewEmployeeId = '',
 }: EmployeePortalViewProps) {
@@ -211,6 +251,7 @@ export default function EmployeePortalView({
   });
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(previewEmployeeId);
+  const [selectedReviewCycleId, setSelectedReviewCycleId] = useState(reviewCycles[0]?.id || '');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileRevision, setProfileRevision] = useState(0);
@@ -234,10 +275,21 @@ export default function EmployeePortalView({
   const [leaveEndDate, setLeaveEndDate] = useState(getGmt8DateString());
   const [leaveReason, setLeaveReason] = useState('');
   const [supportRequests, setSupportRequests] = useState<SupportRequest[]>([]);
+  const [employeeProfileChanges, setEmployeeProfileChanges] = useState<EmployeeProfileChangeRequest[]>(profileChangeRequests);
+  const [employeeNotifications, setEmployeeNotifications] = useState<EmployeeNotification[]>(notifications);
   const [supportCategory, setSupportCategory] = useState(SUPPORT_CATEGORIES[0]);
   const [supportSubject, setSupportSubject] = useState('');
   const [supportDescription, setSupportDescription] = useState('');
   const [supportPriority, setSupportPriority] = useState<'Low' | 'Normal' | 'High'>('Normal');
+  const [isSubmittingSupport, setIsSubmittingSupport] = useState(false);
+  const [supportReplyRequestId, setSupportReplyRequestId] = useState<string | null>(null);
+  const [supportReply, setSupportReply] = useState('');
+  const [isSubmittingReply, setIsSubmittingReply] = useState(false);
+  const [isSubmittingProfileChange, setIsSubmittingProfileChange] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [language, setLanguage] = useState<'en' | 'zh'>(() => (
+    localStorage.getItem('redpoint_employee_language') === 'zh' ? 'zh' : 'en'
+  ));
 
   const effectiveEmployeeEmail = String(currentUserEmail || '').toLowerCase();
 
@@ -293,7 +345,9 @@ export default function EmployeePortalView({
     : null;
   const latestPayrollDate = latestPayrollRecord?.paymentDate || selectedEmployee?.paymentDate || `${latestPayrollYear}-${String(latestPayrollMonth).padStart(2, '0')}-28`;
 
-  const activeReviewCycle = reviewCycles[0] || null;
+  const activeReviewCycle = reviewCycles.find((cycle) => cycle.id === selectedReviewCycleId)
+    || reviewCycles[0]
+    || null;
   const selectedPerformance = selectedEmployee && activeReviewCycle
     ? performances.find((performance) =>
         performance.reviewCycleId === activeReviewCycle.id &&
@@ -305,6 +359,18 @@ export default function EmployeePortalView({
         )
       ) || null
     : null;
+  const selectedAppraisalDraft = selectedEmployee && activeReviewCycle
+    ? loadAppraisalDraft(selectedEmployee, activeReviewCycle, selectedPerformance)
+    : null;
+  const employeeAppraisalAccessStatus = selectedEmployee && activeReviewCycle
+    ? getAppraisalAccessStatus(
+      appraisalAccessGrants,
+      selectedEmployee,
+      activeReviewCycle,
+      selectedPerformance,
+      selectedAppraisalDraft?.status,
+    )
+    : 'closed';
 
   const selectedCareerHistory = selectedEmployee?.careerHistory || [];
   const selectedEmployeeCandidates = useMemo(() => {
@@ -318,6 +384,85 @@ export default function EmployeePortalView({
   const leaveConfigKey = selectedEmployee?.entityId ? `${storagePrefix}leave_configs_${selectedEmployee.entityId}` : '';
   const supportStorageKey = selectedEmployee?.id ? `${storagePrefix}employee_support_requests_${selectedEmployee.id}` : '';
   const activeSectionStorageKey = `${storagePrefix}active_section`;
+
+  const copy = {
+    en: {
+      employeePortal: 'Employee Portal',
+      home: 'Home',
+      leave: 'Leave',
+      payslips: 'Payslips',
+      support: 'Support',
+      more: 'More',
+      profile: 'My Profile',
+      onboarding: 'Onboarding',
+      growth: 'Performance & Appraisal',
+      documents: 'Documents',
+      signOut: 'Sign out',
+      close: 'Close',
+      loading: 'Loading employee portal...',
+      loadingBody: 'We are securely connecting your employee profile.',
+      serviceUnavailable: 'Employee services are temporarily unavailable.',
+      retry: 'Reload',
+      secureAccount: 'Secure account',
+      previewMode: 'Preview mode',
+      unread: 'unread',
+    },
+    zh: {
+      employeePortal: '员工门户',
+      home: '首页',
+      leave: '请假',
+      payslips: '工资单',
+      support: '支援',
+      more: '更多',
+      profile: '个人资料',
+      onboarding: '入职资料',
+      growth: '绩效与评估',
+      documents: '文件',
+      signOut: '退出登录',
+      close: '关闭',
+      loading: '正在加载员工门户…',
+      loadingBody: '正在安全连接您的员工资料。',
+      serviceUnavailable: '员工服务暂时无法使用。',
+      retry: '重新加载',
+      secureAccount: '安全账号',
+      previewMode: '预览模式',
+      unread: '条未读',
+    },
+  }[language];
+
+  const translateSection = (section: PortalSection) => ({
+    home: copy.home,
+    profile: copy.profile,
+    payslips: copy.payslips,
+    leave: copy.leave,
+    onboarding: copy.onboarding,
+    growth: copy.growth,
+    documents: copy.documents,
+    support: copy.support,
+  }[section]);
+
+  const translateStatus = (status: string) => language === 'zh'
+    ? ({
+      Open: '待处理',
+      'In Progress': '处理中',
+      'Waiting for Employee': '等待员工',
+      Resolved: '已解决',
+      Closed: '已关闭',
+      Pending: '待审核',
+      Approved: '已批准',
+      Rejected: '已拒绝',
+    } as Record<string, string>)[status] || status
+    : status;
+
+  useEffect(() => {
+    localStorage.setItem('redpoint_employee_language', language);
+  }, [language]);
+
+  useEffect(() => {
+    if (!isPreviewMode) setSupportRequests(serviceRequests);
+    setEmployeeProfileChanges(profileChangeRequests);
+    setEmployeeNotifications(notifications);
+  }, [isPreviewMode, notifications, profileChangeRequests, serviceRequests]);
 
   useEffect(() => {
     localStorage.setItem(activeSectionStorageKey, activeSection);
@@ -338,16 +483,26 @@ export default function EmployeePortalView({
   }, [employees, isPreviewMode, previewEmployeeId, selectedEmployeeId]);
 
   useEffect(() => {
+    if (!reviewCycles.some((cycle) => cycle.id === selectedReviewCycleId)) {
+      setSelectedReviewCycleId(reviewCycles[0]?.id || '');
+    }
+  }, [reviewCycles, selectedReviewCycleId]);
+
+  useEffect(() => {
     if (!selectedEmployee?.entityId) return;
     let cancelled = false;
-    void loadLeaveWorkspace(selectedEmployee.entityId).then((workspace) => {
+    const employeeOnly = !isPreviewMode ? { employeeId: selectedEmployee.id } : undefined;
+    void Promise.all([
+      loadLeaveWorkspace(selectedEmployee.entityId, employeeOnly),
+      !isPreviewMode ? loadEmployeeLeaveRequests() : Promise.resolve(null),
+    ]).then(([workspace, employeeRequests]) => {
       if (cancelled) return;
       const previewConfigs = isPreviewMode
         ? readJson<LeaveConfig[]>(leaveConfigKey, workspace.configs)
         : workspace.configs;
       const previewRequests = isPreviewMode
         ? readJson<LeaveRequest[]>(leaveStorageKey, workspace.requests)
-        : workspace.requests;
+        : employeeRequests?.requests || workspace.requests;
       const configs = previewConfigs.length > 0 ? previewConfigs : DEFAULT_LEAVE_CONFIGS;
       setLeaveConfigs(configs);
       setLeavePolicies(workspace.policies);
@@ -375,13 +530,21 @@ export default function EmployeePortalView({
 
   useEffect(() => {
     if (!selectedEmployee?.id) return;
+    if (!isPreviewMode) {
+      setSupportRequests(serviceRequests);
+      setSupportCategory(SUPPORT_CATEGORIES[0]);
+      setSupportSubject('');
+      setSupportDescription('');
+      setSupportPriority('Normal');
+      return;
+    }
     const requests = readJson<SupportRequest[]>(supportStorageKey, []);
     setSupportRequests(requests);
     setSupportCategory(SUPPORT_CATEGORIES[0]);
     setSupportSubject('');
     setSupportDescription('');
     setSupportPriority('Normal');
-  }, [selectedEmployee?.id, supportStorageKey]);
+  }, [isPreviewMode, selectedEmployee?.id, serviceRequests, supportStorageKey]);
 
   const [profileDraft, setProfileDraft] = useState({
     contactNumber: '',
@@ -492,10 +655,19 @@ export default function EmployeePortalView({
     request.appliedDate.startsWith(getGmt8DateString().slice(0, 7))
   );
 
-  const openSupportCount = supportRequests.filter((request) => request.status !== 'Resolved').length;
+  const openSupportCount = supportRequests.filter((request) => (
+    request.status !== 'Resolved' && request.status !== 'Closed'
+  )).length;
   const performanceRating = selectedPerformance?.reviewStatus === 'Completed' && selectedPerformance.rating > 0
     ? selectedPerformance.rating.toFixed(1)
     : '—';
+  const performanceAccessLabel = employeeAppraisalAccessStatus === 'historical'
+    ? (performanceRating === '—' ? 'Completed history' : `Historical result: ${performanceRating}/5`)
+    : employeeAppraisalAccessStatus === 'sent'
+      ? 'Self-appraisal open'
+      : employeeAppraisalAccessStatus === 'open'
+        ? 'Available for viewing'
+        : 'Not opened by HR';
 
   const portalTheme = {
     '--color-primary': '#a32626',
@@ -560,10 +732,16 @@ export default function EmployeePortalView({
         emergencyContactRelation: profileDraft.emergencyContactRelation.trim(),
         emergencyContactPhone: profileDraft.emergencyContactPhone.trim(),
         avatarUrl: profileDraft.avatarUrl.trim(),
+      };
+      const requestedBankValues = {
         bankName: profileDraft.bankName.trim(),
         accountNo: profileDraft.accountNo.trim(),
+      };
+      const requestedStatutoryValues = {
         taxNumber: profileDraft.taxNumber.trim(),
         epfNumber: profileDraft.epfNumber.trim(),
+      };
+      const requestedFamilyValues = {
         maritalStatus: profileDraft.maritalStatus,
         spouseName: profileDraft.spouseName.trim(),
         spouseNric: profileDraft.spouseNric.trim(),
@@ -576,18 +754,69 @@ export default function EmployeePortalView({
       if (isPreviewMode) {
         savePreviewEmployeeOverrides(selectedEmployee.id, {
           ...profileUpdates,
+          ...requestedBankValues,
+          ...requestedStatutoryValues,
+          ...requestedFamilyValues,
         });
         setProfileRevision((revision) => revision + 1);
       } else {
-        await onUpdateEmployee(selectedEmployee.id, profileUpdates);
+        const directKeys = Object.keys(profileUpdates) as Array<keyof typeof profileUpdates>;
+        const changedDirectUpdates = Object.fromEntries(
+          directKeys.filter((key) => String(profileUpdates[key] ?? '') !== String(selectedEmployee[key] ?? ''))
+            .map((key) => [key, profileUpdates[key]])
+        ) as Partial<Employee>;
+        if (Object.keys(changedDirectUpdates).length > 0) {
+          await onUpdateEmployee(selectedEmployee.id, changedDirectUpdates);
+        }
+
+        const changeRequests: Array<Promise<{ request: EmployeeProfileChangeRequest }>> = [];
+        if (
+          requestedBankValues.bankName !== String(selectedEmployee.bankName || '')
+          || requestedBankValues.accountNo !== String(selectedEmployee.accountNo || '')
+        ) {
+          changeRequests.push(createEmployeeProfileChangeRequest({
+            changeType: 'bank_details',
+            requestedValues: requestedBankValues,
+          }));
+        }
+        if (
+          requestedStatutoryValues.taxNumber !== String(selectedEmployee.taxNumber || '')
+          || requestedStatutoryValues.epfNumber !== String(selectedEmployee.epfNumber || '')
+        ) {
+          changeRequests.push(createEmployeeProfileChangeRequest({
+            changeType: 'statutory_details',
+            requestedValues: requestedStatutoryValues,
+          }));
+        }
+        const familyKeys = Object.keys(requestedFamilyValues) as Array<keyof typeof requestedFamilyValues>;
+        if (familyKeys.some((key) => JSON.stringify(requestedFamilyValues[key]) !== JSON.stringify(selectedEmployee[key] ?? (key === 'dependants' ? [] : '')))) {
+          changeRequests.push(createEmployeeProfileChangeRequest({
+            changeType: 'family_details',
+            requestedValues: requestedFamilyValues,
+          }));
+        }
+        if (changeRequests.length > 0) {
+          setIsSubmittingProfileChange(true);
+          const created = await Promise.all(changeRequests);
+          setEmployeeProfileChanges((previous) => [
+            ...created.map((result) => result.request),
+            ...previous,
+          ]);
+        }
       }
       setIsEditingProfile(false);
-      onShowNotification('Profile Updated', 'Your contact, financial, statutory, and family details were saved.');
+      onShowNotification(
+        'Profile Updated',
+        isPreviewMode
+          ? 'Your profile details were saved in preview mode.'
+          : 'Contact details were saved. Sensitive detail changes are waiting for HR approval.'
+      );
     } catch (error) {
       console.error('[Employee Portal] Profile save failed:', error);
       onShowNotification('Profile Update Failed', 'We could not save your profile details right now.');
     } finally {
       setIsSavingProfile(false);
+      setIsSubmittingProfileChange(false);
     }
   };
 
@@ -639,56 +868,134 @@ export default function EmployeePortalView({
       status: 'Pending',
       appliedDate: getGmt8DateString(),
     };
-    const nextRequests = [newRequest, ...allLeaveRequests];
-    updateLeaveRequests(nextRequests);
-    if (!isPreviewMode) {
-      void persistLeaveWorkspace(selectedEmployee.entityId, {
-        configs: leaveConfigs,
-        policies: leavePolicies,
-        carryOverSettings: leaveCarryOverSettings,
-        groups: leaveGroups,
-        assignments: leaveGroupAssignments,
-        workShiftGroups,
-        workShiftGroupDays,
-        employeeWorkShiftAssignments,
-        publicHolidayGroups,
-        publicHolidays,
-        requests: nextRequests,
-        offInLieuRequests,
-        ledgerEntries: leaveLedgerEntries,
-        payrollDeductions: leavePayrollDeductions,
-        source: 'local',
-      }).catch((error) => {
-        console.warn('[Employee Portal] Leave request Supabase save failed:', error);
-      });
-    }
-    setLeaveReason('');
-    onShowNotification('Leave request submitted', `Your ${leaveType.toLowerCase()} request is now pending review.`);
+    const submit = async () => {
+      if (isPreviewMode) {
+        const nextRequests = [newRequest, ...allLeaveRequests];
+        updateLeaveRequests(nextRequests);
+      } else {
+        const created = await createEmployeeLeaveRequest({
+          leaveTypeId: String(selectedConfig?.id || ''),
+          leaveType,
+          startDate: leaveStartDate,
+          endDate: leaveEndDate,
+          totalDays,
+          reason: leaveReason.trim(),
+        });
+        setAllLeaveRequests((previous) => [created.request, ...previous]);
+      }
+      setLeaveReason('');
+      onShowNotification('Leave request submitted', `Your ${leaveType.toLowerCase()} request is now pending review.`);
+    };
+    void submit().catch((error) => {
+      onShowNotification('Leave request failed', error instanceof Error ? error.message : 'We could not submit the leave request.');
+    });
   };
 
-  const handleSubmitSupport = (event: React.FormEvent) => {
+  const handleSubmitSupport = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedEmployee) return;
     if (!supportSubject.trim() || !supportDescription.trim()) {
       onShowNotification('Support request', 'Please complete the subject and description.');
       return;
     }
-    const newRequest: SupportRequest = {
-      id: `SR-${Date.now()}`,
-      category: supportCategory,
-      subject: supportSubject.trim(),
-      description: supportDescription.trim(),
-      priority: supportPriority,
-      status: 'Open',
-      createdAt: getGmt8Timestamp(),
-      updatedAt: getGmt8Timestamp(),
-    };
-    const nextRequests = [newRequest, ...supportRequests];
-    updateSupportRequests(nextRequests);
-    setSupportSubject('');
-    setSupportDescription('');
-    setSupportPriority('Normal');
-    onShowNotification('Request submitted', 'Your message has been queued for HR.');
+    setIsSubmittingSupport(true);
+    try {
+      if (isPreviewMode) {
+        const now = getGmt8Timestamp();
+        const newRequest: SupportRequest = {
+          id: `SR-${Date.now()}`,
+          employeeId: selectedEmployee.id,
+          employeeEmail: selectedEmployee.email,
+          employeeName: selectedEmployee.name,
+          entityId: selectedEmployee.entityId,
+          category: supportCategory,
+          subject: supportSubject.trim(),
+          description: supportDescription.trim(),
+          priority: supportPriority,
+          status: 'Open',
+          createdAt: now,
+          updatedAt: now,
+          messages: [],
+        };
+        updateSupportRequests([newRequest, ...supportRequests]);
+      } else {
+        const result = await createEmployeeServiceRequest({
+          category: supportCategory,
+          subject: supportSubject.trim(),
+          description: supportDescription.trim(),
+          priority: supportPriority,
+        });
+        setSupportRequests((previous) => [result.request, ...previous]);
+      }
+      setSupportSubject('');
+      setSupportDescription('');
+      setSupportPriority('Normal');
+      onShowNotification('Request submitted', 'Your message has been queued for HR.');
+    } catch (error) {
+      console.error('[Employee Portal] Support request failed:', error);
+      onShowNotification('Request failed', error instanceof Error ? error.message : 'We could not submit your request.');
+    } finally {
+      setIsSubmittingSupport(false);
+    }
+  };
+
+  const handleSubmitSupportReply = async (request: SupportRequest) => {
+    const body = supportReply.trim();
+    if (!body || isSubmittingReply) return;
+    setIsSubmittingReply(true);
+    try {
+      if (isPreviewMode) {
+        const message = {
+          id: `SM-${Date.now()}`,
+          requestId: request.id,
+          authorType: 'employee' as const,
+          authorId: selectedEmployee?.id,
+          authorName: selectedEmployee?.name || 'Employee',
+          body,
+          createdAt: getGmt8Timestamp(),
+        };
+        updateSupportRequests(supportRequests.map((item) => item.id === request.id
+          ? {
+            ...item,
+            status: item.status === 'Resolved' ? 'Open' : item.status,
+            updatedAt: message.createdAt,
+            messages: [...item.messages, message],
+          }
+          : item));
+      } else {
+        const result = await addEmployeeServiceMessage(request.id, body);
+        setSupportRequests((previous) => previous.map((item) => (
+          item.id === request.id ? (result.request || {
+            ...item,
+            messages: [...item.messages, result.message],
+            status: item.status === 'Resolved' ? 'Open' : item.status,
+            updatedAt: result.message.createdAt,
+          }) : item
+        )));
+      }
+      setSupportReply('');
+      onShowNotification('Reply sent', 'Your reply was added to the HR conversation.');
+    } catch (error) {
+      onShowNotification('Reply failed', error instanceof Error ? error.message : 'We could not send your reply.');
+    } finally {
+      setIsSubmittingReply(false);
+    }
+  };
+
+  const handleReopenSupportRequest = async (request: SupportRequest) => {
+    try {
+      if (isPreviewMode) {
+        updateSupportRequests(supportRequests.map((item) => item.id === request.id
+          ? { ...item, status: 'Open', resolvedAt: undefined, updatedAt: getGmt8Timestamp() }
+          : item));
+      } else {
+        const result = await reopenEmployeeServiceRequest(request.id);
+        setSupportRequests((previous) => previous.map((item) => item.id === request.id ? result.request : item));
+      }
+      onShowNotification('Request reopened', 'HR will see your request again.');
+    } catch (error) {
+      onShowNotification('Could not reopen request', error instanceof Error ? error.message : 'Please try again.');
+    }
   };
 
   const openPayslip = (record?: PayrollRecord2026) => {
@@ -700,7 +1007,7 @@ export default function EmployeePortalView({
     setSelectedPayslip({ month: latestPayrollMonth, year: latestPayrollYear, record: latestPayrollRecord || undefined });
   };
 
-  const currentSectionTitle = PORTAL_NAV_ITEMS.find((item) => item.id === activeSection)?.label || 'Home';
+  const currentSectionTitle = translateSection(activeSection);
 
   const tabButtonClass = (section: PortalSection) => [
     'w-full flex items-center gap-3 rounded-2xl px-4 py-3 text-left border transition-all duration-200',
@@ -711,6 +1018,37 @@ export default function EmployeePortalView({
 
   const cardClass = 'rounded-3xl border border-neutral-border bg-white/90 shadow-[0_18px_40px_rgba(53,24,18,0.05)] backdrop-blur-sm';
   const profileInputClass = 'w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary disabled:cursor-not-allowed';
+
+  if (isPortalLoading || portalLoadError) {
+    return (
+      <div className="min-h-screen bg-[#f7f1ea] flex items-center justify-center p-6 text-left" style={portalTheme}>
+        <div className={`${cardClass} max-w-lg w-full p-8 space-y-4`}>
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+              {portalLoadError ? <AlertCircle className="w-6 h-6" /> : <Sparkles className="w-6 h-6 animate-pulse" />}
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-on-background">
+                {portalLoadError ? copy.serviceUnavailable : copy.loading}
+              </h1>
+              <p className="text-sm text-on-surface-variant">
+                {portalLoadError || copy.loadingBody}
+              </p>
+            </div>
+          </div>
+          {portalLoadError && (
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+            >
+              {copy.retry}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (!selectedEmployee) {
     return (
@@ -745,7 +1083,7 @@ export default function EmployeePortalView({
         <div className="mx-auto flex h-14 w-32 items-center justify-center overflow-hidden rounded-2xl bg-white">
           <img src="/redpoint-logo.png" alt="RedPoint" className="h-full w-full object-contain p-2" />
         </div>
-        <p className="mt-3 text-[9px] font-bold uppercase tracking-[0.35em] text-white/55">Employee Portal</p>
+        <p className="mt-3 text-[9px] font-bold uppercase tracking-[0.35em] text-white/55">{copy.employeePortal}</p>
         <p className="mt-1 truncate text-sm font-semibold">{employeeEntity?.name || 'Red Point Sdn Bhd'}</p>
       </div>
 
@@ -759,9 +1097,21 @@ export default function EmployeePortalView({
         </div>
         <div className="mt-3 flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.3em] text-white/70">
           <ShieldCheck className="h-3.5 w-3.5" />
-          {isPreviewMode ? 'Preview mode' : 'Secure account'}
+          {isPreviewMode ? copy.previewMode : copy.secureAccount}
         </div>
       </div>
+
+      {isMobileNavOpen && (
+        <button
+          type="button"
+          onClick={() => setIsMobileNavOpen(false)}
+          aria-label={copy.close}
+          className="mb-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 text-sm font-semibold text-white lg:hidden"
+        >
+          <X className="h-4 w-4" />
+          {copy.close}
+        </button>
+      )}
 
       <p className="mb-2 px-2 text-[10px] font-bold uppercase tracking-[0.22em] text-white/45">
         Employee Workspace
@@ -779,7 +1129,7 @@ export default function EmployeePortalView({
               className={tabButtonClass(item.id)}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              <span className="text-xs font-semibold tracking-[0.01em]">{item.label}</span>
+              <span className="text-xs font-semibold tracking-[0.01em]">{translateSection(item.id)}</span>
             </button>
           );
         })}
@@ -842,7 +1192,7 @@ export default function EmployeePortalView({
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-3">
             <div className="rounded-2xl bg-[#fff8f1] p-4">
               <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-on-surface-variant">Latest pay</p>
               <p className="mt-2 text-2xl font-bold text-on-background">
@@ -870,7 +1220,7 @@ export default function EmployeePortalView({
               <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-on-surface-variant">Performance</p>
               <p className="mt-2 text-2xl font-bold text-on-background">{performanceRating}/5</p>
               <p className="mt-1 text-xs text-on-surface-variant">
-                {selectedPerformance?.reviewStatus || 'No review yet'}
+                {performanceAccessLabel}
               </p>
             </div>
           </div>
@@ -1135,18 +1485,46 @@ export default function EmployeePortalView({
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">Bank account</p>
-                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{selectedEmployee.accountNo || 'Not provided'}</p>
+                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{maskSensitive(selectedEmployee.accountNo)}</p>
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">Tax number</p>
-                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{selectedEmployee.taxNumber || 'Not provided'}</p>
+                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{maskSensitive(selectedEmployee.taxNumber)}</p>
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">EPF number</p>
-                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{selectedEmployee.epfNumber || 'Not provided'}</p>
+                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{maskSensitive(selectedEmployee.epfNumber)}</p>
               </div>
             </div>
           </div>
+
+          {!isPreviewMode && employeeProfileChanges.length > 0 && (
+            <div className="rounded-3xl border border-neutral-border bg-surface-container-low p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-bold text-on-background">Sensitive detail requests</h3>
+                  <p className="mt-1 text-xs text-on-surface-variant">Bank, statutory, identity, and family changes are applied only after HR review.</p>
+                </div>
+                <ShieldCheck className="h-5 w-5 text-primary" />
+              </div>
+              <div className="mt-4 space-y-3">
+                {employeeProfileChanges.slice(0, 5).map((request) => (
+                  <div key={request.id} className="rounded-2xl border border-neutral-border bg-white p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-on-background">{request.changeType.replace('_', ' ')}</p>
+                      <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.25em] text-primary">
+                        {translateStatus(request.status)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-on-surface-variant">
+                      Submitted {formatToDDMMMYYYY(request.createdAt)}.
+                      {request.reviewNote ? ` ${request.reviewNote}` : ''}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
@@ -1659,17 +2037,77 @@ export default function EmployeePortalView({
       status: 'In Progress' as const,
     };
 
+    const isClosed = employeeAppraisalAccessStatus === 'closed';
+
     return (
       <div className="space-y-6">
-        <PerformanceAppraisalForm
-          employee={selectedEmployee}
-          reviewCycle={effectiveReviewCycle}
-          performance={selectedPerformance}
-          mode="employee"
-          currentUserName={currentUserName || selectedEmployee.name}
-          onSavePerformance={onSavePerformance}
-          onShowNotification={onShowNotification}
-        />
+        <section className={`${cardClass} p-5`}>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-primary">Review history</p>
+              <h2 className="mt-1 text-xl font-bold text-on-background">Performance & Appraisal</h2>
+              <p className="mt-1 text-xs leading-5 text-on-surface-variant">
+                Current cycles are available only after Admin opens access. Completed cycles remain read-only.
+              </p>
+            </div>
+            <label className="min-w-64">
+              <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">Review Cycle</span>
+              <select
+                value={effectiveReviewCycle.id}
+                onChange={(event) => setSelectedReviewCycleId(event.target.value)}
+                className="w-full rounded-xl border border-neutral-border bg-white px-3 py-2.5 text-sm font-semibold text-on-background outline-none focus:border-primary"
+              >
+                {reviewCycles.map((cycle) => {
+                  const cyclePerformance = performances.find((performance) => (
+                    performance.reviewCycleId === cycle.id
+                    && (
+                      performance.employeeId.toLowerCase() === selectedEmployee.id.toLowerCase()
+                      || performance.employeeId.toLowerCase() === selectedEmployee.email.toLowerCase()
+                    )
+                  ));
+                  const cycleDraft = loadAppraisalDraft(selectedEmployee, cycle, cyclePerformance);
+                  const cycleStatus = getAppraisalAccessStatus(
+                    appraisalAccessGrants,
+                    selectedEmployee,
+                    cycle,
+                    cyclePerformance,
+                    cycleDraft.status,
+                  );
+                  return (
+                    <option key={cycle.id} value={cycle.id}>
+                      {cycle.name} - {cycleStatus === 'historical' ? 'History' : cycleStatus}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+          </div>
+        </section>
+
+        {isClosed ? (
+          <section className={`${cardClass} border-amber-200 bg-amber-50 p-6`}>
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+              <div>
+                <h3 className="text-lg font-bold text-amber-900">Not opened by HR</h3>
+                <p className="mt-1 text-sm leading-6 text-amber-800">
+                  {effectiveReviewCycle.name} is not available yet. Ask HR to open the appraisal before you can view or complete it.
+                </p>
+              </div>
+            </div>
+          </section>
+        ) : (
+          <PerformanceAppraisalForm
+            employee={selectedEmployee}
+            reviewCycle={effectiveReviewCycle}
+            performance={selectedPerformance}
+            mode="employee"
+            employeeAccessStatus={employeeAppraisalAccessStatus}
+            currentUserName={currentUserName || selectedEmployee.name}
+            onSavePerformance={onSavePerformance}
+            onShowNotification={onShowNotification}
+          />
+        )}
 
         <div className="grid gap-6 xl:grid-cols-[1fr_0.85fr]">
           <section className={`${cardClass} p-6`}>
@@ -1817,7 +2255,7 @@ export default function EmployeePortalView({
         <div className="flex items-center justify-between border-b border-neutral-border/70 pb-4">
           <div>
             <h2 className="text-xl font-bold text-on-background">Support</h2>
-            <p className="text-xs text-on-surface-variant">Submit questions, requests, and corrections to HR.</p>
+            <p className="text-xs text-on-surface-variant">Submit questions, requests, and corrections to HR. Replies stay in this conversation.</p>
           </div>
           <LifeBuoy className="h-5 w-5 text-primary" />
         </div>
@@ -1870,15 +2308,53 @@ export default function EmployeePortalView({
           </label>
           <button
             type="submit"
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+            disabled={isSubmittingSupport}
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-wait disabled:opacity-60"
           >
             <Send className="h-4 w-4" />
-            Send request
+            {isSubmittingSupport ? 'Sending...' : 'Send request'}
           </button>
         </form>
       </section>
 
       <section className="space-y-6">
+        <div className={`${cardClass} p-6`}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-bold text-on-background">Notifications</h3>
+              <p className="mt-1 text-xs text-on-surface-variant">Updates from HR and profile approvals.</p>
+            </div>
+            <Bell className="h-5 w-5 text-primary" />
+          </div>
+          <div className="mt-4 space-y-3">
+            {employeeNotifications.length > 0 ? employeeNotifications.slice(0, 5).map((notification) => (
+              <button
+                type="button"
+                key={notification.id}
+                onClick={async () => {
+                  if (notification.readAt || isPreviewMode) return;
+                  try {
+                    const result = await markEmployeeNotificationRead(notification.id);
+                    setEmployeeNotifications((previous) => previous.map((item) => (
+                      item.id === notification.id ? result.notification : item
+                    )));
+                  } catch (error) {
+                    onShowNotification('Notification error', error instanceof Error ? error.message : 'Could not mark notification as read.');
+                  }
+                }}
+                className={`w-full rounded-2xl border p-4 text-left ${notification.readAt ? 'border-neutral-border bg-white' : 'border-primary/25 bg-primary/5'}`}
+              >
+                <p className="text-sm font-semibold text-on-background">{notification.title}</p>
+                <p className="mt-1 text-xs leading-5 text-on-surface-variant">{notification.body}</p>
+              </button>
+            )) : (
+              <div className="rounded-3xl border border-dashed border-neutral-border bg-white p-6 text-center text-sm text-on-surface-variant">
+                No notifications yet.
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className={`${cardClass} p-6`}>
           <h3 className="text-base font-bold text-on-background">Contact HR</h3>
           <div className="mt-4 space-y-3 text-sm">
@@ -1908,10 +2384,69 @@ export default function EmployeePortalView({
                     <p className="text-xs text-on-surface-variant">{request.category} · {request.priority}</p>
                   </div>
                   <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.35em] text-primary">
-                    {request.status}
+                    {translateStatus(request.status)}
                   </span>
                 </div>
                 <p className="mt-3 text-xs text-on-surface-variant">{request.description}</p>
+                <p className="mt-2 text-[11px] text-on-surface-variant">
+                  Updated {formatToDDMMMYYYY(request.updatedAt)}
+                </p>
+                {request.messages.length > 0 && (
+                  <div className="mt-4 space-y-2 border-t border-neutral-border/70 pt-3">
+                    {request.messages.map((message) => (
+                      <div key={message.id} className={`rounded-xl p-3 text-xs ${message.authorType === 'hr' ? 'bg-white' : 'bg-primary/5'}`}>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-semibold text-on-background">{message.authorType === 'hr' ? 'HR' : 'You'}</span>
+                          <span className="text-[10px] text-on-surface-variant">{formatToDDMMMYYYY(message.createdAt)}</span>
+                        </div>
+                        <p className="mt-1 whitespace-pre-wrap leading-5 text-on-surface-variant">{message.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {(request.status === 'Resolved' || request.status === 'Closed') && (
+                    <button
+                      type="button"
+                      onClick={() => void handleReopenSupportRequest(request)}
+                      className="min-h-11 rounded-xl border border-primary/20 bg-white px-3 py-2 text-xs font-semibold text-primary"
+                    >
+                      Reopen request
+                    </button>
+                  )}
+                  {request.status !== 'Closed' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSupportReplyRequestId((current) => current === request.id ? null : request.id);
+                        setSupportReply('');
+                      }}
+                      className="min-h-11 rounded-xl border border-neutral-border bg-white px-3 py-2 text-xs font-semibold text-on-surface"
+                    >
+                      Reply to HR
+                    </button>
+                  )}
+                </div>
+                {supportReplyRequestId === request.id && request.status !== 'Closed' && (
+                  <div className="mt-3 space-y-2">
+                    <textarea
+                      value={supportReply}
+                      onChange={(event) => setSupportReply(event.target.value)}
+                      rows={3}
+                      maxLength={5000}
+                      className="w-full rounded-xl border border-neutral-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+                      placeholder="Add a reply or request that HR reopens this case."
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleSubmitSupportReply(request)}
+                      disabled={isSubmittingReply || !supportReply.trim()}
+                      className="min-h-11 rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-white disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {isSubmittingReply ? 'Sending...' : 'Send reply'}
+                    </button>
+                  </div>
+                )}
               </div>
             )) : (
               <div className="rounded-3xl border border-dashed border-neutral-border bg-white p-8 text-center text-sm text-on-surface-variant">
@@ -1991,6 +2526,14 @@ export default function EmployeePortalView({
                 <p className="mt-0.5 text-xs font-semibold text-on-background">{getGmt8LongDateString()}</p>
               </div>
               <div className="hidden h-8 w-px bg-neutral-border/70 xl:block" />
+              <button
+                type="button"
+                onClick={() => setLanguage((current) => current === 'en' ? 'zh' : 'en')}
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-neutral-border bg-white px-3 text-xs font-bold text-on-surface"
+                aria-label="Toggle language"
+              >
+                {language === 'en' ? '中' : 'EN'}
+              </button>
               <EmployeeAvatar employee={selectedEmployee} className="h-9 w-9 rounded-full" />
               <div className="hidden min-w-0 text-left sm:block">
                 <p className="max-w-[220px] truncate text-xs font-bold text-on-background">{selectedEmployee.name}</p>
@@ -2014,25 +2557,85 @@ export default function EmployeePortalView({
                 <Menu className="h-5 w-5" />
               </button>
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-on-surface-variant">Employee Portal</p>
-                <p className="truncate text-sm font-semibold text-on-background">{currentSectionTitle}</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-on-surface-variant">{copy.employeePortal}</p>
+                <p className="truncate text-sm font-semibold text-on-background">{translateSection(activeSection)}</p>
               </div>
               <button
-                onClick={onSignOut}
-                className="inline-flex h-11 items-center rounded-xl border border-neutral-border bg-white px-3 text-sm font-semibold text-on-surface"
+                type="button"
+                onClick={() => setLanguage((current) => current === 'en' ? 'zh' : 'en')}
+                className="inline-flex h-11 min-w-11 items-center justify-center rounded-xl border border-neutral-border bg-white px-3 text-xs font-bold text-on-surface"
+                aria-label="Toggle language"
               >
-                Exit
+                {language === 'en' ? '中' : 'EN'}
               </button>
             </div>
           </header>
 
-          <main className="flex-1 overflow-y-auto px-4 py-5 md:px-6 md:py-6 lg:px-8 lg:py-8">
+          <main className="flex-1 overflow-y-auto px-4 py-5 pb-24 md:px-6 md:py-6 lg:px-8 lg:py-8 lg:pb-8">
             <div className="mx-auto w-full max-w-none space-y-6">
               {mainContent()}
             </div>
           </main>
         </div>
       </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-border/80 bg-white/95 px-2 pb-[env(safe-area-inset-bottom)] pt-2 shadow-[0_-10px_30px_rgba(53,24,18,0.08)] backdrop-blur-md lg:hidden">
+        <div className="mx-auto grid max-w-xl grid-cols-5 gap-1">
+          {([
+            ['home', copy.home, Home],
+            ['leave', copy.leave, CalendarDays],
+            ['payslips', copy.payslips, Wallet],
+            ['support', copy.support, LifeBuoy],
+          ] as const).map(([section, label, Icon]) => (
+            <button
+              type="button"
+              key={section}
+              onClick={() => {
+                setActiveSection(section);
+                setIsMoreOpen(false);
+              }}
+              className={`flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-[10px] font-semibold ${activeSection === section ? 'bg-primary/10 text-primary' : 'text-on-surface-variant'}`}
+            >
+              <Icon className="h-5 w-5" />
+              <span>{label}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setIsMoreOpen((open) => !open)}
+            className={`flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-[10px] font-semibold ${isMoreOpen ? 'bg-primary/10 text-primary' : 'text-on-surface-variant'}`}
+          >
+            <Menu className="h-5 w-5" />
+            <span>{copy.more}</span>
+          </button>
+        </div>
+      </div>
+
+      {isMoreOpen && (
+        <div className="fixed inset-x-3 bottom-20 z-50 rounded-3xl border border-neutral-border bg-white p-3 shadow-[0_20px_50px_rgba(53,24,18,0.18)] lg:hidden">
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              ['profile', copy.profile, User],
+              ['onboarding', copy.onboarding, ClipboardList],
+              ['growth', copy.growth, TrendingUp],
+              ['documents', copy.documents, FileText],
+            ] as const).map(([section, label, Icon]) => (
+              <button
+                type="button"
+                key={section}
+                onClick={() => {
+                  setActiveSection(section);
+                  setIsMoreOpen(false);
+                }}
+                className="flex min-h-11 items-center gap-2 rounded-2xl border border-neutral-border bg-[#fffaf4] px-3 py-3 text-left text-sm font-semibold text-on-surface"
+              >
+                <Icon className="h-4 w-4 text-primary" />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {selectedPayslip && selectedEmployee && (
         <div className="fixed inset-0 z-[80] bg-black/60 p-0 lg:p-4">

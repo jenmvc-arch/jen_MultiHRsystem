@@ -26,6 +26,9 @@ export const buildTemplate = (type: EmailType, data: Record<string, unknown>) =>
   const action = escapeHtml(data.action || 'continue');
   const status = escapeHtml(data.status || '');
   const details = escapeHtml(data.details || '');
+  const subject = escapeHtml(data.subject || '');
+  const category = escapeHtml(data.category || '');
+  const priority = escapeHtml(data.priority || '');
 
   switch (type) {
     case 'otp_verification':
@@ -69,6 +72,18 @@ export const buildTemplate = (type: EmailType, data: Record<string, unknown>) =>
         subject: 'Your RedPoint HRMS payslip is available',
         text: `Hello ${data.name || 'there'}, your payslip is now available. ${data.details || ''}`,
         html: layout('Payslip available', `<p>Hello ${name},</p><p>Your payslip is now available in the HRMS portal.</p><p>${details}</p>`),
+      };
+    case 'employee_request_created':
+      return {
+        subject: `New employee request: ${data.subject || 'Support request'}`,
+        text: `A new employee request was submitted by ${data.name || 'an employee'}: ${data.subject || ''}. Category: ${data.category || ''}. Priority: ${data.priority || ''}. ${data.details || ''}`,
+        html: layout('New employee request', `<p>${name} submitted a new employee request.</p><p><strong>${subject}</strong></p><p>Category: ${category}<br>Priority: ${priority}</p><p>${details}</p>`),
+      };
+    case 'employee_request_updated':
+      return {
+        subject: `HR update: ${data.subject || 'Employee request'}`,
+        text: `Your employee request has been updated. ${data.details || ''}`,
+        html: layout('Employee request update', `<p>Hello ${name},</p><p>Your request <strong>${subject}</strong> has been updated.</p><p>${details}</p>`),
       };
     case 'test_email':
       return {

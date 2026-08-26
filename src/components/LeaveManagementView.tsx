@@ -215,7 +215,7 @@ export default function LeaveManagementView({
   activeEntityId,
   onUpdateEmployee
 }: LeaveManagementViewProps) {
-  const { confirmAction } = useFeedback();
+  const { confirmAction, showUndoToast } = useFeedback();
   const [activeSection, setActiveSection] = useState<LeaveWorkspaceSection>('overview');
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -223,6 +223,10 @@ export default function LeaveManagementView({
   const [leaveConfigs, setLeaveConfigs] = useState<LeaveConfig[]>(DEFAULT_LEAVE_CONFIGS);
   const [conditioningPolicies, setConditioningPolicies] = useState<LeaveConditioningPolicy[]>(DEFAULT_LEAVE_CONDITIONING_POLICIES);
   const [carryOverSettings, setCarryOverSettings] = useState<CarryOverLeaveBalanceSettings[]>(DEFAULT_CARRY_OVER_SETTINGS);
+  const [savedLeaveConfigs, setSavedLeaveConfigs] = useState<LeaveConfig[]>(DEFAULT_LEAVE_CONFIGS);
+  const [savedConditioningPolicies, setSavedConditioningPolicies] = useState<LeaveConditioningPolicy[]>(DEFAULT_LEAVE_CONDITIONING_POLICIES);
+  const [savedCarryOverSettings, setSavedCarryOverSettings] = useState<CarryOverLeaveBalanceSettings[]>(DEFAULT_CARRY_OVER_SETTINGS);
+  const [hasUnsavedRuleChanges, setHasUnsavedRuleChanges] = useState(false);
   const [leaveGroups, setLeaveGroups] = useState<LeaveGroup[]>(DEFAULT_LEAVE_GROUPS);
   const [assignments, setAssignments] = useState<EmployeeLeaveGroupAssignment[]>([]);
   const [workShiftGroups, setWorkShiftGroups] = useState<WorkShiftGroup[]>(DEFAULT_WORK_SHIFT_GROUPS);
@@ -306,10 +310,17 @@ export default function LeaveManagementView({
     void loadLeaveWorkspace(activeEntityId)
       .then((workspace) => {
         if (cancelled) return;
+        const nextConfigs = workspace.configs.map(normalizeLeaveConfig);
+        const nextPolicies = workspace.policies.length > 0 ? workspace.policies : DEFAULT_LEAVE_CONDITIONING_POLICIES;
+        const nextCarryOverSettings = workspace.carryOverSettings.length > 0 ? workspace.carryOverSettings : DEFAULT_CARRY_OVER_SETTINGS;
         setRequests(workspace.requests);
-        setLeaveConfigs(workspace.configs.map(normalizeLeaveConfig));
-        setConditioningPolicies(workspace.policies.length > 0 ? workspace.policies : DEFAULT_LEAVE_CONDITIONING_POLICIES);
-        setCarryOverSettings(workspace.carryOverSettings.length > 0 ? workspace.carryOverSettings : DEFAULT_CARRY_OVER_SETTINGS);
+        setLeaveConfigs(nextConfigs);
+        setConditioningPolicies(nextPolicies);
+        setCarryOverSettings(nextCarryOverSettings);
+        setSavedLeaveConfigs(nextConfigs);
+        setSavedConditioningPolicies(nextPolicies);
+        setSavedCarryOverSettings(nextCarryOverSettings);
+        setHasUnsavedRuleChanges(false);
         setLeaveGroups(workspace.groups.length > 0 ? workspace.groups : DEFAULT_LEAVE_GROUPS);
         setAssignments(workspace.assignments);
         setWorkShiftGroups(workspace.workShiftGroups.length > 0 ? workspace.workShiftGroups : DEFAULT_WORK_SHIFT_GROUPS);
@@ -391,18 +402,35 @@ export default function LeaveManagementView({
 
   const saveConfigs = (next: LeaveConfig[]) => {
     setLeaveConfigs(next);
+    setSavedLeaveConfigs(next);
+    setHasUnsavedRuleChanges(
+      JSON.stringify(conditioningPolicies) !== JSON.stringify(savedConditioningPolicies)
+      || JSON.stringify(carryOverSettings) !== JSON.stringify(savedCarryOverSettings),
+    );
     if (activeEntityId) writeScopedJson(`leave_configs_${activeEntityId}`, next);
     persistWorkspace({ configs: next });
   };
 
   const savePolicies = (next: LeaveConditioningPolicy[]) => {
     setConditioningPolicies(next);
+    setSavedConditioningPolicies(next);
+    setHasUnsavedRuleChanges(
+      JSON.stringify(leaveConfigs) !== JSON.stringify(savedLeaveConfigs)
+      || JSON.stringify(next) !== JSON.stringify(savedConditioningPolicies)
+      || JSON.stringify(carryOverSettings) !== JSON.stringify(savedCarryOverSettings),
+    );
     if (activeEntityId) writeScopedJson(`leave_conditioning_policies_${activeEntityId}`, next);
     persistWorkspace({ policies: next });
   };
 
   const saveCarryOver = (next: CarryOverLeaveBalanceSettings[]) => {
     setCarryOverSettings(next);
+    setSavedCarryOverSettings(next);
+    setHasUnsavedRuleChanges(
+      JSON.stringify(leaveConfigs) !== JSON.stringify(savedLeaveConfigs)
+      || JSON.stringify(conditioningPolicies) !== JSON.stringify(savedConditioningPolicies)
+      || JSON.stringify(next) !== JSON.stringify(savedCarryOverSettings),
+    );
     if (activeEntityId) writeScopedJson(`leave_carry_over_settings_${activeEntityId}`, next);
     persistWorkspace({ carryOverSettings: next });
   };
@@ -443,9 +471,9 @@ export default function LeaveManagementView({
   }> = {}) => {
     if (!activeEntityId) return;
     const workspace = {
-      configs: overrides.configs || leaveConfigs,
-      policies: overrides.policies || conditioningPolicies,
-      carryOverSettings: overrides.carryOverSettings || carryOverSettings,
+      configs: overrides.configs || (hasUnsavedRuleChanges ? savedLeaveConfigs : leaveConfigs),
+      policies: overrides.policies || (hasUnsavedRuleChanges ? savedConditioningPolicies : conditioningPolicies),
+      carryOverSettings: overrides.carryOverSettings || (hasUnsavedRuleChanges ? savedCarryOverSettings : carryOverSettings),
       groups: overrides.groups || leaveGroups,
       assignments: overrides.assignments || assignments,
       workShiftGroups: overrides.workShiftGroups || workShiftGroups,
@@ -506,7 +534,8 @@ export default function LeaveManagementView({
   );
 
   const updateConfig = (id: string, field: keyof LeaveConfig, value: string | number | boolean) => {
-    saveConfigs(leaveConfigs.map((config) => config.id === id ? { ...config, [field]: value } : config));
+    setLeaveConfigs(leaveConfigs.map((config) => config.id === id ? { ...config, [field]: value } : config));
+    setHasUnsavedRuleChanges(true);
   };
 
   const updatePolicy = (
@@ -514,7 +543,8 @@ export default function LeaveManagementView({
     field: keyof LeaveConditioningPolicy,
     value: string | boolean | number
   ) => {
-    savePolicies(conditioningPolicies.map((policy) => policy.id === id ? { ...policy, [field]: value } : policy));
+    setConditioningPolicies(conditioningPolicies.map((policy) => policy.id === id ? { ...policy, [field]: value } : policy));
+    setHasUnsavedRuleChanges(true);
   };
 
   const updateCarryOver = (
@@ -522,7 +552,32 @@ export default function LeaveManagementView({
     field: keyof CarryOverLeaveBalanceSettings,
     value: string | number | boolean
   ) => {
-    saveCarryOver(carryOverSettings.map((setting) => setting.id === id ? { ...setting, [field]: value } : setting));
+    setCarryOverSettings(carryOverSettings.map((setting) => setting.id === id ? { ...setting, [field]: value } : setting));
+    setHasUnsavedRuleChanges(true);
+  };
+
+  const saveRuleDraft = () => {
+    if (!hasUnsavedRuleChanges || !activeEntityId) return;
+    setSavedLeaveConfigs(leaveConfigs);
+    setSavedConditioningPolicies(conditioningPolicies);
+    setSavedCarryOverSettings(carryOverSettings);
+    setHasUnsavedRuleChanges(false);
+    writeScopedJson(`leave_configs_${activeEntityId}`, leaveConfigs);
+    writeScopedJson(`leave_conditioning_policies_${activeEntityId}`, conditioningPolicies);
+    writeScopedJson(`leave_carry_over_settings_${activeEntityId}`, carryOverSettings);
+    persistWorkspace({
+      configs: leaveConfigs,
+      policies: conditioningPolicies,
+      carryOverSettings: carryOverSettings,
+    });
+    onShowNotification('Leave Rules Saved', 'Leave types, conditioning policies, and carry-over rules were saved.');
+  };
+
+  const discardRuleDraft = () => {
+    setLeaveConfigs(savedLeaveConfigs);
+    setConditioningPolicies(savedConditioningPolicies);
+    setCarryOverSettings(savedCarryOverSettings);
+    setHasUnsavedRuleChanges(false);
   };
 
   const getWorkShiftGroupForEmployee = (employeeId: string, effectiveDate: string) => {
@@ -675,6 +730,10 @@ export default function LeaveManagementView({
   const updateLeaveRequestStatus = async (id: string, status: Exclude<LeaveRequestStatus, 'Pending'>) => {
     const request = requests.find((item) => item.id === id);
     if (!request) return;
+    const previousRequests = requests;
+    const previousLedgerEntries = ledgerEntries;
+    const previousPayrollDeductions = payrollDeductions;
+    const employeeBeforeDecision = activeEmployees.find((item) => item.id === request.employeeId);
     const confirmed = await confirmAction({
       title: status === 'Approved' ? 'Approve Leave Request' : 'Reject Leave Request',
       message: status === 'Approved'
@@ -822,7 +881,36 @@ export default function LeaveManagementView({
         details: `${request.leaveType}: ${formatToDDMMMYYYY(request.startDate)} to ${formatToDDMMMYYYY(request.endDate)}.`,
       }).catch((error) => onShowNotification('Email Notification Failed', error.message));
     }
-    onShowNotification(`Request ${status}`, `Leave request ${id} has been marked as ${status.toLowerCase()}.`);
+    showUndoToast({
+      title: `Request ${status}`,
+      message: `Leave request ${id} is now ${status.toLowerCase()}. The notification email cannot be recalled.`,
+      type: 'success',
+      action: {
+        label: 'Undo',
+        expiresAt: Date.now() + 8_000,
+        undo: async () => {
+          setRequests(previousRequests);
+          setLedgerEntries(previousLedgerEntries);
+          setPayrollDeductions(previousPayrollDeductions);
+          if (activeEntityId) {
+            writeScopedJson(`leave_requests_${activeEntityId}`, previousRequests);
+            writeScopedJson(`leave_balance_ledger_${activeEntityId}`, previousLedgerEntries);
+            writeScopedJson(`leave_payroll_deductions_${activeEntityId}`, previousPayrollDeductions);
+          }
+          persistWorkspace({
+            requests: previousRequests,
+            ledgerEntries: previousLedgerEntries,
+            payrollDeductions: previousPayrollDeductions,
+          });
+          if (employeeBeforeDecision) {
+            await onUpdateEmployee?.(employeeBeforeDecision.id, {
+              unpaidLeave: employeeBeforeDecision.unpaidLeave || 0,
+            });
+          }
+          onShowNotification('Leave Decision Reverted', `${request.employeeName}'s request returned to its previous state.`);
+        },
+      },
+    });
   };
 
   const addPolicy = (event: React.FormEvent) => {
@@ -886,6 +974,35 @@ export default function LeaveManagementView({
     setNewTypeDays(14);
     setNewTypeCondition('Paid leave');
     onShowNotification('Leave Type Added', `${name} has been added to the leave type catalogue.`);
+  };
+
+  const deleteLeaveType = async (id: string) => {
+    const config = leaveConfigs.find((item) => item.id === id);
+    if (!config || config.isDefault) return;
+    const confirmed = await confirmAction({
+      title: 'Delete Custom Leave Type',
+      message: `Delete ${config.leaveType}? Existing historical requests will remain unchanged, but new applications will no longer be able to use this type.`,
+      type: 'danger',
+      confirmLabel: 'Delete Leave Type',
+    });
+    if (!confirmed) return;
+
+    const previousConfigs = leaveConfigs;
+    const nextConfigs = leaveConfigs.filter((item) => item.id !== id);
+    saveConfigs(nextConfigs);
+    showUndoToast({
+      title: 'Leave Type Deleted',
+      message: `${config.leaveType} was removed from the catalogue.`,
+      type: 'success',
+      action: {
+        label: 'Undo',
+        expiresAt: Date.now() + 8_000,
+        undo: async () => {
+          saveConfigs(previousConfigs);
+          onShowNotification('Leave Type Restored', `${config.leaveType} is available again.`);
+        },
+      },
+    });
   };
 
   const addLeaveGroup = (event: React.FormEvent) => {
@@ -1271,7 +1388,22 @@ export default function LeaveManagementView({
     setPublicHolidays(nextHolidays);
     if (activeEntityId) writeScopedJson(`public_holidays_${activeEntityId}`, nextHolidays);
     persistWorkspace({ publicHolidays: nextHolidays });
-    onShowNotification('Public Holiday Deleted', `${holiday.name} was removed.`);
+    showUndoToast({
+      title: 'Public Holiday Deleted',
+      message: `${holiday.name} was removed from the holiday calendar.`,
+      type: 'success',
+      action: {
+        label: 'Undo',
+        expiresAt: Date.now() + 8_000,
+        undo: async () => {
+          const restored = [holiday, ...nextHolidays];
+          setPublicHolidays(restored);
+          if (activeEntityId) writeScopedJson(`public_holidays_${activeEntityId}`, restored);
+          persistWorkspace({ publicHolidays: restored });
+          onShowNotification('Public Holiday Restored', `${holiday.name} is back on the calendar.`);
+        },
+      },
+    });
   };
 
   const updateOffInLieuEntry = (
@@ -1363,6 +1495,8 @@ export default function LeaveManagementView({
   const updateOffInLieuStatus = async (id: string, status: Exclude<OffInLieuStatus, 'Draft' | 'Pending'>) => {
     const request = offInLieuRequests.find((item) => item.id === id);
     if (!request) return;
+    const previousRequests = offInLieuRequests;
+    const previousLedgerEntries = ledgerEntries;
     const confirmed = await confirmAction({
       title: status === 'Approved' ? 'Approve Off in Lieu Request' : 'Reject Off in Lieu Request',
       message: status === 'Approved'
@@ -1415,7 +1549,28 @@ export default function LeaveManagementView({
         }).catch((error) => onShowNotification('Email Notification Failed', error.message));
       }
     });
-    onShowNotification(`Off in Lieu ${status}`, `${id} has been marked as ${status.toLowerCase()}.`);
+    showUndoToast({
+      title: `Off in Lieu ${status}`,
+      message: `${id} has been marked as ${status.toLowerCase()}. The notification email cannot be recalled.`,
+      type: 'success',
+      action: {
+        label: 'Undo',
+        expiresAt: Date.now() + 8_000,
+        undo: async () => {
+          setOffInLieuRequests(previousRequests);
+          setLedgerEntries(previousLedgerEntries);
+          if (activeEntityId) {
+            writeScopedJson(`off_in_lieu_requests_${activeEntityId}`, previousRequests);
+            writeScopedJson(`leave_balance_ledger_${activeEntityId}`, previousLedgerEntries);
+          }
+          persistWorkspace({
+            offInLieuRequests: previousRequests,
+            ledgerEntries: previousLedgerEntries,
+          });
+          onShowNotification('Off in Lieu Decision Reverted', `${id} returned to its previous state.`);
+        },
+      },
+    });
   };
 
   const moveOffInLieuMonth = (direction: -1 | 1) => {
@@ -1888,7 +2043,7 @@ export default function LeaveManagementView({
                     <input type="checkbox" checked={config.enabled !== false} onChange={(event) => updateConfig(config.id, 'enabled', event.target.checked)} className="h-4 w-4 accent-[#b42318]" />
                   </td>
                   <td className="p-4 text-right">
-                    <button type="button" disabled={config.isDefault} onClick={() => saveConfigs(leaveConfigs.filter((item) => item.id !== config.id))} className="rounded p-2 text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-20" title={config.isDefault ? 'Default leave types are retained' : 'Delete custom leave type'}>
+                    <button type="button" disabled={config.isDefault} onClick={() => void deleteLeaveType(config.id)} className="rounded p-2 text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-20" title={config.isDefault ? 'Default leave types are retained' : 'Delete custom leave type'} aria-label={config.isDefault ? 'Default leave type cannot be deleted' : `Delete ${config.leaveType}`}>
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </td>
@@ -2797,6 +2952,23 @@ export default function LeaveManagementView({
           <p>Replacement Leave is created only after an Off in Lieu request has been approved.</p>
         </div>
       </div>
+
+      {hasUnsavedRuleChanges && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+          <div>
+            <p className="font-bold">Unsaved leave rule changes</p>
+            <p className="mt-0.5">Rule edits remain as a draft until you save them.</p>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={discardRuleDraft} className="rounded-md border border-amber-300 bg-white px-3 py-2 text-[10px] font-bold hover:bg-amber-100">
+              Cancel Changes
+            </button>
+            <button type="button" onClick={saveRuleDraft} className="rounded-md bg-primary px-3 py-2 text-[10px] font-bold text-white hover:bg-primary-container">
+              Save Leave Rules
+            </button>
+          </div>
+        </div>
+      )}
 
       {isLoadingWorkspace ? (
         <div className={`${cardClass} flex min-h-64 flex-col items-center justify-center gap-3 p-8`}>

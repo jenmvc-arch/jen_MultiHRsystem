@@ -12,7 +12,7 @@ import {
   Trash2,
   UserCheck,
 } from 'lucide-react';
-import { Employee, EmployeePerformance, ReviewCycle } from '../types';
+import { AppraisalAccessStatus, Employee, EmployeePerformance, ReviewCycle } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
 import { useFeedback } from './GlobalFeedbackSystem';
 import {
@@ -35,6 +35,8 @@ interface PerformanceAppraisalFormProps {
   performance?: EmployeePerformance | null;
   mode: 'manager' | 'employee';
   currentUserName?: string | null;
+  employeeAccessStatus?: AppraisalAccessStatus | 'historical';
+  onAppraisalAccessChange?: (status: AppraisalAccessStatus) => void | Promise<void>;
   onBack?: () => void;
   onDraftSaved?: (draft: PerformanceAppraisalDraft) => void;
   onSavePerformance?: (performance: EmployeePerformance) => void;
@@ -139,6 +141,8 @@ export default function PerformanceAppraisalForm({
   performance,
   mode,
   currentUserName,
+  employeeAccessStatus = 'sent',
+  onAppraisalAccessChange,
   onBack,
   onDraftSaved,
   onSavePerformance,
@@ -158,7 +162,7 @@ export default function PerformanceAppraisalForm({
   const isManagerMode = mode === 'manager';
   const isFinalised = draft.status === 'Finalised';
   const canManagerEdit = isManagerMode && !isFinalised;
-  const canEmployeeEdit = mode === 'employee' && !isFinalised;
+  const canEmployeeEdit = mode === 'employee' && employeeAccessStatus === 'sent' && !isFinalised;
   const canEditSelfFields = isManagerMode ? !isFinalised : canEmployeeEdit;
   const canEditManagerFields = canManagerEdit;
   const canEditSetup = canManagerEdit;
@@ -188,7 +192,7 @@ export default function PerformanceAppraisalForm({
     }
   };
 
-  const persistDraft = (nextDraft: PerformanceAppraisalDraft, action: DraftAction) => {
+  const persistDraft = async (nextDraft: PerformanceAppraisalDraft, action: DraftAction) => {
     const copy = actionCopy[action];
     const nextScores = calculateAppraisalScores(nextDraft);
     if (copy.requireValidWeight && !nextScores.isKpiWeightValid) {
@@ -204,16 +208,36 @@ export default function PerformanceAppraisalForm({
     onDraftSaved?.(savedDraft);
 
     if (copy.syncCore && onSavePerformance) {
-      onSavePerformance(buildPerformanceFromAppraisalDraft(savedDraft, performance));
+      await onSavePerformance(buildPerformanceFromAppraisalDraft(savedDraft, performance));
     }
 
     onShowNotification(copy.title, copy.message);
   };
 
-  const runAction = (action: DraftAction) => {
+  const runAction = async (action: DraftAction) => {
     const copy = actionCopy[action];
+    if (action === 'send') {
+      if (employeeAccessStatus !== 'open') {
+        onShowNotification('Open Access First', 'Open appraisal access before sending the appraisal to the employee.');
+        return;
+      }
+      const confirmed = await confirmAction({
+        title: 'Send to Employee',
+        message: `Send ${reviewCycle.name} to ${employee.name}? The employee will be able to edit and submit self-appraisal fields. No email or external notification will be sent automatically.`,
+        type: 'warning',
+        confirmLabel: 'Send to Employee',
+      });
+      if (!confirmed) return;
+    }
     const nextDraft = copy.status ? { ...draft, status: copy.status } : draft;
-    persistDraft(nextDraft, action);
+    await persistDraft(nextDraft, action);
+    if (action === 'send') {
+      try {
+        await onAppraisalAccessChange?.('sent');
+      } catch (error: any) {
+        onShowNotification('Remote Sync Failed', error?.message || 'The appraisal draft was saved, but employee access could not be synchronized.');
+      }
+    }
   };
 
   const updateDraft = (updates: Partial<PerformanceAppraisalDraft>) => {
@@ -338,16 +362,18 @@ export default function PerformanceAppraisalForm({
           Back
         </button>
       )}
-      <button
-        onClick={() => runAction('save')}
-        className="inline-flex items-center gap-2 rounded border border-primary bg-white px-3 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/5"
-      >
-        <Save className="h-3.5 w-3.5" />
-        Save Draft
-      </button>
-      {isManagerMode && !isFinalised && (
+      {(isManagerMode || canEmployeeEdit) && (
         <button
-          onClick={() => runAction('send')}
+          onClick={() => void runAction('save')}
+          className="inline-flex items-center gap-2 rounded border border-primary bg-white px-3 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/5"
+        >
+          <Save className="h-3.5 w-3.5" />
+          Save Draft
+        </button>
+      )}
+      {isManagerMode && !isFinalised && employeeAccessStatus === 'open' && (
+        <button
+          onClick={() => void runAction('send')}
           className="inline-flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700 transition-colors hover:bg-amber-100"
         >
           <Send className="h-3.5 w-3.5" />
@@ -381,17 +407,35 @@ export default function PerformanceAppraisalForm({
           Finalise
         </button>
       )}
-      <button
-        type="button"
-        onClick={handleDownloadPdf}
-        disabled={isPdfDownloading}
-        className="inline-flex items-center gap-2 rounded border border-neutral-border bg-surface-container px-3 py-2 text-xs font-bold text-on-surface transition-colors hover:bg-surface-container-high disabled:cursor-wait disabled:opacity-60"
-      >
-        <Download className="h-3.5 w-3.5" />
-        {isPdfDownloading ? 'Generating PDF...' : 'Download PDF'}
-      </button>
+      {(isManagerMode || employeeAccessStatus !== 'closed') && (
+        <button
+          type="button"
+          onClick={handleDownloadPdf}
+          disabled={isPdfDownloading}
+          className="inline-flex items-center gap-2 rounded border border-neutral-border bg-surface-container px-3 py-2 text-xs font-bold text-on-surface transition-colors hover:bg-surface-container-high disabled:cursor-wait disabled:opacity-60"
+        >
+          <Download className="h-3.5 w-3.5" />
+          {isPdfDownloading ? 'Generating PDF...' : 'Download PDF'}
+        </button>
+      )}
     </div>
   );
+
+  if (mode === 'employee' && employeeAccessStatus === 'closed') {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-left shadow-sm">
+        <div className="flex items-start gap-3">
+          <Lock className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+          <div>
+            <h2 className="text-lg font-bold text-amber-900">Appraisal not opened by HR</h2>
+            <p className="mt-1 text-sm leading-6 text-amber-800">
+              {reviewCycle.name} is not available yet. Your draft data is retained, but the appraisal cannot be viewed or edited until Admin opens access.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 text-left">
@@ -419,6 +463,16 @@ export default function PerformanceAppraisalForm({
           {renderActionButtons()}
         </div>
       </div>
+
+      {mode === 'employee' && employeeAccessStatus === 'open' && (
+        <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-bold">Available for viewing</p>
+            <p className="mt-0.5 text-xs">Admin has prepared this appraisal. Editing and submission will be enabled after Admin selects Send to Employee.</p>
+          </div>
+        </div>
+      )}
 
       {!scores.isKpiWeightValid && (
         <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">

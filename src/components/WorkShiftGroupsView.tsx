@@ -48,7 +48,7 @@ export default function WorkShiftGroupsView({
   activeEntityId,
   onShowNotification,
 }: WorkShiftGroupsViewProps) {
-  const { confirmAction } = useFeedback();
+  const { confirmAction, showUndoToast } = useFeedback();
   const activeEmployees = useMemo(
     () => employees.filter((employee) => isCurrentActiveEmployee(employee)),
     [employees],
@@ -57,6 +57,9 @@ export default function WorkShiftGroupsView({
   const [selectedGroupId, setSelectedGroupId] = useState(DEFAULT_WORK_SHIFT_GROUPS[0].id);
   const [workShiftGroups, setWorkShiftGroups] = useState<WorkShiftGroup[]>(DEFAULT_WORK_SHIFT_GROUPS);
   const [workShiftGroupDays, setWorkShiftGroupDays] = useState<WorkShiftGroupDay[]>(DEFAULT_WORK_SHIFT_GROUP_DAYS);
+  const [savedWorkShiftGroups, setSavedWorkShiftGroups] = useState<WorkShiftGroup[]>(DEFAULT_WORK_SHIFT_GROUPS);
+  const [savedWorkShiftGroupDays, setSavedWorkShiftGroupDays] = useState<WorkShiftGroupDay[]>(DEFAULT_WORK_SHIFT_GROUP_DAYS);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [assignments, setAssignments] = useState<EmployeeWorkShiftAssignment[]>([]);
   const [workspace, setWorkspace] = useState<Awaited<ReturnType<typeof loadLeaveWorkspace>> | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -89,6 +92,9 @@ export default function WorkShiftGroupsView({
         setWorkspace(loadedWorkspace);
         setWorkShiftGroups(normalizedGroups);
         setWorkShiftGroupDays(days);
+        setSavedWorkShiftGroups(normalizedGroups);
+        setSavedWorkShiftGroupDays(days);
+        setHasUnsavedChanges(false);
         setAssignments(loadedWorkspace.employeeWorkShiftAssignments);
         setSelectedGroupId((previous) => normalizedGroups.some((group) => group.id === previous)
           ? previous
@@ -133,10 +139,19 @@ export default function WorkShiftGroupsView({
     });
   };
 
-  const saveSchedule = (nextGroups: WorkShiftGroup[], nextDays: WorkShiftGroupDay[]) => {
+  const saveSchedule = (
+    nextGroups: WorkShiftGroup[],
+    nextDays: WorkShiftGroupDay[],
+    commit = false,
+  ) => {
     setWorkShiftGroups(nextGroups);
     setWorkShiftGroupDays(nextDays);
-    persist(nextGroups, nextDays, assignments);
+    setHasUnsavedChanges(!commit);
+    if (commit) {
+      setSavedWorkShiftGroups(nextGroups);
+      setSavedWorkShiftGroupDays(nextDays);
+      persist(nextGroups, nextDays, assignments);
+    }
   };
 
   const getGroupDays = (groupId: string) => normalizeWorkShiftGroupDays(workShiftGroupDays, groupId);
@@ -211,7 +226,7 @@ export default function WorkShiftGroupsView({
       weeklyHours,
       weeklyHoursWarning: weeklyHours > 45,
     };
-    saveSchedule([...workShiftGroups, group], [...workShiftGroupDays, ...days]);
+    saveSchedule([...workShiftGroups, group], [...workShiftGroupDays, ...days], true);
     setSelectedGroupId(id);
     setAssignmentGroupId(id);
     setNewGroupName('');
@@ -242,7 +257,7 @@ export default function WorkShiftGroupsView({
       ...workShiftGroupDays.filter((day) => day.groupId !== selectedGroup.id),
       ...days,
     ];
-    saveSchedule(nextGroups, nextDays);
+    saveSchedule(nextGroups, nextDays, true);
     onShowNotification(
       'Work & Shift Group Saved',
       `${selectedGroup.name} totals ${weeklyHours.toFixed(2)} hours per week${weeklyHours > 45 ? ' and exceeds the 45-hour warning threshold.' : '.'}`,
@@ -261,15 +276,43 @@ export default function WorkShiftGroupsView({
       confirmLabel: 'Delete Group',
     });
     if (!confirmed) return;
+    const deletedGroup = selectedGroup;
+    const previousGroups = workShiftGroups;
+    const previousDays = workShiftGroupDays;
+    const previousAssignments = assignments;
     const nextGroups = workShiftGroups.filter((group) => group.id !== selectedGroup.id);
     const nextDays = workShiftGroupDays.filter((day) => day.groupId !== selectedGroup.id);
     const nextAssignments = assignments.filter((assignment) => assignment.groupId !== selectedGroup.id);
     setAssignments(nextAssignments);
-    saveSchedule(nextGroups, nextDays);
+    setWorkShiftGroups(nextGroups);
+    setWorkShiftGroupDays(nextDays);
+    setSavedWorkShiftGroups(nextGroups);
+    setSavedWorkShiftGroupDays(nextDays);
+    setHasUnsavedChanges(false);
     persist(nextGroups, nextDays, nextAssignments);
     setSelectedGroupId(nextGroups[0]?.id || '');
     setAssignmentGroupId(nextGroups.find((group) => group.enabled)?.id || '');
-    onShowNotification('Work & Shift Group Deleted', `${selectedGroup.name} was removed.`);
+    showUndoToast({
+      title: 'Work & Shift Group Deleted',
+      message: `${deletedGroup.name} was removed. Existing assignment history is still recoverable.`,
+      type: 'success',
+      action: {
+        label: 'Undo',
+        expiresAt: Date.now() + 8_000,
+        undo: async () => {
+          setWorkShiftGroups(previousGroups);
+          setWorkShiftGroupDays(previousDays);
+          setAssignments(previousAssignments);
+          setSavedWorkShiftGroups(previousGroups);
+          setSavedWorkShiftGroupDays(previousDays);
+          setHasUnsavedChanges(false);
+          persist(previousGroups, previousDays, previousAssignments);
+          setSelectedGroupId(deletedGroup.id);
+          setAssignmentGroupId(previousGroups.find((group) => group.enabled)?.id || '');
+          onShowNotification('Work & Shift Group Restored', `${deletedGroup.name} is available again.`);
+        },
+      },
+    });
   };
 
   const previousDay = (dateString: string) => {
@@ -280,6 +323,10 @@ export default function WorkShiftGroupsView({
 
   const assignGroup = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (hasUnsavedChanges) {
+      onShowNotification('Save Required', 'Save the current Work & Shift Group before assigning it to employees.');
+      return;
+    }
     const employeeIds = assignmentMode === 'single'
       ? assignmentEmployeeIds.slice(0, 1)
       : [...new Set(assignmentEmployeeIds)];
@@ -315,6 +362,7 @@ export default function WorkShiftGroupsView({
       if (!confirmed) return;
     }
 
+    const previousAssignments = assignments;
     let nextAssignments = [...assignments];
     employeeIds.forEach((employeeId) => {
       nextAssignments = nextAssignments.map((assignment) => {
@@ -345,13 +393,35 @@ export default function WorkShiftGroupsView({
     persist(workShiftGroups, workShiftGroupDays, nextAssignments);
     setAssignmentEmployeeIds([]);
     setAssignmentEndDate('');
-    onShowNotification(
-      'Work & Shift Group Assigned',
-      `${group.name} was assigned to ${employeeIds.length} employee${employeeIds.length === 1 ? '' : 's'} from ${formatToDDMMMYYYY(assignmentEffectiveDate)}.`,
-    );
+    showUndoToast({
+      title: 'Work & Shift Group Assigned',
+      message: `${group.name} was assigned to ${employeeIds.length} employee${employeeIds.length === 1 ? '' : 's'} from ${formatToDDMMMYYYY(assignmentEffectiveDate)}.`,
+      type: 'success',
+      action: {
+        label: 'Undo',
+        expiresAt: Date.now() + 8_000,
+        undo: async () => {
+          setAssignments(previousAssignments);
+          persist(workShiftGroups, workShiftGroupDays, previousAssignments);
+          onShowNotification('Schedule Assignment Reverted', 'The previous employee schedule assignments were restored.');
+        },
+      },
+    });
   };
 
   const currentDate = getGmt8DateString();
+  const handleRefresh = () => {
+    if (hasUnsavedChanges) {
+      onShowNotification('Unsaved Changes', 'Save or cancel the current schedule changes before refreshing.');
+      return;
+    }
+    setRefreshKey((key) => key + 1);
+  };
+  const discardChanges = () => {
+    setWorkShiftGroups(savedWorkShiftGroups);
+    setWorkShiftGroupDays(savedWorkShiftGroupDays);
+    setHasUnsavedChanges(false);
+  };
   const visibleAssignments = assignments.filter((assignment) => (
     activeEmployees.some((employee) => employee.id === assignment.employeeId)
   ));
@@ -368,7 +438,7 @@ export default function WorkShiftGroupsView({
         </div>
         <button
           type="button"
-          onClick={() => setRefreshKey((key) => key + 1)}
+          onClick={handleRefresh}
           disabled={isLoading}
           className="flex items-center justify-center gap-2 rounded-md border border-neutral-border bg-white px-3 py-2 text-xs font-bold text-on-surface transition hover:bg-neutral-50 disabled:cursor-wait disabled:opacity-60"
         >
@@ -444,6 +514,14 @@ export default function WorkShiftGroupsView({
                   </div>
                 </div>
 
+                {hasUnsavedChanges && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-900">
+                    <span className="font-semibold">Unsaved changes. The schedule is still a draft.</span>
+                    <button type="button" onClick={discardChanges} className="rounded-md border border-amber-300 bg-white px-2.5 py-1.5 text-[10px] font-bold text-amber-900 hover:bg-amber-100">
+                      Cancel Changes
+                    </button>
+                  </div>
+                )}
                 {selectedGroup.weeklyHoursWarning && <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-900"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />Weekly working hours exceed 45 hours. Saving is allowed, but HR should review the schedule.</div>}
 
                 <div className="overflow-x-auto p-5">
@@ -493,7 +571,7 @@ export default function WorkShiftGroupsView({
               <div className="md:col-span-3"><label className={labelClass}>Work & Shift Group</label><select value={assignmentGroupId} onChange={(event) => setAssignmentGroupId(event.target.value)} className={inputClass}>{workShiftGroups.filter((group) => group.enabled).map((group) => <option key={group.id} value={group.id}>{group.name} · {group.weeklyHours.toFixed(2)}h</option>)}</select></div>
               <div className="md:col-span-2"><label className={labelClass}>Effective Date</label><input type="date" value={assignmentEffectiveDate} onChange={(event) => setAssignmentEffectiveDate(event.target.value)} className={`${inputClass} font-mono`} /></div>
               <div className="md:col-span-2"><label className={labelClass}>End Date (Optional)</label><input type="date" value={assignmentEndDate} onChange={(event) => setAssignmentEndDate(event.target.value)} className={`${inputClass} font-mono`} /></div>
-              <div className="flex items-end md:col-span-1"><button type="submit" className="flex w-full items-center justify-center rounded-md bg-primary px-3 py-2.5 text-white hover:opacity-90" title="Assign group"><Plus className="h-4 w-4" /></button></div>
+              <div className="flex items-end md:col-span-1"><button type="submit" aria-label="Assign work and shift group" className="flex w-full items-center justify-center rounded-md bg-primary px-3 py-2.5 text-white hover:opacity-90" title="Assign group"><Plus className="h-4 w-4" /></button></div>
             </form>
 
             <div className="mt-5 overflow-x-auto">
