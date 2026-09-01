@@ -143,7 +143,12 @@ export default function PayrollView({
       });
       onShowNotification('Display Settings Saved', `Payroll document display settings were saved for ${activePayrollEmployee.name}.`);
     } catch (error: any) {
-      onShowNotification('Save Failed', error?.message || 'Payroll document display settings could not be saved.');
+      // The parent employee update handler reports remote sync failures. Avoid
+      // showing a second toast for the same failed save attempt.
+      console.error('[Payroll Display Settings Save] Failed:', error);
+      if (!error?.notificationShown) {
+        onShowNotification('Save Failed', error?.message || 'Payroll document display settings could not be saved.');
+      }
     } finally {
       setIsSavingDisplaySettings(false);
     }

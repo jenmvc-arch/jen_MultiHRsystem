@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS public.employees (
     employment_type TEXT,
     marital_status TEXT DEFAULT 'Single',
     eligible_for_statutory TEXT DEFAULT 'Yes',
+    payroll_document_display_settings JSONB NOT NULL DEFAULT '{}'::jsonb,
     opt_in_epf BOOLEAN DEFAULT TRUE,
     opt_in_socso BOOLEAN DEFAULT TRUE,
     opt_in_eis BOOLEAN DEFAULT TRUE,

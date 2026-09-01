@@ -1980,7 +1980,9 @@ export default function App() {
 
     if (isSupabaseConfigured) {
       try {
-        await supabaseClient.update('employees', id, updates, 'id');
+        // Use the loaded record's canonical database ID when the UI was opened
+        // with an email or another legacy employee identifier.
+        await supabaseClient.update('employees', oldEmp.id || id, updates, 'id');
         try {
           await supabaseClient.insert('audit_logs', {
             id: `log_${Date.now()}`,
@@ -1996,8 +1998,10 @@ export default function App() {
         }
       } catch (err: any) {
         console.error('[Supabase Update Error]', err);
-        triggerNotification('Sync Failed', `Could not update employee in Supabase: ${err.message || err}`, 'info');
-        throw err;
+        const reportedError = err instanceof Error ? err : new Error(String(err));
+        (reportedError as Error & { notificationShown?: boolean }).notificationShown = true;
+        triggerNotification('Sync Failed', `Could not update employee in Supabase: ${reportedError.message}`, 'info');
+        throw reportedError;
       }
     } else if (isGoogleConfigured) {
       try {
@@ -2106,8 +2110,10 @@ export default function App() {
         }, scriptUrl);
       } catch (err: any) {
         console.error('[Google Sheets Update] Failed to update employee:', err);
-        triggerNotification('Sync Failed', `Could not update employee: ${err.message || err}`, 'info');
-        throw err;
+        const reportedError = err instanceof Error ? err : new Error(String(err));
+        (reportedError as Error & { notificationShown?: boolean }).notificationShown = true;
+        triggerNotification('Sync Failed', `Could not update employee: ${reportedError.message}`, 'info');
+        throw reportedError;
       }
     }
 
