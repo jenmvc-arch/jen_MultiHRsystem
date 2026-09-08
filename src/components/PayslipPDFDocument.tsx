@@ -405,9 +405,10 @@ interface PayslipPDFDocumentProps {
   year?: number;
   payrollRecordOverride?: PayrollRecord2026;
   displaySettingsOverride?: Partial<PayrollDocumentDisplaySettings>;
+  logoSrc?: string;
 }
 
-export const PayslipPDFDocument = ({ employee: sourceEmployee, entity, month = 10, year = 2026, payrollRecordOverride, displaySettingsOverride }: PayslipPDFDocumentProps) => {
+export const PayslipPDFDocument = ({ employee: sourceEmployee, entity, month = 10, year = 2026, payrollRecordOverride, displaySettingsOverride, logoSrc }: PayslipPDFDocumentProps) => {
   const activePayrollRecord = payrollRecordOverride || null;
   const baseEmployee = getEmployeeForMonth(sourceEmployee, month, year);
   const isSeparatePayoutDocument = !!activePayrollRecord && isSeparatePayrollRecord(activePayrollRecord);
@@ -599,7 +600,7 @@ export const PayslipPDFDocument = ({ employee: sourceEmployee, entity, month = 1
         <View style={styles.headerContainer}>
           <View style={styles.logoContainer}>
               <Image 
-                src="/redpoint-logo.png" 
+                src={logoSrc || "/redpoint-logo.png"}
                 style={styles.logoImage} 
               />
             <View>

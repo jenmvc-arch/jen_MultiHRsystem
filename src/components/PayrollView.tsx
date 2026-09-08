@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Building2, CalendarDays, Check, Clock, CreditCard, FileText, PlusCircle, SlidersHorizontal, Users } from 'lucide-react';
+import { ArrowLeft, Building2, CalendarDays, Check, ChevronDown, Clock, CreditCard, FileText, PlusCircle, SlidersHorizontal } from 'lucide-react';
 import type { CorporateEntity, Employee, PayrollRecord2026, PayrollPayoutKind } from '../types';
 import type { PayrollDocumentDisplaySettings } from '../types';
 import { PAYROLL_FILE_EXPORT_COLUMNS } from '../lib/exportTypes';
@@ -80,6 +80,7 @@ export default function PayrollView({
   const [selectedPayoutKind, setSelectedPayoutKind] = useState<Exclude<PayrollPayoutKind, 'regular'> | null>(null);
   const [selectedPayrollRecord, setSelectedPayrollRecord] = useState<PayrollRecord2026 | null>(null);
   const [selectedPayrollFileRecordIds, setSelectedPayrollFileRecordIds] = useState<string[]>([]);
+  const [isPayrollToolsOpen, setIsPayrollToolsOpen] = useState(false);
 
   const [monthName, selectedYearText] = selectedPayPeriod.split(' ');
   const payMonthIndex = Math.max(1, MONTHS.indexOf(monthName) + 1);
@@ -188,6 +189,12 @@ export default function PayrollView({
       setActiveSubTab('editor');
     }
   };
+
+  useEffect(() => {
+    if (selectedPayoutKind) {
+      setIsPayrollToolsOpen(true);
+    }
+  }, [selectedPayoutKind]);
 
   const handleSelectedPayPeriodChange = (payPeriod: string) => {
     setSelectedPayPeriod(payPeriod);
@@ -310,11 +317,11 @@ export default function PayrollView({
     const payoutKinds: Exclude<PayrollPayoutKind, 'regular'>[] = ['bonus', 'incentive_commission', 'claim_reimbursement'];
 
     return (
-      <div className="bg-white border border-neutral-border p-4 rounded-lg shadow-xs text-left space-y-3">
+      <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 text-left shadow-sm">
         <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
           <div>
-            <h4 className="font-bold text-xs text-primary uppercase tracking-wider">Generate Separate Payout</h4>
-            <p className="text-[11px] text-on-surface-variant mt-1">
+            <h4 className="text-sm font-bold text-on-background">Generate separate payout</h4>
+            <p className="mt-1 text-[11px] text-on-surface-variant">
               Create a separate payroll record for bonus, commission, or claim reimbursement payments.
             </p>
           </div>
@@ -322,7 +329,7 @@ export default function PayrollView({
             <button
               type="button"
               onClick={clearSeparatePayoutMode}
-              className="rounded border border-neutral-border px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant hover:bg-neutral-50"
+              className="rounded-xl border border-neutral-border bg-white px-3 py-2 text-[10px] font-bold text-on-surface-variant transition-colors hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
               Clear Selection
             </button>
@@ -337,15 +344,15 @@ export default function PayrollView({
                 key={kind}
                 type="button"
                 onClick={() => launchSeparatePayout(kind)}
-                className={`rounded-lg border p-3 text-left transition-all hover:shadow-xs ${
+                className={`rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 ${
                   selectedPayoutKind === kind
-                    ? 'border-primary bg-primary/5'
-                    : 'border-neutral-border bg-neutral-50 hover:bg-primary/5'
+                    ? 'border-primary bg-white shadow-sm'
+                    : 'border-amber-200 bg-white/80 hover:border-primary/30'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Separate Payout</span>
-                  <PlusCircle className="h-4 w-4 text-primary" />
+                  <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">Separate payout</span>
+                  <PlusCircle className="h-4 w-4 text-primary" aria-hidden="true" />
                 </div>
                 <p className="mt-2 font-bold text-primary">{config.title}</p>
                 <p className="mt-1 text-[11px] text-on-surface-variant">
@@ -365,11 +372,11 @@ export default function PayrollView({
     if (!activePayrollEmployee || !activeDocumentProfile) return null;
 
     return (
-      <div className="bg-white border border-neutral-border p-4 rounded-lg shadow-xs text-left space-y-3">
+      <div className="space-y-4 rounded-2xl border border-neutral-border bg-white p-4 text-left shadow-sm">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <h4 className="font-bold text-xs text-primary uppercase tracking-wider">Document Display Settings</h4>
-            <p className="text-[11px] text-on-surface-variant mt-1">
+            <h4 className="text-sm font-bold text-on-background">Document display settings</h4>
+            <p className="mt-1 text-[11px] text-on-surface-variant">
               Changes update the editor and payslip preview immediately. Save to persist them for this employee and future documents.
             </p>
           </div>
@@ -421,7 +428,7 @@ export default function PayrollView({
           <button
             type="button"
             onClick={handleResetDisplaySettings}
-            className="rounded border border-neutral-border px-3 py-1.5 text-xs font-bold text-on-surface-variant hover:bg-neutral-50"
+            className="rounded-xl border border-neutral-border px-3 py-2 text-xs font-bold text-on-surface-variant transition-colors hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary/20"
           >
             Reset to Default
           </button>
@@ -429,7 +436,7 @@ export default function PayrollView({
             type="button"
             onClick={handleSaveDisplaySettings}
             disabled={isSavingDisplaySettings}
-            className="rounded bg-primary px-3 py-1.5 text-xs font-bold text-white hover:bg-primary-container disabled:cursor-not-allowed disabled:bg-zinc-300"
+            className="rounded-xl bg-primary px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-primary-container focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-zinc-300"
           >
             {isSavingDisplaySettings ? 'Saving...' : 'Save Display Settings'}
           </button>
@@ -437,7 +444,7 @@ export default function PayrollView({
             <button
               type="button"
               onClick={() => openPayrollPreview(selectedPayrollRecord, selectedEmployeeId)}
-              className="rounded border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/10"
+              className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
               Preview Payslip
             </button>
@@ -454,10 +461,11 @@ export default function PayrollView({
         if (tab === 'payslip-preview' && !selectedPayrollRecord) return;
         setActiveSubTab(tab);
       }}
-      className={`flex-1 py-2 px-4 rounded font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+      aria-current={activeSubTab === tab ? 'page' : undefined}
+      className={`flex min-w-[156px] flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all ${
         activeSubTab === tab
-          ? 'bg-primary text-white shadow-xs'
-          : 'text-on-surface-variant hover:text-on-surface hover:bg-neutral-100'
+          ? 'bg-primary text-white shadow-sm'
+          : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'
       }`}
     >
       {icon}
@@ -585,57 +593,73 @@ export default function PayrollView({
 
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-5 pb-8 animate-in fade-in duration-200">
-      <header className="space-y-2">
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Core Operations</p>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight text-on-background sm:text-4xl">Payroll Center</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-on-surface-variant">
-              Prepare, process, review, and export payroll documents within the active corporate workspace.
-            </p>
+      <header className="overflow-hidden rounded-2xl border border-neutral-border bg-white shadow-sm">
+        <div className="border-b border-neutral-border/70 bg-surface-container-low/55 px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Payroll operations</p>
+              <h1 className="mt-1 text-3xl font-black tracking-tight text-on-background sm:text-4xl">Payroll Center</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-on-surface-variant">
+                Prepare, validate, and publish the payroll run for the selected period.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-2 rounded-xl border border-neutral-border bg-white px-3 py-2 font-bold text-on-background">
+                <Building2 className="h-4 w-4 text-primary" aria-hidden="true" />
+                {activeEntity?.name || 'All subsidiaries'}
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 font-bold text-primary">
+                <CalendarDays className="h-4 w-4" aria-hidden="true" />
+                {selectedPayPeriod}
+              </span>
+            </div>
           </div>
-          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-primary">
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-            Workspace filters persist only for this payroll session.
+
+          <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-neutral-border bg-neutral-border sm:grid-cols-4">
+            {[
+              ['In scope', entityEmployees.length, 'Employees in this workspace'],
+              ['Eligible', eligibleEmployees.length, 'Available for this run'],
+              ['Saved', payrollFileRecords.length, 'Records in Payroll File'],
+              ['Attention', payrollFileRows.filter(({ record }) => !record).length, 'Need a saved draft']
+            ].map(([label, value, detail]) => (
+              <div key={String(label)} className="bg-white px-3 py-3 sm:px-4">
+                <span className="block text-[9px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">{label}</span>
+                <span className="mt-1 block font-mono text-xl font-bold text-on-background">{value}</span>
+                <span className="mt-0.5 block text-[10px] text-on-surface-variant">{detail}</span>
+              </div>
+            ))}
           </div>
         </div>
       </header>
 
-      <div className="overflow-x-auto rounded-xl border border-neutral-border bg-white p-1.5 shadow-xs">
-        <div className="flex min-w-[620px] gap-1.5">
+      <nav aria-label="Payroll workflow" className="overflow-x-auto rounded-2xl border border-neutral-border bg-white p-1.5 shadow-sm">
+        <div className="flex min-w-[640px] gap-1.5">
           {renderSubTabButton('editor', '1. Payroll Editor', <CreditCard className="h-4 w-4" />)}
           {renderSubTabButton('payroll-file', '2. Payroll File', <FileText className="h-4 w-4" />)}
           {renderSubTabButton('payslip-preview', '3. Preview Payslip', <FileText className="h-4 w-4" />)}
           {renderSubTabButton('history', '4. YTD & History', <Clock className="h-4 w-4" />)}
         </div>
-      </div>
+      </nav>
 
-      <section className="rounded-xl border border-neutral-border bg-white p-4 shadow-xs sm:p-5">
+      <section className="rounded-2xl border border-neutral-border bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-4 border-b border-neutral-border/60 pb-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-primary/10 p-2.5 text-primary">
-              <Building2 className="h-5 w-5" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <SlidersHorizontal className="h-5 w-5" aria-hidden="true" />
             </div>
             <div>
-              <h2 className="text-xs font-black uppercase tracking-[0.16em] text-primary">Payroll Workspace</h2>
-              <p className="mt-1 text-base font-bold text-on-background">{activeEntity?.name || 'All Subsidiaries'}</p>
-              <p className="mt-1 text-xs text-on-surface-variant">
-                Entity isolation and payroll filters apply to the current session.
-              </p>
+              <h2 className="text-base font-bold text-on-background">Run scope</h2>
+              <p className="mt-1 text-xs text-on-surface-variant">Choose who and which period this payroll workspace is operating on.</p>
             </div>
           </div>
-          <span className="inline-flex w-fit items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-primary">
-            <Check className="h-3.5 w-3.5" /> Workspace isolated
+          <span className="inline-flex w-fit items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-800">
+            <Check className="h-3.5 w-3.5" aria-hidden="true" /> Workspace isolated
           </span>
         </div>
 
-        <div className="mb-4 flex items-center gap-2 pt-4">
-          <Users className="h-4 w-4 text-primary" />
-          <h2 className="text-xs font-black uppercase tracking-[0.16em] text-primary">Workspace Filters</h2>
-        </div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[1.6fr_1fr_1fr_1.1fr]">
+        <div className="grid grid-cols-1 gap-3 pt-4 md:grid-cols-2 xl:grid-cols-[1.6fr_1fr_1fr_1.1fr]">
           <label className="block text-left">
-            <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Employee</span>
+            <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-on-surface-variant">Employee</span>
             <select
               value={selectedEmployeeId}
               onChange={event => handleSelectedEmployeeChange(event.target.value)}
@@ -647,7 +671,7 @@ export default function PayrollView({
             </select>
           </label>
           <label className="block text-left">
-            <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Pay month</span>
+            <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-on-surface-variant">Pay month</span>
             <select
               value={monthName}
               onChange={event => handleSelectedPayPeriodChange(`${event.target.value} ${payYear}`)}
@@ -657,7 +681,7 @@ export default function PayrollView({
             </select>
           </label>
           <label className="block text-left">
-            <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Pay year</span>
+            <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-on-surface-variant">Pay year</span>
             <select
               value={String(payYear)}
               onChange={event => handleSelectedPayPeriodChange(`${monthName} ${event.target.value}`)}
@@ -669,7 +693,7 @@ export default function PayrollView({
             </select>
           </label>
           <label className="block text-left">
-            <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Department</span>
+            <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.12em] text-on-surface-variant">Department</span>
             <select
               value={selectedDepartment}
               onChange={event => handleSelectedDepartmentChange(event.target.value)}
@@ -684,12 +708,42 @@ export default function PayrollView({
         </div>
         <p className="mt-3 flex items-center gap-2 text-[11px] text-on-surface-variant">
           <CalendarDays className="h-3.5 w-3.5 text-primary" />
-          Active period: <span className="font-bold text-on-background">{selectedPayPeriod}</span>
+          Active period <span className="font-bold text-on-background">{selectedPayPeriod}</span>
         </p>
       </section>
 
-      {activeSubTab === 'editor' && renderSeparatePayoutPanel()}
-      {activeSubTab === 'editor' && renderDisplaySettingsPanel()}
+      {activeSubTab === 'editor' && (
+        <section className="overflow-hidden rounded-2xl border border-neutral-border bg-white shadow-sm">
+          <button
+            type="button"
+            aria-expanded={isPayrollToolsOpen}
+            onClick={() => setIsPayrollToolsOpen(previous => !previous)}
+            className="flex w-full items-center justify-between gap-4 px-4 py-3.5 text-left transition-colors hover:bg-surface-container-low focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/20 sm:px-5"
+          >
+            <span className="flex min-w-0 items-center gap-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-bold text-on-background">Payroll tools</span>
+                <span className="mt-0.5 block truncate text-[11px] text-on-surface-variant">
+                  Separate payouts and document display settings
+                </span>
+              </span>
+            </span>
+            <span className="flex shrink-0 items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-primary">
+              {selectedPayoutKind ? 'Payout selected' : isPayrollToolsOpen ? 'Hide tools' : 'Show tools'}
+              <ChevronDown className={`h-4 w-4 transition-transform ${isPayrollToolsOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+            </span>
+          </button>
+          {isPayrollToolsOpen && (
+            <div className="grid gap-4 border-t border-neutral-border/70 bg-surface-container-low/35 p-4 lg:grid-cols-2 sm:p-5">
+              {renderSeparatePayoutPanel()}
+              {renderDisplaySettingsPanel()}
+            </div>
+          )}
+        </section>
+      )}
 
       {activeSubTab === 'editor' ? (
         <PayrollEditorMockupView
@@ -828,10 +882,10 @@ export default function PayrollView({
                           </td>
                           <td className="p-3">{employee.department || '—'}</td>
                           <td className="p-3">{HISTORY_MONTHS[payMonthIndex]} {payYear}</td>
-                          <td className="p-3 text-right font-mono text-on-surface-variant">—</td>
-                          <td className="p-3 text-right font-mono text-on-surface-variant">—</td>
-                          <td className="p-3 text-right font-mono text-on-surface-variant">—</td>
-                          <td className="p-3 text-on-surface-variant">—</td>
+                          <td className="p-3 text-right font-mono text-on-surface-variant">Not set</td>
+                          <td className="p-3 text-right font-mono text-on-surface-variant">Not set</td>
+                          <td className="p-3 text-right font-mono text-on-surface-variant">Not set</td>
+                          <td className="p-3 text-on-surface-variant">Not set</td>
                           <td className="p-3 text-right">
                             <button
                               type="button"

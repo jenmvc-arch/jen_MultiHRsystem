@@ -1,9 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import {
-  buildPayrollFileExportRow,
-  renderPayrollPdf,
-  safeFilename,
-} from './exportService.js';
+import { safeFilename } from './exportService.js';
+import { renderOfficialPayslipPdf } from './officialPayslipPdf.js';
 import {
   createEmployeeAdminClient,
   createMainAdminClient,
@@ -157,6 +154,11 @@ export const sendPayrollPayslipEmails = async (req: any) => {
   const recordIds = readRecordIds(req.body?.recordIds);
   const client = createMainAdminClient();
   const { rows, employeeByEmail } = await loadPayrollContext(client, recordIds);
+  const entityResult = await client.from('corporate_entities').select('*');
+  if (entityResult.error) {
+    throw new Error(`Payroll entities could not be loaded: ${entityResult.error.message}`);
+  }
+  const entities = entityResult.data || [];
   const byId = new Map(rows.map((row: any) => [String(row.id), row]));
   const results: Array<{ ok: boolean; recordId: string; status?: string; message?: string; error?: string }> = [];
 
@@ -177,12 +179,13 @@ export const sendPayrollPayslipEmails = async (req: any) => {
     }
 
     try {
-      const rowForPdf = buildPayrollFileExportRow(row, employee, 1);
-      const pdf = await renderPayrollPdf(
-        `${row.payroll_year || new Date().getFullYear()} Payroll Payslip`,
-        [rowForPdf],
-        true,
-      );
+      const employeeEntity = entities.find((entity: any) => (
+        normalize(entity.id) === normalize(employee.entity_id)
+        || normalize(entity.name) === normalize(employee.entity_id)
+        || normalize(entity.id) === normalize(row.entity_id)
+        || normalize(entity.name) === normalize(row.entity_name)
+      ));
+      const pdf = await renderOfficialPayslipPdf(row, employee, employeeEntity);
       const emailResult = await sendEmailTemplate(
         'payslip_notification',
         employee.email,

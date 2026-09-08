@@ -1094,10 +1094,10 @@ export default function PayrollEditorMockupView({
       {isEmbedded && (
         <div className="flex flex-col gap-3 rounded-xl border border-neutral-border bg-white p-4 shadow-xs sm:flex-row sm:items-center sm:justify-between sm:p-5">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">1. Payroll Editor</p>
-            <h2 className="mt-1 text-2xl font-black text-on-background">Payroll Editor</h2>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">1. Payroll editor</p>
+            <h2 className="mt-1 text-2xl font-black text-on-background">Review payroll record</h2>
             <p className="mt-1 text-xs text-on-surface-variant">
-              Edit the saved payroll record, then save to update it.
+              Review the current record, then edit and save changes when needed.
             </p>
           </div>
           <button

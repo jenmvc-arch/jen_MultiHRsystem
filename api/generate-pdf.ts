@@ -1,8 +1,7 @@
 import {
-  buildPayrollFileExportRow,
-  renderPayrollPdf,
   safeFilename,
 } from './_lib/exportService.js';
+import { renderOfficialPayslipPdf } from './_lib/officialPayslipPdf.js';
 import {
   canExportSensitive,
   hasExportPermission,
@@ -41,7 +40,7 @@ export default async function handler(req: any, res: any) {
     const client = createMainAdminClient();
     const employeeQuery = client
       .from('employees')
-      .select('id,name,email,entity_id,entity_name,employment_type,payment_mode,payment_method,nric_passport,bank_name,account_no,skbbk_employee,lindung24_employee')
+      .select('*')
       .eq('id', employeeId)
       .maybeSingle();
     const { data: employee, error: employeeError } = employeeId
@@ -122,12 +121,19 @@ export default async function handler(req: any, res: any) {
       return;
     }
     const employeeRow = employee as any;
-    const row = buildPayrollFileExportRow(payrollRow, employeeRow || undefined, 1);
-    const title = `${payrollRow.payroll_year || new Date().getFullYear()} Payroll Payslip`;
-    const buffer = await renderPayrollPdf(
-      title,
-      [row],
-      canExportSensitive(actor.role, 'payroll'),
+    const entityResult = await client.from('corporate_entities').select('*');
+    if (entityResult.error) throw new Error(`Entity lookup failed: ${entityResult.error.message}`);
+    const entityRow = (entityResult.data || []).find((candidate: any) => (
+      String(candidate.id || '').toLowerCase() === String(employeeRow?.entity_id || '').toLowerCase()
+      || String(candidate.name || '').toLowerCase() === String(employeeRow?.entity_id || '').toLowerCase()
+      || String(candidate.id || '').toLowerCase() === String(payrollRow.entity_id || '').toLowerCase()
+      || String(candidate.name || '').toLowerCase() === String(payrollRow.entity_name || '').toLowerCase()
+    ));
+    const buffer = await renderOfficialPayslipPdf(
+      payrollRow,
+      employeeRow || {},
+      entityRow,
+      { sensitiveAllowed: canExportSensitive(actor.role, 'payroll') },
     );
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${safeFilename(`Payslip_${payrollRow.employee_email}`, 'pdf')}"`);
