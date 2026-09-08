@@ -78,6 +78,7 @@ export const createEmailService = (options: EmailServiceOptions = {}) => {
           subject: input.subject,
           text: input.text,
           html: input.html,
+          attachments: input.attachments,
         });
         const result: EmailDeliveryResult = {
           ok: true,
@@ -108,7 +109,8 @@ export const createEmailService = (options: EmailServiceOptions = {}) => {
   const sendTemplate = async (
     type: EmailType,
     recipient: string,
-    data: Record<string, unknown>
+    data: Record<string, unknown>,
+    attachments?: EmailTemplateInput['attachments'],
   ) => {
     const template = buildTemplate(type, data);
     return send({
@@ -117,6 +119,7 @@ export const createEmailService = (options: EmailServiceOptions = {}) => {
       subject: template.subject,
       html: template.html,
       text: template.text,
+      attachments,
     });
   };
 
@@ -127,5 +130,6 @@ export const sendEmailTemplate = async (
   type: EmailType,
   recipient: string,
   data: Record<string, unknown>,
-  db?: SupabaseClient
-) => createEmailService({ db }).sendTemplate(type, recipient, data);
+  db?: SupabaseClient,
+  attachments?: EmailTemplateInput['attachments'],
+) => createEmailService({ db }).sendTemplate(type, recipient, data, attachments);

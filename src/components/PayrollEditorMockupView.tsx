@@ -733,7 +733,7 @@ export default function PayrollEditorMockupView({
       employeeEmail: effectiveEmployee.email,
       payrollMonth: payMonth,
       payrollYear: payYear,
-      status: 'Processed',
+      status: 'Draft',
       paymentDate: draft.paymentDate,
       basicSalary: isSeparatePayoutMode ? 0 : draft.basicSalary,
       allowanceGeneral: isSeparatePayoutMode ? 0 : draft.allowanceGeneral,
@@ -1220,17 +1220,17 @@ export default function PayrollEditorMockupView({
 
       {isEditing && (
         <div className="flex flex-col gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-on-surface-variant">
-            {isSeparatePayoutMode
-              ? 'Separate payout edit mode is active. Enter the payout amount, statutory treatment, and long descriptions before generating.'
-              : 'Inline edit mode is active. Add earnings only when needed, or restore calculated statutory amounts.'}
-          </p>
+            <p className="text-on-surface-variant">
+              {isSeparatePayoutMode
+              ? 'Separate payout edit mode is active. Enter the payout amount, statutory treatment, and long descriptions before saving.'
+              : 'Inline edit mode is active. Add earnings only when needed, or restore calculated statutory amounts. Save creates a Draft for this month.'}
+            </p>
           <button
             type="button"
             onClick={saveDemo}
             className="inline-flex items-center justify-center gap-2 rounded bg-green-700 px-4 py-2 font-bold text-white hover:bg-green-800"
           >
-            <Save className="w-4 h-4" /> {isSeparatePayoutMode ? 'Save and Process' : 'Save and Process'}
+            <Save className="w-4 h-4" /> Save Draft
           </button>
         </div>
       )}

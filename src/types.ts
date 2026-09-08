@@ -84,6 +84,7 @@ export type PayrollDocumentType = 'Payslip' | 'Payment Voucher';
 export type ContractStatutoryTreatment = 'with_statutory' | 'without_statutory';
 
 export type PayrollPayoutKind = 'regular' | 'bonus' | 'incentive_commission' | 'claim_reimbursement';
+export type PayrollStatus = 'Draft' | 'Processed' | 'Published';
 
 export type PayrollCalculationVersion = 'legacy' | 'gross_pay_v2';
 export const GROSS_PAY_CALCULATION_VERSION: PayrollCalculationVersion = 'gross_pay_v2';
@@ -726,11 +727,12 @@ export interface HistoricalPCBMonthContext {
 }
 
 export interface PayrollRecord2026 {
-  id: string; // employeeEmail_month_year
+  id: string; // employeeEmail_month_year for regular payroll; unique for separate payouts
+  employeeId?: string;
   employeeEmail: string;
   payrollMonth: number;
   payrollYear: number;
-  status?: 'Draft' | 'Processed';
+  status?: PayrollStatus;
   paymentDate?: string;
   basicSalary: number;
   allowanceGeneral: number;
@@ -781,6 +783,14 @@ export interface PayrollRecord2026 {
   hrdCorp?: number;
   netPay: number;
   createdAt: string;
+  updatedAt?: string;
+  publishedAt?: string;
+  publishedBy?: string;
+  publishError?: string;
+  payslipSentAt?: string;
+  payslipSentBy?: string;
+  payslipEmailStatus?: 'sent' | 'failed';
+  payslipEmailError?: string;
 }
 
 export type SOCSOSchemeCode =

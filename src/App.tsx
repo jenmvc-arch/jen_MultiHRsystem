@@ -51,6 +51,11 @@ import {
   mergePayrollRecords2026,
   isSeparatePayrollRecord
 } from './data';
+import {
+  sendPayslipEmails,
+  updatePayrollStatus,
+  type PayrollActionResult,
+} from './lib/payrollClient';
 import { getGmt8Timestamp, getGmt8DateString } from './lib/dateUtils';
 import { formatNricOrPassport } from './lib/employeeInput';
 import { getAppTabFromPath, getPathForAppTab } from './lib/appRoutes';
@@ -431,7 +436,18 @@ export default function App() {
     }
     return INITIAL_CANDIDATES;
   });
-  const [payrollRecords2026, setPayrollRecords2026] = useState<PayrollRecord2026[]>([]);
+  const [payrollRecords2026, setPayrollRecords2026] = useState<PayrollRecord2026[]>(() => {
+    const saved = localStorage.getItem('offline_payroll_records_2026');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (_error) {
+        return [];
+      }
+    }
+    return [];
+  });
   const [isSeeding, setIsSeeding] = useState(false);
   const [isLoadingDb, setIsLoadingDb] = useState(false);
   const [employeePortalBootstrap, setEmployeePortalBootstrap] = useState<EmployeePortalBootstrap | null>(null);
@@ -468,6 +484,11 @@ export default function App() {
     if (isEmployeePortalRole(currentUserRole) && !isEmployeePortalDemoPath) return;
     localStorage.setItem('offline_candidates', JSON.stringify(candidates));
   }, [candidates, currentUserRole, isEmployeePortalDemoPath]);
+
+  React.useEffect(() => {
+    if (isEmployeePortalRole(currentUserRole) && !isEmployeePortalDemoPath) return;
+    localStorage.setItem('offline_payroll_records_2026', JSON.stringify(payrollRecords2026));
+  }, [payrollRecords2026, currentUserRole, isEmployeePortalDemoPath]);
 
   const employeesWithHistory = React.useMemo(() => {
     return employees.map(emp => {
@@ -1414,7 +1435,8 @@ export default function App() {
           employeeEmail: r.employeeEmail || '',
           payrollMonth: Number(r.payrollMonth || 1),
           payrollYear: Number(r.payrollYear || 2026),
-          status: r.status === 'Processed' ? 'Processed' : 'Draft',
+          status: r.status === 'Published' ? 'Published' : r.status === 'Processed' ? 'Processed' : 'Draft',
+          employeeId: r.employeeId || r.employee_id || undefined,
           basicSalary: Number(r.basicSalary || 0),
           allowanceGeneral: Number(r.allowanceGeneral || 0),
           allowanceTransport: Number(r.allowanceTransport || 0),
@@ -1471,7 +1493,15 @@ export default function App() {
           eisEmployer: Number(r.eisEmployer || 0),
           hrdCorp: r.hrdCorp === undefined ? undefined : Number(r.hrdCorp || 0),
           netPay: Number(r.netPay ?? r.netSalary ?? 0),
-          createdAt: r.createdAt || ''
+          createdAt: r.createdAt || '',
+          updatedAt: r.updatedAt || undefined,
+          publishedAt: r.publishedAt || undefined,
+          publishedBy: r.publishedBy || undefined,
+          publishError: r.publishError || undefined,
+          payslipSentAt: r.payslipSentAt || undefined,
+          payslipSentBy: r.payslipSentBy || undefined,
+          payslipEmailStatus: r.payslipEmailStatus || undefined,
+          payslipEmailError: r.payslipEmailError || undefined,
         })));
       } catch (err) {
         console.error('[Google Sheets Load] Error loading database tables:', err);
@@ -2175,11 +2205,17 @@ export default function App() {
     }));
   };
 
-  const handleSavePayrollRecord2026 = async (record: PayrollRecord2026) => {
+  const handleSavePayrollRecord2026 = async (
+    record: PayrollRecord2026,
+    requestedStatus: PayrollRecord2026['status'] = record.status || 'Draft',
+  ) => {
     const payrollEmployee = employees.find(e => e.email?.toLowerCase() === record.employeeEmail?.toLowerCase());
     const documentProfile = payrollEmployee ? getPayrollDocumentProfile(payrollEmployee) : null;
     const recordToSave: PayrollRecord2026 = {
       ...record,
+      employeeId: record.employeeId || payrollEmployee?.id,
+      status: requestedStatus,
+      updatedAt: getGmt8Timestamp(),
       documentType: record.documentType || documentProfile?.documentType,
       compensationLabel: record.compensationLabel || documentProfile?.compensationLabel,
       displaySettingsSnapshot: record.displaySettingsSnapshot || (payrollEmployee ? getPayrollDocumentDisplaySettings(payrollEmployee) : undefined)
@@ -2202,7 +2238,8 @@ export default function App() {
           totalAllowance,
           grossSalary: recordToSave.grossPay,
           netSalary: recordToSave.netPay,
-          status: 'Processed'
+          status: recordToSave.status || 'Draft',
+          updatedAt: recordToSave.updatedAt,
         });
         console.log('[Supabase] Saved payroll record successfully:', record.id);
       } catch (err: any) {
@@ -2235,6 +2272,93 @@ export default function App() {
     }
 
     setPayrollRecords2026(prev => mergePayrollRecords2026(prev, recordToSave));
+  };
+
+  const applyPayrollActionResults = (
+    results: PayrollActionResult[],
+    action: 'process' | 'publish' | 'unpublish' | 'email',
+  ) => {
+    const successful = new Map(
+      results.filter(result => result.ok).map(result => [result.recordId, result]),
+    );
+    setPayrollRecords2026(previous => previous.map(record => {
+      const result = successful.get(record.id);
+      if (!result) return record;
+      if (action === 'email') {
+        return {
+          ...record,
+          payslipSentAt: new Date().toISOString(),
+          payslipSentBy: currentUserEmail || undefined,
+          payslipEmailStatus: 'sent',
+          payslipEmailError: undefined,
+          updatedAt: getGmt8Timestamp(),
+        };
+      }
+      return {
+        ...record,
+        status: result.status,
+        publishedAt: action === 'publish' ? new Date().toISOString() : undefined,
+        publishedBy: action === 'publish' ? currentUserEmail || undefined : undefined,
+        publishError: undefined,
+        updatedAt: getGmt8Timestamp(),
+      };
+    }));
+    return results;
+  };
+
+  const handleUpdatePayrollStatus = async (
+    recordIds: string[],
+    action: 'process' | 'publish' | 'unpublish',
+  ): Promise<PayrollActionResult[]> => {
+    const records = payrollRecords2026.filter(record => recordIds.includes(record.id));
+    if (isSupabaseConfigured) {
+      const response = await updatePayrollStatus(recordIds, action);
+      return applyPayrollActionResults(response.results, action);
+    }
+    const results = records.map(record => {
+      const valid = action === 'process'
+        ? (record.status || 'Draft') === 'Draft'
+        : action === 'publish'
+          ? record.status === 'Processed'
+          : record.status === 'Published';
+      return valid
+        ? {
+            ok: true,
+            recordId: record.id,
+            status: action === 'process'
+              ? 'Processed'
+              : action === 'publish' ? 'Published' : 'Processed',
+          }
+        : {
+            ok: false,
+            recordId: record.id,
+            error: action === 'process'
+              ? 'Only Draft payroll can be processed.'
+              : action === 'publish'
+                ? 'Only Processed payroll can be published.'
+                : 'Only Published payroll can be unpublished.',
+          };
+    });
+    return applyPayrollActionResults(results, action);
+  };
+
+  const handleSendPayslipEmails = async (
+    recordIds: string[],
+  ): Promise<PayrollActionResult[]> => {
+    if (isSupabaseConfigured) {
+      const response = await sendPayslipEmails(recordIds);
+      return applyPayrollActionResults(response.results, 'email');
+    }
+    const results = payrollRecords2026
+      .filter(record => recordIds.includes(record.id))
+      .map(record => ({
+        ok: record.status === 'Processed',
+        recordId: record.id,
+        status: record.status === 'Processed' ? 'sent' : 'failed',
+        message: record.status === 'Processed' ? 'Preview email recorded locally.' : undefined,
+        error: record.status === 'Processed' ? undefined : 'Only Processed payroll can be emailed.',
+      }));
+    return applyPayrollActionResults(results, 'email');
   };
 
   const handleSavePerformance = async (updatedPerf: EmployeePerformance) => {
@@ -2438,7 +2562,8 @@ export default function App() {
   const employeePortalPayrollRecords = employeePortalEmployeeEmail
     ? payrollRecords2026.filter(record => (
       !isPendingEmployeeEmail(employeePortalEmployeeEmail) &&
-      record.employeeEmail.toLowerCase() === employeePortalEmployeeEmail
+      record.employeeEmail.toLowerCase() === employeePortalEmployeeEmail &&
+      (record.status === 'Published' || (isEmployeePortalPreview && !record.status))
     ))
     : [];
   const employeePortalCandidates = employeePortalEmployeeEmail
@@ -2941,6 +3066,8 @@ export default function App() {
 	              payrollRecords2026={payrollRecordsForActiveEntity}
 	              onUpdateEmployee={handleUpdateEmployeeSalary}
 	              onSavePayrollRecord={handleSavePayrollRecord2026}
+	              onUpdatePayrollStatus={handleUpdatePayrollStatus}
+	              onSendPayslipEmails={handleSendPayslipEmails}
 	              onShowNotification={triggerNotification}
 	              activeEntity={activeEntity}
 	              currentUserRole={currentUserRole}

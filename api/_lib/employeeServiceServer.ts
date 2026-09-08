@@ -519,7 +519,10 @@ export const loadEmployeePortalBootstrap = async (req: any): Promise<EmployeePor
     profileChangeRequests,
     notifications,
   ] = await Promise.all([
-    main.from('payroll_records_2026').select(PAYROLL_PORTAL_COLUMNS).ilike('employee_email', employeeEmail),
+    main.from('payroll_records_2026')
+      .select(PAYROLL_PORTAL_COLUMNS)
+      .ilike('employee_email', employeeEmail)
+      .in('status', ['Published']),
     main.from('performances').select(PERFORMANCE_PORTAL_COLUMNS).or(
       `employee_id.eq.${employeeId},employee_email.ilike.${employeeEmail}`
     ),

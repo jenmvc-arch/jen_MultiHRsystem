@@ -409,7 +409,7 @@ async function loadRows(actor: AdminSessionActor, request: ExportRequest, client
         || '',
     })).filter((row: Row) => (
       employeeByEmail.has(normalize(row.employee_email))
-      && normalize(row.status) === 'processed'
+      && ['processed', 'published'].includes(normalize(row.status))
     ));
     rows = applyPayrollFilters(rows, filters);
     if (request.scope === 'selected' || request.scope === 'record') {

@@ -574,6 +574,7 @@ const ADMIN_PERMISSION_ROLES: Record<string, Set<string>> = {
     'leave.manage',
     'notification.process',
     'employee.account.manage',
+    'payroll.manage',
     'employee.request.manage',
     'profile.change.approve',
     'payroll.export',
@@ -1049,7 +1050,7 @@ export const toEmployeeAccountTarget = (body: any): EmployeeAccountTarget => {
   const email = String(body?.employeeEmail || '').trim().toLowerCase();
   const name = String(body?.employeeName || body?.name || email).trim();
   const contactNumber = body?.contactNumber ? String(body.contactNumber).trim() : undefined;
-  if (!id || !email || !email.includes('@')) {
+  if (!id || !email || !email.includes('@') || /^pending-email-\d+@redpoint\.local$/i.test(email)) {
     throw Object.assign(new Error('employeeId and a valid employeeEmail are required.'), { statusCode: 400 });
   }
   return { id, email, name, contactNumber };
@@ -1073,6 +1074,9 @@ export const resolveEmployeeAccountTarget = async (
     .maybeSingle()).data;
   if (!row) {
     throw Object.assign(new Error('The selected employee record could not be found.'), { statusCode: 404 });
+  }
+  if (!String(row.email || '').includes('@') || /^pending-email-\d+@redpoint\.local$/i.test(String(row.email || ''))) {
+    throw Object.assign(new Error('A valid corporate email is required before creating an employee account.'), { statusCode: 400 });
   }
 
   return {

@@ -19,6 +19,11 @@ export interface EmailTemplateInput {
   html: string;
   text: string;
   metadata?: Record<string, unknown>;
+  attachments?: Array<{
+    filename: string;
+    content: Buffer;
+    contentType?: string;
+  }>;
 }
 
 export interface EmailDeliveryResult {

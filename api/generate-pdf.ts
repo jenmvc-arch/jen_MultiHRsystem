@@ -111,7 +111,7 @@ export default async function handler(req: any, res: any) {
       .maybeSingle();
     if (recordError) throw new Error(`Payroll record lookup failed: ${recordError.message}`);
     if (!record) {
-      res.status(404).json({ error: 'Processed payroll record was not found.' });
+      res.status(404).json({ error: 'Published or processed payroll record was not found.' });
       return;
     }
 

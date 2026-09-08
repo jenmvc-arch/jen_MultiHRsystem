@@ -1035,6 +1035,43 @@ export default function EmployeeDirectoryView({
                           getEmployeeDisplayEmail(emp).toLowerCase().includes(searchQuery.toLowerCase());
     return matchesDept && matchesStatus && matchesEntity && matchesSearch;
   });
+  const currentActiveCount = employees.filter((employee) => (
+    isCurrentEmploymentStatus(getEffectiveEmploymentStatusForDate(employee, todayIsoDate))
+  )).length;
+  const accountAttentionCount = employees.filter((employee) => (
+    getAccountSummary(employee).accountStatus !== 'active'
+  )).length;
+  const profileAttentionCount = employees.filter((employee) => (
+    !employee.contactNumber || !employee.emergencyContactName
+  )).length;
+  const attentionEmployeeCount = new Set(
+    employees
+      .filter((employee) => (
+        getAccountSummary(employee).accountStatus !== 'active'
+        || !employee.contactNumber
+        || !employee.emergencyContactName
+      ))
+      .map((employee) => employee.id)
+  ).size;
+  const activeEntityName = activeEntityId
+    ? entities.find((entity) => entity.id === activeEntityId)?.name || activeEntityId
+    : 'All subsidiaries';
+  const hasDirectoryFilters = Boolean(
+    searchQuery.trim()
+    || deptFilter !== 'All Departments'
+    || statusFilter !== 'Active'
+    || entityFilter !== 'All Subsidiaries'
+  );
+  const clearDirectoryFilters = () => {
+    setSearchQuery('');
+    setDeptFilter('All Departments');
+    setStatusFilter('Active');
+    setEntityFilter(activeEntityId || 'All Subsidiaries');
+  };
+  const openEmployeeDetails = (employeeId: string) => {
+    setSelectedEmployeeId(employeeId);
+    setIsDetailOpen(true);
+  };
   const selectedEmployeeStatus = selectedEmployee
     ? getEffectiveEmploymentStatusForDate(selectedEmployee, todayIsoDate)
     : null;
@@ -2693,141 +2730,141 @@ export default function EmployeeDirectoryView({
   }
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto animate-in fade-in duration-200">
-      
-      {/* Title block */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="mx-auto max-w-[1440px] space-y-6 animate-in fade-in duration-200">
+      <header className="flex flex-col gap-4 border-b border-neutral-border/70 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-on-background tracking-tight">Workforce Directory</h1>
-          <p className="text-on-surface-variant mt-1">Manage personnel compliance details, NRIC database, and track career progression history.</p>
+          <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
+            <Users className="h-4 w-4" aria-hidden="true" />
+            People operations
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight text-on-background md:text-4xl">Workforce directory</h1>
+          <p className="mt-1.5 max-w-2xl text-sm text-on-surface-variant">
+            Find a person quickly, review their employment record, and keep account access current.
+          </p>
         </div>
-        
-        {/* Mode Switcher Toggle Block inside Administrative Mode */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex bg-surface-container border border-neutral-border rounded-lg p-1 shrink-0">
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-xl border border-neutral-border bg-white p-1 shadow-sm">
             <button
+              type="button"
               onClick={() => setViewMode('admin')}
-              className="px-3 py-1.5 rounded bg-primary text-[#f7f0e0] text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white shadow-sm transition-transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/30 active:translate-y-px"
             >
-              <Building2 className="w-3.5 h-3.5" /> HR Admin
+              <Building2 className="h-3.5 w-3.5" aria-hidden="true" />
+              HR admin
             </button>
             <button
+              type="button"
               onClick={() => {
                 setViewMode('self-service');
-                // Auto-select first employee to begin simulation
-                const sarah = activeEmployees.find(e => e.id === 'EMP-84729') || activeEmployees[0];
-                if (sarah) {
-                  setPreviewEmployeeId(sarah.id);
-                  setSelfServiceContactNumber(sarah.contactNumber || '');
-                  setSelfServiceEmergencyName(sarah.emergencyContactName || '');
-                  setSelfServiceEmergencyRelation(sarah.emergencyContactRelation || '');
-                  setSelfServiceEmergencyPhone(sarah.emergencyContactPhone || '');
+                const previewTarget = activeEmployees.find((employee) => employee.id === 'EMP-84729') || activeEmployees[0];
+                if (previewTarget) {
+                  setPreviewEmployeeId(previewTarget.id);
+                  setSelfServiceContactNumber(previewTarget.contactNumber || '');
+                  setSelfServiceEmergencyName(previewTarget.emergencyContactName || '');
+                  setSelfServiceEmergencyRelation(previewTarget.emergencyContactRelation || '');
+                  setSelfServiceEmergencyPhone(previewTarget.emergencyContactPhone || '');
                 }
               }}
-              className="px-3 py-1.5 rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-on-surface-variant transition-colors hover:bg-surface-container-low focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
-              <UserCheck className="w-3.5 h-3.5" /> Self-Service View
+              <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />
+              Self-service
             </button>
           </div>
-
-          <button 
+          <button
+            type="button"
             onClick={handleOpenAddModal}
-            className="bg-primary text-[#f7f0e0] text-xs font-semibold py-2 px-4 rounded shadow-sm hover:bg-primary-container transition-colors flex items-center gap-2 cursor-pointer"
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-transform hover:-translate-y-0.5 hover:bg-primary-container focus:outline-none focus:ring-2 focus:ring-primary/30 active:translate-y-px"
           >
-            <UserPlus className="w-4 h-4" /> Add New Employee
+            <UserPlus className="h-4 w-4" aria-hidden="true" />
+            Add employee
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* Directory Content Table Card */}
-      <div className="bg-white border border-neutral-border rounded-lg shadow-sm overflow-hidden">
-        
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-3" aria-label="Directory summary">
+        <div className="rounded-2xl border border-neutral-border bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">Directory total</span>
+            <Users className="h-4 w-4 text-primary/60" aria-hidden="true" />
+          </div>
+          <div className="mt-3 text-2xl font-bold text-on-background">{employees.length}</div>
+          <p className="mt-1 text-xs text-on-surface-variant">{activeEntityName}</p>
+        </div>
+        <div className="rounded-2xl border border-neutral-border bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">Active today</span>
+            <CheckCircle className="h-4 w-4 text-emerald-600/70" aria-hidden="true" />
+          </div>
+          <div className="mt-3 text-2xl font-bold text-on-background">{currentActiveCount}</div>
+          <p className="mt-1 text-xs text-on-surface-variant">Current employment records</p>
+        </div>
+        <div className="rounded-2xl border border-neutral-border bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">Needs attention</span>
+            <ShieldAlert className="h-4 w-4 text-amber-600/80" aria-hidden="true" />
+          </div>
+          <div className="mt-3 text-2xl font-bold text-on-background">{attentionEmployeeCount}</div>
+          <p className="mt-1 text-xs text-on-surface-variant">
+            {accountAttentionCount} access · {profileAttentionCount} profile
+          </p>
+        </div>
+      </section>
+
+      <div className="overflow-hidden rounded-2xl border border-neutral-border bg-white shadow-sm">
         {employees.length === 0 ? (
-          <div className="p-12 text-center bg-white space-y-4">
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto text-primary">
-              <Users className="w-8 h-8" />
+          <div className="space-y-4 bg-white p-12 text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <Users className="h-8 w-8" aria-hidden="true" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-on-surface">No Employee Records Found</h3>
-              <p className="text-sm text-on-surface-variant max-w-md mx-auto mt-1">
-                {entities.length === 0 
-                  ? "You need to register at least one Corporate Subsidiary in the 'Subsidiaries' view before you can enroll employees."
-                  : "Your workforce directory is empty. Register your first employee to get started."}
+              <h3 className="text-lg font-bold text-on-surface">No employee records found</h3>
+              <p className="mx-auto mt-1 max-w-md text-sm text-on-surface-variant">
+                {entities.length === 0
+                  ? "Register a corporate subsidiary before enrolling employees."
+                  : "Your workforce directory is empty. Register the first employee to get started."}
               </p>
             </div>
             {entities.length > 0 && (
               <button
+                type="button"
                 onClick={handleOpenAddModal}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-[#f7f0e0] font-bold text-xs rounded hover:bg-primary-dark transition-all shadow-xs cursor-pointer mx-auto"
+                className="mx-auto inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-white shadow-sm transition-transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/30"
               >
-                <UserPlus className="w-4 h-4" /> Register New Employee
+                <UserPlus className="h-4 w-4" aria-hidden="true" />
+                Register employee
               </button>
             )}
           </div>
         ) : (
           <>
-            {/* Complex Filters Panel */}
-            <div className="p-4 bg-surface-container-low border-b border-neutral-border flex flex-col md:flex-row gap-4 items-center justify-between text-sm">
-              
-              <div className="flex flex-wrap flex-1 gap-3 w-full">
-                {/* Search Input */}
-                <div className="relative flex-1 min-w-[200px] max-w-md">
-                  <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-outline" />
+            <div className="border-b border-neutral-border bg-surface-container-low p-4 md:p-5">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-outline" aria-hidden="true" />
+                  <label className="sr-only" htmlFor="employee-directory-search">Search employees</label>
                   <input
-                    type="text"
+                    id="employee-directory-search"
+                    type="search"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by Employee name, email, NRIC, or ID..."
-                    className="w-full pl-9 pr-4 py-1.5 bg-white border border-neutral-border rounded text-xs focus:ring-1 focus:ring-primary outline-none"
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="Search name, email, NRIC, or employee ID"
+                    className="w-full rounded-xl border border-neutral-border bg-white py-2.5 pl-9 pr-9 text-sm text-on-surface outline-none transition-colors placeholder:text-on-surface-variant/70 focus:border-primary focus:ring-2 focus:ring-primary/20"
                   />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      aria-label="Clear employee search"
+                      className="absolute right-2 top-2 rounded-lg p-1 text-on-surface-variant hover:bg-surface-container-low focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  )}
                 </div>
-
-                {/* Department select */}
-                <select
-                  value={deptFilter}
-                  onChange={(e) => setDeptFilter(e.target.value)}
-                  className="rounded border border-neutral-border bg-white p-1.5 text-xs outline-none"
-                >
-                  <option>All Departments</option>
-                  {availableDepartments.map(d => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-
-                {/* Subsidiary display (sandboxed) */}
-                {activeEntityId ? (
-                  <div className="rounded border border-primary/20 bg-primary/5 px-2.5 py-1.5 text-xs font-bold text-primary flex items-center gap-1.5 select-none">
-                    <Building2 className="w-3.5 h-3.5" />
-                    <span>{entities.find(e => e.id === activeEntityId)?.name || activeEntityId}</span>
-                  </div>
-                ) : (
-                  <select
-                    value={entityFilter}
-                    onChange={(e) => setEntityFilter(e.target.value)}
-                    className="rounded border border-primary/30 bg-white p-1.5 text-xs outline-none font-semibold text-primary"
-                  >
-                    <option value="All Subsidiaries">All Subsidiaries</option>
-                    {entities.map(ent => (
-                      <option key={ent.id} value={ent.id}>{ent.name}</option>
-                    ))}
-                  </select>
-                )}
-
-                {/* Status select */}
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="rounded border border-neutral-border bg-white p-1.5 text-xs outline-none"
-                >
-                  <option>All Statuses</option>
-                  {EMPLOYEE_STATUS_OPTIONS.map(status => (
-                    <option key={status}>{status}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="text-xs font-semibold text-on-surface-variant shrink-0">
-                <div className="flex items-center gap-3">
+                <div className="flex shrink-0 items-center gap-2 text-xs font-semibold text-on-surface-variant">
+                  <span>{filteredEmployees.length} of {employees.length} shown</span>
                   <ExportButton
                     module="employees"
                     title="Employee master list"
@@ -2855,223 +2892,286 @@ export default function EmployeeDirectoryView({
                       { key: 'account_no', label: 'Bank Account', sensitive: true },
                     ]}
                   />
-                  <span>Directory Registry count: <span className="text-primary font-bold">{filteredEmployees.length} personnel found</span></span>
                 </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <label className="sr-only" htmlFor="employee-directory-department">Department</label>
+                <select
+                  id="employee-directory-department"
+                  value={deptFilter}
+                  onChange={(event) => setDeptFilter(event.target.value)}
+                  className="w-full rounded-xl border border-neutral-border bg-white px-3 py-2 text-xs font-semibold text-on-surface outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                >
+                  <option>All Departments</option>
+                  {availableDepartments.map((department) => <option key={department}>{department}</option>)}
+                </select>
+
+                {activeEntityId ? (
+                  <div className="flex min-w-0 items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs font-bold text-primary">
+                    <Building2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{activeEntityName}</span>
+                  </div>
+                ) : (
+                  <>
+                    <label className="sr-only" htmlFor="employee-directory-entity">Subsidiary</label>
+                    <select
+                      id="employee-directory-entity"
+                      value={entityFilter}
+                      onChange={(event) => setEntityFilter(event.target.value)}
+                      className="w-full rounded-xl border border-primary/30 bg-white px-3 py-2 text-xs font-semibold text-primary outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    >
+                      <option value="All Subsidiaries">All Subsidiaries</option>
+                      {entities.map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}
+                    </select>
+                  </>
+                )}
+
+                <label className="sr-only" htmlFor="employee-directory-status">Status</label>
+                <select
+                  id="employee-directory-status"
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                  className="w-full rounded-xl border border-neutral-border bg-white px-3 py-2 text-xs font-semibold text-on-surface outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+                >
+                  <option>All Statuses</option>
+                  {EMPLOYEE_STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={clearDirectoryFilters}
+                  disabled={!hasDirectoryFilters}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-border bg-white px-3 py-2 text-xs font-bold text-on-surface-variant transition-colors hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+                  Reset filters
+                </button>
               </div>
             </div>
 
-            {/* Directory spreadsheet grid */}
-            <div className="overflow-x-auto">
-              <table className="min-w-[2250px] w-max table-auto text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-surface-container-low border-b border-neutral-border text-on-surface-variant font-bold uppercase tracking-wider select-none whitespace-nowrap">
-                    <th className="min-w-[330px] p-4">Personnel Info</th>
-                    <th className="min-w-[180px] p-4">Subsidiary</th>
-                    <th className="min-w-[180px] p-4">NRIC/Passport</th>
-                    <th className="min-w-[230px] p-4">Department & Designation</th>
-                    <th className="min-w-[170px] p-4">Type of Employment</th>
-                    <th className="min-w-[170px] p-4">Type of Payslip</th>
-                    <th className="min-w-[170px] p-4">Basic Salary</th>
-                    <th className="min-w-[170px] p-4">Allowances</th>
-                    <th className="min-w-[150px] p-4">Date of Joined</th>
-                    <th className="min-w-[150px] p-4">Status</th>
-                    <th className="min-w-[170px] p-4">Account Access</th>
-                    <th className="min-w-[160px] p-4 text-right">Administrative</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-border/50">
+            {filteredEmployees.length === 0 ? (
+              <div className="p-12 text-center text-on-surface-variant">
+                <Filter className="mx-auto mb-4 h-10 w-10 text-outline opacity-60" aria-hidden="true" />
+                <h4 className="text-sm font-bold text-on-surface">No matching employees</h4>
+                <p className="mt-1 text-xs text-outline">Try a different search or reset the filters.</p>
+                <button
+                  type="button"
+                  onClick={clearDirectoryFilters}
+                  className="mt-4 text-xs font-bold text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  Reset filters
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="hidden overflow-x-auto lg:block">
+                  <table className="w-full table-fixed border-collapse text-left text-xs">
+                    <caption className="sr-only">Employee directory</caption>
+                    <thead>
+                      <tr className="border-b border-neutral-border bg-white text-[10px] font-bold uppercase tracking-[0.14em] text-on-surface-variant">
+                        <th scope="col" className="w-[28%] px-5 py-3">Employee</th>
+                        <th scope="col" className="w-[20%] px-4 py-3">Role</th>
+                        <th scope="col" className="w-[16%] px-4 py-3">Payroll</th>
+                        <th scope="col" className="w-[13%] px-4 py-3">Status</th>
+                        <th scope="col" className="w-[14%] px-4 py-3">Account</th>
+                        <th scope="col" className="w-[9%] px-4 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-border/60">
+                      {filteredEmployees.map((emp) => {
+                        const displayedStatus = getEffectiveEmploymentStatusForDate(emp, todayIsoDate);
+                        const statusClasses = getEmployeeStatusClasses(displayedStatus);
+                        const displayedBasicSalary = getDisplayedMonthlyBasicSalary(emp);
+                        const documentProfile = getPayrollDocumentProfile(emp);
+                        const accountSummary = getAccountSummary(emp);
+                        const accountLabel = isPendingEmail(emp.email)
+                          ? 'Email required'
+                          : accountSummary.accountStatus === 'must_change_password'
+                          ? 'Setup required'
+                          : accountSummary.accountStatus === 'not_created'
+                            ? 'Not created'
+                            : accountSummary.accountStatus === 'invited'
+                              ? 'Invite sent'
+                              : accountSummary.accountStatus === 'active'
+                                ? 'Active'
+                                : accountSummary.accountStatus === 'disabled'
+                                  ? 'Disabled'
+                                  : 'Needs attention';
+                        const accountClasses = accountSummary.accountStatus === 'active'
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                          : accountSummary.accountStatus === 'error'
+                            ? 'bg-rose-100 text-rose-800 border-rose-200'
+                            : 'bg-amber-100 text-amber-800 border-amber-200';
+
+                        return (
+                          <tr
+                            key={emp.id}
+                            tabIndex={0}
+                            onClick={() => openEmployeeDetails(emp.id)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                openEmployeeDetails(emp.id);
+                              }
+                            }}
+                            className={`cursor-pointer transition-colors hover:bg-primary/[0.03] focus:bg-primary/[0.04] focus:outline-none ${selectedEmployeeId === emp.id ? 'bg-primary/[0.05] shadow-[inset_3px_0_0_var(--color-primary)]' : ''}`}
+                          >
+                            <td className="px-5 py-4">
+                              <div className="flex min-w-0 items-center gap-3">
+                                <EmployeeAvatar employee={emp} className="h-10 w-10 shrink-0 rounded-full" />
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-bold text-on-surface">{emp.name}</div>
+                                  <div className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-on-surface-variant">
+                                    <Mail className="h-3 w-3 shrink-0 text-outline" aria-hidden="true" />
+                                    <span className="truncate">{getEmployeeDisplayEmail(emp)}</span>
+                                  </div>
+                                  <div className="mt-1 font-mono text-[10px] text-outline">{emp.id}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-4">
+                              <div className="truncate font-semibold text-on-surface" title={emp.designation}>{emp.designation}</div>
+                              <div className="mt-1 truncate text-[11px] text-on-surface-variant">{emp.department}</div>
+                              <div className="mt-1 text-[10px] text-outline">{emp.employmentType || 'Full-Time'}</div>
+                            </td>
+                            <td className="px-4 py-4">
+                              <div className="font-mono font-bold text-primary">RM {formatCurrencyAmount(displayedBasicSalary)}</div>
+                              <div className="mt-1">
+                                <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase ${documentProfile.isPaymentVoucher ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                                  {documentProfile.documentType}
+                                </span>
+                              </div>
+                              <div className="mt-1 text-[10px] text-on-surface-variant">Joined {formatToDDMMMYYYY(emp.dateOfJoined)}</div>
+                            </td>
+                            <td className="px-4 py-4">
+                              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold ${statusClasses.badge}`}>
+                                <span className={`h-1.5 w-1.5 rounded-full ${statusClasses.dot}`} />
+                                {displayedStatus}
+                              </span>
+                            </td>
+                            <td className="px-4 py-4" onClick={(event) => event.stopPropagation()}>
+                              <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${accountClasses}`}>
+                                <KeyRound className="h-3 w-3" aria-hidden="true" />
+                                {accountLabel}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => openEmployeeDetails(emp.id)}
+                                className="mt-1 block text-[10px] font-semibold text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/30"
+                              >
+                                Manage access
+                              </button>
+                            </td>
+                            <td className="px-4 py-4 text-right" onClick={(event) => event.stopPropagation()}>
+                              <div className="flex justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => openEmployeeDetails(emp.id)}
+                                  className="rounded-lg px-2 py-1.5 text-[11px] font-bold text-primary transition-colors hover:bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                >
+                                  Open
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(emp.id, emp.name)}
+                                  disabled={savingAction === `delete:${emp.id}`}
+                                  className="rounded-lg p-1.5 text-error transition-colors hover:bg-error/10 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-error/30 disabled:cursor-not-allowed disabled:opacity-50"
+                                  title={`Remove ${emp.name}`}
+                                  aria-label={`Remove ${emp.name}`}
+                                >
+                                  <Trash className="h-3.5 w-3.5" aria-hidden="true" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="divide-y divide-neutral-border/60 lg:hidden">
                   {filteredEmployees.map((emp) => {
                     const displayedStatus = getEffectiveEmploymentStatusForDate(emp, todayIsoDate);
                     const statusClasses = getEmployeeStatusClasses(displayedStatus);
                     const displayedBasicSalary = getDisplayedMonthlyBasicSalary(emp);
                     const documentProfile = getPayrollDocumentProfile(emp);
-                    const allowanceEntries = [
-                      { label: 'General', amount: Number(emp.allowanceGeneral || 0) },
-                      {
-                        label: 'Transport',
-                        amount: Number(emp.allowanceTransport !== undefined ? emp.allowanceTransport : emp.transportAllowance || 0)
-                      },
-                      { label: 'Parking', amount: Number(emp.allowanceParking || 0) },
-                      { label: 'Meal', amount: Number(emp.allowanceMeal || 0) },
-                      {
-                        label: 'Housing',
-                        amount: Number(emp.allowanceAccommodation !== undefined ? emp.allowanceAccommodation : emp.housingAllowance || 0)
-                      },
-                      { label: 'Phone', amount: Number(emp.allowancePhone || 0) }
-                    ].filter(({ amount }) => amount > 0);
                     const accountSummary = getAccountSummary(emp);
-                    const accountLabel = accountSummary.accountStatus === 'must_change_password'
-                      ? 'Setup required'
+                    const accountLabel = isPendingEmail(emp.email)
+                      ? 'Email required'
+                      : accountSummary.accountStatus === 'active'
+                      ? 'Active'
                       : accountSummary.accountStatus === 'not_created'
                         ? 'Not created'
-                        : accountSummary.accountStatus === 'invited'
-                          ? 'Invite sent'
-                          : accountSummary.accountStatus === 'active'
-                            ? 'Active'
-                            : accountSummary.accountStatus === 'disabled'
-                              ? 'Disabled'
-                              : 'Needs attention';
+                        : accountSummary.accountStatus === 'must_change_password'
+                          ? 'Setup required'
+                          : accountSummary.accountStatus === 'invited'
+                            ? 'Invite sent'
+                            : 'Needs attention';
                     const accountClasses = accountSummary.accountStatus === 'active'
                       ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
                       : accountSummary.accountStatus === 'error'
                         ? 'bg-rose-100 text-rose-800 border-rose-200'
                         : 'bg-amber-100 text-amber-800 border-amber-200';
-                    
+
                     return (
-                      <tr 
-                        key={emp.id} 
-                        onClick={() => {
-                          setSelectedEmployeeId(emp.id);
-                          setIsDetailOpen(true);
-                        }}
-                        className={`hover:bg-surface-container/60 transition-colors cursor-pointer ${selectedEmployeeId === emp.id ? 'bg-surface-container-low border-l-4 border-primary' : ''}`}
-                      >
-                        
-                        {/* Column 1: Personnel Info */}
-                        <td className="p-4 whitespace-nowrap">
-                          <div className="flex items-center gap-3">
-                            <EmployeeAvatar employee={emp} className="w-9 h-9 rounded-full shrink-0" />
-                            <div className="min-w-0">
-                              <div className="font-bold text-sm text-on-surface truncate">{emp.name}</div>
-                              <div className="text-xs text-on-surface-variant flex items-center gap-1 mt-0.5 truncate">
-                                <Mail className="w-3 h-3 text-outline" /> {getEmployeeDisplayEmail(emp)}
+                      <article key={emp.id} className="p-4">
+                        <div className="flex items-start gap-3">
+                          <EmployeeAvatar employee={emp} className="h-11 w-11 shrink-0 rounded-full" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <h2 className="truncate text-sm font-bold text-on-surface">{emp.name}</h2>
+                                <p className="mt-0.5 truncate text-xs text-on-surface-variant">{emp.designation} · {emp.department}</p>
+                              </div>
+                              <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold ${statusClasses.badge}`}>
+                                <span className={`h-1.5 w-1.5 rounded-full ${statusClasses.dot}`} />
+                                {displayedStatus}
+                              </span>
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl bg-surface-container-low p-3">
+                              <div>
+                                <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-on-surface-variant">Monthly basic</div>
+                                <div className="mt-1 font-mono text-sm font-bold text-primary">RM {formatCurrencyAmount(displayedBasicSalary)}</div>
+                              </div>
+                              <div>
+                                <div className="text-[9px] font-bold uppercase tracking-[0.12em] text-on-surface-variant">Payslip</div>
+                                <div className="mt-1 text-xs font-bold text-on-surface">{documentProfile.documentType}</div>
+                              </div>
+                            </div>
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                              <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${accountClasses}`}>
+                                <KeyRound className="h-3 w-3" aria-hidden="true" />
+                                {accountLabel}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => openEmployeeDetails(emp.id)}
+                                  className="rounded-lg bg-primary px-3 py-2 text-[11px] font-bold text-white transition-colors hover:bg-primary-container focus:outline-none focus:ring-2 focus:ring-primary/30"
+                                >
+                                  Open profile
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(emp.id, emp.name)}
+                                  disabled={savingAction === `delete:${emp.id}`}
+                                  className="rounded-lg border border-neutral-border p-2 text-error transition-colors hover:bg-error/10 focus:outline-none focus:ring-2 focus:ring-error/30 disabled:cursor-not-allowed disabled:opacity-50"
+                                  title={`Remove ${emp.name}`}
+                                  aria-label={`Remove ${emp.name}`}
+                                >
+                                  <Trash className="h-3.5 w-3.5" aria-hidden="true" />
+                                </button>
                               </div>
                             </div>
                           </div>
-                        </td>
-
-
-
-                        {/* Column 2b: Subsidiary */}
-                        <td className="p-4 whitespace-nowrap">
-                          <span className="inline-flex max-w-[150px] items-center font-semibold text-xs text-primary bg-primary/10 border border-primary/20 px-2 py-1 rounded shadow-xs truncate" title={entities.find(e => e.id === emp.entityId)?.name || emp.entityId}>
-                            {entities.find(e => e.id === emp.entityId)?.name || emp.entityId}
-                          </span>
-                        </td>
-
-                        {/* Column 3: NRIC / Passport */}
-                        <td className="p-4 whitespace-nowrap">
-                          <span className="font-mono text-xs font-semibold text-on-surface">{emp.nricPassport || 'N/A'}</span>
-                        </td>
-
-                        {/* Column 4: Department */}
-                        <td className="p-4 whitespace-nowrap">
-                          <div className="font-semibold text-on-surface truncate">{emp.designation}</div>
-                          <div className="text-[10px] text-on-surface-variant mt-0.5 truncate">{emp.department}</div>
-                        </td>
-
-                        {/* Column 5: Type of Employment */}
-                        <td className="p-4 whitespace-nowrap">
-                          <span className="inline-flex items-center text-[10px] font-bold text-secondary uppercase bg-surface-container-high px-1.5 py-0.5 rounded">
-                            {emp.employmentType || 'Full-Time'}
-                          </span>
-                        </td>
-
-                        {/* Column 6: Type of Payslip */}
-                        <td className="p-4 whitespace-nowrap">
-                          <span className={`inline-flex items-center text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                            documentProfile.isPaymentVoucher ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
-                          }`}>
-                            {documentProfile.documentType}
-                          </span>
-                        </td>
-
-                        {/* Column 7: Basic Salary */}
-                        <td className="p-4 whitespace-nowrap font-mono font-semibold text-primary">
-                          RM {formatCurrencyAmount(displayedBasicSalary)}
-                        </td>
-
-                        {/* Column 8: Allowances */}
-                        <td className="p-4 whitespace-nowrap">
-                          {allowanceEntries.length > 0 ? (
-                            <div className="inline-flex items-center gap-1.5">
-                              {allowanceEntries.map(({ label, amount }) => (
-                                <span
-                                  key={label}
-                                  className="inline-flex min-w-[92px] flex-col items-start rounded bg-surface-container-high px-2 py-1 text-[10px] text-on-surface-variant"
-                                  title={`${label} Allowance`}
-                                >
-                                  <span className="whitespace-nowrap font-mono font-bold text-on-surface">
-                                    RM {formatCurrencyAmount(amount)}
-                                  </span>
-                                  <span className="whitespace-nowrap text-[9px] font-semibold uppercase tracking-tight text-on-surface-variant">
-                                    ({label} Allowance)
-                                  </span>
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-[10px] font-semibold text-outline">None</span>
-                          )}
-                        </td>
-
-                        {/* Column 9: Date Joined */}
-                        <td className="p-4 whitespace-nowrap text-on-surface-variant font-mono">
-                          {formatToDDMMMYYYY(emp.dateOfJoined)}
-                        </td>
-
-                        {/* Column 10: Status */}
-                        <td className="p-4 whitespace-nowrap">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${statusClasses.badge}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${statusClasses.dot}`} />
-                            {displayedStatus}
-                          </span>
-                        </td>
-
-                        {/* Column 11: Employee Account */}
-                        <td className="p-4 whitespace-nowrap" onClick={(event) => event.stopPropagation()}>
-                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${accountClasses}`}>
-                            <KeyRound className="w-3 h-3" />
-                            {accountLabel}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedEmployeeId(emp.id);
-                              setIsDetailOpen(true);
-                            }}
-                            className="mt-1 block text-[10px] font-semibold text-primary hover:underline cursor-pointer"
-                          >
-                            Manage access
-                          </button>
-                        </td>
-
-                        {/* Column 12: Delete / Admin */}
-                        <td className="p-4 text-right whitespace-nowrap">
-                          <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-                            <button 
-                              onClick={() => {
-                                setSelectedEmployeeId(emp.id);
-                                setIsDetailOpen(true);
-                              }}
-                              className="text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors text-xs font-semibold cursor-pointer"
-                            >
-                              View Details
-                            </button>
-                            <button 
-                              onClick={() => handleDelete(emp.id, emp.name)}
-                              disabled={savingAction === `delete:${emp.id}`}
-                              className="text-error hover:text-red-700 hover:bg-error/10 p-1.5 rounded transition-colors inline-flex items-center gap-1 font-semibold cursor-pointer"
-                              title="Remove Employee"
-                            >
-                              <Trash className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-
-                      </tr>
+                        </div>
+                      </article>
                     );
                   })}
-                </tbody>
-              </table>
-            </div>
-
-            {filteredEmployees.length === 0 && (
-              <div className="p-12 text-center text-on-surface-variant">
-                <Users className="w-12 h-12 text-outline mx-auto mb-4 opacity-50" />
-                <h4 className="font-bold text-sm">No Employees Found</h4>
-                <p className="text-xs text-outline mt-1">Try adjusting your filters or search criteria.</p>
-              </div>
+                </div>
+              </>
             )}
           </>
         )}
@@ -3079,15 +3179,23 @@ export default function EmployeeDirectoryView({
 
       {/* Interactive Detail Panel & Career Progression History */}
       {isDetailOpen && selectedEmployee && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-y-auto backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white border border-neutral-border rounded-lg shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-xs animate-in fade-in duration-150">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="employee-profile-title"
+            className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-neutral-border bg-white shadow-2xl animate-in zoom-in-95 duration-150"
+          >
             {/* Modal Header */}
-            <div className="p-4 border-b border-neutral-border flex justify-between items-center bg-primary text-[#f7f0e0]">
-              <div className="flex items-center gap-3">
-                <div className="relative group shrink-0 w-12 h-12">
-                  <EmployeeAvatar employee={selectedEmployee} className="w-12 h-12 rounded-full" />
+            <div className="flex items-center justify-between gap-4 border-b border-white/10 bg-primary px-5 py-4 text-[#f7f0e0] lg:px-6">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="group relative h-12 w-12 shrink-0">
+                  <EmployeeAvatar employee={selectedEmployee} className="h-12 w-12 rounded-full ring-2 ring-white/20" />
                   {/* Photo Edit overlay */}
-                  <label className="absolute inset-0 w-full h-full rounded-full bg-black/55 flex flex-col items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity">
+                  <label
+                    title="Change profile photo"
+                    className="absolute inset-0 flex h-full w-full cursor-pointer flex-col items-center justify-center rounded-full bg-black/55 opacity-0 transition-opacity group-hover:opacity-100"
+                  >
                     <span className="text-[7px] text-white font-extrabold uppercase tracking-wider">Change</span>
                     <input 
                       type="file" 
@@ -3102,35 +3210,100 @@ export default function EmployeeDirectoryView({
                     />
                   </label>
                 </div>
-                <div>
-                  <h3 className="font-bold text-lg tracking-tight leading-none text-[#f7f0e0]">{selectedEmployee.name}</h3>
-                  <p className="text-xs text-[#f7f0e0]/70 mt-1">{selectedEmployee.designation}</p>
+                <div className="min-w-0">
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <h3 id="employee-profile-title" className="truncate text-lg font-bold leading-none tracking-tight text-[#f7f0e0]">
+                      {selectedEmployee.name}
+                    </h3>
+                    <span className="rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-white/90">
+                      {selectedEmployee.id}
+                    </span>
+                  </div>
+                  <p className="truncate text-xs text-[#f7f0e0]/70">
+                    {selectedEmployee.designation} <span className="px-1 text-white/40">•</span> {selectedEmployee.department}
+                  </p>
                 </div>
               </div>
               <button 
+                type="button"
                 onClick={() => {
                   setIsDetailOpen(false);
                   setIsEditingGeneralInfo(false);
                 }}
-                className="p-1.5 rounded-full hover:bg-white/10 text-white transition-colors"
+                aria-label="Close employee profile"
+                title="Close employee profile"
+                className="shrink-0 rounded-xl p-2 text-white transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/60"
               >
-                <X className="w-5 h-5 text-[#f7f0e0]" />
+                <X className="h-5 w-5 text-[#f7f0e0]" aria-hidden="true" />
               </button>
             </div>
 
+            {/* At-a-glance employee context */}
+            <div className="grid grid-cols-2 gap-px border-b border-neutral-border bg-neutral-border sm:grid-cols-4">
+              <div className="bg-surface-container-low px-4 py-3 lg:px-5">
+                <div className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">
+                  <Activity className="h-3.5 w-3.5 text-primary" aria-hidden="true" /> Employment
+                </div>
+                <span className={`inline-flex items-center rounded-full px-2 py-1 text-[10px] font-bold ${
+                  getEmployeeStatusClasses(selectedEmployeeStatus || selectedEmployee.status).badge
+                }`}>
+                  {selectedEmployeeStatus || selectedEmployee.status}
+                </span>
+              </div>
+              <div className="bg-surface-container-low px-4 py-3 lg:px-5">
+                <div className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">
+                  <DollarSign className="h-3.5 w-3.5 text-primary" aria-hidden="true" /> Monthly base
+                </div>
+                <div className="font-mono text-sm font-bold text-on-background">
+                  RM {selectedEmployee.basicSalary.toLocaleString()}
+                </div>
+              </div>
+              <div className="bg-surface-container-low px-4 py-3 lg:px-5">
+                <div className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">
+                  <FileText className="h-3.5 w-3.5 text-primary" aria-hidden="true" /> Payroll document
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${
+                    selectedPayrollDocumentProfile?.isPaymentVoucher
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-emerald-100 text-emerald-800'
+                  }`}>
+                    {selectedPayrollDocumentProfile?.documentType || 'Not set'}
+                  </span>
+                  <span className="text-[10px] font-semibold text-on-surface-variant">
+                    {selectedPayrollDocumentProfile?.compensationLabel || 'Review profile'}
+                  </span>
+                </div>
+              </div>
+              <div className="bg-surface-container-low px-4 py-3 lg:px-5">
+                <div className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">
+                  <KeyRound className="h-3.5 w-3.5 text-primary" aria-hidden="true" /> Account
+                </div>
+                <div className="text-xs font-bold capitalize text-on-background">
+                  {selectedAccountSummary?.accountStatus === 'must_change_password'
+                    ? 'Setup required'
+                    : selectedAccountSummary?.accountStatus?.replace(/_/g, ' ') || 'Not created'}
+                </div>
+              </div>
+            </div>
+
             {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-neutral-border text-left">
+            <div className="min-h-0 flex-1 overflow-y-auto text-left">
+              <div className="grid grid-cols-1 divide-y divide-neutral-border lg:grid-cols-12 lg:divide-x lg:divide-y-0">
               
               {/* Left Column: Comprehensive Compliance Profile */}
-              <div className="lg:col-span-7 p-6 space-y-6">
+              <div className="space-y-6 bg-white p-5 lg:col-span-7 lg:p-6">
                 
                 {/* Section title */}
-                <div className="border-b border-neutral-border pb-3 flex justify-between items-center">
+                <div className="flex items-center justify-between gap-4 border-b border-neutral-border pb-4">
                   <div>
-                    <h4 className="font-bold text-sm text-primary flex items-center gap-2">
-                      <UserCheck className="w-4 h-4 text-primary" /> Statutory Compliance & Personal Profile
+                    <h4 className="flex items-center gap-2 text-sm font-bold text-on-background">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <UserCheck className="h-4 w-4" aria-hidden="true" />
+                      </span>
+                      Profile overview
                     </h4>
-                    <p className="text-[11px] text-on-surface-variant">
+                    <p className="mt-1 text-[11px] text-on-surface-variant">
                       {isEditingGeneralInfo ? 'Edit corporate personnel registration details.' : 'Verified corporate personnel registration details.'}
                     </p>
                   </div>
@@ -3138,16 +3311,16 @@ export default function EmployeeDirectoryView({
                     <button 
                       type="button"
                       onClick={handleStartEditGeneralInfo}
-                      className="bg-primary text-[#f7f0e0] hover:bg-primary-container px-3 py-1.5 rounded transition-colors text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-primary-container focus:outline-none focus:ring-2 focus:ring-primary/30"
                     >
-                      Edit Employee Profile
+                      Edit profile
                     </button>
                   ) : (
-                    <div className="flex gap-2">
+                    <div className="flex shrink-0 gap-2">
                       <button 
                         type="button"
                         onClick={() => setIsEditingGeneralInfo(false)}
-                        className="text-on-surface-variant hover:bg-surface-container px-3 py-1.5 rounded transition-colors text-xs font-semibold cursor-pointer border border-neutral-border"
+                        className="rounded-xl border border-neutral-border px-3 py-2 text-xs font-semibold text-on-surface-variant transition-colors hover:bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30"
                       >
                         Cancel
                       </button>
@@ -3158,7 +3331,7 @@ export default function EmployeeDirectoryView({
                         className={`px-3 py-1.5 rounded transition-colors text-xs font-semibold cursor-pointer ${
                           isUploadingAvatar || savingAction === 'general'
                             ? 'bg-zinc-300 text-zinc-500 cursor-not-allowed' 
-                            : 'bg-primary text-[#f7f0e0] hover:opacity-95'
+                          : 'bg-primary text-white hover:opacity-95'
                         }`}
                       >
                         {isUploadingAvatar ? 'Uploading...' : savingAction === 'general' ? 'Saving...' : 'Save Changes'}
@@ -3168,14 +3341,19 @@ export default function EmployeeDirectoryView({
                 </div>
 
                 {selectedAccountSummary && (
-                  <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
+                  <div className="space-y-3 rounded-2xl border border-primary/20 bg-primary/[0.045] p-4">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h4 className="font-bold text-sm text-primary flex items-center gap-2">
-                          <KeyRound className="w-4 h-4" /> Account Access
+                        <h4 className="flex items-center gap-2 text-sm font-bold text-on-background">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                            <KeyRound className="h-4 w-4" aria-hidden="true" />
+                          </span>
+                          Account access
                         </h4>
                         <p className="text-[11px] text-on-surface-variant mt-0.5">
-                          Username: <span className="font-mono font-semibold">{selectedAccountSummary.username}</span>
+                          {isPendingEmail(selectedEmployee?.email || '')
+                            ? 'Account Pending: Corporate email required before setup link can be sent.'
+                            : <>Username: <span className="font-mono font-semibold">{selectedAccountSummary.username}</span></>}
                         </p>
                       </div>
                       <span className={`inline-flex w-fit items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${
@@ -3185,7 +3363,9 @@ export default function EmployeeDirectoryView({
                             ? 'bg-rose-100 text-rose-800 border-rose-200'
                             : 'bg-amber-100 text-amber-800 border-amber-200'
                       }`}>
-                        {selectedAccountSummary.accountStatus === 'must_change_password'
+                        {isPendingEmail(selectedEmployee?.email || '')
+                          ? 'Email required'
+                          : selectedAccountSummary.accountStatus === 'must_change_password'
                           ? 'Setup required'
                           : selectedAccountSummary.accountStatus.replace(/_/g, ' ')}
                       </span>
@@ -3199,7 +3379,7 @@ export default function EmployeeDirectoryView({
                           selectedAccountSummary.accountStatus === 'not_created' ? 'provision' : 'share'
                         )}
                         disabled={!canManageAccountActions || isPendingEmail(selectedEmployee.email)}
-                        className="inline-flex items-center gap-1.5 rounded bg-primary px-3 py-1.5 text-[11px] font-bold text-white hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[11px] font-bold text-white transition-colors hover:bg-primary-container focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {selectedAccountSummary.accountStatus === 'not_created'
                           ? <UserPlus className="w-3.5 h-3.5" />
@@ -3212,7 +3392,7 @@ export default function EmployeeDirectoryView({
                         type="button"
                         onClick={() => openAccountAction(selectedEmployee, 'reset_password')}
                         disabled={!canManageAccountActions || isPendingEmail(selectedEmployee.email)}
-                        className="inline-flex items-center gap-1.5 rounded border border-primary/30 bg-white px-3 py-1.5 text-[11px] font-bold text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-primary/30 bg-white px-3 py-2 text-[11px] font-bold text-primary transition-colors hover:bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <RotateCw className="w-3.5 h-3.5" /> Reset Password
                       </button>
@@ -3220,7 +3400,7 @@ export default function EmployeeDirectoryView({
                         type="button"
                         onClick={handleLoadAccountEvents}
                         disabled={!canManageAccountActions || isAccountEventsLoading}
-                        className="inline-flex items-center gap-1.5 rounded border border-neutral-border bg-white px-3 py-1.5 text-[11px] font-bold text-on-surface-variant hover:bg-surface-container disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-neutral-border bg-white px-3 py-2 text-[11px] font-bold text-on-surface-variant transition-colors hover:bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Clock3 className="w-3.5 h-3.5" />
                         {isAccountEventsLoading ? 'Loading history...' : 'View Delivery History'}
@@ -3789,13 +3969,16 @@ export default function EmployeeDirectoryView({
                 )}
 
                 {/* Category: Statutory Settings */}
-                <div className="p-4 border border-neutral-border rounded-lg bg-surface-container-low/35 space-y-4">
-                  <div className="flex justify-between items-center border-b border-neutral-border/50 pb-2">
-                    <h4 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4 text-primary" /> Statutory Settings
+                <section className="space-y-4 rounded-2xl border border-neutral-border bg-surface-container-low/45 p-4">
+                  <div className="flex items-center justify-between gap-3 border-b border-neutral-border/60 pb-3">
+                    <h4 className="flex items-center gap-2 text-sm font-bold text-on-background">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                      </span>
+                      Statutory settings
                     </h4>
                     {!selectedPayrollDocumentProfile?.statutoryEnabled && (
-                      <span className="rounded bg-amber-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                      <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-800">
                         Not applicable
                       </span>
                     )}
@@ -3965,19 +4148,22 @@ export default function EmployeeDirectoryView({
                       </div>
                     </div>
                   )}
-                </div>
+                </section>
 
                 {/* Spouse & Dependants Registry Card */}
-                <div className="p-4 border border-neutral-border rounded-lg bg-surface-container-low/35 space-y-4">
-                  <div className="flex justify-between items-center border-b border-neutral-border/50 pb-2">
-                    <h4 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5">
-                      <Users className="w-4 h-4 text-primary" /> Spouse & Dependant Compliance Registry
+                <section className="space-y-4 rounded-2xl border border-neutral-border bg-surface-container-low/45 p-4">
+                  <div className="flex items-center justify-between gap-3 border-b border-neutral-border/60 pb-3">
+                    <h4 className="flex items-center gap-2 text-sm font-bold text-on-background">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <Users className="h-4 w-4" aria-hidden="true" />
+                      </span>
+                      Family & dependants
                     </h4>
                     {!isEditingFamily ? (
                       <button 
                         type="button"
                         onClick={handleStartEditFamily}
-                        className="text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors text-xs font-semibold cursor-pointer border border-primary/20"
+                        className="rounded-xl border border-primary/20 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/30"
                       >
                         Edit Family Info
                       </button>
@@ -3986,7 +4172,7 @@ export default function EmployeeDirectoryView({
                         <button 
                           type="button"
                           onClick={() => setIsEditingFamily(false)}
-                          className="text-on-surface-variant hover:bg-surface-container px-2 py-1 rounded transition-colors text-xs font-semibold cursor-pointer border border-neutral-border"
+                          className="rounded-xl border border-neutral-border px-3 py-2 text-xs font-semibold text-on-surface-variant transition-colors hover:bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/30"
                         >
                           Cancel
                         </button>
@@ -3994,7 +4180,7 @@ export default function EmployeeDirectoryView({
                           type="button"
                           onClick={handleSaveFamilyUpdates}
                           disabled={savingAction === 'family'}
-                          className="bg-primary text-white hover:bg-primary-container px-2 py-1 rounded transition-colors text-xs font-semibold cursor-pointer"
+                          className="rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-primary-container focus:outline-none focus:ring-2 focus:ring-primary/30"
                         >
                           {savingAction === 'family' ? 'Saving...' : 'Save'}
                         </button>
@@ -4318,18 +4504,29 @@ export default function EmployeeDirectoryView({
                       </div>
                     </div>
                   )}
-                </div>
+                </section>
+              </div>
 
-                            {/* Right Column: Career Progression Form & Historic Timeline */}
-              <div className="lg:col-span-5 p-6 flex flex-col justify-between space-y-6">
+              {/* Right Column: Career Progression Form & Historic Timeline */}
+              <div className="flex flex-col justify-between space-y-5 bg-surface-container-low/35 p-5 lg:col-span-5 lg:p-6">
+                <div className="border-b border-neutral-border/70 pb-4">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Actions & history</p>
+                  <h4 className="mt-1 text-base font-bold tracking-tight text-on-background">Manage this employee record</h4>
+                  <p className="mt-1 text-xs leading-relaxed text-on-surface-variant">
+                    Record changes with an effective date, then review the audit trail below.
+                  </p>
+                </div>
                 
 	                {/* Section 1: Change Employment Status (The Action) */}
-                <div className="bg-surface-container-low border border-neutral-border p-4 rounded-lg space-y-4">
-                  <div className="border-b border-neutral-border pb-2">
-                    <h4 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5">
-                      <TrendingUp className="w-4 h-4 text-primary" /> Log Career Progression & Status
+                <section className="space-y-4 rounded-2xl border border-primary/20 bg-white p-4 shadow-sm">
+                  <div className="border-b border-neutral-border/70 pb-3">
+                    <h4 className="flex items-center gap-2 text-sm font-bold text-on-background">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <TrendingUp className="h-4 w-4" aria-hidden="true" />
+                      </span>
+                      Log a change
                     </h4>
-                    <p className="text-[10px] text-on-surface-variant">Update active status, promotion, transfers, or base salary revisions.</p>
+                    <p className="mt-1 text-[11px] text-on-surface-variant">Status, promotion, transfer, employment type, or salary revision.</p>
                   </div>
 
                   <form onSubmit={handleProgressionSubmit} className="space-y-3 text-xs">
@@ -4473,23 +4670,27 @@ export default function EmployeeDirectoryView({
 
                     <button 
                       type="submit"
-                      className="w-full bg-primary text-white py-2 rounded text-xs font-semibold hover:bg-primary-container transition-all cursor-pointer flex items-center justify-center gap-2"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-xs font-semibold text-white transition-all hover:bg-primary-container focus:outline-none focus:ring-2 focus:ring-primary/30 active:translate-y-px"
                     >
-                      <History className="w-4 h-4" /> Save Career Progression Event
+                      <History className="h-4 w-4" aria-hidden="true" /> Save progression event
                     </button>
 
                   </form>
-                </div>
+                </section>
 
                 {/* Section 3: Progression History Log Timeline */}
-                <div className="flex-1 space-y-3 min-h-[160px] overflow-hidden flex flex-col">
-                  <div className="border-b border-neutral-border pb-2 shrink-0">
-                    <h4 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5">
-                      <History className="w-4 h-4 text-primary" /> Career Progression Timeline History
+                <section className="flex min-h-[190px] flex-1 flex-col space-y-3 rounded-2xl border border-neutral-border bg-white p-4 shadow-sm">
+                  <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-border/70 pb-3">
+                    <h4 className="flex items-center gap-2 text-sm font-bold text-on-background">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <History className="h-4 w-4" aria-hidden="true" />
+                      </span>
+                      Change history
                     </h4>
+                    <span className="text-[10px] font-semibold text-on-surface-variant">{localCareerHistory?.length || 0} events</span>
                   </div>
 
-                  <div className="overflow-y-auto max-h-[180px] pr-1 space-y-3 flex-1">
+                  <div className="flex-1 space-y-3 overflow-y-auto pr-1">
                     {localCareerHistory && localCareerHistory.length > 0 ? (
                       localCareerHistory.map((item, index) => {
                         let badgeColor = "bg-blue-100 text-blue-700";
@@ -4523,21 +4724,22 @@ export default function EmployeeDirectoryView({
                       </div>
                     )}
                   </div>
-                </div>
+                </section>
 
                 {/* Staged Career & Salary changes global Save Button */}
-                <div className="pt-2 border-t border-neutral-border/40 shrink-0">
+                <div className="shrink-0 border-t border-neutral-border/60 pt-2">
                   <button
                     type="button"
                     onClick={handleSaveCareerChanges}
                     disabled={savingAction === 'career'}
-                    className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-2.5 rounded text-xs transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-green-700 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-green-700/30 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    <Save className="w-4 h-4 text-white animate-pulse" /> {savingAction === 'career' ? 'Saving Career & Salary Changes...' : 'Save Career & Salary Changes'}
+                    <Save className="h-4 w-4 text-white" aria-hidden="true" /> {savingAction === 'career' ? 'Saving career changes...' : 'Save career changes'}
                   </button>
                 </div>
 
-              </div>     </div>
+              </div>
+              </div>
 
             </div>
 
@@ -4546,9 +4748,10 @@ export default function EmployeeDirectoryView({
               <button
                 type="button"
                 onClick={() => setIsDetailOpen(false)}
-                className="px-5 py-2 bg-primary text-white rounded text-xs font-semibold hover:bg-primary-container"
+                aria-label="Close employee profile"
+                className="rounded-xl bg-primary px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-primary-container focus:outline-none focus:ring-2 focus:ring-primary/30 active:translate-y-px"
               >
-                Close Profile File
+                Close profile
               </button>
             </div>
           </div>

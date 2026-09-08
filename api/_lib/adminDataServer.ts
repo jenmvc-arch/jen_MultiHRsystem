@@ -1,4 +1,5 @@
 import {
+  createEmployeeAdminClient,
   createMainAdminClient,
   requirePermission,
 } from './employeeAccountServer.js';
@@ -85,6 +86,24 @@ export const mutateAdminData = async (req: any) => {
       .select()
       .single();
     if (result.error) throw new Error(`Admin ${table} update failed: ${result.error.message}`);
+    if (table === 'employees' && data.email) {
+      try {
+        const accountClient = createEmployeeAdminClient();
+        const accountUpdate = await accountClient
+          .from('employee_accounts')
+          .update({
+            employee_email: String(data.email).trim().toLowerCase(),
+            username: String(data.email).trim().toLowerCase(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('employee_id', String(result.data?.id || idValue));
+        if (accountUpdate.error && !/employee_accounts|schema cache|could not find the table/i.test(accountUpdate.error.message || '')) {
+          throw new Error(accountUpdate.error.message);
+        }
+      } catch (error: any) {
+        console.warn('[Employee Account Sync] Email metadata could not be synchronized:', error?.message || error);
+      }
+    }
     return result.data;
   }
   const result = await client

@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS public.performances (
 -- 5. PAYROLL RECORDS (2026) TABLE
 CREATE TABLE IF NOT EXISTS public.payroll_records_2026 (
     id TEXT PRIMARY KEY,
+    employee_id TEXT,
     employee_email TEXT NOT NULL,
     payroll_month INTEGER NOT NULL,
     payroll_year INTEGER DEFAULT 2026,
@@ -216,11 +217,23 @@ CREATE TABLE IF NOT EXISTS public.payroll_records_2026 (
     gross_pay NUMERIC(12, 2),
     calculation_version TEXT NOT NULL DEFAULT 'legacy'
         CHECK (calculation_version IN ('legacy', 'gross_pay_v2')),
-    status TEXT DEFAULT 'Draft',
+    status TEXT DEFAULT 'Draft'
+        CHECK (status IN ('Draft', 'Processed', 'Published')),
     payment_date DATE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    published_at TIMESTAMPTZ,
+    published_by TEXT,
+    publish_error TEXT,
+    payslip_sent_at TIMESTAMPTZ,
+    payslip_sent_by TEXT,
+    payslip_email_status TEXT
+        CHECK (payslip_email_status IN ('sent', 'failed')),
+    payslip_email_error TEXT
 );
+
+CREATE INDEX IF NOT EXISTS payroll_records_2026_employee_period_idx
+    ON public.payroll_records_2026 (employee_id, payroll_year, payroll_month);
 
 -- 6. USERS TABLE
 CREATE TABLE IF NOT EXISTS public.users (

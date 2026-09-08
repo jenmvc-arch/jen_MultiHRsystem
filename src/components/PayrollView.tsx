@@ -20,6 +20,7 @@ import {
 import PayslipDocumentView from './PayslipDocumentView';
 import PayrollEditorMockupView from './PayrollEditorMockupView';
 import ExportButton from './ExportButton';
+import type { PayrollActionResult } from '../lib/payrollClient';
 
 interface PayrollViewProps {
   employees: Employee[];
@@ -28,6 +29,8 @@ interface PayrollViewProps {
   onShowNotification: (title: string, message: string) => void;
   activeEntity?: CorporateEntity;
   onSavePayrollRecord?: (record: PayrollRecord2026) => Promise<void>;
+  onUpdatePayrollStatus?: (recordIds: string[], action: 'process' | 'publish' | 'unpublish') => Promise<PayrollActionResult[]>;
+  onSendPayslipEmails?: (recordIds: string[]) => Promise<PayrollActionResult[]>;
   currentUserRole?: string | null;
 }
 
@@ -63,6 +66,8 @@ export default function PayrollView({
   onShowNotification,
   activeEntity,
   onSavePayrollRecord,
+  onUpdatePayrollStatus,
+  onSendPayslipEmails,
   currentUserRole
 }: PayrollViewProps) {
   const defaultPeriod = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -219,7 +224,7 @@ export default function PayrollView({
     return payrollRecords2026
       .filter(record => {
         const employee = employeeByEmail.get(record.employeeEmail.toLowerCase());
-        return record.status === 'Processed'
+        return ['Draft', 'Processed', 'Published'].includes(record.status || 'Draft')
           && employee
           && record.payrollMonth === payMonthIndex
           && record.payrollYear === payYear
@@ -232,7 +237,7 @@ export default function PayrollView({
     const employeeByEmail = new Map<string, Employee>(
       employeeOptions.map(employee => [employee.email.toLowerCase(), employee])
     );
-    const processedEmployeeEmails = new Set(
+    const recordEmployeeEmails = new Set(
       payrollFileRecords.map(record => record.employeeEmail.toLowerCase())
     );
     const processedRows = payrollFileRecords.map(record => ({
@@ -240,11 +245,59 @@ export default function PayrollView({
       record
     })).filter((row): row is { employee: Employee; record: PayrollRecord2026 } => Boolean(row.employee));
     const pendingRows = employeeOptions
-      .filter(employee => !processedEmployeeEmails.has(employee.email.toLowerCase()))
+      .filter(employee => !recordEmployeeEmails.has(employee.email.toLowerCase()))
       .map(employee => ({ employee, record: undefined }));
 
     return [...processedRows, ...pendingRows];
   }, [employeeOptions, payrollFileRecords]);
+
+  const [isPayrollActionRunning, setIsPayrollActionRunning] = useState(false);
+  const selectedActionableRecords = useMemo(
+    () => payrollFileRecords.filter(record => selectedPayrollFileRecordIds.includes(record.id)),
+    [payrollFileRecords, selectedPayrollFileRecordIds],
+  );
+  const selectedDraftIds = selectedActionableRecords
+    .filter(record => (record.status || 'Draft') === 'Draft')
+    .map(record => record.id);
+  const selectedProcessedIds = selectedActionableRecords
+    .filter(record => record.status === 'Processed')
+    .map(record => record.id);
+  const selectedPublishedIds = selectedActionableRecords
+    .filter(record => record.status === 'Published')
+    .map(record => record.id);
+
+  const runPayrollAction = async (
+    action: 'process' | 'publish' | 'unpublish' | 'email',
+    recordIds: string[],
+  ) => {
+    if (!recordIds.length) {
+      onShowNotification('Select Payroll First', 'Choose at least one eligible payroll record.');
+      return;
+    }
+    setIsPayrollActionRunning(true);
+    try {
+      const results = action === 'email'
+        ? await onSendPayslipEmails?.(recordIds)
+        : await onUpdatePayrollStatus?.(recordIds, action);
+      const resolved = results || [];
+      const succeeded = resolved.filter(result => result.ok).length;
+      const failed = resolved.length - succeeded;
+      const label = action === 'email'
+        ? 'Payslip emails'
+        : action === 'process'
+          ? 'Payroll processing'
+          : action === 'publish' ? 'Payroll publishing' : 'Payroll unpublishing';
+      onShowNotification(
+        failed ? `${label} Needs Attention` : `${label} Complete`,
+        `${succeeded} completed${failed ? `, ${failed} failed` : ''}.`,
+      );
+      setSelectedPayrollFileRecordIds(previous => previous.filter(id => !resolved.some(result => result.ok && result.recordId === id)));
+    } catch (error: any) {
+      onShowNotification('Payroll Action Failed', error?.message || 'The payroll action could not be completed.');
+    } finally {
+      setIsPayrollActionRunning(false);
+    }
+  };
 
   useEffect(() => {
     const availableIds = new Set(payrollFileRecords.map(record => record.id));
@@ -666,25 +719,60 @@ export default function PayrollView({
           <div className="flex flex-col gap-3 border-b border-neutral-border/60 pb-4 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">2. Payroll File</p>
-              <h2 className="mt-1 text-2xl font-black text-on-background">Processed Payroll File</h2>
+              <h2 className="mt-1 text-2xl font-black text-on-background">Monthly Payroll File</h2>
               <p className="mt-1 text-xs text-on-surface-variant">
                 All employees in the active payroll population appear here. Save and process an employee to add them to the export file.
               </p>
             </div>
-            <ExportButton
-              module="payroll"
-              title="Processed payroll file"
-              currentUserRole={currentUserRole}
-              onShowNotification={onShowNotification}
-              selectedRecordIds={selectedPayrollFileRecordIds}
-              filters={{
-                entityId: activeEntity?.id,
-                department: selectedDepartment,
-                payrollMonth: payMonthIndex,
-                payrollYear: payYear,
-              }}
-              columns={PAYROLL_FILE_EXPORT_COLUMNS}
-            />
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => void runPayrollAction('process', selectedDraftIds)}
+                disabled={isPayrollActionRunning || !selectedDraftIds.length}
+                className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Process Selected
+              </button>
+              <button
+                type="button"
+                onClick={() => void runPayrollAction('publish', selectedProcessedIds)}
+                disabled={isPayrollActionRunning || !selectedProcessedIds.length}
+                className="rounded bg-primary px-3 py-2 text-[11px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isPayrollActionRunning ? 'Working...' : `Publish Selected${selectedProcessedIds.length ? ` (${selectedProcessedIds.length})` : ''}`}
+              </button>
+              <button
+                type="button"
+                onClick={() => void runPayrollAction('email', selectedProcessedIds)}
+                disabled={isPayrollActionRunning || !selectedProcessedIds.length}
+                className="rounded border border-primary/30 bg-primary/5 px-3 py-2 text-[11px] font-bold text-primary disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Send Payslip Email
+              </button>
+              <button
+                type="button"
+                onClick={() => void runPayrollAction('unpublish', selectedPublishedIds)}
+                disabled={isPayrollActionRunning || !selectedPublishedIds.length}
+                className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Unpublish
+              </button>
+              <ExportButton
+                module="payroll"
+                title="Monthly payroll file"
+                currentUserRole={currentUserRole}
+                onShowNotification={onShowNotification}
+                selectedRecordIds={selectedPayrollFileRecordIds}
+                filters={{
+                  entityId: activeEntity?.id,
+                  department: selectedDepartment,
+                  payrollMonth: payMonthIndex,
+                  payrollYear: payYear,
+                  status: 'Processed',
+                }}
+                columns={PAYROLL_FILE_EXPORT_COLUMNS}
+              />
+            </div>
           </div>
           {payrollFileRows.length === 0 ? (
             <div className="rounded border border-dashed border-neutral-border p-12 text-center text-xs text-on-surface-variant">
@@ -735,7 +823,7 @@ export default function PayrollView({
                           </td>
                           <td className="p-3">
                             <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-800">
-                              Not processed
+                              Draft not saved
                             </span>
                           </td>
                           <td className="p-3">{employee.department || '—'}</td>
@@ -792,8 +880,14 @@ export default function PayrollView({
                         </td>
                         <td className="p-3 font-semibold text-primary">{employee?.name || record.employeeEmail}<span className="block text-[10px] font-normal text-on-surface-variant">{record.employeeEmail}</span></td>
                         <td className="p-3">
-                          <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-800">
-                            Processed
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                            record.status === 'Published'
+                              ? 'bg-blue-100 text-blue-800'
+                              : record.status === 'Processed'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {record.status || 'Draft'}
                           </span>
                         </td>
                         <td className="p-3">{employee.department || '—'}</td>
@@ -803,7 +897,25 @@ export default function PayrollView({
                         <td className="p-3 text-right font-mono font-bold text-green-700">{formatMoney(record.netPay || (record as PayrollRecord2026 & { netSalary?: number }).netSalary || 0)}</td>
                         <td className="p-3">{record.createdAt || '—'}</td>
                         <td className="p-3 text-right">
-                          <button type="button" onClick={() => openPayrollPreview(record, employee?.id || selectedEmployeeId)} className="rounded bg-primary/10 px-2.5 py-1.5 font-bold text-primary hover:bg-primary/20">Preview Payslip</button>
+                          <div className="flex flex-wrap justify-end gap-1.5">
+                            <button type="button" onClick={() => openPayrollPreview(record, employee?.id || selectedEmployeeId)} className="rounded bg-primary/10 px-2.5 py-1.5 font-bold text-primary hover:bg-primary/20">Preview</button>
+                            {record.status === 'Draft' && (
+                              <button
+                                type="button"
+                                onClick={() => void runPayrollAction('process', [record.id])}
+                                disabled={isPayrollActionRunning}
+                                className="rounded border border-amber-300 bg-amber-50 px-2.5 py-1.5 font-bold text-amber-800 hover:bg-amber-100"
+                              >
+                                Process
+                              </button>
+                            )}
+                            {record.status === 'Processed' && (
+                              <>
+                                <button type="button" onClick={() => void runPayrollAction('publish', [record.id])} disabled={isPayrollActionRunning} className="rounded border border-primary/30 bg-primary/5 px-2.5 py-1.5 font-bold text-primary hover:bg-primary/10 disabled:opacity-40">Publish</button>
+                                <button type="button" onClick={() => void runPayrollAction('email', [record.id])} disabled={isPayrollActionRunning} className="rounded border border-neutral-border bg-white px-2.5 py-1.5 font-bold text-on-surface-variant hover:bg-neutral-50 disabled:opacity-40">Email PDF</button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -812,7 +924,7 @@ export default function PayrollView({
               </table>
             </div>
           )}
-          <p className="flex items-center gap-2 text-[11px] text-on-surface-variant"><Check className="h-3.5 w-3.5 text-green-700" /> Selection controls which processed records are included in Export. Deselecting does not delete payroll records.</p>
+          <p className="flex items-center gap-2 text-[11px] text-on-surface-variant"><Check className="h-3.5 w-3.5 text-green-700" /> Drafts are saved for this month. Only Processed records can be published or emailed; Published records are visible in the employee site.</p>
         </div>
       ) : activeSubTab === 'payslip-preview' ? (
         <div className="overflow-hidden rounded-xl border border-neutral-border bg-white shadow-xs">

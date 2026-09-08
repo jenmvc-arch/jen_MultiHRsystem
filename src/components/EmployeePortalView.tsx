@@ -340,10 +340,11 @@ export default function EmployeePortalView({
       payrollRecords2026.filter((record) => (
         selectedEmployee.email &&
         !/^pending-email-\d+@redpoint\.local$/i.test(selectedEmployee.email) &&
-        record.employeeEmail.toLowerCase() === selectedEmployee.email.toLowerCase()
+        record.employeeEmail.toLowerCase() === selectedEmployee.email.toLowerCase() &&
+        (record.status === 'Published' || (isPreviewMode && !record.status))
       ))
     );
-    const merged = [...directHistory];
+    const merged = directHistory.filter((record) => isPreviewMode || record.status === 'Published');
     fallbackHistory.forEach((record) => {
       if (!merged.some((existing) => existing.id === record.id)) {
         merged.push(record);
