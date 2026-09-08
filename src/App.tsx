@@ -2278,28 +2278,30 @@ export default function App() {
     results: PayrollActionResult[],
     action: 'process' | 'publish' | 'unpublish' | 'email',
   ) => {
-    const successful = new Map(
-      results.filter(result => result.ok).map(result => [result.recordId, result]),
-    );
+    const byRecordId = new Map(results.map(result => [result.recordId, result]));
     setPayrollRecords2026(previous => previous.map(record => {
-      const result = successful.get(record.id);
+      const result = byRecordId.get(record.id);
       if (!result) return record;
       if (action === 'email') {
         return {
           ...record,
-          payslipSentAt: new Date().toISOString(),
-          payslipSentBy: currentUserEmail || undefined,
-          payslipEmailStatus: 'sent',
-          payslipEmailError: undefined,
+          payslipSentAt: result.ok ? new Date().toISOString() : record.payslipSentAt,
+          payslipSentBy: result.ok ? currentUserEmail || undefined : record.payslipSentBy,
+          payslipEmailStatus: result.ok ? 'sent' : 'failed',
+          payslipEmailError: result.ok ? undefined : result.error,
           updatedAt: getGmt8Timestamp(),
         };
       }
       return {
         ...record,
-        status: result.status,
-        publishedAt: action === 'publish' ? new Date().toISOString() : undefined,
-        publishedBy: action === 'publish' ? currentUserEmail || undefined : undefined,
-        publishError: undefined,
+        status: result.ok ? result.status : record.status,
+        publishedAt: result.ok
+          ? action === 'publish' ? new Date().toISOString() : undefined
+          : record.publishedAt,
+        publishedBy: result.ok
+          ? action === 'publish' ? currentUserEmail || undefined : undefined
+          : record.publishedBy,
+        publishError: result.ok ? undefined : result.error,
         updatedAt: getGmt8Timestamp(),
       };
     }));

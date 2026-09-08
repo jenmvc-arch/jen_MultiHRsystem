@@ -60,7 +60,12 @@ function toSnakeCase(obj: any): any {
   const result: any = {};
   for (const key of Object.keys(obj)) {
     if (obj[key] === undefined) continue;
-    const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+    // Keep acronym runs together so fields such as actualPCBDeducted map to
+    // actual_pcb_deducted rather than actual_p_c_b_deducted.
+    const snakeKey = key
+      .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+      .replace(/([a-z\d])([A-Z])/g, '$1_$2')
+      .toLowerCase();
     let val = obj[key];
     
     // PostgreSQL strict typing protection: Convert empty strings to null for date/number/fk fields

@@ -26,6 +26,35 @@ const readRecordIds = (value: unknown) => {
   return unique;
 };
 
+const missingColumnFromError = (message: string) => {
+  const direct = message.match(/Could not find the '([^']+)' column/i);
+  if (direct) return direct[1];
+  const relation = message.match(/column "([^"]+)" of relation/i);
+  return relation?.[1] || null;
+};
+
+const updatePayrollRow = async (
+  client: SupabaseClient,
+  recordId: string,
+  values: Record<string, unknown>,
+) => {
+  const retryValues = { ...values };
+  const maxRetries = Object.keys(retryValues).length + 1;
+  for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+    const result = await client
+      .from('payroll_records_2026')
+      .update(retryValues)
+      .eq('id', recordId);
+    if (!result.error) return;
+    const missingColumn = missingColumnFromError(result.error.message || '');
+    if (!missingColumn || retryValues[missingColumn] === undefined) {
+      throw new Error(result.error.message);
+    }
+    delete retryValues[missingColumn];
+  }
+  throw new Error('Payroll update failed after schema compatibility retries.');
+};
+
 const loadPayrollContext = async (client: SupabaseClient, recordIds: string[]) => {
   const { data: records, error: recordError } = await client
     .from('payroll_records_2026')
@@ -80,19 +109,30 @@ export const updatePayrollStatuses = async (req: any, action: PayrollAction) => 
     const status = action === 'process'
       ? 'Processed'
       : action === 'publish' ? 'Published' : 'Processed';
-    const { error } = await client
-      .from('payroll_records_2026')
-      .update({
+    try {
+      await updatePayrollRow(client, recordId, {
         status,
         published_at: action === 'publish' ? new Date().toISOString() : null,
         published_by: action === 'publish' ? actor.username : null,
         publish_error: null,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', recordId);
-    if (error) {
-      results.push({ ok: false, recordId, error: error.message });
+    } catch (error: any) {
+      results.push({ ok: false, recordId, error: error?.message || 'Payroll update failed.' });
       continue;
+    }
+    try {
+      await client.from('audit_logs').insert({
+        id: `payroll_${action}_${recordId}_${Date.now()}`,
+        employee_email: row.employee_email || null,
+        changed_by: actor.username,
+        change_type: `PAYROLL_${action.toUpperCase()}`,
+        old_value: JSON.stringify({ status: row.status || 'Draft' }),
+        new_value: JSON.stringify({ status }),
+        created_at: new Date().toISOString(),
+      });
+    } catch (auditError: any) {
+      console.warn('[Payroll Audit] Could not persist status audit record:', auditError?.message || auditError);
     }
     results.push({
       ok: true,
@@ -158,13 +198,13 @@ export const sendPayrollPayslipEmails = async (req: any) => {
         }],
       );
       const message = emailResult.ok ? 'Payslip PDF sent by email.' : emailResult.failureReason;
-      await client.from('payroll_records_2026').update({
+      await updatePayrollRow(client, recordId, {
         payslip_sent_at: emailResult.ok ? new Date().toISOString() : null,
         payslip_sent_by: actor.username,
         payslip_email_status: emailResult.ok ? 'sent' : 'failed',
         payslip_email_error: emailResult.failureReason || null,
         updated_at: new Date().toISOString(),
-      }).eq('id', recordId);
+      });
       results.push({
         ok: emailResult.ok,
         recordId,
@@ -174,12 +214,12 @@ export const sendPayrollPayslipEmails = async (req: any) => {
       });
     } catch (error: any) {
       const message = error instanceof Error ? error.message : 'Payslip email failed.';
-      await client.from('payroll_records_2026').update({
+      await updatePayrollRow(client, recordId, {
         payslip_sent_by: actor.username,
         payslip_email_status: 'failed',
         payslip_email_error: message,
         updated_at: new Date().toISOString(),
-      }).eq('id', recordId);
+      });
       results.push({ ok: false, recordId, status: 'failed', error: message });
     }
   }

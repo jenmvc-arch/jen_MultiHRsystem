@@ -235,6 +235,10 @@ CREATE TABLE IF NOT EXISTS public.payroll_records_2026 (
 CREATE INDEX IF NOT EXISTS payroll_records_2026_employee_period_idx
     ON public.payroll_records_2026 (employee_id, payroll_year, payroll_month);
 
+CREATE UNIQUE INDEX IF NOT EXISTS payroll_records_2026_regular_employee_period_uidx
+    ON public.payroll_records_2026 (employee_id, payroll_year, payroll_month)
+    WHERE payout_kind = 'regular' AND is_separate_payout = FALSE AND employee_id IS NOT NULL;
+
 -- 6. USERS TABLE
 CREATE TABLE IF NOT EXISTS public.users (
     email TEXT PRIMARY KEY,

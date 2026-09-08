@@ -106,12 +106,13 @@ export default async function handler(req: any, res: any) {
     if (recordId) payrollQuery = payrollQuery.eq('id', recordId);
     if (employee?.email) payrollQuery = payrollQuery.ilike('employee_email', employee.email);
     const { data: record, error: recordError } = await payrollQuery
+      .in('status', ['Processed', 'Published'])
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     if (recordError) throw new Error(`Payroll record lookup failed: ${recordError.message}`);
     if (!record) {
-      res.status(404).json({ error: 'Published or processed payroll record was not found.' });
+      res.status(404).json({ error: 'A Processed or Published payroll record was not found.' });
       return;
     }
 

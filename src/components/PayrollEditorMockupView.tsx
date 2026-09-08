@@ -833,10 +833,10 @@ export default function PayrollEditorMockupView({
       });
     } else {
       onShowNotification(
-        `${recordToSave.documentType || documentProfile.documentType} Saved and Processed`,
+        `${recordToSave.documentType || documentProfile.documentType} Saved as Draft`,
         isSeparatePayoutMode
           ? `${recordToSave.payoutTitle || 'Separate payout'} was saved to Payroll File.`
-          : `Your ${documentProfile.documentType.toLowerCase()} was saved to Payroll File.`
+          : `Your ${documentProfile.documentType.toLowerCase()} was saved to Payroll File. Process it when it is ready to publish.`
       );
     }
     onGeneratedPayrollRecord?.(recordToSave);

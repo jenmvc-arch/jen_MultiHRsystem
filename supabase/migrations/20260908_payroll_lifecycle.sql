@@ -29,6 +29,35 @@ ALTER TABLE public.payroll_records_2026
   ADD CONSTRAINT payroll_records_2026_payslip_email_status_check
   CHECK (payslip_email_status IN ('sent', 'failed') OR payslip_email_status IS NULL);
 
+-- Older imports can contain more than one regular record for the same
+-- employee/month. Keep the most advanced lifecycle state, then the newest
+-- version, so the unique index can be created without discarding a published
+-- or processed payroll in favour of an older draft.
+WITH ranked_regular_payroll AS (
+  SELECT
+    ctid,
+    row_number() OVER (
+      PARTITION BY employee_id, payroll_year, payroll_month
+      ORDER BY
+        CASE status
+          WHEN 'Published' THEN 3
+          WHEN 'Processed' THEN 2
+          ELSE 1
+        END DESC,
+        updated_at DESC NULLS LAST,
+        created_at DESC NULLS LAST,
+        id DESC
+    ) AS duplicate_rank
+  FROM public.payroll_records_2026
+  WHERE payout_kind = 'regular'
+    AND is_separate_payout = FALSE
+    AND employee_id IS NOT NULL
+)
+DELETE FROM public.payroll_records_2026 AS payroll
+USING ranked_regular_payroll AS ranked
+WHERE payroll.ctid = ranked.ctid
+  AND ranked.duplicate_rank > 1;
+
 CREATE INDEX IF NOT EXISTS payroll_records_2026_employee_period_idx
   ON public.payroll_records_2026 (employee_id, payroll_year, payroll_month);
 

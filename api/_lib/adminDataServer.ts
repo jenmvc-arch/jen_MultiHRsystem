@@ -18,6 +18,13 @@ const TABLES = new Set([
 const serviceError = (message: string, statusCode = 400) =>
   Object.assign(new Error(message), { statusCode });
 
+const missingColumnFromError = (message: string) => {
+  const direct = message.match(/Could not find the '([^']+)' column/i);
+  if (direct) return direct[1];
+  const relation = message.match(/column "([^"]+)" of relation/i);
+  return relation?.[1] || null;
+};
+
 const assertTable = (table: unknown) => {
   const value = String(table || '').trim();
   if (!TABLES.has(value)) throw serviceError('This data resource is not available.', 403);
@@ -71,9 +78,22 @@ export const mutateAdminData = async (req: any) => {
     return result.data;
   }
   if (operation === 'upsert') {
-    const result = await client.from(table).upsert(data).select().single();
-    if (result.error) throw new Error(`Admin ${table} upsert failed: ${result.error.message}`);
-    return result.data;
+    // Keep deployments usable while additive migrations are being rolled out.
+    // New payroll metadata is removed one missing column at a time, rather
+    // than turning a valid save into a total failure on an older schema.
+    const retryData = { ...data };
+    const maxRetries = Object.keys(retryData).length + 1;
+    for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+      const result = await client.from(table).upsert(retryData).select().single();
+      if (!result.error) return result.data;
+      const missingColumn = missingColumnFromError(result.error.message || '');
+      if (!missingColumn || retryData[missingColumn] === undefined) {
+        throw new Error(`Admin ${table} upsert failed: ${result.error.message}`);
+      }
+      console.warn(`[Admin Data] Removing missing column '${missingColumn}' and retrying ${table} upsert.`);
+      delete retryData[missingColumn];
+    }
+    throw new Error(`Admin ${table} upsert failed after schema compatibility retries.`);
   }
   if (idValue === undefined || idValue === null || !idColumn) {
     throw serviceError('An identifier is required for this operation.');

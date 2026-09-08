@@ -289,7 +289,7 @@ export default function PayrollView({
           : action === 'publish' ? 'Payroll publishing' : 'Payroll unpublishing';
       onShowNotification(
         failed ? `${label} Needs Attention` : `${label} Complete`,
-        `${succeeded} completed${failed ? `, ${failed} failed` : ''}.`,
+        `${succeeded} completed${failed ? `, ${failed} failed${resolved.filter(result => !result.ok && result.error).length ? `: ${resolved.filter(result => !result.ok && result.error).map(result => result.error).join(' | ')}` : '.'}` : '.'}`,
       );
       setSelectedPayrollFileRecordIds(previous => previous.filter(id => !resolved.some(result => result.ok && result.recordId === id)));
     } catch (error: any) {
@@ -768,7 +768,7 @@ export default function PayrollView({
                   department: selectedDepartment,
                   payrollMonth: payMonthIndex,
                   payrollYear: payYear,
-                  status: 'Processed',
+                  status: 'All Statuses',
                 }}
                 columns={PAYROLL_FILE_EXPORT_COLUMNS}
               />
@@ -899,7 +899,7 @@ export default function PayrollView({
                         <td className="p-3 text-right">
                           <div className="flex flex-wrap justify-end gap-1.5">
                             <button type="button" onClick={() => openPayrollPreview(record, employee?.id || selectedEmployeeId)} className="rounded bg-primary/10 px-2.5 py-1.5 font-bold text-primary hover:bg-primary/20">Preview</button>
-                            {record.status === 'Draft' && (
+                            {(record.status || 'Draft') === 'Draft' && (
                               <button
                                 type="button"
                                 onClick={() => void runPayrollAction('process', [record.id])}
