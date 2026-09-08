@@ -174,31 +174,59 @@ export const requestEmployeeOtp = async (input: {
   email: string;
   purpose?: 'login' | 'password_reset' | 'activation';
   name?: string;
+  ipAddress?: string;
+  deviceHash?: string;
 }): Promise<OtpRequestResult> => {
   const email = normalize(input.email);
   const purpose = input.purpose || 'login';
   if (!email.includes('@')) throw otpError('A valid employee email is required.');
+  if (!['login', 'password_reset', 'activation'].includes(purpose)) {
+    throw otpError('Unsupported OTP purpose.');
+  }
 
   const employeeAdmin = createEmployeeAdminClient();
-  const authUsers = await employeeAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  if (authUsers.error) throw new Error(`Employee Auth lookup failed: ${authUsers.error.message}`);
-  const authUser = (authUsers.data?.users || []).find((user: any) => normalize(user.email) === email);
-  if (!authUser) throw otpError('This employee account is not available for OTP sign-in.', 404);
+  const { data: account, error: accountError } = await employeeAdmin
+    .from('employee_accounts')
+    .select('employee_id,auth_user_id,account_status,employee_email')
+    .ilike('employee_email', email)
+    .maybeSingle();
+  if (accountError) throw new Error(`Employee account lookup failed: ${accountError.message}`);
+  if (!account?.auth_user_id || ['disabled', 'error', 'not_created'].includes(account.account_status)) {
+    throw otpError('This employee account is not available for OTP sign-in.', 404);
+  }
+  const authUserResult = await employeeAdmin.auth.admin.getUserById(account.auth_user_id);
+  if (authUserResult.error || !authUserResult.data.user) {
+    throw otpError('This employee account is not available for OTP sign-in.', 404);
+  }
+  const authUser = authUserResult.data.user;
 
   const now = new Date();
   const { data: recent, error: recentError } = await employeeAdmin
     .from('email_otp_challenges')
-    .select('created_at,resend_available_at')
-    .eq('email', email)
+    .select('email,ip_address,device_hash,created_at,resend_available_at')
     .eq('purpose', purpose)
     .gte('created_at', new Date(now.getTime() - 60 * 60 * 1000).toISOString())
     .order('created_at', { ascending: false });
   if (recentError) throw new Error(`OTP rate lookup failed: ${recentError.message}`);
-  const latest = recent?.[0] as any;
+  const recentRows = (recent || []) as any[];
+  const latest = recentRows.find((row) => normalize(row.email) === email);
   if (latest?.resend_available_at && new Date(latest.resend_available_at).getTime() > now.getTime()) {
     throw otpError('Please wait 60 seconds before requesting another code.', 429);
   }
-  if ((recent || []).length >= OTP_REQUEST_LIMIT_PER_HOUR) {
+  const ipAddress = String(input.ipAddress || '').trim();
+  const deviceHash = String(input.deviceHash || '').trim();
+  const emailCount = recentRows.filter((row) => normalize(row.email) === email).length;
+  const ipCount = ipAddress
+    ? recentRows.filter((row) => String(row.ip_address || '') === ipAddress).length
+    : 0;
+  const deviceCount = deviceHash
+    ? recentRows.filter((row) => String(row.device_hash || '') === deviceHash).length
+    : 0;
+  if (
+    emailCount >= OTP_REQUEST_LIMIT_PER_HOUR
+    || ipCount >= OTP_REQUEST_LIMIT_PER_HOUR * 2
+    || deviceCount >= OTP_REQUEST_LIMIT_PER_HOUR * 2
+  ) {
     throw otpError('Too many OTP requests. Please try again later.', 429);
   }
 
@@ -215,8 +243,10 @@ export const requestEmployeeOtp = async (input: {
       expires_at: expiresAt.toISOString(),
       resend_available_at: resendAvailableAt.toISOString(),
       request_count_window_start: now.toISOString(),
-      request_count: (recent || []).length + 1,
+      request_count: emailCount + 1,
       max_verification_attempts: OTP_MAX_VERIFICATION_ATTEMPTS,
+      ip_address: input.ipAddress || null,
+      device_hash: input.deviceHash || null,
     })
     .select('id')
     .single();
@@ -246,7 +276,7 @@ export const verifyEmployeeOtp = async (input: {
   const employeeAdmin = createEmployeeAdminClient();
   const { data: challenge, error } = await employeeAdmin
     .from('email_otp_challenges')
-    .select('*')
+    .select('id,email,auth_user_id,otp_hash,purpose,expires_at,resend_available_at,verification_attempts,max_verification_attempts')
     .eq('email', email)
     .eq('purpose', purpose)
     .is('verified_at', null)
@@ -256,6 +286,15 @@ export const verifyEmployeeOtp = async (input: {
     .maybeSingle();
   if (error) throw new Error(`OTP lookup failed: ${error.message}`);
   if (!challenge) throw otpError('The verification code is invalid or expired.', 401);
+  const { data: account, error: accountError } = await employeeAdmin
+    .from('employee_accounts')
+    .select('account_status')
+    .eq('auth_user_id', challenge.auth_user_id)
+    .maybeSingle();
+  if (accountError) throw new Error(`Employee account lookup failed: ${accountError.message}`);
+  if (!account || ['disabled', 'error', 'not_created'].includes(account.account_status)) {
+    throw otpError('This employee account is not available.', 403);
+  }
   if (new Date(challenge.expires_at).getTime() <= Date.now()) {
     await employeeAdmin.from('email_otp_challenges').update({ invalidated_at: new Date().toISOString() }).eq('id', challenge.id);
     throw otpError('The verification code has expired.', 401);
@@ -418,15 +457,35 @@ const findAdminUser = async (username: string): Promise<AdminUserRecord | null> 
   const admin = createMainAdminClient();
   const extended = await admin
     .from('users')
-    .select('email,password,password_hash,name,role,must_change_password')
+    .select('email,password_hash,name,role,must_change_password')
     .ilike('email', username.trim())
     .maybeSingle();
-  if (!extended.error) return extended.data as AdminUserRecord | null;
+  if (!extended.error) {
+    const user = extended.data as AdminUserRecord | null;
+    if (
+      user
+      && !user.password_hash
+      && process.env.ALLOW_LEGACY_ADMIN_PASSWORDS === 'true'
+      && process.env.NODE_ENV !== 'production'
+    ) {
+      const legacy = await admin
+        .from('users')
+        .select('email,password')
+        .ilike('email', username.trim())
+        .maybeSingle();
+      if (legacy.error) throw new Error(`Admin account lookup failed: ${legacy.error.message}`);
+      return { ...user, password: legacy.data?.password };
+    }
+    return user;
+  }
 
-  // Existing deployments may not have the password-hash migration yet.
-  // Keep the lookup compatible while the server upgrades successful logins.
+  // Legacy password fallback is available only during an explicitly enabled
+  // migration window and must never be active in production by default.
   if (!/column .* does not exist|could not find the .* column/i.test(extended.error.message)) {
     throw new Error(`Admin account lookup failed: ${extended.error.message}`);
+  }
+  if (process.env.ALLOW_LEGACY_ADMIN_PASSWORDS !== 'true' || process.env.NODE_ENV === 'production') {
+    throw new Error('The admin password-hash migration is required before login is enabled.');
   }
   const legacy = await admin
     .from('users')
@@ -449,7 +508,7 @@ export const authenticateAdmin = async (
     : !!user.password && verifyLegacyPassword(password, user.password);
   if (!valid) return null;
 
-  if (!user.password_hash && user.password) {
+  if (!user.password_hash && user.password && process.env.ALLOW_LEGACY_ADMIN_PASSWORDS === 'true') {
     try {
       await createMainAdminClient()
         .from('users')
@@ -498,8 +557,43 @@ export const requireAdminSession = async (req: any): Promise<AdminSessionActor> 
 
 export const requireMasterUser = async (req: any): Promise<AdminSessionActor> => {
   const actor = await requireAdminSession(req);
-  if (normalize(actor.username) !== ADMIN_USERNAME) {
-    throw Object.assign(new Error('Only hr.redpoint may manage employee accounts.'), { statusCode: 403 });
+  const role = normalize(actor.role);
+  if (!['global administrator', 'master user', 'administrator'].includes(role)) {
+    throw Object.assign(new Error('This account is not authorized to manage employee accounts.'), { statusCode: 403 });
+  }
+  return actor;
+};
+
+const ADMIN_PERMISSION_ROLES: Record<string, Set<string>> = {
+  'global administrator': new Set(['*']),
+  'master user': new Set(['*']),
+  administrator: new Set([
+    'admin.data.read',
+    'admin.data.write',
+    'documents.manage',
+    'leave.manage',
+    'notification.process',
+    'employee.account.manage',
+    'employee.request.manage',
+    'profile.change.approve',
+    'payroll.export',
+    'employee.export',
+    'performance.export',
+    'reports.export',
+  ]),
+  'payroll tax approver': new Set(['payroll.export', 'reports.export']),
+  'regional manager': new Set(['admin.data.read', 'leave.manage', 'employee.request.manage', 'profile.change.approve', 'employee.export']),
+  leader: new Set(['employee.request.manage', 'profile.change.approve']),
+};
+
+export const requirePermission = async (
+  req: any,
+  permission: string,
+): Promise<AdminSessionActor> => {
+  const actor = await requireAdminSession(req);
+  const permissions = ADMIN_PERMISSION_ROLES[normalize(actor.role)] || new Set<string>();
+  if (!permissions.has('*') && !permissions.has(permission)) {
+    throw Object.assign(new Error('This account is not authorized for this action.'), { statusCode: 403 });
   }
   return actor;
 };
@@ -546,7 +640,7 @@ export const loadAccountSummaries = async (
   const employeeAdmin = createEmployeeAdminClient();
   let query = employeeAdmin
     .from('employee_accounts')
-    .select('*')
+    .select('employee_id,employee_email,username,auth_user_id,account_status,must_change_password,last_invited_at,last_password_reset_at,last_delivery_channel,last_delivery_status')
     .order('employee_email');
   if (employeeIds && employeeIds.length > 0) {
     query = query.in('employee_id', employeeIds);
@@ -590,7 +684,7 @@ const loadEmployeeAccount = async (employeeId: string, employeeEmail: string) =>
   const employeeAdmin = createEmployeeAdminClient();
   const { data, error } = await employeeAdmin
     .from('employee_accounts')
-    .select('*')
+    .select('employee_id,employee_email,username,auth_user_id,account_status,must_change_password,last_invited_at,last_password_reset_at,last_delivery_channel,last_delivery_status')
     .eq('employee_id', employeeId)
     .maybeSingle();
   if (error) throw new Error(`Employee account lookup failed: ${error.message}`);
@@ -615,7 +709,7 @@ const upsertEmployeeAccount = async (row: Partial<EmployeeAccountRow> & {
       ...row,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'employee_id' })
-    .select('*')
+    .select('employee_id,employee_email,username,auth_user_id,account_status,must_change_password,last_invited_at,last_password_reset_at,last_delivery_channel,last_delivery_status')
     .single();
   if (error) throw new Error(`Employee account save failed: ${error.message}`);
   return mapAccountRow(data as EmployeeAccountRow);
@@ -644,15 +738,42 @@ const writeAccountEvent = async (input: {
 
 const getEmployeeProjectUrl = () => getEmployeeSupabaseConfig().url;
 
+const getApplicationUrl = () => {
+  const configured = String(process.env.APP_URL || '').trim().replace(/\/+$/, '');
+  if (configured) return configured;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('APP_URL must be configured in production for account links.');
+  }
+  return 'http://localhost:3000';
+};
+
 const createActionLink = async (target: EmployeeAccountTarget, action: EmployeeAccountAction) => {
   const employeeAdmin = createEmployeeAdminClient();
-  const existing = await employeeAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  if (existing.error) {
-    throw new Error(`Employee Auth account lookup failed: ${existing.error.message}`);
+  const existingAccount = await employeeAdmin
+    .from('employee_accounts')
+    .select('auth_user_id')
+    .eq('employee_id', target.id)
+    .maybeSingle();
+  if (existingAccount.error) {
+    throw new Error(`Employee account lookup failed: ${existingAccount.error.message}`);
   }
-  let authUser = (existing.data?.users || []).find((user: any) => (
-    normalize(user.email) === normalize(target.email)
-  ));
+  let authUser: any = null;
+  if (existingAccount.data?.auth_user_id) {
+    const byId = await employeeAdmin.auth.admin.getUserById(existingAccount.data.auth_user_id);
+    if (!byId.error) authUser = byId.data.user;
+  }
+  if (!authUser) {
+    for (let page = 1; page <= 20 && !authUser; page += 1) {
+      const listed = await employeeAdmin.auth.admin.listUsers({ page, perPage: 100 });
+      if (listed.error) {
+        throw new Error(`Employee Auth account lookup failed: ${listed.error.message}`);
+      }
+      authUser = (listed.data?.users || []).find((user: any) => (
+        normalize(user.email) === normalize(target.email)
+      ));
+      if ((listed.data?.users || []).length < 100) break;
+    }
+  }
   let isNew = false;
 
   if (!authUser) {
@@ -691,7 +812,7 @@ const createActionLink = async (target: EmployeeAccountTarget, action: EmployeeA
     type: linkType,
     email: target.email,
     options: {
-      redirectTo: `${process.env.APP_URL || 'http://localhost:3000'}/employee-portal`,
+      redirectTo: `${getApplicationUrl()}/employee-portal`,
     },
   });
   if (generated.error || !generated.data?.properties?.action_link) {
@@ -836,8 +957,27 @@ export const performEmployeeAccountAction = async (input: {
   actor: AdminSessionActor;
   action: EmployeeAccountAction;
   channel: AccountDeliveryChannel;
+  idempotencyKey?: string;
 }): Promise<AccountActionResult> => {
+  const employeeAdmin = createEmployeeAdminClient();
+  const idempotencyKey = String(input.idempotencyKey || '').trim().slice(0, 160);
+  if (idempotencyKey) {
+    const existingAction = await employeeAdmin
+      .from('employee_account_action_idempotency')
+      .select('result')
+      .eq('idempotency_key', idempotencyKey)
+      .maybeSingle();
+    if (!existingAction.error && existingAction.data?.result) {
+      return existingAction.data.result as AccountActionResult;
+    }
+  }
   const existing = await loadEmployeeAccount(input.target.id, input.target.email);
+  if (existing.account_status === 'disabled') {
+    throw Object.assign(
+      new Error('This employee account is disabled. Re-enable it before sending access links.'),
+      { statusCode: 409 },
+    );
+  }
   const generated = await createActionLink(input.target, input.action);
   const now = new Date().toISOString();
   const deliveries = await deliver(input.target, input.action, input.channel, generated.actionLink);
@@ -878,7 +1018,7 @@ export const performEmployeeAccountAction = async (input: {
     result: delivery.status,
   })));
 
-  return {
+  const result: AccountActionResult = {
     ok: hasSuccess,
     action: input.action,
     employeeId: input.target.id,
@@ -888,6 +1028,20 @@ export const performEmployeeAccountAction = async (input: {
       ? 'Account action completed without exposing a password.'
       : 'No delivery provider completed the account action.',
   };
+  if (idempotencyKey) {
+    const saved = await employeeAdmin
+      .from('employee_account_action_idempotency')
+      .insert({
+        idempotency_key: idempotencyKey,
+        employee_id: input.target.id,
+        action: input.action,
+        result,
+      });
+    if (saved.error && !/employee_account_action_idempotency|schema cache|could not find the table/i.test(saved.error.message || '')) {
+      throw new Error(`Employee account action idempotency record could not be saved: ${saved.error.message}`);
+    }
+  }
+  return result;
 };
 
 export const toEmployeeAccountTarget = (body: any): EmployeeAccountTarget => {
@@ -972,6 +1126,16 @@ export const getEmployeeAuthUser = async (req: any) => {
     if (error || !data.user) {
       throw Object.assign(new Error('The employee session is not authenticated.'), { statusCode: 401 });
     }
+    const employeeAdmin = createEmployeeAdminClient();
+    const { data: account, error: accountError } = await employeeAdmin
+      .from('employee_accounts')
+      .select('account_status')
+      .eq('auth_user_id', data.user.id)
+      .maybeSingle();
+    if (accountError) throw new Error(`Employee account lookup failed: ${accountError.message}`);
+    if (!account || ['disabled', 'error', 'not_created'].includes(account.account_status)) {
+      throw Object.assign(new Error('This employee account is not active.'), { statusCode: 403 });
+    }
     return { token, user: data.user };
   }
   const otpSession = getEmployeeOtpSession(req);
@@ -983,6 +1147,15 @@ export const getEmployeeAuthUser = async (req: any) => {
   if (error || !data.user) {
     throw Object.assign(new Error('The employee session is not authenticated.'), { statusCode: 401 });
   }
+  const { data: account, error: accountError } = await employeeAdmin
+    .from('employee_accounts')
+    .select('account_status')
+    .eq('auth_user_id', data.user.id)
+    .maybeSingle();
+  if (accountError) throw new Error(`Employee account lookup failed: ${accountError.message}`);
+  if (!account || ['disabled', 'error', 'not_created'].includes(account.account_status)) {
+    throw Object.assign(new Error('This employee account is not active.'), { statusCode: 403 });
+  }
   return { token: '', user: data.user };
 };
 
@@ -991,11 +1164,14 @@ export const loadEmployeeAuthProfile = async (req: any) => {
   const employeeAdmin = createEmployeeAdminClient();
   const { data: account, error } = await employeeAdmin
     .from('employee_accounts')
-    .select('*')
+    .select('employee_id,employee_email,account_status,must_change_password,auth_user_id')
     .eq('auth_user_id', user.id)
     .maybeSingle();
   if (error) throw new Error(`Employee account profile lookup failed: ${error.message}`);
 
+  if (!account || ['disabled', 'error', 'not_created'].includes(account.account_status)) {
+    throw Object.assign(new Error('This employee account is not active.'), { statusCode: 403 });
+  }
   return {
     email: user.email || '',
     mustChangePassword: Boolean(
@@ -1014,6 +1190,15 @@ export const completeEmployeeAuthSetup = async (req: any) => {
   }
 
   const employeeAdmin = createEmployeeAdminClient();
+  const { data: account, error: accountError } = await employeeAdmin
+    .from('employee_accounts')
+    .select('employee_id,account_status')
+    .eq('auth_user_id', user.id)
+    .maybeSingle();
+  if (accountError) throw new Error(`Employee account lookup failed: ${accountError.message}`);
+  if (!account || ['disabled', 'error', 'not_created'].includes(account.account_status)) {
+    throw Object.assign(new Error('This employee account is not allowed to complete setup.'), { statusCode: 403 });
+  }
   const updatedUser = await employeeAdmin.auth.admin.updateUserById(user.id, {
     password: newPassword,
     user_metadata: {
@@ -1025,11 +1210,7 @@ export const completeEmployeeAuthSetup = async (req: any) => {
     throw new Error(`Employee Auth profile could not be updated: ${updatedUser.error.message}`);
   }
 
-  const employeeId = String(
-    user.user_metadata?.employee_id
-    || updatedUser.data.user?.user_metadata?.employee_id
-    || ''
-  ).trim();
+  const employeeId = String(account.employee_id || '').trim();
   if (employeeId) {
     const { error } = await employeeAdmin
       .from('employee_accounts')
@@ -1054,11 +1235,14 @@ export const updateEmployeeAuthProfile = async (req: any) => {
   const employeeAdmin = createEmployeeAdminClient();
   const { data: account, error: accountError } = await employeeAdmin
     .from('employee_accounts')
-    .select('must_change_password,employee_id')
+    .select('must_change_password,employee_id,account_status')
     .eq('auth_user_id', user.id)
     .maybeSingle();
   if (accountError) {
     throw new Error(`Employee account profile lookup failed: ${accountError.message}`);
+  }
+  if (!account || ['disabled', 'error', 'not_created'].includes(account.account_status)) {
+    throw Object.assign(new Error('This employee account is not active.'), { statusCode: 403 });
   }
 
   return {

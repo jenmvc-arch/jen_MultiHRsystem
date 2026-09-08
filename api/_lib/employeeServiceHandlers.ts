@@ -5,9 +5,11 @@ import {
   listAdminEmployeeRequests,
   loadEmployeePortalBootstrap,
   loadEmployeeLeaveRequests,
+  loadEmployeeLeaveWorkspace,
   createEmployeeLeaveRequest,
   markEmployeeNotificationRead,
   reopenEmployeeServiceRequest,
+  processNotificationOutbox,
   updateAdminEmployeeRequest,
   updateAdminProfileChangeRequest,
   updateEmployeePortalProfile,
@@ -71,6 +73,19 @@ export async function handleEmployeePortalLeaveRequests(req: any, res: any) {
     }
     res.setHeader('Allow', 'GET, POST');
     res.status(405).json({ error: 'Method not allowed.' });
+  } catch (error) {
+    sendError(res, error);
+  }
+}
+
+export async function handleEmployeePortalLeaveWorkspace(req: any, res: any) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
+    res.status(405).json({ error: 'Method not allowed.' });
+    return;
+  }
+  try {
+    res.status(200).json(await loadEmployeeLeaveWorkspace(req));
   } catch (error) {
     sendError(res, error);
   }
@@ -162,6 +177,19 @@ export async function handleAdminProfileChangeUpdate(req: any, res: any) {
   }
   try {
     res.status(200).json(await updateAdminProfileChangeRequest(req));
+  } catch (error) {
+    sendError(res, error);
+  }
+}
+
+export async function handleAdminNotificationOutbox(req: any, res: any) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    res.status(405).json({ error: 'Method not allowed.' });
+    return;
+  }
+  try {
+    res.status(200).json(await processNotificationOutbox(req));
   } catch (error) {
     sendError(res, error);
   }

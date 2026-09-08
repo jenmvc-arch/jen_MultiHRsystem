@@ -141,6 +141,14 @@ export default function PayrollView({
       await onUpdateEmployee(activePayrollEmployee.id, {
         payrollDocumentDisplaySettings: displaySettingsDraft
       });
+      if (selectedPayrollRecord && onSavePayrollRecord) {
+        const nextRecord = {
+          ...selectedPayrollRecord,
+          displaySettingsSnapshot: { ...displaySettingsDraft },
+        };
+        await onSavePayrollRecord(nextRecord);
+        setSelectedPayrollRecord(nextRecord);
+      }
       onShowNotification('Display Settings Saved', `Payroll document display settings were saved for ${activePayrollEmployee.name}.`);
     } catch (error: any) {
       // The parent employee update handler reports remote sync failures. Avoid
@@ -169,18 +177,41 @@ export default function PayrollView({
 
   const handleSelectedEmployeeChange = (employeeId: string) => {
     setSelectedEmployeeId(employeeId);
+    setSelectedPayrollRecord(null);
+    setSelectedPayoutKind(null);
+    if (activeSubTab === 'payslip-preview') {
+      setActiveSubTab('editor');
+    }
   };
 
   const handleSelectedPayPeriodChange = (payPeriod: string) => {
     setSelectedPayPeriod(payPeriod);
     setSelectedPayrollRecord(null);
     setSelectedPayrollFileRecordIds([]);
+    setSelectedPayoutKind(null);
+    if (activeSubTab === 'payslip-preview') {
+      setActiveSubTab('editor');
+    }
   };
 
   const handleSelectedDepartmentChange = (department: string) => {
     setSelectedDepartment(department);
     setSelectedPayrollRecord(null);
     setSelectedPayrollFileRecordIds([]);
+    setSelectedPayoutKind(null);
+    if (activeSubTab === 'payslip-preview') {
+      setActiveSubTab('editor');
+    }
+  };
+
+  const openPayrollPreview = (record: PayrollRecord2026, employeeId?: string) => {
+    setSelectedPayrollRecord(record);
+    if (employeeId) {
+      setSelectedEmployeeId(employeeId);
+    }
+    setSelectedPayPeriod(`${HISTORY_MONTHS[record.payrollMonth]} ${record.payrollYear}`);
+    setSelectedPayoutKind(record.payoutKind && record.payoutKind !== 'regular' ? record.payoutKind : null);
+    setActiveSubTab('payslip-preview');
   };
 
   const payrollFileRecords = useMemo(() => {
@@ -286,7 +317,7 @@ export default function PayrollView({
           <div>
             <h4 className="font-bold text-xs text-primary uppercase tracking-wider">Document Display Settings</h4>
             <p className="text-[11px] text-on-surface-variant mt-1">
-              Saved per employee and used for both Payslip and Payment Voucher output.
+              Changes update the editor and payslip preview immediately. Save to persist them for this employee and future documents.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -349,6 +380,15 @@ export default function PayrollView({
           >
             {isSavingDisplaySettings ? 'Saving...' : 'Save Display Settings'}
           </button>
+          {selectedPayrollRecord && (
+            <button
+              type="button"
+              onClick={() => openPayrollPreview(selectedPayrollRecord, selectedEmployeeId)}
+              className="rounded border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/10"
+            >
+              Preview Payslip
+            </button>
+          )}
         </div>
       </div>
     );
@@ -473,11 +513,7 @@ export default function PayrollView({
                       <td className="p-3 text-center">
                         <button
                           type="button"
-                          onClick={() => {
-                            setSelectedPayrollRecord(record);
-                            setSelectedPayPeriod(`${HISTORY_MONTHS[record.payrollMonth]} ${record.payrollYear}`);
-                            setActiveSubTab('payslip-preview');
-                          }}
+                          onClick={() => openPayrollPreview(record, activeEmployee.id)}
                           className="px-2.5 py-1 bg-primary/10 text-primary hover:bg-primary/20 rounded font-bold transition-colors cursor-pointer text-[10px]"
                         >
                           View {record.payoutTitle || record.documentType || getPayrollDocumentProfile(activeEmployee).documentType}
@@ -767,7 +803,7 @@ export default function PayrollView({
                         <td className="p-3 text-right font-mono font-bold text-green-700">{formatMoney(record.netPay || (record as PayrollRecord2026 & { netSalary?: number }).netSalary || 0)}</td>
                         <td className="p-3">{record.createdAt || '—'}</td>
                         <td className="p-3 text-right">
-                          <button type="button" onClick={() => { setSelectedPayrollRecord(record); setSelectedEmployeeId(employee?.id || selectedEmployeeId); setActiveSubTab('payslip-preview'); }} className="rounded bg-primary/10 px-2.5 py-1.5 font-bold text-primary hover:bg-primary/20">Preview Payslip</button>
+                          <button type="button" onClick={() => openPayrollPreview(record, employee?.id || selectedEmployeeId)} className="rounded bg-primary/10 px-2.5 py-1.5 font-bold text-primary hover:bg-primary/20">Preview Payslip</button>
                         </td>
                       </tr>
                     );
@@ -789,7 +825,7 @@ export default function PayrollView({
               activeEntity={activeEntity}
               payMonth={selectedPayrollRecord.payrollMonth}
               payYear={selectedPayrollRecord.payrollYear}
-              displaySettingsOverride={selectedPayrollRecord.displaySettingsSnapshot || displaySettingsDraft}
+              displaySettingsOverride={displaySettingsDraft}
               payrollRecordOverride={selectedPayrollRecord}
             />
           ) : (

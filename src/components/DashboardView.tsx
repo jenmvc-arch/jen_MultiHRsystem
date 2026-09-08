@@ -4,26 +4,30 @@
  */
 
 import React, { useState } from 'react';
-import { 
-  Users, 
-  CreditCard, 
-  Award, 
-  ArrowRight, 
-  CheckCircle, 
-  TrendingUp,
-  ChevronRight,
-  FileText,
-  UserPlus,
+import {
+  AlertCircle,
+  ArrowRight,
   Building2,
-  MapPin,
-  Copy,
-  Globe,
-  ShieldCheck,
+  Calendar,
   Check,
-  Sliders,
-  Calendar
+  CheckCircle,
+  ChevronRight,
+  Copy,
+  CreditCard,
+  FileText,
+  MapPin,
+  ShieldCheck,
+  TrendingUp,
+  UserPlus,
+  Users
 } from 'lucide-react';
-import { Employee, ReviewCycle, CorporateEntity, EmployeePerformance, PayrollRecord2026 } from '../types';
+import {
+  CorporateEntity,
+  Employee,
+  EmployeePerformance,
+  PayrollRecord2026,
+  ReviewCycle
+} from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
 import { getEffectiveEmploymentStatusForDate, isCurrentEmploymentStatus } from '../data';
 import { getGmt8DateString } from '../lib/dateUtils';
@@ -35,10 +39,28 @@ interface DashboardViewProps {
   performances: EmployeePerformance[];
   payrollRecords2026?: PayrollRecord2026[];
   onNavigate: (tab: any) => void;
+  onOpenPayslip?: (employeeId: string) => void;
   onOpenNewEmployeeModal: () => void;
   activeEntityId?: string;
   onChangeActiveEntity?: (id: string) => void;
 }
+
+const monthLabels = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December'
+];
+
+const monthAbbreviations = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export default function DashboardView({
   employees,
@@ -47,603 +69,554 @@ export default function DashboardView({
   performances,
   payrollRecords2026,
   onNavigate,
+  onOpenPayslip,
   onOpenNewEmployeeModal,
-  activeEntityId,
-  onChangeActiveEntity
+  activeEntityId
 }: DashboardViewProps) {
-  const selectedEntityId = activeEntityId;
   const [addressCopied, setAddressCopied] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<number>(() => new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear());
 
-  // 1. Filter employees by selected corporate subsidiary
-  const filteredEmployees = selectedEntityId === 'all' 
-    ? employees 
-    : employees.filter(e => e.entityId === selectedEntityId);
-
-  // 2. Find active entity if specific one is selected
-  const activeEntity = entities.find(ent => ent.id === selectedEntityId);
-
-  // 3. Compute dynamic stats
-  const totalEmployees = filteredEmployees.length;
+  const filteredEmployees = activeEntityId === 'all'
+    ? employees
+    : employees.filter((employee) => employee.entityId === activeEntityId);
+  const activeEntity = entities.find((entity) => entity.id === activeEntityId);
   const todayIsoDate = getGmt8DateString();
-  const activeEmployees = filteredEmployees.filter(
-    e => isCurrentEmploymentStatus(getEffectiveEmploymentStatusForDate(e, todayIsoDate))
-  ).length;
-  const onLeaveEmployees = filteredEmployees.filter(
-    e => getEffectiveEmploymentStatusForDate(e, todayIsoDate) === 'On Leave'
-  ).length;
-  
-  // Find actual processed payroll records matching the selected month and year
-  const matchingRecords = (payrollRecords2026 || []).filter(
-    r => r.payrollYear === selectedYear && r.payrollMonth === (selectedMonth + 1)
+  const activeEmployees = filteredEmployees.filter((employee) => (
+    isCurrentEmploymentStatus(getEffectiveEmploymentStatusForDate(employee, todayIsoDate))
+  )).length;
+  const activeEmployeeProfiles = filteredEmployees.filter((employee) => (
+    isCurrentEmploymentStatus(getEffectiveEmploymentStatusForDate(employee, todayIsoDate))
+  ));
+  const onLeaveEmployees = filteredEmployees.filter((employee) => (
+    getEffectiveEmploymentStatusForDate(employee, todayIsoDate) === 'On Leave'
+  )).length;
+
+  const calculateRecordGross = (record: PayrollRecord2026) => (
+    record.basicSalary
+      + (record.allowanceGeneral || 0)
+      + (record.allowanceTransport || 0)
+      + (record.allowanceParking || 0)
+      + (record.allowanceMeal || 0)
+      + (record.allowanceAccommodation || 0)
+      + (record.allowancePhone || 0)
+      + (record.overtime || 0)
+      + (record.bonusAmount || 0)
+      + (record.commissionAmount || 0)
+      + (record.backPayAmount || 0)
+      + (record.awsAmount || 0)
+      + (record.compensationAmount || 0)
   );
 
-  const calculateRecordGross = (r: PayrollRecord2026) => {
-    return r.basicSalary +
-      (r.allowanceGeneral || 0) +
-      (r.allowanceTransport || 0) +
-      (r.allowanceParking || 0) +
-      (r.allowanceMeal || 0) +
-      (r.allowanceAccommodation || 0) +
-      (r.allowancePhone || 0) +
-      (r.overtime || 0) +
-      (r.bonusAmount || 0) +
-      (r.commissionAmount || 0) +
-      (r.backPayAmount || 0) +
-      (r.awsAmount || 0) +
-      (r.compensationAmount || 0);
-  };
-
-  const baselineGrossPayroll = filteredEmployees.reduce(
-    (acc, e) => acc + e.basicSalary + (e.housingAllowance || 0) + (e.transportAllowance || 0), 
-    0
-  );
-
-  const totalPayroll = matchingRecords.length > 0
-    ? Math.round(matchingRecords.reduce((acc, r) => acc + calculateRecordGross(r), 0))
-    : Math.round(baselineGrossPayroll);
-
-  const averageSalary = matchingRecords.length > 0
-    ? Math.round(matchingRecords.reduce((acc, r) => acc + r.basicSalary, 0) / matchingRecords.length)
-    : (totalEmployees > 0 
-        ? Math.round(filteredEmployees.reduce((acc, e) => acc + e.basicSalary, 0) / totalEmployees) 
-        : 0);
-
-  // 4. Compute dynamic performance metrics matching current review cycle
-  const currentCycleId = reviewCycles[0]?.id || 'cycle-2026-annual';
-  const entityPerformances = performances.filter(
-    p => p.reviewCycleId === currentCycleId && filteredEmployees.some(e => e.id === p.employeeId)
-  );
-
-  const reviewsCompletedCount = entityPerformances.filter(p => p.reviewStatus === 'Completed').length;
-  const reviewsPendingCount = Math.max(0, totalEmployees - reviewsCompletedCount);
-  
-  const ratedPerfs = entityPerformances.filter(p => p.reviewStatus === 'Completed' && p.rating > 0);
-  const averageRating = ratedPerfs.length > 0 
-    ? parseFloat((ratedPerfs.reduce((acc, p) => acc + p.rating, 0) / ratedPerfs.length).toFixed(1))
+  const payrollRecords = payrollRecords2026 || [];
+  const matchingRecords = payrollRecords.filter((record) => (
+    record.payrollYear === selectedYear
+    && record.payrollMonth === selectedMonth + 1
+    && record.status !== 'Draft'
+  ));
+  const hasPayrollRecord = matchingRecords.length > 0;
+  const totalPayroll = hasPayrollRecord
+    ? Math.round(matchingRecords.reduce((total, record) => total + calculateRecordGross(record), 0))
     : 0;
+  const estimatedPayroll = Math.round(activeEmployeeProfiles.reduce(
+    (total, employee) => total + employee.basicSalary + (employee.housingAllowance || 0) + (employee.transportAllowance || 0),
+    0
+  ));
+  const displayedPayroll = hasPayrollRecord ? totalPayroll : estimatedPayroll;
+  const averageSalary = hasPayrollRecord
+    ? Math.round(matchingRecords.reduce((total, record) => total + record.basicSalary, 0) / matchingRecords.length)
+    : activeEmployees > 0
+      ? Math.round(activeEmployeeProfiles.reduce((total, employee) => total + employee.basicSalary, 0) / activeEmployees)
+      : 0;
 
-  // 5. Dynamic Chart Scaling based on selected subsidiary's payroll ratio
-  const currentMonthIdx = selectedMonth;
-  const currentYear = selectedYear;
-  const allMonthsAbbr = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const allMonthsFull = [
-    "January", "February", "March", "April", "May", "June", 
-    "July", "August", "September", "October", "November", "December"
-  ];
-  const currentMonthName = allMonthsFull[currentMonthIdx];
-  const currentMonthAbbr = allMonthsAbbr[currentMonthIdx];
-  const chartLabels = allMonthsAbbr.slice(0, currentMonthIdx + 1);
+  const currentCycle = reviewCycles[0];
+  const currentCycleId = currentCycle?.id || 'cycle-2026-annual';
+  const entityPerformances = performances.filter((performance) => (
+    performance.reviewCycleId === currentCycleId
+    && filteredEmployees.some((employee) => employee.id === performance.employeeId)
+  ));
+  const reviewsCompletedCount = entityPerformances.filter((performance) => (
+    performance.reviewStatus === 'Completed'
+  )).length;
+  const reviewsPendingCount = currentCycle ? Math.max(0, activeEmployees - reviewsCompletedCount) : 0;
 
-  // Calculate scaledValues dynamically from historical database records
-  const scaledValues = chartLabels.map((_, idx) => {
-    const monthNum = idx + 1;
-    const monthlyRecords = (payrollRecords2026 || []).filter(
-      r => r.payrollYear === selectedYear && r.payrollMonth === monthNum
-    );
-    if (monthlyRecords.length > 0) {
-      return Math.round(monthlyRecords.reduce((acc, r) => acc + calculateRecordGross(r), 0));
-    }
-    return baselineGrossPayroll;
-  });
-
-  const maxScaledValue = Math.max(...scaledValues, 1000);
-  const chartMaxVal = Math.ceil(maxScaledValue / 5000) * 5000 || 5000;
-
-  const getChartY = (val: number) => {
-    const minY = 220;
-    const maxY = 30;
-    const percent = val / chartMaxVal;
-    return minY - percent * (minY - maxY);
-  };
-
-  const chartPoints = scaledValues.map((val, idx) => {
-    const totalPoints = chartLabels.length;
-    const x = totalPoints > 1 
-      ? 50 + idx * (600 / (totalPoints - 1))
-      : 350;
+  const chartRows = monthAbbreviations.slice(0, selectedMonth + 1).map((label, index) => {
+    const monthlyRecords = payrollRecords.filter((record) => (
+      record.payrollYear === selectedYear
+      && record.payrollMonth === index + 1
+      && record.status !== 'Draft'
+    ));
     return {
-      x,
-      y: getChartY(val),
-      val: `RM ${val.toLocaleString()}`
+      label,
+      value: monthlyRecords.length > 0
+        ? Math.round(monthlyRecords.reduce((total, record) => total + calculateRecordGross(record), 0))
+        : null
     };
   });
+  const chartValues = chartRows.flatMap((row) => row.value === null ? [] : [row.value]);
+  const chartMaxValue = Math.max(Math.ceil(Math.max(...chartValues, 1000) / 5000) * 5000, 5000);
+  const chartHasData = chartValues.length > 0;
+  const chartPlotWidth = 620;
+  const chartLeft = 56;
+  const chartBottom = 216;
+  const chartTop = 28;
+  const chartPoints = chartRows.map((row, index) => {
+    const x = chartRows.length > 1
+      ? chartLeft + index * (chartPlotWidth / (chartRows.length - 1))
+      : chartLeft + chartPlotWidth / 2;
+    const y = row.value === null
+      ? null
+      : chartBottom - (row.value / chartMaxValue) * (chartBottom - chartTop);
+    return { ...row, x, y };
+  });
+  const chartSegments: Array<Array<{ x: number; y: number; value: number }>> = [];
+  chartPoints.forEach((point, index) => {
+    if (point.value === null || point.y === null) return;
+    const previousPoint = chartPoints[index - 1];
+    if (!previousPoint || previousPoint.value === null) chartSegments.push([]);
+    chartSegments[chartSegments.length - 1].push({
+      x: point.x,
+      y: point.y,
+      value: point.value
+    });
+  });
 
-  const yAxisTicks = [
-    { label: `RM ${Math.round(chartMaxVal / 1000)}k`, y: 34 },
-    { label: `RM ${Math.round((chartMaxVal * 0.75) / 1000)}k`, y: 84 },
-    { label: `RM ${Math.round((chartMaxVal * 0.5) / 1000)}k`, y: 134 },
-    { label: `RM ${Math.round((chartMaxVal * 0.25) / 1000)}k`, y: 184 },
-    { label: `RM 0`, y: 224 }
+  const missingRegistrationFields = activeEntity
+    ? [
+      ['SSM registration', activeEntity.registrationNumber],
+      ['Tax reference', activeEntity.taxReferenceNo],
+      ['EPF reference', activeEntity.epfReferenceNo],
+      ['SOCSO reference', activeEntity.socsoReferenceNo]
+    ].filter(([, value]) => !value).map(([label]) => label)
+    : [];
+
+  const attentionItems = [
+    ...(reviewsPendingCount > 0 ? [{
+      title: 'Performance reviews pending',
+      detail: `${reviewsPendingCount} employee${reviewsPendingCount === 1 ? '' : 's'} still need attention${currentCycle ? ` in ${currentCycle.name}` : ''}.`,
+      action: 'Open reviews',
+      onClick: () => onNavigate('performance'),
+      tone: 'red'
+    }] : []),
+    ...(!currentCycle ? [{
+      title: 'Review cycle not configured',
+      detail: 'Create a performance cycle before assigning employee reviews.',
+      action: 'Open performance setup',
+      onClick: () => onNavigate('performance'),
+      tone: 'slate'
+    }] : []),
+    ...(!hasPayrollRecord ? [{
+      title: 'Payroll record not available',
+      detail: `There is no processed payroll record for ${monthLabels[selectedMonth]} ${selectedYear}.`,
+      action: 'Open payroll',
+      onClick: () => onNavigate('payroll'),
+      tone: 'amber'
+    }] : []),
+    ...(onLeaveEmployees > 0 ? [{
+      title: 'Leave activity to review',
+      detail: `${onLeaveEmployees} active employee${onLeaveEmployees === 1 ? '' : 's'} currently marked on leave.`,
+      action: 'Review leave',
+      onClick: () => onNavigate('leave-management'),
+      tone: 'amber'
+    }] : []),
+    ...(missingRegistrationFields.length > 0 ? [{
+      title: 'Complete company profile',
+      detail: `Missing: ${missingRegistrationFields.join(', ')}.`,
+      action: 'Open settings',
+      onClick: () => onNavigate('entities'),
+      tone: 'slate'
+    }] : [])
   ];
 
-  const linePathD = `M ${chartPoints.map(p => `${p.x} ${p.y}`).join(' L ')}`;
-  const areaPathD = `M 50 220 L ${chartPoints.map(p => `${p.x} ${p.y}`).join(' L ')} L ${chartPoints[chartPoints.length - 1]?.x || 50} 220 Z`;
-
-  // 6. Action: copy address to clipboard
-  const handleCopyAddress = (address: string) => {
-    navigator.clipboard.writeText(address);
+  const handleCopyAddress = async (address: string) => {
+    if (!navigator.clipboard) return;
+    await navigator.clipboard.writeText(address);
     setAddressCopied(true);
-    setTimeout(() => setAddressCopied(false), 2000);
+    window.setTimeout(() => setAddressCopied(false), 2000);
   };
 
+  const formatMoney = (value: number) => `RM ${value.toLocaleString()}`;
+
   return (
-    <div className="mx-auto max-w-[1440px] space-y-6 animate-in fade-in duration-200">
-      
-      {/* Header Banner */}
-      <div className="flex flex-col gap-5 text-left md:flex-row md:items-end md:justify-between">
+    <div className="mx-auto max-w-[1440px] space-y-5 animate-in fade-in duration-200">
+      <header className="flex flex-col gap-4 border-b border-neutral-border/70 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
-            <span className="h-2 w-2 rounded-full bg-green-500 shadow-[0_0_0_4px_rgba(34,197,94,0.12)]" />
-            Live workspace
+          <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+            Employer dashboard
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-on-background md:text-4xl">Employer overview</h1>
-          <p className="mt-1 max-w-2xl text-sm text-on-surface-variant">
-            {activeEntity?.name || 'Your company'} at a glance. You have <span className="font-semibold text-primary">{reviewsPendingCount} performance reviews</span> pending for the {currentMonthName} pay period.
+          <p className="mt-1.5 max-w-2xl text-sm text-on-surface-variant">
+            A focused view of payroll, people and the next actions for {activeEntity?.name || 'your workspace'}.
           </p>
         </div>
-      </div>
 
-      {/* Dynamic Month/Year Slicer Controls */}
-      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-neutral-border/80 bg-white p-4 text-left shadow-sm sm:flex-row sm:items-center">
-        <div className="flex items-center gap-2 font-bold text-primary">
-          <Calendar className="w-4 h-4 text-primary" />
-          <span className="text-[10px] uppercase tracking-[0.18em]">Dashboard view period</span>
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-border bg-white p-2 shadow-sm">
+          <span className="px-2 text-[10px] font-bold uppercase tracking-[0.16em] text-on-surface-variant">View period</span>
+          <label className="sr-only" htmlFor="dashboard-month">Month</label>
+          <select
+            id="dashboard-month"
+            value={selectedMonth}
+            onChange={(event) => setSelectedMonth(Number(event.target.value))}
+            className="rounded-lg border border-neutral-border bg-neutral-50 px-2.5 py-1.5 text-xs font-bold text-on-surface outline-none transition-colors hover:bg-neutral-100 focus:border-primary focus:ring-2 focus:ring-primary/20"
+          >
+            {monthLabels.map((month, index) => <option key={month} value={index}>{month}</option>)}
+          </select>
+          <label className="sr-only" htmlFor="dashboard-year">Year</label>
+          <select
+            id="dashboard-year"
+            value={selectedYear}
+            onChange={(event) => setSelectedYear(Number(event.target.value))}
+            className="rounded-lg border border-neutral-border bg-neutral-50 px-2.5 py-1.5 text-xs font-bold text-on-surface outline-none transition-colors hover:bg-neutral-100 focus:border-primary focus:ring-2 focus:ring-primary/20"
+          >
+            {[2024, 2025, 2026, 2027].map((year) => <option key={year} value={year}>{year}</option>)}
+          </select>
+          <Calendar className="mr-1 h-4 w-4 text-primary" aria-hidden="true" />
         </div>
-        
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Month</span>
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="cursor-pointer rounded-lg border border-neutral-border bg-neutral-50 px-2.5 py-1.5 text-xs font-bold text-on-surface outline-none transition-all hover:bg-neutral-100 focus:border-primary"
-            >
-              {allMonthsFull.map((m, idx) => (
-                <option key={idx} value={idx}>{m}</option>
-              ))}
-            </select>
-          </div>
+      </header>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Year</span>
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="cursor-pointer rounded-lg border border-neutral-border bg-neutral-50 px-2.5 py-1.5 text-xs font-bold text-on-surface outline-none transition-all hover:bg-neutral-100 focus:border-primary"
-            >
-              {[2024, 2025, 2026, 2027].map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-
-
-
-      {/* Dedicated Corporate Subsidiary Details Card */}
-      {selectedEntityId !== 'all' && activeEntity && (
-        <div className="bg-white border border-neutral-border rounded-lg p-6 shadow-sm text-left grid grid-cols-1 md:grid-cols-3 gap-6 animate-in slide-in-from-top-4 duration-300">
-          
-          {/* Subsidiary Profile */}
-          <div className="md:col-span-1 border-b md:border-b-0 md:border-r border-neutral-border pb-4 md:pb-0 md:pr-6 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center gap-2 text-primary font-bold">
-                <Building2 className="w-4 h-4 text-primary" />
-                <span className="text-[10px] uppercase tracking-wider">Corporate Subsidiary profile</span>
-              </div>
-              <h2 className="text-lg font-bold text-on-background mt-1.5 leading-tight">{activeEntity.name}</h2>
-              <div className="text-xs text-on-surface-variant mt-2 leading-relaxed flex items-start gap-1.5">
-                <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5 text-on-surface-variant/70" />
-                <span>{activeEntity.address}</span>
-              </div>
-            </div>
-
-            <div className="mt-4 pt-4 border-t border-neutral-border/40 flex items-center justify-between">
-              <button
-                onClick={() => handleCopyAddress(activeEntity.address)}
-                className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                {addressCopied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-green-600" />
-                    <span className="text-green-600">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copy Company Address</span>
-                  </>
-                )}
-              </button>
-              <span className="text-[10px] font-mono text-on-surface-variant bg-neutral-100 px-2 py-0.5 rounded font-semibold">
-                ID: {activeEntity.id}
+      {activeEntity && (
+        <section className="rounded-2xl border border-neutral-border bg-white p-4 shadow-sm md:p-5" aria-labelledby="workspace-context-title">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Building2 className="h-5 w-5" aria-hidden="true" />
               </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span id="workspace-context-title" className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Active workspace</span>
+                  <span className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-[10px] font-semibold text-on-surface-variant">{activeEntity.id}</span>
+                </div>
+                <h2 className="mt-1 text-xl font-bold text-on-background">{activeEntity.name}</h2>
+                <div className="mt-1 flex items-start gap-1.5 text-xs text-on-surface-variant">
+                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span className="max-w-2xl">{activeEntity.address}</span>
+                </div>
+              </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => handleCopyAddress(activeEntity.address)}
+              className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-lg border border-neutral-border px-3 py-2 text-[11px] font-bold text-primary transition-colors hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/30 lg:self-center"
+            >
+              {addressCopied ? <Check className="h-3.5 w-3.5 text-green-600" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+              <span className={addressCopied ? 'text-green-600' : undefined}>{addressCopied ? 'Address copied' : 'Copy address'}</span>
+            </button>
           </div>
-          
-          {/* Detailed Tax & Social Security Registry Details */}
-          <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-            
-            <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-border/40 space-y-3">
-              <span className="font-bold text-[10px] text-on-surface-variant uppercase tracking-wider block border-b border-neutral-border/40 pb-1">Statutory Registrations</span>
-              <div className="space-y-2 font-mono text-[11px]">
-                <div className="flex justify-between items-center">
-                  <span className="text-on-surface-variant">SSM Reg No:</span>
-                  <span className="font-semibold text-on-surface">{activeEntity.registrationNumber}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-on-surface-variant">Tax Ref (TIN):</span>
-                  <span className="font-semibold text-on-surface">{activeEntity.taxReferenceNo}</span>
-                </div>
-              </div>
-            </div>
 
-            <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-border/40 space-y-3">
-              <span className="font-bold text-[10px] text-on-surface-variant uppercase tracking-wider block border-b border-neutral-border/40 pb-1">Social Security Credentials</span>
-              <div className="space-y-2 font-mono text-[11px]">
-                <div className="flex justify-between items-center">
-                  <span className="text-on-surface-variant">EPF Ref No:</span>
-                  <span className="font-semibold text-on-surface">{activeEntity.epfReferenceNo}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-on-surface-variant">SOCSO Ref No:</span>
-                  <span className="font-semibold text-on-surface">{activeEntity.socsoReferenceNo}</span>
-                </div>
+          <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-neutral-border/70 pt-4 sm:grid-cols-4">
+            {[
+              ['SSM registration', activeEntity.registrationNumber],
+              ['Tax reference', activeEntity.taxReferenceNo],
+              ['EPF reference', activeEntity.epfReferenceNo],
+              ['SOCSO reference', activeEntity.socsoReferenceNo]
+            ].map(([label, value]) => (
+              <div key={label} className="min-w-0">
+                <dt className="text-[9px] font-bold uppercase tracking-[0.12em] text-on-surface-variant">{label}</dt>
+                <dd className="mt-1 truncate font-mono text-[11px] font-semibold text-on-surface">{value || 'Not set'}</dd>
               </div>
-            </div>
-
-            <div className="sm:col-span-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-[11px] text-on-surface-variant bg-primary/5 px-4 py-2.5 rounded-lg border border-primary/20">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-primary shrink-0" />
-                <span>Operating Currency: <strong className="text-primary font-mono">{activeEntity.currency} (Malaysian Ringgit)</strong></span>
-              </div>
-              <div className="flex items-center gap-2 font-medium">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-green-800 text-[10px] font-bold uppercase tracking-wider">Active LHDN Connection</span>
-              </div>
-            </div>
-
-          </div>
-        </div>
+            ))}
+          </dl>
+        </section>
       )}
 
-      {/* Grid: 4 Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
-        {/* Card 1: Total Workforce */}
-        <div 
-          onClick={() => onNavigate('directory')}
-          className="group flex cursor-pointer flex-col justify-between rounded-2xl border border-neutral-border/80 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-md"
-          id="stat-card-workforce"
-        >
-          <div className="flex justify-between items-start">
-            <span className="text-sm font-bold text-on-surface-variant">Active employees</span>
-            <span className="rounded-xl bg-primary/10 p-2 text-primary"><Users className="h-4 w-4" /></span>
-          </div>
-          <div className="mt-4">
-            <div className="text-3xl font-bold text-on-background">{activeEmployees}</div>
-            <div className="mt-1 text-xs text-on-surface-variant">
-              <span className="font-semibold text-green-600">Current staff</span>
-              {onLeaveEmployees > 0 && <> · {onLeaveEmployees} On Leave</>}
-            </div>
-          </div>
-          <div className="mt-4 flex items-center text-xs font-bold text-primary group-hover:underline">
-            Open directory <ChevronRight className="ml-1 h-3 w-3" />
-          </div>
-        </div>
-
-        {/* Card 2: Total Payout */}
-        <div 
-          onClick={() => onNavigate('payroll')}
-          className="group flex cursor-pointer flex-col justify-between rounded-2xl border border-neutral-border/80 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-md"
-          id="stat-card-payroll"
-        >
-          <div className="flex justify-between items-start">
-            <span className="text-sm font-bold text-on-surface-variant">Monthly {currentMonthAbbr} payroll</span>
-            <span className="rounded-xl bg-primary/10 p-2 text-primary"><CreditCard className="h-4 w-4" /></span>
-          </div>
-          <div className="mt-4">
-            <div className="text-3xl font-bold text-on-background">RM {totalPayroll.toLocaleString()}</div>
-            <div className="mt-1 text-xs text-on-surface-variant">
-              Average basic salary: <span className="font-semibold">RM {averageSalary.toLocaleString()}</span>
-            </div>
-          </div>
-          <div className="mt-4 flex items-center text-xs font-bold text-primary group-hover:underline">
-            Open payroll center <ChevronRight className="ml-1 h-3 w-3" />
-          </div>
-        </div>
-
-        {/* Card 3: Leave Activity */}
-        <div 
-          onClick={() => onNavigate('leave-management')}
-          className="group flex cursor-pointer flex-col justify-between rounded-2xl border border-neutral-border/80 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-md"
-          id="stat-card-leave-activity"
-        >
-          <div className="flex justify-between items-start">
-            <span className="text-sm font-bold text-on-surface-variant">Leave activity</span>
-            <span className="rounded-xl bg-amber-100 p-2 text-amber-700"><Calendar className="h-4 w-4" /></span>
-          </div>
-          <div className="mt-4">
-            <div className="text-3xl font-bold text-on-background">{onLeaveEmployees}</div>
-            <div className="mt-1 flex items-center gap-1 text-xs font-semibold text-amber-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Currently on leave
-            </div>
-          </div>
-          <div className="mt-4 flex items-center text-xs font-bold text-primary group-hover:underline">
-            Review leave requests <ChevronRight className="ml-1 h-3 w-3" />
-          </div>
-        </div>
-
-        {/* Card 4: Performance Progress */}
-        <div 
-          onClick={() => onNavigate('performance')}
-          className="group flex cursor-pointer flex-col justify-between rounded-2xl border border-neutral-border/80 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-md"
-          id="stat-card-performance-progress"
-        >
-          <div className="flex justify-between items-start">
-            <span className="text-sm font-bold text-on-surface-variant">Performance progress</span>
-            <span className="rounded-xl bg-green-100 p-2 text-green-700"><CheckCircle className="h-4 w-4" /></span>
-          </div>
-          <div className="mt-4">
-            <div className="text-3xl font-bold text-on-background">{reviewsCompletedCount}</div>
-            <div className="mt-1 flex items-center gap-1 text-xs font-semibold text-green-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-600" /> {reviewsPendingCount} still pending
-            </div>
-          </div>
-          <div className="mt-4 flex items-center text-xs font-bold text-primary group-hover:underline">
-            Open appraisal cycles <ChevronRight className="ml-1 h-3 w-3" />
-          </div>
-        </div>
-      </div>
-
-      {/* Grid: 2 Columns (Main Content & Sidebar widgets) */}
-      <div className="grid grid-cols-1 gap-6 text-left lg:grid-cols-12">
-        
-        {/* Left main: Chart & Recent Updates */}
-        <div className="lg:col-span-8 space-y-6">
-          
-          {/* Payroll Trend Chart */}
-          <div className="bg-white p-6 rounded-lg border border-neutral-border shadow-sm">
-            <div className="flex items-center justify-between mb-6">
+      <section className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
+        <article className="relative overflow-hidden rounded-2xl bg-primary p-6 text-white shadow-sm md:p-7">
+          <div className="absolute -right-10 -top-16 h-48 w-48 rounded-full border-[24px] border-white/10" aria-hidden="true" />
+          <div className="relative">
+            <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h3 className="font-semibold text-lg text-on-background">
-                  {selectedEntityId === 'all' ? 'Group' : activeEntity?.name} Payroll Expense (YTD)
-                </h3>
-                <p className="text-xs text-on-surface-variant">Monthly spending on gross salaries and allowances</p>
+                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/75">
+                  <CreditCard className="h-4 w-4" aria-hidden="true" />
+                  Payroll snapshot
+                </div>
+                <h2 className="mt-3 text-4xl font-bold tracking-tight md:text-5xl">
+                  {formatMoney(displayedPayroll)}
+                </h2>
+                <p className="mt-1 text-sm text-white/75">
+                  {monthLabels[selectedMonth]} {selectedYear} · {hasPayrollRecord ? `${matchingRecords.length} payroll record${matchingRecords.length === 1 ? '' : 's'}` : 'Estimated from employee profiles'}
+                </p>
               </div>
-              <span className="text-xs text-primary bg-primary-container/10 px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
-                <TrendingUp className="w-3.5 h-3.5" /> +4.2% YoY
+              <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] ${hasPayrollRecord ? 'bg-white/15 text-white' : 'bg-black/10 text-white/85'}`}>
+                {hasPayrollRecord ? 'Records available' : 'Estimate only'}
               </span>
             </div>
+            <div className="mt-7 flex flex-wrap items-end justify-between gap-4 border-t border-white/20 pt-4">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/65">Average basic salary</div>
+                <div className="mt-1 text-lg font-bold">{averageSalary > 0 ? formatMoney(averageSalary) : '—'}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onNavigate('payroll')}
+                className="inline-flex items-center gap-2 rounded-lg bg-white px-3.5 py-2 text-xs font-bold text-primary transition-transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-white/70 active:translate-y-px"
+              >
+                Open payroll center
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        </article>
 
-            {/* SVG Interactive Line/Area Chart */}
-            <div className="h-64 w-full relative">
-              <svg viewBox="0 0 700 240" className="w-full h-full overflow-visible">
-                <defs>
-                  <linearGradient id="gradient-area" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#18181b" stopOpacity="0.15" />
-                    <stop offset="100%" stopColor="#18181b" stopOpacity="0.0" />
-                  </linearGradient>
-                </defs>
-                
-                {/* Horizontal Grid lines */}
-                <line x1="50" y1="30" x2="680" y2="30" stroke="#e4e4e7" strokeDasharray="4 4" strokeWidth="1" />
-                <line x1="50" y1="80" x2="680" y2="80" stroke="#e4e4e7" strokeDasharray="4 4" strokeWidth="1" />
-                <line x1="50" y1="130" x2="680" y2="130" stroke="#e4e4e7" strokeDasharray="4 4" strokeWidth="1" />
-                <line x1="50" y1="180" x2="680" y2="180" stroke="#e4e4e7" strokeDasharray="4 4" strokeWidth="1" />
-                <line x1="50" y1="220" x2="680" y2="220" stroke="#a1a1aa" strokeWidth="1" />
+        <article className="rounded-2xl border border-neutral-border bg-white p-5 shadow-sm" aria-labelledby="attention-title">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Action queue</div>
+              <h2 id="attention-title" className="mt-1 text-xl font-bold text-on-background">What needs attention</h2>
+            </div>
+            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">{attentionItems.length}</span>
+          </div>
+          <div className="mt-4 space-y-3">
+            {attentionItems.length === 0 ? (
+              <div className="flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 p-3">
+                <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-green-700" aria-hidden="true" />
+                <div>
+                  <div className="text-sm font-bold text-green-900">All clear for this view</div>
+                  <p className="mt-0.5 text-xs text-green-800">No outstanding payroll, leave or performance actions were found.</p>
+                </div>
+              </div>
+            ) : (
+              attentionItems.slice(0, 3).map((item) => (
+                <div key={item.title} className={`rounded-xl border-l-4 p-3 ${item.tone === 'red' ? 'border-primary bg-primary/5' : item.tone === 'amber' ? 'border-amber-500 bg-amber-50' : 'border-slate-400 bg-slate-50'}`}>
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className={`mt-0.5 h-4 w-4 shrink-0 ${item.tone === 'red' ? 'text-primary' : item.tone === 'amber' ? 'text-amber-700' : 'text-slate-600'}`} aria-hidden="true" />
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold text-on-background">{item.title}</div>
+                      <p className="mt-0.5 text-xs text-on-surface-variant">{item.detail}</p>
+                      <button
+                        type="button"
+                        onClick={item.onClick}
+                        className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      >
+                        {item.action}
+                        <ChevronRight className="h-3 w-3" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </article>
+      </section>
 
-                {/* Dynamic Y-axis Labels */}
-                {yAxisTicks.map((tick, index) => (
-                  <text key={index} x="42" y={tick.y} fontSize="9" textAnchor="end" fill="#71717a" className="font-mono">
-                    {tick.label}
-                  </text>
-                ))}
+      <section className="grid grid-cols-1 gap-4 text-left sm:grid-cols-3">
+        <button
+          type="button"
+          onClick={() => onNavigate('directory')}
+          className="group rounded-2xl border border-neutral-border bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-bold text-on-surface-variant">Active employees</span>
+            <span className="rounded-xl bg-primary/10 p-2 text-primary"><Users className="h-4 w-4" aria-hidden="true" /></span>
+          </div>
+          <div className="mt-4 text-3xl font-bold text-on-background">{activeEmployees}</div>
+          <div className="mt-1 text-xs text-on-surface-variant">{onLeaveEmployees > 0 ? `${onLeaveEmployees} currently on leave` : 'No one currently on leave'}</div>
+          <div className="mt-4 flex items-center text-xs font-bold text-primary">Open directory <ChevronRight className="ml-1 h-3 w-3" aria-hidden="true" /></div>
+        </button>
 
-                {/* Chart Area */}
-                <path d={areaPathD} fill="url(#gradient-area)" />
+        <button
+          type="button"
+          onClick={() => onNavigate('leave-management')}
+          className="group rounded-2xl border border-neutral-border bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-bold text-on-surface-variant">Leave activity</span>
+            <span className="rounded-xl bg-amber-100 p-2 text-amber-700"><Calendar className="h-4 w-4" aria-hidden="true" /></span>
+          </div>
+          <div className="mt-4 text-3xl font-bold text-on-background">{onLeaveEmployees}</div>
+          <div className="mt-1 text-xs text-on-surface-variant">{onLeaveEmployees === 0 ? 'No active leave today' : 'Currently on leave'}</div>
+          <div className="mt-4 flex items-center text-xs font-bold text-primary">Review leave <ChevronRight className="ml-1 h-3 w-3" aria-hidden="true" /></div>
+        </button>
 
-                {/* Line Path */}
-                <path 
-                  d={linePathD} 
-                  fill="none" 
-                  stroke="#18181b" 
-                  strokeWidth="3" 
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+        <button
+          type="button"
+          onClick={() => onNavigate('performance')}
+          className="group rounded-2xl border border-neutral-border bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-bold text-on-surface-variant">Performance progress</span>
+            <span className="rounded-xl bg-green-100 p-2 text-green-700"><CheckCircle className="h-4 w-4" aria-hidden="true" /></span>
+          </div>
+          <div className="mt-4 text-3xl font-bold text-on-background">
+            {currentCycle ? <>{reviewsCompletedCount}<span className="text-lg text-on-surface-variant">/{activeEmployees}</span></> : '—'}
+          </div>
+          <div className="mt-1 text-xs text-on-surface-variant">
+            {currentCycle ? (reviewsPendingCount === 0 ? 'Current cycle complete' : `${reviewsPendingCount} still pending`) : 'No cycle configured'}
+          </div>
+          <div className="mt-4 flex items-center text-xs font-bold text-primary">Open appraisals <ChevronRight className="ml-1 h-3 w-3" aria-hidden="true" /></div>
+        </button>
+      </section>
 
-                {/* Data Nodes */}
-                {chartPoints.map((pt, idx) => (
-                  <g key={idx} className="group/node cursor-pointer">
-                    <circle 
-                      cx={pt.x} 
-                      cy={pt.y} 
-                      r="4" 
-                      fill="#FFFFFF" 
-                      stroke="#18181b" 
-                      strokeWidth="2.5" 
-                    />
-                    <circle 
-                      cx={pt.x} 
-                      cy={pt.y} 
-                      r="10" 
-                      fill="#18181b" 
-                      fillOpacity="0"
-                      className="hover:fill-opacity-10 transition-all"
-                    />
-                    {/* Tooltip on hover */}
-                    <g className="opacity-0 group-hover/node:opacity-100 transition-opacity duration-150 pointer-events-none">
-                      <rect x={pt.x - 38} y={pt.y - 35} width="76" height="22" rx="4" fill="#18181b" />
-                      <text x={pt.x} y={pt.y - 21} fontSize="9" fontWeight="bold" textAnchor="middle" fill="#FFFFFF" className="font-mono">{pt.val}</text>
+      <section className="grid grid-cols-1 gap-5 text-left lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
+        <article className="rounded-2xl border border-neutral-border bg-white p-5 shadow-sm md:p-6" aria-labelledby="payroll-trend-title">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-primary">
+                <TrendingUp className="h-4 w-4" aria-hidden="true" />
+                Payroll trend
+              </div>
+              <h2 id="payroll-trend-title" className="mt-1 text-xl font-bold text-on-background">Processed payroll, year to date</h2>
+              <p className="mt-1 text-xs text-on-surface-variant">Only months with an available payroll record are plotted.</p>
+            </div>
+            <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-on-surface-variant">{selectedYear} YTD</span>
+          </div>
+
+          {!chartHasData ? (
+            <div className="mt-6 flex min-h-56 items-center justify-center rounded-xl border border-dashed border-neutral-border bg-neutral-50 px-6 text-center">
+              <div>
+                <TrendingUp className="mx-auto h-6 w-6 text-on-surface-variant/60" aria-hidden="true" />
+                <p className="mt-2 text-sm font-bold text-on-surface">No payroll history for {selectedYear}</p>
+                <p className="mt-1 text-xs text-on-surface-variant">Generate or import a payroll record to start the trend.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-5 h-64 w-full">
+              <svg viewBox="0 0 700 250" className="h-full w-full" role="img" aria-label={`Processed payroll trend for ${selectedYear}`}>
+                {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+                  const y = chartBottom - ratio * (chartBottom - chartTop);
+                  return (
+                    <g key={ratio}>
+                      <line x1={chartLeft} y1={y} x2="680" y2={y} stroke="#e4e4e7" strokeDasharray="4 4" />
+                      <text x="46" y={y + 3} fontSize="9" textAnchor="end" fill="#71717a" className="font-mono">
+                        {formatMoney(Math.round((chartMaxValue * ratio) / 1000))}k
+                      </text>
                     </g>
-                  </g>
+                  );
+                })}
+                {chartSegments.map((segment, index) => (
+                  <path
+                    key={index}
+                    d={`M ${segment.map((point) => `${point.x} ${point.y}`).join(' L ')}`}
+                    fill="none"
+                    stroke="#b3261e"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 ))}
-
-                {/* X-axis Labels */}
-                {chartLabels.map((label, idx) => (
-                  <text key={idx} x={chartPoints[idx]?.x || 50} y="238" fontSize="10" textAnchor="middle" fill="#71717a" className="font-medium">{label}</text>
+                {chartPoints.map((point) => (
+                  <g key={point.label}>
+                    {point.value !== null && point.y !== null ? (
+                      <>
+                        <circle cx={point.x} cy={point.y} r="4" fill="#ffffff" stroke="#b3261e" strokeWidth="2.5" />
+                        <title>{`${point.label}: ${formatMoney(point.value)}`}</title>
+                      </>
+                    ) : (
+                      <line x1={point.x} y1={chartBottom - 4} x2={point.x} y2={chartBottom + 4} stroke="#a1a1aa" strokeDasharray="2 2" />
+                    )}
+                    <text x={point.x} y="242" fontSize="10" textAnchor="middle" fill="#71717a" className="font-medium">{point.label}</text>
+                  </g>
                 ))}
               </svg>
             </div>
-          </div>
+          )}
+        </article>
 
-          {/* Quick Informational / Action Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white p-6 rounded-lg border border-neutral-border shadow-sm">
-              <h3 className="font-semibold text-lg mb-4 text-on-background">Organization Directives</h3>
-              <div className="space-y-4">
-                <div className="p-3 bg-parchment/40 rounded border-l-4 border-secondary text-sm">
-                  <div className="font-semibold text-primary">Revised EPF Voluntary Submissions</div>
-                  <p className="text-xs text-on-surface-variant mt-1">Starting Nov 2023, voluntary employee contributions can exceed 11% directly via self-service.</p>
-                </div>
-                
-                 { (selectedEntityId === 'Red Point Sdn Bhd' || selectedEntityId === 'ENT-92') ? (
-                  <div className="p-3 bg-blue-50/50 rounded border-l-4 border-primary text-sm animate-in fade-in duration-300">
-                    <div className="font-semibold text-primary">LHDN Auto-Clearance Audit</div>
-                    <p className="text-xs text-on-surface-variant mt-1">Red Point Sdn Bhd internal audit and clearance reports are scheduled for submission on Dec 15th.</p>
-                  </div>
-                ) : (selectedEntityId === 'YSYD Sdn Bhd' || selectedEntityId === 'ENT-86') ? (
-                  <div className="p-3 bg-teal-50/50 rounded border-l-4 border-teal-600 text-sm animate-in fade-in duration-300">
-                    <div className="font-semibold text-teal-800">Labuan Tax Filings Extended</div>
-                    <p className="text-xs text-on-surface-variant mt-1">YSYD Sdn Bhd international contractor incentive list and Labuan offshore tax deadlines updated to Dec 31st.</p>
-                  </div>
-                ) : (
-                  <div className="p-3 bg-surface-container-low rounded border-l-4 border-outline text-sm">
-                    <div className="font-semibold text-on-surface">Annual Review Timeline Extended</div>
-                    <p className="text-xs text-on-surface-variant mt-1">Self-evaluations must be completed by Nov 5th. Contact HR team for support.</p>
-                  </div>
-                )}
-              </div>
+        <article className="rounded-2xl border border-neutral-border bg-white p-5 shadow-sm" aria-labelledby="quick-workflows-title">
+          <div className="flex items-center justify-between border-b border-neutral-border/70 pb-3">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Shortcuts</div>
+              <h2 id="quick-workflows-title" className="mt-1 text-xl font-bold text-on-background">Quick workflows</h2>
             </div>
+            <ArrowRight className="h-5 w-5 text-primary/50" aria-hidden="true" />
+          </div>
+          <div className="mt-4 space-y-3">
+            <button
+              type="button"
+              onClick={() => onNavigate('payroll')}
+              className="flex w-full items-center justify-between rounded-xl bg-primary px-3.5 py-3 text-left text-sm font-bold text-white transition-transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/30 active:translate-y-px"
+            >
+              <span className="flex items-center gap-2.5"><CreditCard className="h-4 w-4" aria-hidden="true" />Generate payroll</span>
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={onOpenNewEmployeeModal}
+              className="flex w-full items-center justify-between rounded-xl border border-neutral-border bg-neutral-50 px-3.5 py-3 text-left text-sm font-bold text-primary transition-colors hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <span className="flex items-center gap-2.5"><UserPlus className="h-4 w-4" aria-hidden="true" />Add employee</span>
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate('reports')}
+              className="flex w-full items-center justify-between rounded-xl border border-neutral-border bg-neutral-50 px-3.5 py-3 text-left text-sm font-bold text-primary transition-colors hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <span className="flex items-center gap-2.5"><FileText className="h-4 w-4" aria-hidden="true" />Open reports</span>
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        </article>
+      </section>
 
-            <div className="bg-white p-6 rounded-lg border border-neutral-border shadow-sm">
-              <h3 className="font-semibold text-lg mb-4 text-on-background">Review Cycles Overview</h3>
-              <div className="space-y-3">
-                {reviewCycles.map((cycle) => (
-                  <div key={cycle.id} className="flex justify-between items-center p-2.5 rounded hover:bg-surface-container-low transition-colors">
-                    <div>
-                      <div className="font-medium text-sm text-on-surface">{cycle.name}</div>
-                      <div className="text-xs text-on-surface-variant mt-0.5">{cycle.period}</div>
-                    </div>
-                    <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-semibold ${
-                      cycle.status === 'In Progress' 
-                        ? 'bg-blue-100 text-primary' 
-                        : cycle.status === 'Completed'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {cycle.status}
+      <section className="grid grid-cols-1 gap-5 text-left lg:grid-cols-2">
+        <article className="rounded-2xl border border-neutral-border bg-white p-5 shadow-sm" aria-labelledby="review-cycles-title">
+          <div className="flex items-center justify-between border-b border-neutral-border/70 pb-3">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Performance</div>
+              <h2 id="review-cycles-title" className="mt-1 text-xl font-bold text-on-background">Review cycles</h2>
+            </div>
+            <ShieldCheck className="h-5 w-5 text-primary/50" aria-hidden="true" />
+          </div>
+          {reviewCycles.length === 0 ? (
+            <div className="mt-4 rounded-xl border border-dashed border-neutral-border bg-neutral-50 p-4">
+              <p className="text-sm font-bold text-on-surface">No review cycles set up</p>
+              <p className="mt-1 text-xs text-on-surface-variant">Create a cycle in Performance Appraisal before assigning reviews.</p>
+              <button type="button" onClick={() => onNavigate('performance')} className="mt-3 text-xs font-bold text-primary hover:underline">Open performance setup</button>
+            </div>
+          ) : (
+            <div className="mt-3 divide-y divide-neutral-border/60">
+              {reviewCycles.slice(0, 4).map((cycle) => (
+                <div key={cycle.id} className="flex items-center justify-between gap-3 py-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-bold text-on-surface">{cycle.name}</div>
+                    <div className="mt-0.5 text-xs text-on-surface-variant">{cycle.period}</div>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${cycle.status === 'In Progress' ? 'bg-primary/10 text-primary' : cycle.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {cycle.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </article>
+
+        <article className="rounded-2xl border border-neutral-border bg-white p-5 shadow-sm" aria-labelledby="quick-payslip-title">
+          <div className="flex items-center justify-between border-b border-neutral-border/70 pb-3">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Payroll documents</div>
+              <h2 id="quick-payslip-title" className="mt-1 text-xl font-bold text-on-background">Quick payslips</h2>
+            </div>
+            <CreditCard className="h-5 w-5 text-primary/50" aria-hidden="true" />
+          </div>
+          <p className="mt-3 text-xs text-on-surface-variant">Open an employee document without leaving the dashboard.</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {filteredEmployees.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-neutral-border bg-neutral-50 p-4 text-xs text-on-surface-variant sm:col-span-2">No employees in this workspace.</div>
+            ) : (
+              filteredEmployees.slice(0, 4).map((employee) => (
+                <button
+                  key={employee.id}
+                  type="button"
+                  onClick={() => onOpenPayslip ? onOpenPayslip(employee.id) : onNavigate('payroll')}
+                  className="group flex min-w-0 items-center justify-between gap-2 rounded-xl border border-neutral-border/80 bg-neutral-50 p-2.5 text-left transition-colors hover:border-primary hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <EmployeeAvatar employee={employee} className="h-8 w-8 shrink-0 rounded-full" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-xs font-bold text-on-surface group-hover:text-primary">{employee.name}</span>
+                      <span className="block truncate text-[10px] text-on-surface-variant">{employee.designation}</span>
                     </span>
-                  </div>
-                ))}
-              </div>
-            </div>
+                  </span>
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-on-surface-variant group-hover:text-primary" aria-hidden="true" />
+                </button>
+              ))
+            )}
           </div>
-
-        </div>
-
-        {/* Right main: Quick Workflows & Recent Payslips */}
-        <div className="lg:col-span-4 space-y-6">
-          
-          {/* Quick Actions Panel */}
-          <div className="bg-white p-6 rounded-lg border border-neutral-border shadow-sm">
-            <h3 className="font-semibold text-lg text-on-background mb-4 pb-2 border-b border-surface-container">Quick Workflows</h3>
-            <div className="space-y-3">
-              <button 
-                onClick={() => onNavigate('payroll')}
-                className="w-full flex items-center justify-between p-3 rounded-md bg-primary text-white hover:opacity-95 text-sm font-medium shadow-sm transition-opacity cursor-pointer"
-              >
-                <span className="flex items-center gap-2.5">
-                  <CreditCard className="w-4 h-4" /> Generate Active Payroll
-                </span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-
-              <button 
-                onClick={onOpenNewEmployeeModal}
-                className="w-full flex items-center justify-between p-3 rounded-md bg-surface-container-low text-primary hover:bg-surface-container-high text-sm font-medium border border-neutral-border transition-colors cursor-pointer"
-              >
-                <span className="flex items-center gap-2.5">
-                  <UserPlus className="w-4 h-4" /> Add New Employee
-                </span>
-                <ArrowRight className="w-4 h-4 text-primary" />
-              </button>
-
-              <button 
-                onClick={() => onNavigate('reports')}
-                className="w-full flex items-center justify-between p-3 rounded-md bg-surface-container-low text-primary hover:bg-surface-container-high text-sm font-medium border border-neutral-border transition-colors cursor-pointer"
-              >
-                <span className="flex items-center gap-2.5">
-                  <FileText className="w-4 h-4" /> Performance Export Tool
-                </span>
-                <ArrowRight className="w-4 h-4 text-primary" />
-              </button>
-            </div>
-          </div>
-
-          {/* Quick Payslip Selector list */}
-          <div className="bg-white p-6 rounded-lg border border-neutral-border shadow-sm">
-            <h3 className="font-semibold text-lg text-on-background mb-1">Quick Payslip Records</h3>
-            <p className="text-xs text-on-surface-variant mb-4">
-              {selectedEntityId === 'all' 
-                ? 'Select employee profile to view active payslip document:' 
-                : `Active staff in ${activeEntity?.name}:`}
-            </p>
-            <div className="space-y-3">
-              {filteredEmployees.length === 0 ? (
-                <div className="text-xs text-on-surface-variant p-4 text-center border border-dashed border-neutral-border rounded">
-                  No employees in this subsidiary.
-                </div>
-              ) : (
-                filteredEmployees.slice(0, 5).map((emp) => (
-                  <div 
-                    key={emp.id}
-                    onClick={() => {
-                      // Navigate to payroll with this employee
-                      onNavigate('payroll');
-                    }}
-                    className="p-3 rounded-md border border-outline-variant/30 hover:border-primary bg-surface-container-lowest hover:bg-surface-container-low transition-all cursor-pointer flex justify-between items-center group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <EmployeeAvatar employee={emp} className="w-8 h-8 rounded-full shrink-0" />
-                      <div className="min-w-0">
-                        <div className="text-xs font-semibold text-on-surface group-hover:text-primary transition-colors truncate">{emp.name}</div>
-                        <div className="text-[10px] text-on-surface-variant truncate">{emp.designation}</div>
-                      </div>
-                    </div>
-                    <ChevronRight className="w-3.5 h-3.5 text-outline group-hover:text-primary transition-colors" />
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-        </div>
-
-      </div>
+        </article>
+      </section>
     </div>
   );
 }

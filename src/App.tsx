@@ -56,6 +56,10 @@ import { formatNricOrPassport } from './lib/employeeInput';
 import { getAppTabFromPath, getPathForAppTab } from './lib/appRoutes';
 import { isAdminPortalRole, isEmployeePortalRole } from './lib/userRoles';
 import { normalizeAppraisalAccessGrant } from './lib/appraisalAccess';
+import {
+  getEmployeeDataKey,
+  resolveEntityId,
+} from './lib/employeeDataNormalization';
 
 import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
@@ -432,6 +436,7 @@ export default function App() {
   const [isLoadingDb, setIsLoadingDb] = useState(false);
   const [employeePortalBootstrap, setEmployeePortalBootstrap] = useState<EmployeePortalBootstrap | null>(null);
   const [employeePortalLoadError, setEmployeePortalLoadError] = useState<string | null>(null);
+  const [adminDataLoadError, setAdminDataLoadError] = useState<string | null>(null);
 
   // Offline persistence sync
   React.useEffect(() => {
@@ -945,6 +950,7 @@ export default function App() {
     }
 
     setIsLoadingDb(true);
+    setAdminDataLoadError(null);
     async function loadData() {
       try {
         if (isEmployeeAccount) {
@@ -1011,9 +1017,17 @@ export default function App() {
             logoUrl: e.logoUrl || '',
             googleScriptUrl: e.googleScriptUrl || ''
           }));
-          const onlyRedPoint = loadedEntities.filter(ent => ent.id === 'ENT-92' || ent.name === 'Red Point Sdn Bhd');
-          setEntities(onlyRedPoint);
-          setActiveEntityId('ENT-92');
+          setEntities(loadedEntities);
+          setActiveEntityId((current) => {
+            const preferred = localStorage.getItem('active_corporate_entity_id') || current;
+            const preferredEntity = loadedEntities.find((entity) => (
+              entity.id === preferred && entity.isActive
+            ));
+            return preferredEntity?.id
+              || loadedEntities.find((entity) => entity.isActive)?.id
+              || loadedEntities[0]?.id
+              || '';
+          });
         }
 
         // 1.5. Group and load other payloads from individual scripts
@@ -1039,7 +1053,18 @@ export default function App() {
 
         await Promise.all(customUrlFetchPromises);
 
-        const allRawEmployees: any[] = [];
+        const preferredDefaultEntityId = localStorage.getItem('active_corporate_entity_id')
+          || activeEntityId
+          || 'ENT-92';
+        const defaultSourceEntity = loadedEntities.find((entity) => (
+          entity.id === preferredDefaultEntityId
+        )) || loadedEntities.find((entity) => entity.id === 'ENT-92') || loadedEntities[0];
+        const sourceEntityByUrl = new Map(
+          loadedEntities
+            .filter((entity) => entity.googleScriptUrl)
+            .map((entity) => [entity.googleScriptUrl!.trim(), entity.id])
+        );
+        const allRawEmployees: Array<{ raw: any; sourceEntityId?: string }> = [];
         const allRawPerformances: any[] = [];
         const allRawAppraisalAccessGrants: any[] = [];
         const allRawPayrollRecords: any[] = [];
@@ -1047,10 +1072,13 @@ export default function App() {
 
         for (const [url, payload] of Object.entries(payloadsByUrl)) {
           const isDefault = url === 'default';
+          const sourceEntityId = isDefault
+            ? defaultSourceEntity?.id
+            : sourceEntityByUrl.get(url);
 
           if (payload.employees) {
             payload.employees.forEach((e: any) => {
-              allRawEmployees.push(e);
+              allRawEmployees.push({ raw: e, sourceEntityId });
             });
           }
 
@@ -1080,7 +1108,17 @@ export default function App() {
         }
 
         // Deduplicate using Map to ensure zero overlap/duplicate keys
-        const uniqueEmployees = Array.from(new Map(allRawEmployees.map(e => [String(e.id || e.email || '').toLowerCase(), e])).values());
+        const uniqueEmployees = Array.from(new Map(
+          allRawEmployees.map((item) => {
+            const rawEntity = item.raw.entityName
+              ?? item.raw.entity_name
+              ?? item.raw.entityId
+              ?? item.raw.entity_id
+              ?? item.sourceEntityId;
+            const entityId = resolveEntityId(rawEntity, loadedEntities);
+            return [getEmployeeDataKey(item.raw, entityId), item] as const;
+          })
+        ).values());
         const uniquePerformances = Array.from(new Map(allRawPerformances.map(p => [`${String(p.employeeEmail || p.employeeId || '').toLowerCase()}_${p.reviewCycleId}`, p])).values());
         const uniqueAppraisalAccessGrants = Array.from(new Map(
           allRawAppraisalAccessGrants.map((grant: any) => [
@@ -1091,7 +1129,7 @@ export default function App() {
         const uniquePayrollRecords = Array.from(new Map(allRawPayrollRecords.map(r => [r.id || `${r.employeeEmail}_${r.payrollMonth}_${r.payrollYear}`, r])).values());
         const uniqueCandidates = Array.from(new Map(allRawCandidates.map(c => [c.id || c.email || c.name, c])).values());
 
-        const parsedEmployees = uniqueEmployees.map((e: any) => {
+        const parsedEmployees = uniqueEmployees.map(({ raw: e, sourceEntityId }: { raw: any; sourceEntityId?: string }) => {
           let careerHistory = [];
           let dependants = [];
           let historicalPayrollRecords = [];
@@ -1213,12 +1251,14 @@ export default function App() {
           } catch (err) {
             console.error('Error parsing salaryAdjustments for employee', e.id, err);
           }
-          let resolvedEntityId = e.entityName || e.entityId || '';
-          if (resolvedEntityId === 'Red Point Sdn Bhd' || resolvedEntityId === 'ENT-92' || resolvedEntityId === 'ENT-01' || !resolvedEntityId) {
-            resolvedEntityId = 'ENT-92';
-          } else if (resolvedEntityId === 'YSYD Sdn Bhd' || resolvedEntityId === 'ENT-86' || resolvedEntityId === 'ENT-02') {
-            resolvedEntityId = 'ENT-86';
-          }
+          const resolvedEntityId = resolveEntityId(
+            e.entityName
+              ?? e.entity_name
+              ?? e.entityId
+              ?? e.entity_id
+              ?? sourceEntityId,
+            loadedEntities
+          );
 
           return {
             id: e.id || e.email || '',
@@ -1314,7 +1354,7 @@ export default function App() {
             employee_tp3_declarations: employeeTp3Declarations
           };
         });
-        setEmployees(parsedEmployees.filter(emp => emp.entityId === 'ENT-92'));
+        setEmployees(parsedEmployees);
 
         // Parse performances
         setPerformances(uniquePerformances.map((p: any) => ({
@@ -1342,12 +1382,10 @@ export default function App() {
         setAppraisalAccessGrants(uniqueAppraisalAccessGrants.map(normalizeAppraisalAccessGrant));
 
         const parsedCandidates = uniqueCandidates.map((c: any) => {
-          let resolvedEntityId = c.entityName || c.entityId || '';
-          if (resolvedEntityId === 'Red Point Sdn Bhd' || resolvedEntityId === 'ENT-92' || resolvedEntityId === 'ENT-01' || !resolvedEntityId) {
-            resolvedEntityId = 'ENT-92';
-          } else if (resolvedEntityId === 'YSYD Sdn Bhd' || resolvedEntityId === 'ENT-86' || resolvedEntityId === 'ENT-02') {
-            resolvedEntityId = 'ENT-86';
-          }
+          const resolvedEntityId = resolveEntityId(
+            c.entityName ?? c.entity_name ?? c.entityId ?? c.entity_id,
+            loadedEntities
+          );
           return {
             id: c.id || '',
             name: c.name || '',
@@ -1368,7 +1406,7 @@ export default function App() {
             rejectionReason: c.rejectionReason || undefined
           };
         });
-        setCandidates(parsedCandidates.filter(cand => cand.entityId === 'ENT-92'));
+        setCandidates(parsedCandidates);
 
         // Parse payroll records
         setPayrollRecords2026(uniquePayrollRecords.map((r: any) => ({
@@ -1439,6 +1477,18 @@ export default function App() {
         console.error('[Google Sheets Load] Error loading database tables:', err);
         if (isEmployeeAccount) {
           setEmployeePortalLoadError(err instanceof Error ? err.message : 'Employee portal data could not be loaded.');
+        } else {
+          const message = err instanceof Error
+            ? err.message
+            : 'The employer data could not be loaded from the secure database.';
+          setAdminDataLoadError(message);
+          setEmployees([]);
+          setEntities([]);
+          setCandidates([]);
+          setPerformances([]);
+          setReviewCycles([]);
+          setAppraisalAccessGrants([]);
+          setPayrollRecords2026([]);
         }
       } finally {
         setIsLoadingDb(false);
@@ -2445,7 +2495,7 @@ export default function App() {
 
   if (isLoadingDb && !shouldRenderEmployeePortal) {
     return (
-      <div className="min-h-screen bg-[#FFF8F0] flex flex-col items-center justify-center p-4">
+      <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-[#FFF8F0] p-4">
         <div className="flex flex-col items-center gap-4 text-center">
           <div className="w-10 h-10 border-4 border-[#3A2E2B] border-t-transparent rounded-full animate-spin"></div>
           <p className="text-xs font-mono font-bold text-[#3A2E2B] uppercase tracking-widest animate-pulse">Synchronizing HR Database...</p>
@@ -2573,6 +2623,32 @@ export default function App() {
 
   if (!isAuthenticated && !isEmployeePortalPreview) {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  if (isAuthenticated && !isEmployeeAccount && adminDataLoadError) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="w-full max-w-lg rounded-2xl border border-red-200 bg-white p-6 shadow-sm">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+            <div>
+              <h1 className="text-lg font-bold text-on-surface">Employer data unavailable</h1>
+              <p className="mt-2 text-sm text-on-surface-variant">
+                The secure employee directory could not be loaded. Cached employee data was cleared to prevent showing records under the wrong company.
+              </p>
+              <p className="mt-2 break-words text-xs text-red-700">{adminDataLoadError}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-5 min-h-11 rounded-xl bg-primary px-4 text-sm font-bold text-on-primary-container transition hover:bg-primary-container"
+          >
+            Retry secure data load
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const needsPasswordSetup = isAuthenticated && isEmployeeAccount && currentUserMustChangePassword;
@@ -2703,7 +2779,7 @@ export default function App() {
         isSwitchingEntity={isSwitchingEntity}
         onSwitchEntity={async (id) => handleCorporateSwitch(id)}
       >
-      <div style={getThemeStyles(activeEntity?.theme)} className="flex h-screen bg-background overflow-hidden relative font-sans text-on-background select-none">
+      <div style={getThemeStyles(activeEntity?.theme)} className="relative flex h-[100dvh] overflow-hidden bg-background font-sans text-on-background select-none">
       
       {/* Premium Glassmorphic Loading Overlay */}
       {isSwitchingEntity && (
@@ -2756,10 +2832,10 @@ export default function App() {
       />
 
       {/* Right Column Layout */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+      <div className="flex h-[100dvh] flex-1 flex-col overflow-hidden">
         
         {/* Top bar (for search results & system status indicators) */}
-        <header className="sticky top-0 h-[72px] border-b border-neutral-border/80 bg-surface/95 px-4 md:px-6 flex justify-between items-center shrink-0 z-20 backdrop-blur">
+        <header className="sticky top-0 z-20 flex h-[68px] shrink-0 items-center justify-between border-b border-neutral-border/80 bg-surface/95 px-4 backdrop-blur md:px-6">
           <div className="flex min-w-0 items-center gap-3">
             {/* Mobile Toggle Button */}
             <button 
@@ -2831,7 +2907,7 @@ export default function App() {
         </header>
 
         {/* Core Main Scrollable Content Pane */}
-        <main className="flex-1 overflow-y-auto bg-background p-4 md:p-6 lg:p-8 select-text">
+        <main className="flex-1 overflow-y-auto bg-background p-4 select-text md:p-6 xl:p-8">
           {currentTab === 'dashboard' && (
             <DashboardView 
               employees={filteredEmployeesWithHistory}
@@ -2840,6 +2916,7 @@ export default function App() {
               performances={filteredPerformances}
               payrollRecords2026={filteredPayrollRecords2026}
               onNavigate={handleTabChange}
+              onOpenPayslip={handleNavigateToDocument}
               onOpenNewEmployeeModal={() => {
                 handleTabChange('directory');
                 triggerNotification('Directory Navigated', 'Click Add New Employee to register custom personnel.', 'info');

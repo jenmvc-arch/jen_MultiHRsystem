@@ -46,6 +46,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
   const isLocalPreview = typeof window !== 'undefined'
     && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const isEmployeeDemoPath = typeof window !== 'undefined'
+    && window.location.pathname.startsWith('/employee-portal/demo');
 
   const isEmployeeSigner = (user: Pick<UserAccount, 'role'>) => {
     return isEmployeeSignerRole(user.role);
@@ -361,6 +363,11 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     }
 
     const performLocalFallback = async () => {
+      if (loginPortal === 'employee' && !isEmployeeDemoPath) {
+        setIsLoading(false);
+        setError('Secure employee login is unavailable. Please contact HR.');
+        return;
+      }
       const credentialMatch = MOCK_USERS.find(
         u => u.email === email.trim().toLowerCase() && u.password === password
       );
@@ -402,7 +409,11 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
               role: employee ? 'Employee' : 'Candidate',
             });
           } else {
-            await performLocalFallback();
+            if (isEmployeeDemoPath) await performLocalFallback();
+            else {
+              setIsLoading(false);
+              setError('Secure employee login is unavailable. Please contact HR.');
+            }
           }
           return;
         }
@@ -442,7 +453,12 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         }
       } catch (err) {
         console.error(`[${sourceName} Auth Error] Falling back to local accounts:`, err);
-        await performLocalFallback();
+        if (loginPortal === 'employee' && !isEmployeeDemoPath) {
+          setIsLoading(false);
+          setError('Secure employee login is unavailable. Please contact HR.');
+        } else {
+          await performLocalFallback();
+        }
       }
     };
 
@@ -459,32 +475,56 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-[#F2E8D8] to-[#FFF8EF] p-4 select-text relative overflow-hidden font-sans text-[#333333]">
-      
+    <div className="relative flex min-h-[100dvh] w-full items-center justify-center overflow-hidden bg-[#f7f2eb] p-4 font-sans text-[#2f2523] select-text sm:p-6 lg:p-10">
+
       {/* Background Accents (Minimal Red Curves) */}
-      <div className="absolute top-0 left-0 w-64 h-full pointer-events-none opacity-20">
+      <div className="pointer-events-none absolute left-0 top-0 h-full w-64 opacity-20">
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full text-[#A32626] fill-current">
           <path d="M0,0 C50,30 20,70 0,100 Z" />
         </svg>
       </div>
-      <div className="absolute bottom-0 right-0 w-96 h-64 pointer-events-none opacity-20">
+      <div className="pointer-events-none absolute bottom-0 right-0 h-64 w-96 opacity-20">
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full text-[#A32626] fill-current">
           <path d="M100,100 C60,80 80,30 100,0 Z" />
         </svg>
       </div>
-      
+
       {/* Optional subtle dotted pattern in corners */}
-      <div className="absolute top-4 left-4 w-32 h-32 bg-[radial-gradient(#A32626_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none"></div>
-      <div className="absolute bottom-4 right-4 w-32 h-32 bg-[radial-gradient(#A32626_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none"></div>
+      <div className="pointer-events-none absolute left-4 top-4 h-32 w-32 bg-[radial-gradient(#A32626_1px,transparent_1px)] opacity-10 [background-size:16px_16px]"></div>
+      <div className="pointer-events-none absolute bottom-4 right-4 h-32 w-32 bg-[radial-gradient(#A32626_1px,transparent_1px)] opacity-10 [background-size:16px_16px]"></div>
 
       {/* Main Container */}
-      <div className="w-full max-w-md relative z-10 flex flex-col items-center">
+      <div className="relative z-10 grid w-full max-w-5xl items-center gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)] lg:gap-10">
+        <div className="hidden max-w-xl text-left lg:block">
+          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#A32626]/15 bg-white/60 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#A32626]">
+            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+            Employer workspace
+          </div>
+          <h1 className="max-w-lg text-5xl font-bold leading-[0.98] tracking-[-0.04em] text-[#342624]">
+            Keep people, payroll and compliance moving.
+          </h1>
+          <p className="mt-5 max-w-md text-base leading-7 text-[#745f59]">
+            A focused workspace for the decisions that keep your company running.
+          </p>
+          <div className="mt-10 grid max-w-md grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-[#A32626]/10 bg-white/55 p-4">
+              <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#A32626]">People</p>
+              <p className="mt-1 text-xs font-semibold text-[#745f59]">One employer console</p>
+            </div>
+            <div className="rounded-2xl border border-[#A32626]/10 bg-white/55 p-4">
+              <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#A32626]">Control</p>
+              <p className="mt-1 text-xs font-semibold text-[#745f59]">Clear employee access</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="w-full max-w-md justify-self-center lg:justify-self-end">
         
         {/* Logo at the top center */}
         <img 
           src="/redpoint-logo.png" 
           alt="RedPoint Sdn Bhd Logo" 
-          className="h-16 w-auto mb-8 object-contain drop-shadow-sm" 
+          className="mx-auto mb-6 h-14 w-auto object-contain drop-shadow-sm sm:mb-8"
           onError={(e) => {
             // Fallback if logo is missing
             e.currentTarget.style.display = 'none';
@@ -493,13 +533,13 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         />
 
         {/* Login Card */}
-        <div className="w-full bg-[#FFFFFF] rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-[#E5E5E5] p-8">
+        <div className="w-full rounded-[22px] border border-[#e7ddd2] bg-white p-6 shadow-[0_18px_50px_rgba(90,52,39,0.10)] sm:p-8">
           
-          <div className="text-center mb-8">
-            <h2 className="text-xl font-bold text-[#333333]">
+          <div className="mb-7 text-center">
+            <h2 className="text-2xl font-bold tracking-tight text-[#342624]">
               {loginPortal === 'admin' ? 'Admin User Sign In' : 'Employee Sign In'}
             </h2>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="mt-2 text-sm leading-6 text-[#806f69]">
               {loginPortal === 'admin'
                 ? 'Access the RedPoint HRMS administration console'
                 : 'Access your personal employee workspace'}
@@ -553,13 +593,13 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
           {/* Error Notification HUD */}
           {error && (
-            <div className="mb-6 p-4 bg-[#FFF8EF] border border-[#A32626]/30 text-[#8F1F1F] text-sm rounded-lg flex items-start gap-3">
+            <div role="alert" className="mb-6 flex items-start gap-3 rounded-xl border border-[#A32626]/25 bg-[#fff6f2] p-4 text-sm text-[#8F1F1F]">
               <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-[#A32626]" />
               <span className="leading-relaxed">{error}</span>
             </div>
           )}
           {authNotice && (
-            <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm rounded-lg flex items-start gap-3">
+            <div role="status" className="mb-6 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
               <CheckCircle className="w-5 h-5 shrink-0 mt-0.5 text-emerald-600" />
               <span className="leading-relaxed">{authNotice}</span>
             </div>
@@ -570,8 +610,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             
             {/* Username Input Group */}
             <div>
-              <label className="block text-sm font-semibold text-[#333333] mb-1.5">
-                Username
+              <label className="mb-1.5 block text-sm font-semibold text-[#342624]">
+                Username or email
               </label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
@@ -582,15 +622,16 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your username"
-                  className="w-full h-12 pl-11 pr-4 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] placeholder-gray-400 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all"
+                  placeholder="Enter your username or email"
+                  autoComplete="username"
+                  className="h-12 w-full rounded-xl border border-[#e4dbd3] bg-white pl-11 pr-4 text-sm text-[#342624] placeholder-[#9b8c86] transition-all focus:border-[#A32626] focus:outline-none focus:ring-2 focus:ring-[#A32626]/15"
                 />
               </div>
             </div>
 
             {/* Password Input Group */}
             {(loginPortal === 'admin' || (loginPortal === 'employee' && !employeeRecoveryMode)) && <div>
-              <label className="block text-sm font-semibold text-[#333333] mb-1.5">
+              <label className="mb-1.5 block text-sm font-semibold text-[#342624]">
                 Password
               </label>
               <div className="relative">
@@ -603,7 +644,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full h-12 pl-11 pr-11 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#333333] placeholder-gray-400 focus:outline-none focus:border-[#A32626] focus:ring-1 focus:ring-[#A32626]/30 transition-all"
+                  autoComplete={loginPortal === 'employee' ? 'current-password' : 'current-password'}
+                  className="h-12 w-full rounded-xl border border-[#e4dbd3] bg-white pl-11 pr-11 text-sm text-[#342624] placeholder-[#9b8c86] transition-all focus:border-[#A32626] focus:outline-none focus:ring-2 focus:ring-[#A32626]/15"
                 />
                 <button
                   type="button"
@@ -670,14 +712,14 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
             {/* Remember Me & Forgot Password */}
             <div className="flex justify-between items-center mt-2">
-              <label className="flex items-center gap-2 cursor-pointer group">
+              <label className="group flex cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
                   className="w-4 h-4 rounded border-[#E5E5E5] text-[#A32626] focus:ring-[#A32626] focus:ring-offset-0 cursor-pointer accent-[#A32626]"
                 />
-                <span className="text-sm text-gray-600 group-hover:text-[#333333] transition-colors">Remember Me</span>
+                <span className="text-sm text-[#74635d] transition-colors group-hover:text-[#342624]">Remember me</span>
               </label>
               
               <a 
@@ -709,9 +751,9 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                     acknowledgeLabel: 'Return to Sign In',
                   });
                 }}
-                className="text-sm text-[#A32626] hover:text-[#8F1F1F] font-semibold transition-colors"
+                className="text-sm font-semibold text-[#A32626] transition-colors hover:text-[#8F1F1F]"
               >
-                {employeeRecoveryMode ? 'Back to sign in' : 'Forgot Password?'}
+                {employeeRecoveryMode ? 'Back to sign in' : 'Forgot password?'}
               </a>
             </div>
 
@@ -719,9 +761,10 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             <button
               type="submit"
               disabled={isLoading}
-              className={`w-full h-12 mt-4 bg-[#A32626] hover:bg-[#8F1F1F] text-white text-base font-semibold rounded-xl shadow-md shadow-[#A32626]/20 transition-all flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-[#A32626]/50 focus:ring-offset-1 ${
+              className={`mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#A32626] text-base font-semibold text-white shadow-md shadow-[#A32626]/20 transition-all hover:bg-[#8F1F1F] focus:outline-none focus:ring-2 focus:ring-[#A32626]/50 focus:ring-offset-1 ${
                 isLoading ? 'opacity-80 cursor-wait' : 'hover:-translate-y-0.5'
               }`}
+              aria-busy={isLoading}
             >
               {isLoading ? (
                 <>
@@ -729,7 +772,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  Authenticating...
+                  Signing in...
                 </>
               ) : (
                 employeeRecoveryMode
@@ -741,7 +784,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             {loginPortal === 'employee' && (
               <a
                 href="/employee-portal/demo?employeeId=EMP-84729"
-                className="mt-3 w-full h-11 inline-flex items-center justify-center rounded-xl border border-[#A32626]/20 bg-[#FFF8EF] text-sm font-semibold text-[#A32626] hover:bg-[#F9EBDD] transition-colors"
+                className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-xl border border-[#A32626]/20 bg-[#FFF8EF] text-sm font-semibold text-[#A32626] transition-colors hover:bg-[#F9EBDD]"
               >
                 Open employee demo
               </a>
@@ -750,10 +793,11 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
         </div>
       </div>
+      </div>
 
       {/* Footer */}
-      <footer className="absolute bottom-6 w-full text-center z-10">
-        <p className="text-sm font-medium text-gray-500">
+      <footer className="absolute bottom-4 left-0 z-10 w-full text-center sm:bottom-6">
+        <p className="text-xs font-medium text-[#8c7b74]">
           © 2026 RedPoint HRMS. All rights reserved.
         </p>
       </footer>

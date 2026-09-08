@@ -28,6 +28,11 @@ const isPreviewMode = () => (
 );
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
+const createIdempotencyKey = () => (
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+);
 
 const isAccountSchemaUnavailable = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error || '');
@@ -273,6 +278,7 @@ export const runEmployeeAccountAction = async (
 
   return request<AccountActionResult>(path, {
     method: 'POST',
+    headers: { 'X-Idempotency-Key': createIdempotencyKey() },
     body: JSON.stringify({
       employeeId: employee.id,
       employeeEmail: employee.email,

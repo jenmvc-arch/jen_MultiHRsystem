@@ -1,5 +1,4 @@
 import express from 'express';
-import puppeteer from 'puppeteer';
 import {
   handleAdminLogin,
   handleAdminLogout,
@@ -28,11 +27,17 @@ import {
   handleEmployeePortalProfileChange,
   handleEmployeePortalRequest,
   handleEmployeePortalLeaveRequests,
+  handleEmployeePortalLeaveWorkspace,
   handleEmployeePortalReopen,
+  handleAdminNotificationOutbox,
 } from './api/_lib/employeeServiceHandlers';
 import { handleExport } from './api/_lib/exportHandlers';
 import { handleGoogleSheetsProxy } from './api/_lib/googleSheetsServer';
-import { requireAdminSession } from './api/_lib/employeeAccountServer';
+import handleGeneratePdf from './api/generate-pdf';
+import adminDataHandler from './api/admin/data';
+import adminBootstrapHandler from './api/admin/bootstrap';
+import adminDocumentsHandler from './api/admin/documents';
+import adminLeaveWorkspaceHandler from './api/admin/leave-workspace';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -69,6 +74,7 @@ app.patch('/api/employee-portal/profile', handleEmployeePortalProfile);
 app.post('/api/employee-portal/requests', handleEmployeePortalRequest);
 app.get('/api/employee-portal/leave-requests', handleEmployeePortalLeaveRequests);
 app.post('/api/employee-portal/leave-requests', handleEmployeePortalLeaveRequests);
+app.get('/api/employee-portal/leave-workspace', handleEmployeePortalLeaveWorkspace);
 app.post('/api/employee-portal/request-message', handleEmployeePortalMessage);
 app.post('/api/employee-portal/reopen-request', handleEmployeePortalReopen);
 app.post('/api/employee-portal/profile-change-requests', handleEmployeePortalProfileChange);
@@ -76,86 +82,15 @@ app.post('/api/employee-portal/notifications/read', handleEmployeePortalNotifica
 app.get('/api/admin/employee-requests', handleAdminEmployeeRequests);
 app.post('/api/admin/employee-requests/update', handleAdminEmployeeRequestUpdate);
 app.post('/api/admin/profile-change-requests/update', handleAdminProfileChangeUpdate);
+app.post('/api/admin/notifications/outbox/process', handleAdminNotificationOutbox);
+app.get('/api/admin/bootstrap', adminBootstrapHandler);
+app.post('/api/admin/data', adminDataHandler);
+app.post('/api/admin/documents', adminDocumentsHandler);
+app.get('/api/admin/leave-workspace', adminLeaveWorkspaceHandler);
+app.post('/api/admin/leave-workspace', adminLeaveWorkspaceHandler);
 app.post('/api/google-sheets', handleGoogleSheetsProxy);
 
-// API Endpoint to generate PDF from the payslip client view
-app.get('/api/generate-pdf', async (req, res) => {
-  const { employeeId } = req.query;
-
-  if (!employeeId) {
-    res.status(400).send('Missing employeeId query parameter');
-    return;
-  }
-
-  console.log(`[PDF Generator] Starting PDF generation for employee ID: ${employeeId}`);
-
-  let browser;
-  try {
-    await requireAdminSession(req);
-    const safeEmployeeId = String(employeeId).replace(/[^a-zA-Z0-9._@-]/g, '_');
-    console.log(`[PDF Generator] Starting PDF generation for employee ID: ${safeEmployeeId}`);
-
-    // Launch headless Chromium
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-
-    const page = await browser.newPage();
-    if (req.headers.cookie) {
-      await page.setExtraHTTPHeaders({ Cookie: req.headers.cookie });
-    }
-
-    // Construct the print-view URL
-    // We point to localhost:3000 because Vite runs on port 3000 in dev
-    const targetUrl = new URL('http://localhost:3000/');
-    targetUrl.searchParams.set('print', 'true');
-    targetUrl.searchParams.set('employeeId', safeEmployeeId);
-    console.log(`[PDF Generator] Navigating to: ${targetUrl}`);
-
-    // Navigate to the target URL
-    await page.goto(targetUrl, {
-      waitUntil: 'networkidle0', // Wait until network connections are idle
-      timeout: 30000 // 30 second timeout
-    });
-
-    // Wait for the payslip content to render in the React app
-    await page.waitForSelector('#payslip-pdf-content', { timeout: 10000 });
-
-    // Generate standard A4 size PDF
-    console.log(`[PDF Generator] Printing page as A4 PDF`);
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: {
-        top: '0mm',
-        right: '0mm',
-        bottom: '0mm',
-        left: '0mm'
-      }
-    });
-
-    console.log(`[PDF Generator] PDF generation succeeded, streaming file to client`);
-
-    // Stream the PDF buffer back to the client
-    const buffer = Buffer.from(pdfBuffer);
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="Payslip_${safeEmployeeId}.pdf"`);
-    res.send(buffer);
-  } catch (error: any) {
-    if (error?.statusCode === 401 || error?.statusCode === 403) {
-      res.status(error.statusCode).send(error.message);
-      return;
-    }
-    console.error('[PDF Generator] PDF generation failed:', error);
-    res.status(500).send(`PDF generation failed: ${error.message || error}`);
-  } finally {
-    if (browser) {
-      await browser.close();
-      console.log(`[PDF Generator] Puppeteer browser closed`);
-    }
-  }
-});
+app.get('/api/generate-pdf', handleGeneratePdf);
 
 app.listen(PORT, () => {
   console.log(`[PDF Backend] Server is running on http://localhost:${PORT}`);

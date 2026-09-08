@@ -10,6 +10,7 @@ import {
   requestEmployeeOtp,
   requireAdminSession,
   requireMasterUser,
+  requirePermission,
   resolveEmployeeAccountTarget,
   createEmployeeAdminClient,
   setAdminSessionCookie,
@@ -131,7 +132,7 @@ export async function handleEmployeeAccountList(req: any, res: any) {
     return;
   }
   try {
-    await requireMasterUser(req);
+    await requirePermission(req, 'employee.account.manage');
     const rawIds = String(req.query?.employeeIds || '');
     const employeeIds = rawIds.split(',').map((id) => id.trim()).filter(Boolean);
     res.status(200).json({ accounts: await loadAccountSummaries(employeeIds) });
@@ -147,7 +148,7 @@ export async function handleEmployeeAccountEvents(req: any, res: any) {
     return;
   }
   try {
-    await requireMasterUser(req);
+    await requirePermission(req, 'employee.account.manage');
     const employeeId = String(req.query?.employeeId || '').trim();
     if (!employeeId) {
       res.status(400).json({ error: 'employeeId is required.' });
@@ -170,7 +171,7 @@ export async function handleEmployeeAccountAction(
     return;
   }
   try {
-    const actor = await requireMasterUser(req);
+    const actor = await requirePermission(req, 'employee.account.manage');
     const target = await resolveEmployeeAccountTarget(toEmployeeAccountTarget(req.body));
     const channel = toChannel(req.body?.channel);
     const result = await performEmployeeAccountAction({
@@ -178,6 +179,9 @@ export async function handleEmployeeAccountAction(
       actor,
       action,
       channel,
+      idempotencyKey: String(
+        req.headers?.['x-idempotency-key'] || req.body?.idempotencyKey || ''
+      ).trim(),
     });
     res.status(result.ok ? 200 : 502).json(result);
   } catch (error) {
@@ -226,6 +230,10 @@ export async function handleEmployeeOtpRequest(req: any, res: any) {
       email: String(req.body?.email || ''),
       purpose: req.body?.purpose,
       name: req.body?.name,
+      ipAddress: String(
+        req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress || ''
+      ).split(',')[0].trim(),
+      deviceHash: String(req.headers?.['user-agent'] || '').slice(0, 256),
     });
     res.status(200).json(result);
   } catch (error) {

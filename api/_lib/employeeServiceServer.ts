@@ -2,7 +2,7 @@ import {
   createEmployeeAdminClient,
   createMainAdminClient,
   getEmployeeAuthUser,
-  requireAdminSession,
+  requirePermission,
 } from './employeeAccountServer.js';
 import { sendEmailTemplate } from './email/emailService.js';
 import {
@@ -15,7 +15,11 @@ import {
   EmployeeServiceRequestPriority,
   EmployeeServiceRequestStatus,
 } from '../../src/lib/employeeServiceTypes.js';
-import { LeaveRequest } from '../../src/lib/leaveDomain.js';
+import {
+  calculateLeaveBalances,
+  calculateLeaveDateDays,
+  LeaveRequest,
+} from '../../src/lib/leaveDomain.js';
 
 const HR_SUPPORT_EMAIL = process.env.HR_SUPPORT_EMAIL || 'hr@redpoint.com.my';
 
@@ -30,11 +34,226 @@ const toCamel = (value: any): any => {
 
 const normalize = (value: unknown) => String(value || '').trim().toLowerCase();
 
+const EMPLOYEE_PORTAL_COLUMNS = [
+  'id',
+  'entity_id',
+  'entity_name',
+  'name',
+  'email',
+  'designation',
+  'department',
+  'status',
+  'bank_name',
+  'account_no',
+  'basic_salary',
+  'housing_allowance',
+  'transport_allowance',
+  'overtime',
+  'performance_bonus',
+  'epf_rate_employee',
+  'epf_rate_employer',
+  'socso_employee',
+  'socso_employer',
+  'skbbk_employee',
+  'skbbk_employer',
+  'eis_employee',
+  'eis_employer',
+  'tax_pcb',
+  'unpaid_leave',
+  'hrd_corp',
+  'avatar_url',
+  'gender',
+  'nric_passport',
+  'nationality',
+  'contact_number',
+  'tax_number',
+  'epf_number',
+  'employment_type',
+  'marital_status',
+  'eligible_for_statutory',
+  'contract_statutory_treatment',
+  'payroll_document_display_settings',
+  'opt_in_epf',
+  'opt_in_socso',
+  'opt_in_eis',
+  'opt_in_pcb',
+  'enable_lindung24',
+  'emergency_contact_name',
+  'emergency_contact_relation',
+  'emergency_contact_phone',
+  'date_of_joined',
+  'date_of_confirmation',
+  'date_of_termination',
+  'allowance_general',
+  'allowance_transport',
+  'allowance_parking',
+  'allowance_meal',
+  'allowance_accommodation',
+  'allowance_phone',
+  'reimbursement_amount',
+  'reimbursement_desc',
+  'bonus_amount',
+  'bonus_desc',
+  'commission_amount',
+  'commission_desc',
+  'back_pay_amount',
+  'back_pay_desc',
+  'aws_amount',
+  'aws_desc',
+  'compensation_amount',
+  'compensation_desc',
+  'deduction_in_lieu',
+  'deduction_cp38',
+  'deduction_others',
+  'deduction_others_desc',
+  'spouse_name',
+  'spouse_nric',
+  'spouse_is_working',
+  'spouse_company',
+  'spouse_position',
+  'has_dependants',
+  'dependants',
+].join(',');
+
+const PAYROLL_PORTAL_COLUMNS = [
+  'id',
+  'employee_email',
+  'payroll_month',
+  'payroll_year',
+  'basic_salary',
+  'allowance_general',
+  'allowance_transport',
+  'allowance_parking',
+  'allowance_meal',
+  'allowance_accommodation',
+  'allowance_phone',
+  'overtime',
+  'bonus_amount',
+  'bonus_desc',
+  'commission_amount',
+  'commission_desc',
+  'back_pay_amount',
+  'back_pay_desc',
+  'aws_amount',
+  'aws_desc',
+  'compensation_amount',
+  'compensation_desc',
+  'reimbursement_amount',
+  'reimbursement_desc',
+  'unpaid_leave',
+  'incomplete_month_deduction',
+  'gross_pay',
+  'gross_salary',
+  'total_allowance',
+  'deduction_in_lieu',
+  'deduction_cp38',
+  'deduction_others',
+  'deduction_others_desc',
+  'actual_pcb_deducted',
+  'tax_pcb',
+  'epf_employee',
+  'epf_employer',
+  'socso_employee',
+  'socso_employer',
+  'lindung24_employee',
+  'eis_employee',
+  'eis_employer',
+  'hrd_corp',
+  'net_pay',
+  'net_salary',
+  'payment_date',
+  'payslip_descriptions',
+  'payout_kind',
+  'is_separate_payout',
+  'statutory_treatment',
+  'payout_title',
+  'payout_description',
+  'line_notes',
+  'document_type',
+  'compensation_label',
+  'display_settings_snapshot',
+  'calculation_version',
+  'status',
+  'created_at',
+  'updated_at',
+].join(',');
+
+const PERFORMANCE_PORTAL_COLUMNS = [
+  'id',
+  'employee_id',
+  'employee_email',
+  'review_cycle_id',
+  'manager_name',
+  'review_status',
+  'rating',
+  'teamwork_score',
+  'communication_score',
+  'problem_solving_score',
+  'self_evaluation',
+  'manager_comments',
+  'goals',
+  'created_at',
+  'updated_at',
+].join(',');
+
+const SERVICE_REQUEST_COLUMNS = [
+  'id',
+  'employee_id',
+  'employee_email',
+  'employee_name',
+  'entity_id',
+  'category',
+  'subject',
+  'description',
+  'priority',
+  'status',
+  'assigned_to',
+  'resolved_at',
+  'created_at',
+  'updated_at',
+].join(',');
+
+const SERVICE_MESSAGE_COLUMNS = [
+  'id',
+  'request_id',
+  'author_type',
+  'author_id',
+  'author_name',
+  'body',
+  'created_at',
+].join(',');
+
+const PROFILE_CHANGE_COLUMNS = [
+  'id',
+  'employee_id',
+  'employee_email',
+  'change_type',
+  'current_values',
+  'requested_values',
+  'status',
+  'reviewed_by',
+  'reviewed_at',
+  'review_note',
+  'created_at',
+  'updated_at',
+].join(',');
+
+const NOTIFICATION_COLUMNS = [
+  'id',
+  'employee_id',
+  'request_id',
+  'type',
+  'title',
+  'body',
+  'read_at',
+  'created_at',
+].join(',');
+
 const serviceError = (message: string, statusCode = 400) =>
   Object.assign(new Error(message), { statusCode });
 
 const isMissingTable = (error: any) => (
-  /employee_service_|employee_notifications|schema cache|could not find the table/i.test(
+  /employee_service_|employee_notifications|notification_outbox|schema cache|could not find the table/i.test(
     String(error?.message || error || '')
   )
 );
@@ -46,6 +265,48 @@ const throwIfMissingServiceTable = (error: any, label: string) => {
       503
     );
   }
+};
+
+const isMissingFunction = (error: any) => (
+  /function .* does not exist|could not find the function|schema cache/i.test(
+    String(error?.message || error || '')
+  )
+);
+
+const getIdempotencyKey = (req: any, prefix: string) => {
+  const supplied = String(
+    req.headers?.['x-idempotency-key']
+      || req.body?.idempotencyKey
+      || ''
+  ).trim();
+  return supplied.slice(0, 160) || `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const parseIsoDate = (value: unknown) => {
+  const text = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const date = new Date(`${text}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== text ? null : date;
+};
+
+const mapEmployeePortalDto = (row: any) => {
+  const dto = Object.fromEntries(
+    EMPLOYEE_PORTAL_COLUMNS.split(',').map((column) => [
+      column,
+      row[column] ?? row[column.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())],
+    ])
+  );
+  const mask = (value: unknown) => {
+    const text = String(value || '');
+    if (!text) return '';
+    return text.length <= 4 ? '****' : `${'*'.repeat(Math.min(8, text.length - 4))}${text.slice(-4)}`;
+  };
+  dto.account_no = mask(dto.account_no);
+  dto.tax_number = mask(dto.tax_number);
+  dto.epf_number = mask(dto.epf_number);
+  dto.nric_passport = mask(dto.nric_passport);
+  dto.spouse_nric = mask(dto.spouse_nric);
+  return toCamel(dto);
 };
 
 const assertConfigured = () => {
@@ -118,26 +379,30 @@ const getEmployeeContext = async (req: any) => {
     .eq('auth_user_id', user.id)
     .maybeSingle();
   if (accountError) throw new Error(`Employee account lookup failed: ${accountError.message}`);
-  if (!account?.employee_id || account.account_status === 'disabled') {
+  if (
+    !account?.employee_id
+    || String(account.account_status) !== 'active'
+  ) {
     throw serviceError('This employee account is not linked to an active employee profile.', 403);
   }
 
   const main = createMainAdminClient();
   const { data: employee, error: employeeError } = await main
     .from('employees')
-    .select('*')
+    .select(EMPLOYEE_PORTAL_COLUMNS)
     .eq('id', account.employee_id)
     .maybeSingle();
   if (employeeError) throw new Error(`Employee profile lookup failed: ${employeeError.message}`);
   if (!employee) throw serviceError('The employee profile could not be found.', 404);
 
+  const employeeRow = employee as any;
   return {
     user,
     employeeAdmin,
     main,
-    employee: toCamel(employee),
-    employeeId: String(employee.id),
-    employeeEmail: normalize(employee.email || account.employee_email || user.email),
+    employee: toCamel(employeeRow),
+    employeeId: String(employeeRow.id),
+    employeeEmail: normalize(employeeRow.email || account.employee_email || user.email),
   };
 };
 
@@ -145,7 +410,7 @@ const loadMessages = async (client: any, requestIds: string[]) => {
   if (requestIds.length === 0) return new Map<string, EmployeeServiceMessage[]>();
   const { data, error } = await client
     .from('employee_service_request_messages')
-    .select('*')
+    .select(SERVICE_MESSAGE_COLUMNS)
     .in('request_id', requestIds)
     .order('created_at', { ascending: true });
   if (error) {
@@ -163,7 +428,7 @@ const loadMessages = async (client: any, requestIds: string[]) => {
 const loadRequests = async (client: any, query: any = {}) => {
   let requestQuery = client
     .from('employee_service_requests')
-    .select('*')
+    .select(SERVICE_REQUEST_COLUMNS)
     .order('updated_at', { ascending: false });
   if (query.employeeId) requestQuery = requestQuery.eq('employee_id', query.employeeId);
   if (query.status) requestQuery = requestQuery.eq('status', query.status);
@@ -188,7 +453,7 @@ const loadRequests = async (client: any, query: any = {}) => {
 const loadProfileChanges = async (client: any, employeeId?: string) => {
   let query = client
     .from('employee_profile_change_requests')
-    .select('*')
+    .select(PROFILE_CHANGE_COLUMNS)
     .order('created_at', { ascending: false });
   if (employeeId) query = query.eq('employee_id', employeeId);
   const { data, error } = await query;
@@ -202,7 +467,7 @@ const loadProfileChanges = async (client: any, employeeId?: string) => {
 const loadNotifications = async (client: any, employeeId: string) => {
   const { data, error } = await client
     .from('employee_notifications')
-    .select('*')
+    .select(NOTIFICATION_COLUMNS)
     .eq('employee_id', employeeId)
     .order('created_at', { ascending: false })
     .limit(50);
@@ -254,14 +519,14 @@ export const loadEmployeePortalBootstrap = async (req: any): Promise<EmployeePor
     profileChangeRequests,
     notifications,
   ] = await Promise.all([
-    main.from('payroll_records_2026').select('*').ilike('employee_email', employeeEmail),
-    main.from('performances').select('*').or(
+    main.from('payroll_records_2026').select(PAYROLL_PORTAL_COLUMNS).ilike('employee_email', employeeEmail),
+    main.from('performances').select(PERFORMANCE_PORTAL_COLUMNS).or(
       `employee_id.eq.${employeeId},employee_email.ilike.${employeeEmail}`
     ),
-    main.from('review_cycles').select('*').order('created_at', { ascending: false }),
+    main.from('review_cycles').select('id,name,status,start_date,end_date,created_at,updated_at').order('created_at', { ascending: false }),
     loadAppraisalAccessGrants(main, entityId, employeeId, employeeEmail),
     entityId
-      ? main.from('corporate_entities').select('*').eq('id', entityId)
+      ? main.from('corporate_entities').select('id,name,registration_number,address,currency,is_active,logo_url').eq('id', entityId)
       : Promise.resolve({ data: [], error: null }),
     loadRequests(employeeAdmin, { employeeId }),
     loadProfileChanges(employeeAdmin, employeeId),
@@ -276,7 +541,7 @@ export const loadEmployeePortalBootstrap = async (req: any): Promise<EmployeePor
   if (entitiesResult.error) throw new Error(`Employee company could not be loaded: ${entitiesResult.error.message}`);
 
   return {
-    employee,
+    employee: mapEmployeePortalDto(employee),
     payrollRecords: (payrollResult.data || []).map(toCamel),
     performances: (performanceResult.data || []).map(toCamel),
     appraisalAccessGrants,
@@ -290,11 +555,108 @@ export const loadEmployeePortalBootstrap = async (req: any): Promise<EmployeePor
 
 const mapLeaveRequest = (row: any): LeaveRequest => toCamel(row) as LeaveRequest;
 
+const validateAndCalculateLeaveRequest = async (context: any, input: {
+  leaveTypeId: string;
+  leaveType: string;
+  startDate: string;
+  endDate: string;
+  reason: string;
+}) => {
+  const start = parseIsoDate(input.startDate);
+  const end = parseIsoDate(input.endDate);
+  if (!start || !end || start > end) {
+    throw serviceError('Please choose a valid leave date range.');
+  }
+
+  const entityId = String(context.employee.entityId || '').trim();
+  if (!entityId) throw serviceError('The employee is not linked to a company.', 409);
+
+  const { data: leaveType, error: leaveTypeError } = await context.employeeAdmin
+    .from('leave_types')
+    .select('id,entity_id,name,enabled,policy_id,default_entitlement_days,condition')
+    .eq('id', input.leaveTypeId)
+    .eq('entity_id', entityId)
+    .eq('enabled', true)
+    .maybeSingle();
+  if (leaveTypeError) throw new Error(`Leave type lookup failed: ${leaveTypeError.message}`);
+  if (!leaveType || leaveType.name !== input.leaveType) {
+    throw serviceError('The selected leave type is not available for this employee.', 409);
+  }
+
+  let policy: any = {
+    deductionRule: 'working_days_excluding_holidays',
+    roundingRule: 'nearest_half_day',
+    excludeWeekends: true,
+    excludePublicHolidays: true,
+    paidTreatment: String(leaveType.condition || '').toLowerCase().includes('unpaid') ? 'unpaid' : 'paid',
+  };
+  if (leaveType.policy_id) {
+    const { data: policyRow, error: policyError } = await context.employeeAdmin
+      .from('leave_condition_policies')
+      .select('deduction_rule,rounding_rule,exclude_weekends,exclude_public_holidays,paid_treatment')
+      .eq('id', leaveType.policy_id)
+      .eq('entity_id', entityId)
+      .maybeSingle();
+    if (policyError) throw new Error(`Leave policy lookup failed: ${policyError.message}`);
+    if (policyRow) {
+      policy = toCamel(policyRow);
+    }
+  }
+
+  const { data: holidays, error: holidayError } = await context.employeeAdmin
+    .from('public_holidays')
+    .select('holiday_date,observed_date')
+    .eq('entity_id', entityId)
+    .eq('enabled', true);
+  if (holidayError && !/public_holidays|schema cache|could not find the table/i.test(holidayError.message || '')) {
+    throw new Error(`Public holiday lookup failed: ${holidayError.message}`);
+  }
+  const holidayDates = (holidays || []).flatMap((holiday: any) => (
+    [holiday.holiday_date, holiday.observed_date].filter(Boolean)
+  ));
+  const totalDays = calculateLeaveDateDays(
+    input.startDate,
+    input.endDate,
+    policy,
+    holidayDates,
+  );
+  if (!Number.isFinite(totalDays) || totalDays <= 0) {
+    throw serviceError('The selected dates do not produce any eligible leave days.');
+  }
+
+  const { data: existingRequests, error: requestError } = await context.employeeAdmin
+    .from('leave_requests')
+    .select('id,leave_type_id,start_date,end_date,total_days,status')
+    .eq('employee_id', context.employeeId)
+    .eq('leave_type_id', input.leaveTypeId)
+    .in('status', ['Pending', 'Approved']);
+  if (requestError) throw new Error(`Existing leave lookup failed: ${requestError.message}`);
+  const overlaps = (existingRequests || []).some((request: any) => (
+    String(request.start_date) <= input.endDate && String(request.end_date) >= input.startDate
+  ));
+  if (overlaps) throw serviceError('The selected dates overlap an existing leave request.', 409);
+
+  const isUnpaid = String(policy.paidTreatment || '').toLowerCase() === 'unpaid'
+    || String(leaveType.condition || '').toLowerCase().includes('unpaid');
+  if (!isUnpaid) {
+    const entitlement = Number(leaveType.default_entitlement_days || 0);
+    const reserved = (existingRequests || []).reduce(
+      (sum: number, request: any) => sum + Number(request.total_days || 0),
+      0,
+    );
+    if (entitlement > 0 && reserved + totalDays > entitlement) {
+      throw serviceError('This request exceeds the available leave entitlement.', 409);
+    }
+  }
+
+  return { entityId, totalDays };
+};
+
 export const loadEmployeeLeaveRequests = async (req: any) => {
   const context = await getEmployeeContext(req);
   const { data, error } = await context.employeeAdmin
     .from('leave_requests')
-    .select('*')
+    .select('id,entity_id,employee_id,employee_name,leave_type_id,leave_type,start_date,end_date,total_days,reason,status,applied_date,approved_at,approved_by,excess_days,payroll_month,payroll_year,created_at,updated_at')
     .eq('employee_id', context.employeeId)
     .order('applied_date', { ascending: false });
   if (error) {
@@ -306,6 +668,100 @@ export const loadEmployeeLeaveRequests = async (req: any) => {
   return { requests: (data || []).map(mapLeaveRequest) };
 };
 
+export const loadEmployeeLeaveWorkspace = async (req: any) => {
+  const context = await getEmployeeContext(req);
+  const entityId = String(context.employee.entityId || '').trim();
+  if (!entityId) throw serviceError('The employee is not linked to a company.', 409);
+  const client = context.employeeAdmin;
+  const select = async (table: string, columns: string, filters: Array<[string, string]> = []) => {
+    let query = client.from(table).select(columns).eq('entity_id', entityId);
+    filters.forEach(([column, value]) => {
+      query = query.eq(column, value);
+    });
+    const result = await query;
+    if (result.error && !/relation .* does not exist|schema cache|could not find the table/i.test(result.error.message || '')) {
+      throw new Error(`${table} could not be loaded: ${result.error.message}`);
+    }
+    return (result.data || []).map(toCamel);
+  };
+
+  const [
+    types,
+    policies,
+    carryOverSettings,
+    groups,
+    items,
+    assignments,
+    requests,
+    ledgerEntries,
+    payrollDeductions,
+    workShiftGroups,
+    workShiftGroupDays,
+    employeeWorkShiftAssignments,
+    publicHolidayGroups,
+    publicHolidays,
+  ] = await Promise.all([
+    select('leave_types', 'id,entity_id,name,code,default_entitlement_days,leave_group,condition,is_default,system_managed,enabled,policy_id,carry_over_id,can_carry_over'),
+    select('leave_condition_policies', 'id,entity_id,name,deduction_rule,rounding_rule,proration_rule,entitlement_rule,entitlement_days,paid_treatment,excess_leave_handling,payroll_deduction_behavior,exclude_weekends,exclude_public_holidays,notes,enabled'),
+    select('leave_carryover_settings', 'id,entity_id,name,carry_forward_rule,max_carry_forward_days,expiry_rule,expiry_date,expiry_months,rule_details,notes,enabled'),
+    select('leave_groups', 'id,entity_id,name,description,policy_id,carry_over_id,public_holiday_group_ids,enabled'),
+    select('leave_group_items', 'id,entity_id,group_id,leave_type_id,policy_id,carry_over_id,entitlement_days,enabled'),
+    select('employee_leave_group_assignments', 'id,entity_id,employee_id,group_id,active,assigned_at', [['employee_id', context.employeeId]]),
+    select('leave_requests', 'id,entity_id,employee_id,employee_name,leave_type_id,leave_type,start_date,end_date,total_days,reason,status,applied_date,approved_at,approved_by,excess_days,payroll_month,payroll_year,created_at,updated_at', [['employee_id', context.employeeId]]),
+    select('leave_balance_ledger', 'id,entity_id,employee_id,leave_type_id,leave_type,entry_type,source_type,source_id,quantity,expires_at,occurred_at,notes,created_at', [['employee_id', context.employeeId]]),
+    select('leave_payroll_deductions', 'id,entity_id,employee_id,leave_request_id,payroll_month,payroll_year,leave_days,daily_rate,amount,status,synced_at,reason,created_at,updated_at', [['employee_id', context.employeeId]]),
+    select('work_shift_groups', 'id,entity_id,name,description,enabled,weekly_hours,weekly_hours_warning'),
+    select('work_shift_group_days', 'id,entity_id,group_id,weekday,start_time,end_time,day_type,is_work_day,actual_hours'),
+    select('employee_work_shift_assignments', 'id,entity_id,employee_id,group_id,effective_date,end_date,active', [['employee_id', context.employeeId]]),
+    select('public_holiday_groups', 'id,entity_id,name,category,state_code,enabled'),
+    select('public_holidays', 'id,entity_id,group_id,name,holiday_date,observed_date,year,enabled'),
+  ]);
+
+  const configRows = types.map((row: any) => ({
+    id: row.id,
+    entityId,
+    leaveType: row.name,
+    daysEntitled: Number(row.defaultEntitlementDays || 0),
+    leaveGroup: row.leaveGroup || '',
+    condition: row.condition || 'Paid leave',
+    code: row.code || '',
+    isDefault: row.isDefault === true,
+    enabled: row.enabled !== false,
+    systemManaged: row.systemManaged === true,
+    canCarryOver: row.canCarryOver !== false,
+    policyId: row.policyId || undefined,
+    carryOverId: row.carryOverId || undefined,
+  }));
+  const mappedGroups = groups.map((group: any) => ({
+    ...group,
+    leaveTypeIds: items
+      .filter((item: any) => item.groupId === group.id && item.enabled !== false)
+      .map((item: any) => item.leaveTypeId),
+    items: items.filter((item: any) => item.groupId === group.id),
+    assignedEmployeeIds: assignments
+      .filter((assignment: any) => assignment.groupId === group.id && assignment.active)
+      .map((assignment: any) => assignment.employeeId),
+  }));
+
+  return {
+    configs: configRows,
+    policies,
+    carryOverSettings,
+    groups: mappedGroups,
+    assignments,
+    workShiftGroups,
+    workShiftGroupDays,
+    employeeWorkShiftAssignments,
+    publicHolidayGroups,
+    publicHolidays,
+    requests,
+    offInLieuRequests: [],
+    ledgerEntries,
+    payrollDeductions,
+    source: 'supabase',
+  };
+};
+
 export const createEmployeeLeaveRequest = async (req: any) => {
   const context = await getEmployeeContext(req);
   const body = req.body || {};
@@ -314,28 +770,65 @@ export const createEmployeeLeaveRequest = async (req: any) => {
   const startDate = String(body.startDate || '').trim();
   const endDate = String(body.endDate || '').trim();
   const reason = String(body.reason || '').trim();
-  const totalDays = Number(body.totalDays || 0);
-  if (!leaveType || !leaveTypeId || !startDate || !endDate || !reason || !Number.isFinite(totalDays) || totalDays <= 0) {
+  if (!leaveType || !leaveTypeId || !startDate || !endDate || !reason || reason.length > 2000) {
     throw serviceError('A complete leave request is required.');
   }
-  const { data, error } = await context.employeeAdmin
-    .from('leave_requests')
-    .insert({
-      id: `LR-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      entity_id: context.employee.entityId || null,
-      employee_id: context.employeeId,
-      employee_name: context.employee.name,
-      leave_type_id: leaveTypeId,
-      leave_type: leaveType,
-      start_date: startDate,
-      end_date: endDate,
-      total_days: totalDays,
-      reason,
-      status: 'Pending',
-      applied_date: new Date().toISOString().slice(0, 10),
-    })
-    .select('*')
-    .single();
+  const { entityId, totalDays } = await validateAndCalculateLeaveRequest(context, {
+    leaveTypeId,
+    leaveType,
+    startDate,
+    endDate,
+    reason,
+  });
+  const idempotencyKey = getIdempotencyKey(req, `leave:${context.employeeId}`);
+  const rpcResult = await context.employeeAdmin.rpc('create_leave_request', {
+    p_id: `LR-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    p_entity_id: entityId,
+    p_employee_id: context.employeeId,
+    p_employee_name: context.employee.name,
+    p_leave_type_id: leaveTypeId,
+    p_leave_type: leaveType,
+    p_start_date: startDate,
+    p_end_date: endDate,
+    p_total_days: totalDays,
+    p_reason: reason,
+    p_applied_date: new Date().toISOString().slice(0, 10),
+    p_idempotency_key: idempotencyKey,
+  });
+  let data = rpcResult.data?.[0];
+  let error = rpcResult.error;
+  if (error && isMissingFunction(error)) {
+    const existing = await context.employeeAdmin
+      .from('leave_requests')
+      .select('id,entity_id,employee_id,employee_name,leave_type_id,leave_type,start_date,end_date,total_days,reason,status,applied_date,approved_at,approved_by,excess_days,payroll_month,payroll_year,created_at,updated_at')
+      .eq('employee_id', context.employeeId)
+      .eq('idempotency_key', idempotencyKey)
+      .maybeSingle();
+    if (existing.error) throw new Error(`Employee leave request lookup failed: ${existing.error.message}`);
+    const fallback = existing.data
+      ? existing
+      : await context.employeeAdmin
+        .from('leave_requests')
+        .insert({
+        id: `LR-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        entity_id: entityId,
+        employee_id: context.employeeId,
+        employee_name: context.employee.name,
+        leave_type_id: leaveTypeId,
+        leave_type: leaveType,
+        start_date: startDate,
+        end_date: endDate,
+        total_days: totalDays,
+        reason,
+        status: 'Pending',
+        applied_date: new Date().toISOString().slice(0, 10),
+        idempotency_key: idempotencyKey,
+        })
+        .select('id,entity_id,employee_id,employee_name,leave_type_id,leave_type,start_date,end_date,total_days,reason,status,applied_date,approved_at,approved_by,excess_days,payroll_month,payroll_year,created_at,updated_at')
+        .single();
+    data = fallback.data;
+    error = fallback.error;
+  }
   if (error || !data) throw new Error(`Employee leave request could not be created: ${error?.message || 'unknown error'}`);
   return { request: mapLeaveRequest(data) };
 };
@@ -377,10 +870,10 @@ export const updateEmployeePortalProfile = async (req: any) => {
     .from('employees')
     .update(cleanUpdates)
     .eq('id', context.employeeId)
-    .select('*')
+    .select(EMPLOYEE_PORTAL_COLUMNS)
     .single();
   if (error) throw new Error(`Employee profile could not be updated: ${error.message}`);
-  return { employee: toCamel(data) };
+  return { employee: mapEmployeePortalDto(data) };
 };
 
 const validCategories = new Set<EmployeeServiceRequestCategory>([
@@ -411,15 +904,58 @@ const notifyEmployee = async (
   title: string,
   body: string,
   requestId?: string,
+  eventKey?: string,
 ) => {
+  const notificationKey = eventKey || `portal-notification:${requestId || employeeId}:${title}:${body}`;
   const { error } = await client.from('employee_notifications').insert({
     employee_id: employeeId,
     request_id: requestId || null,
     type: requestId ? 'service_request' : 'profile_change',
     title,
     body,
+    idempotency_key: notificationKey,
   });
-  if (error) console.warn('[Employee Notifications] Could not save notification:', error.message);
+  if (!error) return;
+  if (String(error.code || '') === '23505' || /duplicate key/i.test(String(error.message || ''))) return;
+  if (!/employee_notifications|schema cache|could not find the table/i.test(String(error.message || ''))) {
+    throw new Error(`Employee notification could not be saved: ${error.message}`);
+  }
+  const queued = await client.from('notification_outbox').insert({
+    event_key: notificationKey,
+    employee_id: employeeId,
+    request_id: requestId || null,
+    channel: 'portal',
+    template: 'portal_notification',
+    payload: { title, body, idempotencyKey: notificationKey },
+  });
+  if (String(queued.error?.code || '') === '23505' || /duplicate key/i.test(String(queued.error?.message || ''))) return;
+  if (queued.error) {
+    throw new Error(`Employee notification could not be queued: ${queued.error.message}`);
+  }
+};
+
+const enqueueNotificationOutbox = async (
+  client: any,
+  eventKey: string,
+  input: {
+    employeeId?: string;
+    requestId?: string;
+    recipient?: string;
+    template: string;
+    payload: Record<string, unknown>;
+  },
+) => {
+  const { error } = await client.from('notification_outbox').insert({
+    event_key: eventKey,
+    employee_id: input.employeeId || null,
+    request_id: input.requestId || null,
+    channel: 'email',
+    recipient: input.recipient || null,
+    template: input.template,
+    payload: input.payload,
+  });
+  if (error && /notification_outbox|schema cache|could not find the table/i.test(error.message || '')) return;
+  if (error) throw new Error(`Notification could not be queued: ${error.message}`);
 };
 
 const emailEmployee = async (
@@ -429,27 +965,46 @@ const emailEmployee = async (
   details: string,
 ) => {
   try {
-    await sendEmailTemplate('employee_request_updated', email, {
+    const delivery = await sendEmailTemplate('employee_request_updated', email, {
       name,
       subject,
       details,
     }, createEmployeeAdminClient());
+    if (!delivery.ok) throw new Error(delivery.failureReason || 'Employee notification email failed.');
   } catch (error) {
     console.warn('[Employee Request Email] Employee notification failed:', error);
+    await enqueueNotificationOutbox(createEmployeeAdminClient(), `employee-email:${email}:${subject}:${details}`, {
+      recipient: email,
+      template: 'employee_request_updated',
+      payload: { name, subject, details },
+    });
   }
 };
 
 const notifyHr = async (request: EmployeeServiceRequest) => {
   try {
-    await sendEmailTemplate('employee_request_created', HR_SUPPORT_EMAIL, {
+    const delivery = await sendEmailTemplate('employee_request_created', HR_SUPPORT_EMAIL, {
       name: request.employeeName,
       subject: request.subject,
       category: request.category,
       priority: request.priority,
       details: request.description,
     }, createEmployeeAdminClient());
+    if (!delivery.ok) throw new Error(delivery.failureReason || 'HR notification email failed.');
   } catch (error) {
     console.warn('[Employee Request Email] HR notification failed:', error);
+    await enqueueNotificationOutbox(createEmployeeAdminClient(), `hr-email:${request.id}`, {
+      requestId: request.id,
+      recipient: HR_SUPPORT_EMAIL,
+      template: 'employee_request_created',
+      payload: {
+        name: request.employeeName,
+        subject: request.subject,
+        category: request.category,
+        priority: request.priority,
+        details: request.description,
+      },
+    });
   }
 };
 
@@ -464,49 +1019,94 @@ export const createEmployeeServiceRequest = async (req: any) => {
   if (!description || description.length > 5000) throw serviceError('Description is required and must be under 5,000 characters.');
   if (!validPriorities.has(priority)) throw serviceError('Choose a valid request priority.');
 
-  const { data, error } = await context.employeeAdmin
-    .from('employee_service_requests')
-    .insert({
-      employee_id: context.employeeId,
-      employee_email: context.employeeEmail,
-      employee_name: context.employee.name,
-      entity_id: context.employee.entityId || null,
-      category,
-      subject,
-      description,
-      priority,
-      status: 'Open',
-    })
-    .select('*')
-    .single();
+  const idempotencyKey = getIdempotencyKey(req, `service-request:${context.employeeId}`);
+  const rpcResult = await context.employeeAdmin.rpc('create_employee_service_request_with_message', {
+    p_employee_id: context.employeeId,
+    p_employee_email: context.employeeEmail,
+    p_employee_name: context.employee.name,
+    p_entity_id: context.employee.entityId || null,
+    p_category: category,
+    p_subject: subject,
+    p_description: description,
+    p_priority: priority,
+    p_idempotency_key: idempotencyKey,
+  });
+  let data = rpcResult.data?.[0];
+  let error = rpcResult.error;
+  let usedFallback = false;
+  if (error && isMissingFunction(error)) {
+    const existing = await context.employeeAdmin
+      .from('employee_service_requests')
+      .select(SERVICE_REQUEST_COLUMNS)
+      .eq('employee_id', context.employeeId)
+      .eq('idempotency_key', idempotencyKey)
+      .maybeSingle();
+    if (existing.error) throw new Error(`Employee request lookup failed: ${existing.error.message}`);
+    if (existing.data) {
+      data = existing.data;
+      error = null;
+    } else {
+      usedFallback = true;
+      const fallback = await context.employeeAdmin
+        .from('employee_service_requests')
+        .upsert({
+          employee_id: context.employeeId,
+          employee_email: context.employeeEmail,
+          employee_name: context.employee.name,
+          entity_id: context.employee.entityId || null,
+          category,
+          subject,
+          description,
+          priority,
+          status: 'Open',
+          idempotency_key: idempotencyKey,
+        }, { onConflict: 'employee_id,idempotency_key' })
+        .select(SERVICE_REQUEST_COLUMNS)
+        .single();
+      data = fallback.data;
+      error = fallback.error;
+    }
+  }
   if (error || !data) {
     if (error) throwIfMissingServiceTable(error, 'employee requests');
     throw new Error(`Employee request could not be created: ${error?.message || 'unknown error'}`);
   }
 
-  const { error: messageError } = await context.employeeAdmin
-    .from('employee_service_request_messages')
-    .insert({
-      request_id: data.id,
-      author_type: 'employee',
-      author_id: context.employeeId,
-      author_name: context.employee.name,
-      body: description,
-    });
-  if (messageError) {
-    throwIfMissingServiceTable(messageError, 'employee requests');
-    throw new Error(`Employee request message could not be saved: ${messageError.message}`);
+  if (usedFallback) {
+    const { error: messageError } = await context.employeeAdmin
+      .from('employee_service_request_messages')
+      .upsert({
+        request_id: data.id,
+        author_type: 'employee',
+        author_id: context.employeeId,
+        author_name: context.employee.name,
+        body: description,
+        idempotency_key: `${idempotencyKey}:initial`,
+      }, { onConflict: 'request_id,idempotency_key' });
+    if (messageError) {
+      throwIfMissingServiceTable(messageError, 'employee requests');
+      const cleanup = await context.employeeAdmin
+        .from('employee_service_requests')
+        .delete()
+        .eq('id', data.id)
+        .eq('employee_id', context.employeeId);
+      if (cleanup.error) {
+        throw new Error(`Employee request message could not be saved and orphan cleanup failed: ${messageError.message}; ${cleanup.error.message}`);
+      }
+      throw new Error(`Employee request message could not be saved: ${messageError.message}`);
+    }
   }
 
-  const request = mapRequest(data, []);
-  await notifyHr(request);
+  const messages = await loadMessages(context.employeeAdmin, [String(data.id)]);
+  const request = mapRequest(data, messages.get(String(data.id)) || []);
+  if (usedFallback) await notifyHr(request);
   return { request };
 };
 
 const getOwnedRequest = async (context: any, requestId: string) => {
   const { data, error } = await context.employeeAdmin
     .from('employee_service_requests')
-    .select('*')
+    .select(SERVICE_REQUEST_COLUMNS)
     .eq('id', requestId)
     .eq('employee_id', context.employeeId)
     .maybeSingle();
@@ -523,16 +1123,18 @@ export const addEmployeeServiceMessage = async (req: any) => {
   const request = await getOwnedRequest(context, requestId);
   if (request.status === 'Closed') throw serviceError('Closed requests cannot receive new messages.', 409);
 
+  const messageIdempotencyKey = getIdempotencyKey(req, `service-message:${requestId}:${context.employeeId}`);
   const { data, error } = await context.employeeAdmin
     .from('employee_service_request_messages')
-    .insert({
+    .upsert({
       request_id: requestId,
       author_type: 'employee',
       author_id: context.employeeId,
       author_name: context.employee.name,
       body,
-    })
-    .select('*')
+      idempotency_key: messageIdempotencyKey,
+    }, { onConflict: 'request_id,idempotency_key' })
+    .select(SERVICE_MESSAGE_COLUMNS)
     .single();
   if (error || !data) throw new Error(`Employee request message could not be saved: ${error?.message || 'unknown error'}`);
   let updatedRequest = request;
@@ -542,7 +1144,7 @@ export const addEmployeeServiceMessage = async (req: any) => {
       .update({ status: 'Open' })
       .eq('id', requestId)
       .eq('employee_id', context.employeeId)
-      .select('*')
+      .select(SERVICE_REQUEST_COLUMNS)
       .single();
     if (reopenError || !reopened) {
       throw new Error(`Resolved employee request could not be reopened: ${reopenError?.message || 'unknown error'}`);
@@ -565,7 +1167,7 @@ export const reopenEmployeeServiceRequest = async (req: any) => {
     .update({ status: 'Open', resolved_at: null })
     .eq('id', requestId)
     .eq('employee_id', context.employeeId)
-    .select('*')
+    .select(SERVICE_REQUEST_COLUMNS)
     .single();
   if (error || !data) throw new Error(`Employee request could not be reopened: ${error?.message || 'unknown error'}`);
   return { request: mapRequest(data) };
@@ -595,6 +1197,50 @@ const profileChangeDbFields: Record<string, string> = {
   dependants: 'dependants',
 };
 
+const validateProfileRequestedValues = (
+  changeType: EmployeeProfileChangeType,
+  requestedValues: Record<string, unknown>,
+) => {
+  const allowedFields = profileChangeFields[changeType];
+  if (!allowedFields) throw serviceError('Choose a valid profile change type.');
+  const invalid = Object.keys(requestedValues).filter((key) => !allowedFields.includes(key));
+  if (invalid.length > 0) throw serviceError(`Unsupported profile fields: ${invalid.join(', ')}`);
+  if (Object.keys(requestedValues).length === 0) throw serviceError('At least one profile value is required.');
+
+  for (const [key, value] of Object.entries(requestedValues)) {
+    if (key === 'dependants') {
+      if (!Array.isArray(value) || value.length > 20) {
+        throw serviceError('Dependants must be a list of no more than 20 people.');
+      }
+      value.forEach((dependant: any) => {
+        if (!dependant || typeof dependant !== 'object') {
+          throw serviceError('Each dependant must be a valid profile object.');
+        }
+        if (String(dependant.name || '').length > 160 || String(dependant.dob || '').length > 20) {
+          throw serviceError('Dependant details are too long.');
+        }
+      });
+      continue;
+    }
+    if (typeof value === 'boolean') continue;
+    if (typeof value !== 'string' || value.length > 240) {
+      throw serviceError(`${key} must be a text value under 240 characters.`);
+    }
+    const text = value.trim();
+    if (['accountNo', 'taxNumber', 'epfNumber', 'nricPassport'].includes(key)
+      && text
+      && !/^[A-Za-z0-9][A-Za-z0-9 ./_-]{2,239}$/.test(text)) {
+      throw serviceError(`${key} contains unsupported characters.`);
+    }
+    if (key === 'maritalStatus' && text && !['Single', 'Married', 'Divorced', 'Widowed'].includes(text)) {
+      throw serviceError('Please choose a valid marital status.');
+    }
+    if (['spouseIsWorking', 'hasDependants'].includes(key) && text && !['Yes', 'No'].includes(text)) {
+      throw serviceError(`${key} must be Yes or No.`);
+    }
+  }
+};
+
 export const createEmployeeProfileChangeRequest = async (req: any) => {
   const context = await getEmployeeContext(req);
   const changeType = String(req.body?.changeType || '') as EmployeeProfileChangeType;
@@ -604,22 +1250,22 @@ export const createEmployeeProfileChangeRequest = async (req: any) => {
   if (!requestedValues || typeof requestedValues !== 'object' || Array.isArray(requestedValues)) {
     throw serviceError('Requested profile values are required.');
   }
-  const invalid = Object.keys(requestedValues).filter((key) => !allowedFields.includes(key));
-  if (invalid.length > 0) throw serviceError(`Unsupported profile fields: ${invalid.join(', ')}`);
-  if (Object.keys(requestedValues).length === 0) throw serviceError('At least one profile value is required.');
+  validateProfileRequestedValues(changeType, requestedValues);
 
   const currentValues = Object.fromEntries(allowedFields.map((key) => [key, context.employee[key] ?? null]));
+  const idempotencyKey = getIdempotencyKey(req, `profile-change:${context.employeeId}`);
   const { data, error } = await context.employeeAdmin
     .from('employee_profile_change_requests')
-    .insert({
+    .upsert({
       employee_id: context.employeeId,
       employee_email: context.employeeEmail,
       change_type: changeType,
       current_values: currentValues,
       requested_values: requestedValues,
       status: 'Pending',
-    })
-    .select('*')
+      idempotency_key: idempotencyKey,
+    }, { onConflict: 'employee_id,idempotency_key' })
+    .select(PROFILE_CHANGE_COLUMNS)
     .single();
   if (error || !data) {
     if (error) throwIfMissingServiceTable(error, 'profile changes');
@@ -637,14 +1283,14 @@ export const markEmployeeNotificationRead = async (req: any) => {
     .update({ read_at: new Date().toISOString() })
     .eq('id', notificationId)
     .eq('employee_id', context.employeeId)
-    .select('*')
+    .select(NOTIFICATION_COLUMNS)
     .single();
   if (error || !data) throw serviceError('The notification could not be found.', 404);
   return { notification: mapNotification(data) };
 };
 
 export const listAdminEmployeeRequests = async (req: any) => {
-  await requireAdminSession(req);
+  await requirePermission(req, 'employee.request.manage');
   const employeeAdmin = createEmployeeAdminClient();
   const query = {
     status: req.query?.status,
@@ -660,7 +1306,7 @@ export const listAdminEmployeeRequests = async (req: any) => {
 };
 
 export const updateAdminEmployeeRequest = async (req: any) => {
-  const actor = await requireAdminSession(req);
+  const actor = await requirePermission(req, 'employee.request.manage');
   const requestId = String(req.body?.requestId || '').trim();
   const status = req.body?.status
     ? String(req.body.status) as EmployeeServiceRequestStatus
@@ -670,11 +1316,12 @@ export const updateAdminEmployeeRequest = async (req: any) => {
   if (!requestId) throw serviceError('requestId is required.');
   if (status && !validStatuses.has(status)) throw serviceError('Choose a valid request status.');
   const employeeAdmin = createEmployeeAdminClient();
-  const { data: existing, error: lookupError } = await employeeAdmin
+  const { data: existingRow, error: lookupError } = await employeeAdmin
     .from('employee_service_requests')
-    .select('*')
+    .select(SERVICE_REQUEST_COLUMNS)
     .eq('id', requestId)
     .maybeSingle();
+  const existing: any = existingRow;
   if (lookupError) throw new Error(`Employee request lookup failed: ${lookupError.message}`);
   if (!existing) throw serviceError('The request could not be found.', 404);
 
@@ -690,20 +1337,22 @@ export const updateAdminEmployeeRequest = async (req: any) => {
       .from('employee_service_requests')
       .update(updates)
       .eq('id', requestId)
-      .select('*')
+      .select(SERVICE_REQUEST_COLUMNS)
       .single();
     if (result.error || !result.data) throw new Error(`Employee request could not be updated: ${result.error?.message || 'unknown error'}`);
     updated = result.data;
   }
 
   if (message) {
-    const { error } = await employeeAdmin.from('employee_service_request_messages').insert({
+    const messageIdempotencyKey = getIdempotencyKey(req, `hr-message:${requestId}:${actor.username}`);
+    const { error } = await employeeAdmin.from('employee_service_request_messages').upsert({
       request_id: requestId,
       author_type: 'hr',
       author_id: actor.username,
       author_name: actor.name || actor.username,
       body: message,
-    });
+      idempotency_key: messageIdempotencyKey,
+    }, { onConflict: 'request_id,idempotency_key' });
     if (error) throw new Error(`HR reply could not be saved: ${error.message}`);
     await notifyEmployee(
       employeeAdmin,
@@ -734,7 +1383,7 @@ export const updateAdminEmployeeRequest = async (req: any) => {
 };
 
 export const updateAdminProfileChangeRequest = async (req: any) => {
-  const actor = await requireAdminSession(req);
+  const actor = await requirePermission(req, 'profile.change.approve');
   const requestId = String(req.body?.requestId || '').trim();
   const status = String(req.body?.status || '') as 'Approved' | 'Rejected';
   const reviewNote = String(req.body?.reviewNote || '').trim();
@@ -743,69 +1392,235 @@ export const updateAdminProfileChangeRequest = async (req: any) => {
   }
 
   const employeeAdmin = createEmployeeAdminClient();
-  const { data: change, error: lookupError } = await employeeAdmin
-    .from('employee_profile_change_requests')
-    .select('*')
+  const { data: changeRow, error: lookupError } = await employeeAdmin
+      .from('employee_profile_change_requests')
+      .select(PROFILE_CHANGE_COLUMNS)
     .eq('id', requestId)
     .maybeSingle();
+  const change: any = changeRow;
   if (lookupError) throw new Error(`Profile change lookup failed: ${lookupError.message}`);
   if (!change) throw serviceError('The profile change request could not be found.', 404);
-  if (change.status !== 'Pending') throw serviceError('This profile change request has already been reviewed.', 409);
+  if (!['Pending', 'Failed'].includes(change.status)) {
+    throw serviceError('This profile change request has already been reviewed.', 409);
+  }
+
+  const mainUrl = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
+  const employeeUrl = String(
+    process.env.EMPLOYEE_SUPABASE_URL
+      || process.env.VITE_EMPLOYEE_SUPABASE_URL
+      || process.env.SUPABASE_URL
+      || process.env.VITE_SUPABASE_URL
+      || ''
+  ).replace(/\/+$/, '');
+  const workflow = mainUrl && mainUrl === employeeUrl
+    ? await employeeAdmin.rpc('approve_profile_change_workflow', {
+      p_request_id: requestId,
+      p_status: status,
+      p_reviewed_by: actor.username,
+      p_review_note: reviewNote || null,
+    })
+    : { data: null, error: { message: 'Workflow is split across Supabase projects.' } };
+  if (!workflow.error || !isMissingFunction(workflow.error)) {
+    if (workflow.error) {
+      throw new Error(`Profile change workflow failed: ${workflow.error.message}`);
+    }
+    const workflowRow = workflow.data?.[0];
+    if (!workflowRow) throw new Error('Profile change workflow returned no result.');
+    const workflowRequest = mapProfileChange(workflowRow);
+    if (workflowRequest.status === 'Failed') {
+      return { request: workflowRequest };
+    }
+    let employee: any;
+    if (workflowRequest.status === 'Approved') {
+      const { data: employeeRow, error: employeeError } = await createMainAdminClient()
+        .from('employees')
+        .select(EMPLOYEE_PORTAL_COLUMNS)
+        .eq('id', change.employee_id)
+        .maybeSingle();
+      if (employeeError) throw new Error(`Approved employee profile could not be loaded: ${employeeError.message}`);
+      employee = employeeRow ? toCamel(employeeRow) : undefined;
+    }
+    await notifyEmployee(
+      employeeAdmin,
+      change.employee_id,
+      'Profile change request reviewed',
+      workflowRequest.status === 'Approved'
+        ? 'Your requested profile changes have been approved.'
+        : `Your requested profile changes were rejected.${reviewNote ? ` Note: ${reviewNote}` : ''}`
+    );
+    return { request: workflowRequest, employee };
+  }
 
   let updatedEmployee: any;
-  if (status === 'Approved') {
-    const main = createMainAdminClient();
-    const approvedValues = Object.fromEntries(
-      Object.entries(change.requested_values || {}).map(([key, value]) => [
-        profileChangeDbFields[key],
-        key === 'dependants' ? value : String(value ?? '').trim(),
-      ])
-    );
-    const { data, error } = await main
-      .from('employees')
-      .update(approvedValues)
-      .eq('id', change.employee_id)
-      .select('*')
-      .single();
-    if (error || !data) throw new Error(`Approved profile changes could not be applied: ${error?.message || 'unknown error'}`);
-    updatedEmployee = toCamel(data);
-    try {
-      await main.from('audit_logs').insert({
-        id: `profile-change-${Date.now()}`,
+  let previousDbValues: Record<string, unknown> | undefined;
+  try {
+    if (status === 'Approved') {
+      const main = createMainAdminClient();
+      validateProfileRequestedValues(change.change_type, change.requested_values || {});
+      const approvedValues = Object.fromEntries(
+        Object.entries(change.requested_values || {}).map(([key, value]) => [
+          profileChangeDbFields[key],
+          key === 'dependants' ? value : String(value ?? '').trim(),
+        ])
+      );
+      previousDbValues = Object.fromEntries(
+        Object.keys(approvedValues).map((dbField) => {
+          const profileField = Object.entries(profileChangeDbFields)
+            .find(([, mappedDbField]) => mappedDbField === dbField)?.[0];
+          return [dbField, change.current_values?.[profileField || dbField] ?? null];
+        })
+      );
+      const { data, error } = await main
+        .from('employees')
+        .update(approvedValues)
+        .eq('id', change.employee_id)
+        .select(EMPLOYEE_PORTAL_COLUMNS)
+        .single();
+      if (error || !data) throw new Error(`Approved profile changes could not be applied: ${error?.message || 'unknown error'}`);
+      updatedEmployee = toCamel(data);
+      const auditResult = await main.from('audit_logs').insert({
+        id: `profile-change-${requestId}-${Date.now()}`,
         employee_email: change.employee_email,
         changed_by: actor.username,
         change_type: 'EMPLOYEE_PROFILE_CHANGE_APPROVED',
         old_value: JSON.stringify(change.current_values || {}),
         new_value: JSON.stringify(change.requested_values || {}),
       });
-    } catch (auditError) {
-      console.warn('[Profile Change Audit] Could not write audit record:', auditError);
+      if (auditResult.error) {
+        const rollback = await main.from('employees').update(previousDbValues).eq('id', change.employee_id);
+        if (rollback.error) {
+          throw new Error(`Profile change audit failed and rollback failed: ${auditResult.error.message}; ${rollback.error.message}`);
+        }
+        throw new Error(`Profile change audit could not be saved: ${auditResult.error.message}`);
+      }
     }
+
+    const { data, error } = await employeeAdmin
+      .from('employee_profile_change_requests')
+      .update({
+        status,
+        reviewed_by: actor.username,
+        reviewed_at: new Date().toISOString(),
+        review_note: reviewNote || null,
+      })
+      .eq('id', requestId)
+      .select(PROFILE_CHANGE_COLUMNS)
+      .single();
+    if (error || !data) {
+      if (status === 'Approved' && updatedEmployee && previousDbValues) {
+        const rollback = await createMainAdminClient()
+          .from('employees')
+          .update(previousDbValues)
+          .eq('id', change.employee_id);
+        if (rollback.error) {
+          throw new Error(`Profile change decision failed and rollback failed: ${error?.message || 'unknown error'}; ${rollback.error.message}`);
+        }
+      }
+      throw new Error(`Profile change decision could not be saved: ${error?.message || 'unknown error'}`);
+    }
+
+    await notifyEmployee(
+      employeeAdmin,
+      change.employee_id,
+      'Profile change request reviewed',
+      status === 'Approved'
+        ? 'Your requested profile changes have been approved.'
+        : `Your requested profile changes were rejected.${reviewNote ? ` Note: ${reviewNote}` : ''}`
+    );
+
+    return { request: mapProfileChange(data), employee: updatedEmployee };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const failed = await employeeAdmin
+      .from('employee_profile_change_requests')
+      .update({
+        status: 'Failed',
+        reviewed_by: actor.username,
+        reviewed_at: new Date().toISOString(),
+        review_note: reviewNote || message,
+      })
+      .eq('id', requestId)
+      .in('status', ['Pending', 'Failed'])
+      .select(PROFILE_CHANGE_COLUMNS)
+      .maybeSingle();
+    if (failed.error) {
+      throw new Error(`${message}; failed status could not be recorded: ${failed.error.message}`);
+    }
+    throw error;
+  }
+};
+
+export const processNotificationOutbox = async (req: any) => {
+  await requirePermission(req, 'notification.process');
+  const client = createEmployeeAdminClient();
+  const { data: pending, error } = await client
+    .from('notification_outbox')
+    .select('id,channel,recipient,template,payload,attempts,employee_id,request_id,created_at')
+    .in('status', ['pending', 'failed'])
+    .lte('available_at', new Date().toISOString())
+    .order('created_at', { ascending: true })
+    .limit(25);
+  if (error) {
+    if (isMissingTable(error)) throw serviceError('Notification outbox is not deployed yet.', 503);
+    throw new Error(`Notification outbox could not be loaded: ${error.message}`);
   }
 
-  const { data, error } = await employeeAdmin
-    .from('employee_profile_change_requests')
-    .update({
-      status,
-      reviewed_by: actor.username,
-      reviewed_at: new Date().toISOString(),
-      review_note: reviewNote || null,
-    })
-    .eq('id', requestId)
-    .select('*')
-    .single();
-  if (error || !data) throw new Error(`Profile change decision could not be saved: ${error?.message || 'unknown error'}`);
+  let sent = 0;
+  let failed = 0;
+  for (const item of (pending || []) as any[]) {
+    const attempts = Number(item.attempts || 0) + 1;
+    const claimed = await client
+      .from('notification_outbox')
+      .update({ status: 'processing', attempts })
+      .eq('id', item.id)
+      .in('status', ['pending', 'failed'])
+      .select('id')
+      .maybeSingle();
+    if (claimed.error || !claimed.data) continue;
 
-  await notifyEmployee(
-    employeeAdmin,
-    change.employee_id,
-    'Profile change request reviewed',
-    status === 'Approved'
-      ? 'Your requested profile changes have been approved.'
-      : `Your requested profile changes were rejected.${reviewNote ? ` Note: ${reviewNote}` : ''}`
-  );
-
-  return { request: mapProfileChange(data), employee: updatedEmployee };
+    try {
+      if (item.channel === 'portal') {
+        const payload = item.payload || {};
+        const portal = await client.from('employee_notifications').insert({
+          employee_id: item.employee_id,
+          request_id: item.request_id || null,
+          type: item.request_id ? 'service_request' : 'profile_change',
+          title: String(payload.title || item.template),
+          body: String(payload.body || ''),
+          idempotency_key: String(payload.idempotencyKey || `outbox:${item.id}`),
+        });
+        if (portal.error && String(portal.error.code || '') !== '23505' && !/duplicate key/i.test(String(portal.error.message || ''))) {
+          throw new Error(portal.error.message);
+        }
+      } else if (item.channel !== 'email' || !item.recipient) {
+        throw new Error('Unsupported notification channel or missing recipient.');
+      }
+      if (item.channel === 'email') {
+        const delivery = await sendEmailTemplate(
+          item.template as any,
+          item.recipient,
+          item.payload || {},
+          client,
+        );
+        if (!delivery.ok) throw new Error(delivery.failureReason || 'Email delivery failed.');
+      }
+      await client.from('notification_outbox').update({
+        status: 'sent',
+        sent_at: new Date().toISOString(),
+        last_error: null,
+      }).eq('id', item.id);
+      sent += 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await client.from('notification_outbox').update({
+        status: 'failed',
+        last_error: message,
+        available_at: new Date(Date.now() + Math.min(60, 2 ** Math.min(attempts, 6)) * 60 * 1000).toISOString(),
+      }).eq('id', item.id);
+      failed += 1;
+    }
+  }
+  return { processed: sent + failed, sent, failed };
 };
 
 export const getEmployeeServiceTableError = isMissingTable;

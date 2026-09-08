@@ -28,7 +28,6 @@ import {
   CheckCircle2,
   AlertCircle,
   BriefcaseBusiness,
-  Sparkles,
   Clock3,
   Plus,
   FileDown,
@@ -52,7 +51,7 @@ import PerformanceAppraisalForm from './PerformanceAppraisalForm';
 import { getAppraisalAccessStatus } from '../lib/appraisalAccess';
 import { loadAppraisalDraft } from '../lib/performanceAppraisalDraft';
 import { formatToDDMMMYYYY, getGmt8DateString, getGmt8LongDateString, getGmt8Timestamp } from '../lib/dateUtils';
-import { calculatePayslip, getPayrollDocumentProfile } from '../data';
+import { calculatePayslip, getPayrollBasicSalary, getPayrollDocumentProfile } from '../data';
 import {
   calculateLeaveBalances,
   calculateLeaveDateDays,
@@ -80,6 +79,7 @@ import {
   createEmployeeServiceRequest,
   createEmployeeLeaveRequest,
   loadEmployeeLeaveRequests,
+  loadEmployeeLeaveWorkspace,
   markEmployeeNotificationRead,
   reopenEmployeeServiceRequest,
 } from '../lib/employeeServiceClient';
@@ -103,6 +103,15 @@ type PortalSection =
   | 'support';
 
 type SupportRequest = EmployeeServiceRequest;
+
+interface PortalActionItem {
+  id: string;
+  label: string;
+  detail: string;
+  section: PortalSection;
+  icon: React.ComponentType<{ className?: string }>;
+  tone: 'attention' | 'neutral';
+}
 
 interface EmployeePortalViewProps {
   employees: Employee[];
@@ -253,9 +262,11 @@ export default function EmployeePortalView({
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(previewEmployeeId);
   const [selectedReviewCycleId, setSelectedReviewCycleId] = useState(reviewCycles[0]?.id || '');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileRevision, setProfileRevision] = useState(0);
   const [selectedPayslip, setSelectedPayslip] = useState<{ month: number; year: number; record?: PayrollRecord2026 } | null>(null);
+  const [expandedSupportRequestId, setExpandedSupportRequestId] = useState<string | null>(null);
   const [leaveConfigs, setLeaveConfigs] = useState<LeaveConfig[]>(DEFAULT_LEAVE_CONFIGS);
   const [leavePolicies, setLeavePolicies] = useState<LeaveConditioningPolicy[]>([]);
   const [leaveCarryOverSettings, setLeaveCarryOverSettings] = useState<CarryOverLeaveBalanceSettings[]>([]);
@@ -270,16 +281,23 @@ export default function EmployeePortalView({
   const [offInLieuRequests, setOffInLieuRequests] = useState<OffInLieuRequest[]>([]);
   const [leavePayrollDeductions, setLeavePayrollDeductions] = useState<LeavePayrollDeduction[]>([]);
   const [allLeaveRequests, setAllLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [isLeaveWorkspaceLoading, setIsLeaveWorkspaceLoading] = useState(false);
+  const [leaveWorkspaceError, setLeaveWorkspaceError] = useState<string | null>(null);
+  const [leaveWorkspaceRevision, setLeaveWorkspaceRevision] = useState(0);
+  const [isSubmittingLeave, setIsSubmittingLeave] = useState(false);
+  const [leaveFormError, setLeaveFormError] = useState<string | null>(null);
   const [leaveType, setLeaveType] = useState('Annual Leave');
   const [leaveStartDate, setLeaveStartDate] = useState(getGmt8DateString());
   const [leaveEndDate, setLeaveEndDate] = useState(getGmt8DateString());
   const [leaveReason, setLeaveReason] = useState('');
+  const [leaveStatusFilter, setLeaveStatusFilter] = useState<'All' | LeaveRequest['status']>('All');
   const [supportRequests, setSupportRequests] = useState<SupportRequest[]>([]);
   const [employeeProfileChanges, setEmployeeProfileChanges] = useState<EmployeeProfileChangeRequest[]>(profileChangeRequests);
   const [employeeNotifications, setEmployeeNotifications] = useState<EmployeeNotification[]>(notifications);
   const [supportCategory, setSupportCategory] = useState(SUPPORT_CATEGORIES[0]);
   const [supportSubject, setSupportSubject] = useState('');
   const [supportDescription, setSupportDescription] = useState('');
+  const [supportFormError, setSupportFormError] = useState<string | null>(null);
   const [supportPriority, setSupportPriority] = useState<'Low' | 'Normal' | 'High'>('Normal');
   const [isSubmittingSupport, setIsSubmittingSupport] = useState(false);
   const [supportReplyRequestId, setSupportReplyRequestId] = useState<string | null>(null);
@@ -287,9 +305,6 @@ export default function EmployeePortalView({
   const [isSubmittingReply, setIsSubmittingReply] = useState(false);
   const [isSubmittingProfileChange, setIsSubmittingProfileChange] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
-  const [language, setLanguage] = useState<'en' | 'zh'>(() => (
-    localStorage.getItem('redpoint_employee_language') === 'zh' ? 'zh' : 'en'
-  ));
 
   const effectiveEmployeeEmail = String(currentUserEmail || '').toLowerCase();
 
@@ -386,77 +401,39 @@ export default function EmployeePortalView({
   const activeSectionStorageKey = `${storagePrefix}active_section`;
 
   const copy = {
-    en: {
-      employeePortal: 'Employee Portal',
-      home: 'Home',
-      leave: 'Leave',
-      payslips: 'Payslips',
-      support: 'Support',
-      more: 'More',
-      profile: 'My Profile',
-      onboarding: 'Onboarding',
-      growth: 'Performance & Appraisal',
-      documents: 'Documents',
-      signOut: 'Sign out',
-      close: 'Close',
-      loading: 'Loading employee portal...',
-      loadingBody: 'We are securely connecting your employee profile.',
-      serviceUnavailable: 'Employee services are temporarily unavailable.',
-      retry: 'Reload',
-      secureAccount: 'Secure account',
-      previewMode: 'Preview mode',
-      unread: 'unread',
-    },
-    zh: {
-      employeePortal: '员工门户',
-      home: '首页',
-      leave: '请假',
-      payslips: '工资单',
-      support: '支援',
-      more: '更多',
-      profile: '个人资料',
-      onboarding: '入职资料',
-      growth: '绩效与评估',
-      documents: '文件',
-      signOut: '退出登录',
-      close: '关闭',
-      loading: '正在加载员工门户…',
-      loadingBody: '正在安全连接您的员工资料。',
-      serviceUnavailable: '员工服务暂时无法使用。',
-      retry: '重新加载',
-      secureAccount: '安全账号',
-      previewMode: '预览模式',
-      unread: '条未读',
-    },
-  }[language];
-
-  const translateSection = (section: PortalSection) => ({
-    home: copy.home,
-    profile: copy.profile,
-    payslips: copy.payslips,
-    leave: copy.leave,
-    onboarding: copy.onboarding,
-    growth: copy.growth,
-    documents: copy.documents,
-    support: copy.support,
-  }[section]);
-
-  const translateStatus = (status: string) => language === 'zh'
-    ? ({
-      Open: '待处理',
-      'In Progress': '处理中',
-      'Waiting for Employee': '等待员工',
-      Resolved: '已解决',
-      Closed: '已关闭',
-      Pending: '待审核',
-      Approved: '已批准',
-      Rejected: '已拒绝',
-    } as Record<string, string>)[status] || status
-    : status;
+    employeePortal: 'Employee Site',
+    home: 'Home',
+    leave: 'Leave',
+    payslips: 'Payslips',
+    support: 'Support',
+    more: 'More',
+    profile: 'My Profile',
+    onboarding: 'Onboarding',
+    growth: 'Performance & Appraisal',
+    documents: 'Documents',
+    signOut: 'Sign out',
+    close: 'Close',
+    loading: 'Loading employee portal...',
+    loadingBody: 'We are securely connecting your employee profile.',
+    serviceUnavailable: 'Employee services are temporarily unavailable.',
+    retry: 'Reload',
+    secureAccount: 'Secure account',
+    previewMode: 'Preview mode',
+  };
+  const translateSection = (section: PortalSection) => PORTAL_NAV_ITEMS.find((item) => item.id === section)?.label || copy.home;
+  const translateStatus = (status: string) => status;
 
   useEffect(() => {
-    localStorage.setItem('redpoint_employee_language', language);
-  }, [language]);
+    if (!isMobileNavOpen && !isMoreOpen && !selectedPayslip) return undefined;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setIsMobileNavOpen(false);
+      setIsMoreOpen(false);
+      setSelectedPayslip(null);
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [isMobileNavOpen, isMoreOpen, selectedPayslip]);
 
   useEffect(() => {
     if (!isPreviewMode) setSupportRequests(serviceRequests);
@@ -492,8 +469,12 @@ export default function EmployeePortalView({
     if (!selectedEmployee?.entityId) return;
     let cancelled = false;
     const employeeOnly = !isPreviewMode ? { employeeId: selectedEmployee.id } : undefined;
+    setIsLeaveWorkspaceLoading(true);
+    setLeaveWorkspaceError(null);
     void Promise.all([
-      loadLeaveWorkspace(selectedEmployee.entityId, employeeOnly),
+      isPreviewMode
+        ? loadLeaveWorkspace(selectedEmployee.entityId, { ...employeeOnly, preferLocal: true })
+        : loadEmployeeLeaveWorkspace(),
       !isPreviewMode ? loadEmployeeLeaveRequests() : Promise.resolve(null),
     ]).then(([workspace, employeeRequests]) => {
       if (cancelled) return;
@@ -522,11 +503,16 @@ export default function EmployeePortalView({
       setLeaveStartDate(getGmt8DateString());
       setLeaveEndDate(getGmt8DateString());
       setLeaveReason('');
+      setIsLeaveWorkspaceLoading(false);
+    }).catch((error) => {
+      if (cancelled) return;
+      setIsLeaveWorkspaceLoading(false);
+      setLeaveWorkspaceError(error instanceof Error ? error.message : 'Leave services are temporarily unavailable.');
     });
     return () => {
       cancelled = true;
     };
-  }, [isPreviewMode, leaveConfigKey, leaveStorageKey, selectedEmployee?.entityId]);
+  }, [isPreviewMode, leaveConfigKey, leaveStorageKey, leaveWorkspaceRevision, selectedEmployee?.entityId]);
 
   useEffect(() => {
     if (!selectedEmployee?.id) return;
@@ -636,6 +622,52 @@ export default function EmployeePortalView({
       .flatMap((holiday) => [holiday.holidayDate, holiday.observedDate].filter(Boolean) as string[]);
   }, [leaveGroups, publicHolidays, selectedEmployee]);
 
+  const selectedLeaveConfig = leaveConfigs.find((config) => config.leaveType === leaveType) || leaveConfigs[0];
+  const selectedLeavePolicy = leavePolicies.find((policy) => policy.id === selectedLeaveConfig?.policyId) || leavePolicies[0];
+  const leavePreview = useMemo(() => {
+    const start = new Date(`${leaveStartDate}T00:00:00`);
+    const end = new Date(`${leaveEndDate}T00:00:00`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+      return { totalDays: 0, excludedWeekends: 0, publicHolidays: 0, remainingAfter: null as number | null, error: 'Choose a valid start and end date.' };
+    }
+    const holidays = new Set(employeePublicHolidayDates);
+    let excludedWeekends = 0;
+    let publicHolidays = 0;
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      const dateString = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+      if (cursor.getDay() === 0 || cursor.getDay() === 6) excludedWeekends += 1;
+      if (holidays.has(dateString)) publicHolidays += 1;
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    const totalDays = calculateLeaveDateDays(
+      leaveStartDate,
+      leaveEndDate,
+      selectedLeavePolicy,
+      employeePublicHolidayDates,
+      activeWorkShiftGroup,
+      workShiftGroupDays,
+    );
+    const balance = selectedLeaveBalances.find((item) => item.leaveTypeId === selectedLeaveConfig?.id);
+    const remainingAfter = balance ? balance.remaining - totalDays : selectedLeaveConfig ? selectedLeaveConfig.daysEntitled - totalDays : null;
+    return {
+      totalDays,
+      excludedWeekends,
+      publicHolidays,
+      remainingAfter,
+      error: totalDays <= 0 ? 'These dates do not produce any eligible working days.' : remainingAfter !== null && remainingAfter < 0 ? 'This request is greater than your remaining balance.' : null,
+    };
+  }, [
+    activeWorkShiftGroup,
+    employeePublicHolidayDates,
+    leaveEndDate,
+    leaveStartDate,
+    selectedLeaveConfig,
+    selectedLeavePolicy,
+    selectedLeaveBalances,
+    workShiftGroupDays,
+  ]);
+
   const profileCompleteness = useMemo(() => {
     if (!selectedEmployee) return 0;
     const checks = [
@@ -650,6 +682,46 @@ export default function EmployeePortalView({
     ];
     return Math.round((checks.filter(Boolean).length / checks.length) * 100);
   }, [selectedEmployee]);
+
+  const profileDirectChanges = useMemo(() => {
+    if (!selectedEmployee) return {};
+    const directFields = ['contactNumber', 'emergencyContactName', 'emergencyContactRelation', 'emergencyContactPhone', 'avatarUrl'] as const;
+    return Object.fromEntries(directFields
+      .filter((key) => String(profileDraft[key] || '') !== String(selectedEmployee[key] || ''))
+      .map((key) => [key, profileDraft[key]]));
+  }, [profileDraft, selectedEmployee]);
+
+  const profileSensitiveChanges = useMemo(() => {
+    if (!selectedEmployee) return false;
+    const requestedFamilyValues = {
+      maritalStatus: profileDraft.maritalStatus,
+      spouseName: profileDraft.spouseName.trim(),
+      spouseNric: profileDraft.spouseNric.trim(),
+      spouseIsWorking: profileDraft.spouseIsWorking,
+      spouseCompany: profileDraft.spouseCompany.trim(),
+      spousePosition: profileDraft.spousePosition.trim(),
+      hasDependants: profileDraft.hasDependants,
+      dependants: profileDraft.hasDependants === 'Yes'
+        ? dependantsDraft.map((dependant) => ({ ...dependant, name: dependant.name.trim(), dob: dependant.dob.trim() }))
+        : [],
+    };
+    return (
+      profileDraft.bankName.trim() !== String(selectedEmployee.bankName || '')
+      || profileDraft.accountNo.trim() !== String(selectedEmployee.accountNo || '')
+      || profileDraft.taxNumber.trim() !== String(selectedEmployee.taxNumber || '')
+      || profileDraft.epfNumber.trim() !== String(selectedEmployee.epfNumber || '')
+      || Object.keys(requestedFamilyValues).some((key) => {
+        const typedKey = key as keyof typeof requestedFamilyValues;
+        return JSON.stringify(requestedFamilyValues[typedKey]) !== JSON.stringify(selectedEmployee[typedKey] ?? (typedKey === 'dependants' ? [] : ''));
+      })
+    );
+  }, [dependantsDraft, profileDraft, selectedEmployee]);
+
+  const profileChangeStatus = (changeType: EmployeeProfileChangeRequest['changeType']) => (
+    employeeProfileChanges
+      .filter((request) => request.changeType === changeType)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]?.status || 'Current'
+  );
 
   const currentMonthLeaveRequests = visibleLeaveRequests.filter((request) =>
     request.appliedDate.startsWith(getGmt8DateString().slice(0, 7))
@@ -669,27 +741,96 @@ export default function EmployeePortalView({
         ? 'Available for viewing'
         : 'Not opened by HR';
 
+  const portalActionItems = useMemo<PortalActionItem[]>(() => {
+    if (!selectedEmployee) return [];
+    const items: PortalActionItem[] = [];
+    const pendingProfileTypes = new Set(
+      employeeProfileChanges
+        .filter((request) => request.status === 'Pending')
+        .map((request) => request.changeType)
+    );
+    if (pendingProfileTypes.size > 0) {
+      items.push({
+        id: 'profile-review',
+        label: 'Profile changes are pending HR review',
+        detail: 'Bank, statutory, or family details will update after HR approves them.',
+        section: 'profile',
+        icon: ShieldCheck,
+        tone: 'attention',
+      });
+    }
+    if (pendingLeaveCount > 0) {
+      items.push({
+        id: 'leave-review',
+        label: `${pendingLeaveCount} leave request${pendingLeaveCount === 1 ? '' : 's'} awaiting review`,
+        detail: 'Open Leave to review your requested dates and current status.',
+        section: 'leave',
+        icon: CalendarDays,
+        tone: 'attention',
+      });
+    }
+    if (employeeAppraisalAccessStatus === 'sent') {
+      items.push({
+        id: 'appraisal-review',
+        label: 'Complete your performance self-appraisal',
+        detail: `${activeReviewCycle?.name || 'The current review cycle'} is ready for your input.`,
+        section: 'growth',
+        icon: TrendingUp,
+        tone: 'attention',
+      });
+    }
+    if (selectedEmployeeCandidates.some((candidate) => (candidate.progress || 0) < 100)) {
+      items.push({
+        id: 'onboarding-review',
+        label: 'Finish your onboarding tasks',
+        detail: 'Continue the handbook, signatures, or compliance assessment.',
+        section: 'onboarding',
+        icon: ClipboardList,
+        tone: 'attention',
+      });
+    }
+    if (supportRequests.some((request) => request.status === 'Waiting for Employee')) {
+      items.push({
+        id: 'support-reply',
+        label: 'HR is waiting for your reply',
+        detail: 'Open Support to continue the conversation on your request.',
+        section: 'support',
+        icon: MessageSquareText,
+        tone: 'attention',
+      });
+    }
+    return items;
+  }, [
+    activeReviewCycle?.name,
+    employeeAppraisalAccessStatus,
+    employeeProfileChanges,
+    pendingLeaveCount,
+    selectedEmployee,
+    selectedEmployeeCandidates,
+    supportRequests,
+  ]);
+
   const portalTheme = {
     '--color-primary': '#a32626',
     '--color-primary-container': '#7f1d1d',
     '--color-on-primary-container': '#ffffff',
-    '--color-secondary': '#85615a',
-    '--color-secondary-container': '#f6ede3',
+    '--color-secondary': '#52606d',
+    '--color-secondary-container': '#e9edf1',
     '--color-on-secondary-container': '#a32626',
-    '--color-background': '#f7f1ea',
-    '--color-on-background': '#261916',
-    '--color-surface': '#fffdfb',
+    '--color-background': '#f4f5f7',
+    '--color-on-background': '#17212b',
+    '--color-surface': '#ffffff',
     '--color-surface-container-lowest': '#ffffff',
-    '--color-surface-container-low': '#fff8f0',
-    '--color-surface-container': '#f5e9db',
-    '--color-surface-container-high': '#ece0d2',
-    '--color-surface-container-highest': '#dfd0bd',
-    '--color-on-surface': '#261916',
-    '--color-on-surface-variant': '#74584f',
-    '--color-outline': '#e2d4c4',
-    '--color-outline-variant': '#e2d4c4',
-    '--color-parchment': '#f5ece2',
-    '--color-neutral-border': '#e2d4c4',
+    '--color-surface-container-low': '#f7f8fa',
+    '--color-surface-container': '#eef1f4',
+    '--color-surface-container-high': '#e4e8ec',
+    '--color-surface-container-highest': '#d8dee5',
+    '--color-on-surface': '#17212b',
+    '--color-on-surface-variant': '#52606d',
+    '--color-outline': '#cfd6de',
+    '--color-outline-variant': '#cfd6de',
+    '--color-parchment': '#eef1f4',
+    '--color-neutral-border': '#cfd6de',
   } as React.CSSProperties;
 
   const updateLeaveRequests = (next: LeaveRequest[]) => {
@@ -706,8 +847,9 @@ export default function EmployeePortalView({
     }
   };
 
-  const handleSaveProfile = async () => {
+  const handleSaveProfile = async (mode: 'contact' | 'sensitive' | 'all' = 'all') => {
     if (!selectedEmployee || !isEditingProfile) return;
+    setProfileSaveError(null);
     const normalizedDependants = dependantsDraft
       .map((dependant) => ({
         ...dependant,
@@ -716,7 +858,7 @@ export default function EmployeePortalView({
       }))
       .filter((dependant) => dependant.name || dependant.dob);
 
-    if (profileDraft.hasDependants === 'Yes') {
+    if (mode !== 'contact' && profileDraft.hasDependants === 'Yes') {
       const incompleteDependant = normalizedDependants.find((dependant) => !dependant.name || !dependant.dob);
       if (incompleteDependant) {
         onShowNotification('Profile Update', 'Please complete each dependant name and date of birth, or remove the empty row.');
@@ -751,18 +893,22 @@ export default function EmployeePortalView({
         hasDependants: profileDraft.hasDependants,
         dependants: profileDraft.hasDependants === 'Yes' ? normalizedDependants : [],
       };
+      const shouldSaveContact = mode !== 'sensitive';
+      const shouldSubmitSensitive = mode !== 'contact';
       if (isPreviewMode) {
         savePreviewEmployeeOverrides(selectedEmployee.id, {
-          ...profileUpdates,
-          ...requestedBankValues,
-          ...requestedStatutoryValues,
-          ...requestedFamilyValues,
+          ...(shouldSaveContact ? profileUpdates : {}),
+          ...(shouldSubmitSensitive ? {
+            ...requestedBankValues,
+            ...requestedStatutoryValues,
+            ...requestedFamilyValues,
+          } : {}),
         });
         setProfileRevision((revision) => revision + 1);
       } else {
         const directKeys = Object.keys(profileUpdates) as Array<keyof typeof profileUpdates>;
         const changedDirectUpdates = Object.fromEntries(
-          directKeys.filter((key) => String(profileUpdates[key] ?? '') !== String(selectedEmployee[key] ?? ''))
+          directKeys.filter((key) => shouldSaveContact && String(profileUpdates[key] ?? '') !== String(selectedEmployee[key] ?? ''))
             .map((key) => [key, profileUpdates[key]])
         ) as Partial<Employee>;
         if (Object.keys(changedDirectUpdates).length > 0) {
@@ -770,26 +916,26 @@ export default function EmployeePortalView({
         }
 
         const changeRequests: Array<Promise<{ request: EmployeeProfileChangeRequest }>> = [];
-        if (
+        if (shouldSubmitSensitive && (
           requestedBankValues.bankName !== String(selectedEmployee.bankName || '')
           || requestedBankValues.accountNo !== String(selectedEmployee.accountNo || '')
-        ) {
+        )) {
           changeRequests.push(createEmployeeProfileChangeRequest({
             changeType: 'bank_details',
             requestedValues: requestedBankValues,
           }));
         }
-        if (
+        if (shouldSubmitSensitive && (
           requestedStatutoryValues.taxNumber !== String(selectedEmployee.taxNumber || '')
           || requestedStatutoryValues.epfNumber !== String(selectedEmployee.epfNumber || '')
-        ) {
+        )) {
           changeRequests.push(createEmployeeProfileChangeRequest({
             changeType: 'statutory_details',
             requestedValues: requestedStatutoryValues,
           }));
         }
         const familyKeys = Object.keys(requestedFamilyValues) as Array<keyof typeof requestedFamilyValues>;
-        if (familyKeys.some((key) => JSON.stringify(requestedFamilyValues[key]) !== JSON.stringify(selectedEmployee[key] ?? (key === 'dependants' ? [] : '')))) {
+        if (shouldSubmitSensitive && familyKeys.some((key) => JSON.stringify(requestedFamilyValues[key]) !== JSON.stringify(selectedEmployee[key] ?? (key === 'dependants' ? [] : '')))) {
           changeRequests.push(createEmployeeProfileChangeRequest({
             changeType: 'family_details',
             requestedValues: requestedFamilyValues,
@@ -807,12 +953,17 @@ export default function EmployeePortalView({
       setIsEditingProfile(false);
       onShowNotification(
         'Profile Updated',
-        isPreviewMode
-          ? 'Your profile details were saved in preview mode.'
-          : 'Contact details were saved. Sensitive detail changes are waiting for HR approval.'
+        mode === 'contact'
+          ? 'Contact details were saved.'
+          : mode === 'sensitive'
+            ? 'Sensitive detail changes were submitted for HR approval.'
+            : isPreviewMode
+              ? 'Your profile details were saved in preview mode.'
+              : 'Contact details were saved. Sensitive detail changes are waiting for HR approval.'
       );
     } catch (error) {
       console.error('[Employee Portal] Profile save failed:', error);
+      setProfileSaveError(error instanceof Error ? error.message : 'We could not save your profile details right now.');
       onShowNotification('Profile Update Failed', 'We could not save your profile details right now.');
     } finally {
       setIsSavingProfile(false);
@@ -831,35 +982,22 @@ export default function EmployeePortalView({
     event.preventDefault();
     if (!selectedEmployee) return;
     if (!leaveReason.trim()) {
-      onShowNotification('Leave request', 'Please add a reason for the leave request.');
+      setLeaveFormError('Add a reason before submitting your request.');
       return;
     }
-    const start = new Date(leaveStartDate);
-    const end = new Date(leaveEndDate);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
-      onShowNotification('Leave request', 'Please choose a valid leave date range.');
+    if (leavePreview.error) {
+      setLeaveFormError(leavePreview.error);
       return;
     }
-    const selectedConfig = leaveConfigs.find((config) => config.leaveType === leaveType) || leaveConfigs[0];
-    const selectedPolicy = leavePolicies.find((policy) => policy.id === selectedConfig?.policyId) || leavePolicies[0];
-    const totalDays = calculateLeaveDateDays(
-      leaveStartDate,
-      leaveEndDate,
-      selectedPolicy,
-      employeePublicHolidayDates,
-      activeWorkShiftGroup,
-      workShiftGroupDays,
-    );
-    if (totalDays <= 0) {
-      onShowNotification('Leave request', 'The selected dates do not produce any eligible leave days under the active policy.');
-      return;
-    }
+    setLeaveFormError(null);
+    setIsSubmittingLeave(true);
+    const totalDays = leavePreview.totalDays;
     const newRequest: LeaveRequest = {
       id: `LR-${Date.now()}`,
       entityId: selectedEmployee.entityId,
       employeeId: selectedEmployee.id,
       employeeName: selectedEmployee.name,
-      leaveTypeId: selectedConfig?.id,
+      leaveTypeId: selectedLeaveConfig?.id,
       leaveType,
       startDate: leaveStartDate,
       endDate: leaveEndDate,
@@ -874,7 +1012,7 @@ export default function EmployeePortalView({
         updateLeaveRequests(nextRequests);
       } else {
         const created = await createEmployeeLeaveRequest({
-          leaveTypeId: String(selectedConfig?.id || ''),
+          leaveTypeId: String(selectedLeaveConfig?.id || ''),
           leaveType,
           startDate: leaveStartDate,
           endDate: leaveEndDate,
@@ -887,17 +1025,20 @@ export default function EmployeePortalView({
       onShowNotification('Leave request submitted', `Your ${leaveType.toLowerCase()} request is now pending review.`);
     };
     void submit().catch((error) => {
+      setLeaveFormError(error instanceof Error ? error.message : 'We could not submit the leave request.');
       onShowNotification('Leave request failed', error instanceof Error ? error.message : 'We could not submit the leave request.');
-    });
+    }).finally(() => setIsSubmittingLeave(false));
   };
 
   const handleSubmitSupport = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedEmployee) return;
     if (!supportSubject.trim() || !supportDescription.trim()) {
+      setSupportFormError('Complete the subject and description before sending.');
       onShowNotification('Support request', 'Please complete the subject and description.');
       return;
     }
+    setSupportFormError(null);
     setIsSubmittingSupport(true);
     try {
       if (isPreviewMode) {
@@ -933,6 +1074,7 @@ export default function EmployeePortalView({
       onShowNotification('Request submitted', 'Your message has been queued for HR.');
     } catch (error) {
       console.error('[Employee Portal] Support request failed:', error);
+      setSupportFormError(error instanceof Error ? error.message : 'We could not submit your request. Try again.');
       onShowNotification('Request failed', error instanceof Error ? error.message : 'We could not submit your request.');
     } finally {
       setIsSubmittingSupport(false);
@@ -1016,16 +1158,16 @@ export default function EmployeePortalView({
       : 'border-white/10 bg-white/5 text-white/85 hover:bg-white/12 hover:text-white',
   ].join(' ');
 
-  const cardClass = 'rounded-3xl border border-neutral-border bg-white/90 shadow-[0_18px_40px_rgba(53,24,18,0.05)] backdrop-blur-sm';
-  const profileInputClass = 'w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary disabled:cursor-not-allowed';
+  const cardClass = 'rounded-2xl border border-neutral-border bg-white';
+  const profileInputClass = 'w-full rounded-xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed';
 
   if (isPortalLoading || portalLoadError) {
     return (
-      <div className="min-h-screen bg-[#f7f1ea] flex items-center justify-center p-6 text-left" style={portalTheme}>
+      <div className="min-h-screen bg-[#f4f5f7] flex items-center justify-center p-6 text-left" style={portalTheme}>
         <div className={`${cardClass} max-w-lg w-full p-8 space-y-4`}>
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
-              {portalLoadError ? <AlertCircle className="w-6 h-6" /> : <Sparkles className="w-6 h-6 animate-pulse" />}
+              {portalLoadError ? <AlertCircle className="w-6 h-6" /> : <div className="h-6 w-6 animate-pulse rounded-md bg-primary/25" />}
             </div>
             <div>
               <h1 className="text-2xl font-bold text-on-background">
@@ -1036,6 +1178,13 @@ export default function EmployeePortalView({
               </p>
             </div>
           </div>
+          {!portalLoadError && (
+            <div className="space-y-2" aria-hidden="true">
+              <div className="h-3 w-full animate-pulse rounded bg-surface-container" />
+              <div className="h-3 w-4/5 animate-pulse rounded bg-surface-container" />
+              <div className="h-11 w-36 animate-pulse rounded-xl bg-surface-container" />
+            </div>
+          )}
           {portalLoadError && (
             <button
               type="button"
@@ -1052,11 +1201,11 @@ export default function EmployeePortalView({
 
   if (!selectedEmployee) {
     return (
-      <div className="min-h-screen bg-[#f7f1ea] flex items-center justify-center p-6 text-left" style={portalTheme}>
+      <div className="min-h-screen bg-[#f4f5f7] flex items-center justify-center p-6 text-left" style={portalTheme}>
         <div className={`${cardClass} max-w-lg w-full p-8 space-y-4`}>
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
-              <Sparkles className="w-6 h-6" />
+              <AlertCircle className="w-6 h-6" />
             </div>
             <div>
               <h1 className="text-2xl font-bold text-on-background">Employee portal loading</h1>
@@ -1078,8 +1227,8 @@ export default function EmployeePortalView({
   }
 
   const sidebarContent = (
-    <div className="flex h-full flex-col bg-gradient-to-b from-[#7f1d1d] via-[#842323] to-[#6f1919] p-4 text-[#fff6ec]">
-      <div className="mb-6 rounded-2xl border border-white/10 bg-white/8 p-4 text-center shadow-[0_12px_24px_rgba(0,0,0,0.08)]">
+    <div className="flex h-full flex-col bg-[#8f1f24] p-4 text-white">
+      <div className="mb-6 border-b border-white/15 p-2 pb-5 text-center">
         <div className="mx-auto flex h-14 w-32 items-center justify-center overflow-hidden rounded-2xl bg-white">
           <img src="/redpoint-logo.png" alt="RedPoint" className="h-full w-full object-contain p-2" />
         </div>
@@ -1087,7 +1236,7 @@ export default function EmployeePortalView({
         <p className="mt-1 truncate text-sm font-semibold">{employeeEntity?.name || 'Red Point Sdn Bhd'}</p>
       </div>
 
-      <div className="mb-5 rounded-2xl border border-white/10 bg-white/8 p-4 shadow-[0_12px_24px_rgba(0,0,0,0.08)]">
+      <div className="mb-5 border-b border-white/15 p-2 pb-5">
         <div className="flex items-center gap-3">
           <EmployeeAvatar employee={selectedEmployee} className="h-12 w-12 rounded-2xl" />
           <div className="min-w-0">
@@ -1095,7 +1244,7 @@ export default function EmployeePortalView({
             <p className="truncate text-[11px] text-white/70">{selectedEmployee.designation}</p>
           </div>
         </div>
-        <div className="mt-3 flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.3em] text-white/70">
+        <div className="mt-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/70">
           <ShieldCheck className="h-3.5 w-3.5" />
           {isPreviewMode ? copy.previewMode : copy.secureAccount}
         </div>
@@ -1149,13 +1298,13 @@ export default function EmployeePortalView({
     </div>
   );
 
-  const renderHome = () => (
+  const renderHomeLegacy = () => (
     <div className="space-y-6">
       <section className={`${cardClass} overflow-hidden`}>
         <div className="grid gap-6 p-6 lg:grid-cols-[1.2fr_0.8fr] lg:p-8">
           <div className="space-y-5">
             <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.35em] text-primary">
-              <Sparkles className="h-3.5 w-3.5" />
+              <Home className="h-3.5 w-3.5" />
               Employee workspace
             </div>
             <div>
@@ -1325,6 +1474,130 @@ export default function EmployeePortalView({
     </div>
   );
 
+  const renderHome = () => (
+    <div className="space-y-6">
+      <section className={`${cardClass} overflow-hidden`}>
+        <div className="flex flex-col gap-6 p-6 md:flex-row md:items-end md:justify-between lg:p-8">
+          <div>
+            <div className="mb-4 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.22em] text-primary">
+              <Home className="h-4 w-4" />
+              Employee workspace
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight text-on-background md:text-4xl">
+              Good day, {selectedEmployee.name.split(' ')[0]}.
+            </h1>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-on-surface-variant">
+              Your personal place to manage leave, payroll documents, growth, and HR support.
+            </p>
+          </div>
+          <div className="min-w-0 border-l-2 border-primary/20 pl-4 md:max-w-xs">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-on-surface-variant">Signed in as</p>
+            <p className="mt-1 truncate text-sm font-semibold text-on-background">{selectedEmployee.name}</p>
+            <p className="mt-1 truncate text-xs text-on-surface-variant">{selectedEmployee.designation} · {selectedEmployee.department}</p>
+          </div>
+        </div>
+      </section>
+
+      <section className={cardClass}>
+        <div className="flex items-start justify-between gap-4 border-b border-neutral-border px-6 py-5">
+          <div>
+            <h2 className="text-lg font-bold text-on-background">Your next steps</h2>
+            <p className="mt-1 text-sm text-on-surface-variant">Only items that need your attention appear here.</p>
+          </div>
+          <ClipboardList className="h-5 w-5 text-primary" />
+        </div>
+        {portalActionItems.length > 0 ? (
+          <div className="divide-y divide-neutral-border">
+            {portalActionItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  type="button"
+                  key={item.id}
+                  onClick={() => setActiveSection(item.section)}
+                  className="flex min-h-20 w-full items-center gap-4 px-6 py-4 text-left transition-colors hover:bg-surface-container-low active:translate-y-px"
+                >
+                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${item.tone === 'attention' ? 'bg-primary/10 text-primary' : 'bg-surface-container text-on-surface'}`}>
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-on-background">{item.label}</span>
+                    <span className="mt-1 block text-xs leading-5 text-on-surface-variant">{item.detail}</span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-on-surface-variant" />
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex items-start gap-4 px-6 py-6">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+              <CheckCircle2 className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-on-background">You are all caught up</p>
+              <p className="mt-1 text-sm text-on-surface-variant">There are no employee actions waiting for you right now.</p>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <section className={`${cardClass} p-6`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-on-background">At a glance</h2>
+              <p className="mt-1 text-sm text-on-surface-variant">Your latest payroll and leave position.</p>
+            </div>
+            <ArrowUpRight className="h-5 w-5 text-primary" />
+          </div>
+          <div className="mt-5 divide-y divide-neutral-border border-y border-neutral-border">
+            <button type="button" onClick={() => setActiveSection('payslips')} className="flex min-h-20 w-full items-center justify-between gap-4 text-left">
+              <span>
+                <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-on-surface-variant">Latest payslip</span>
+                <span className="mt-1 block text-sm font-semibold text-on-background">{latestPayrollRecord ? `${latestPayrollMonth}/${latestPayrollYear} · Paid ${formatToDDMMMYYYY(latestPayrollDate)}` : 'No payroll record yet'}</span>
+              </span>
+              <span className="text-right">
+                <span className="block text-xs text-on-surface-variant">Net pay</span>
+                <span className="mt-1 block text-base font-bold text-on-background">RM {latestPayrollBreakdown ? currency(latestPayrollBreakdown.netPay) : '0.00'}</span>
+              </span>
+            </button>
+            <button type="button" onClick={() => setActiveSection('leave')} className="flex min-h-20 w-full items-center justify-between gap-4 text-left">
+              <span>
+                <span className="block text-xs font-semibold uppercase tracking-[0.16em] text-on-surface-variant">Annual leave</span>
+                <span className="mt-1 block text-sm font-semibold text-on-background">{annualLeaveRemaining} days remaining</span>
+              </span>
+              <span className="text-xs font-semibold text-primary">View leave</span>
+            </button>
+          </div>
+        </section>
+
+        <section className={`${cardClass} p-6`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-on-background">Announcements</h2>
+              <p className="mt-1 text-sm text-on-surface-variant">Company reminders and updates.</p>
+            </div>
+            <Bell className="h-5 w-5 text-primary" />
+          </div>
+          <div className="mt-5 space-y-4">
+            {[
+              ['Payroll cut-off reminder', 'Timesheets and claims close on the 25th of each month.', 'Payroll'],
+              ['Profile verification', 'Keep your mobile number and emergency contact current.', 'Profile'],
+              ['Handbook refresh', 'Find the latest handbook in Onboarding.', 'Documents'],
+            ].map(([title, body, tag]) => (
+              <article key={title} className="border-l-2 border-primary/25 pl-4">
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">{tag}</p>
+                <h3 className="mt-1 text-sm font-semibold text-on-background">{title}</h3>
+                <p className="mt-1 text-xs leading-5 text-on-surface-variant">{body}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+
   const renderProfile = () => (
     <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
       <section className={`${cardClass} p-6`}>
@@ -1344,26 +1617,47 @@ export default function EmployeePortalView({
                 Cancel
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                if (isEditingProfile) {
-                  void handleSaveProfile();
-                } else {
-                  setIsEditingProfile(true);
-                }
-              }}
-              disabled={isSavingProfile}
-              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-container disabled:cursor-wait disabled:opacity-70"
-            >
-              {isSavingProfile ? 'Saving...' : isEditingProfile ? 'Save changes' : 'Edit profile'}
-              {!isSavingProfile && !isEditingProfile && <Pencil className="h-4 w-4" />}
-            </button>
+            {!isEditingProfile && (
+              <button
+                type="button"
+                onClick={() => setIsEditingProfile(true)}
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-container active:translate-y-px"
+              >
+                Edit profile <Pencil className="h-4 w-4" />
+              </button>
+            )}
           </div>
-        </div>
+          </div>
+          {profileSaveError && (
+            <p className="mt-4 border-l-2 border-error bg-red-50 px-3 py-2 text-sm text-red-900" role="alert">
+              {profileSaveError}
+            </p>
+          )}
 
-        <div className="mt-6 space-y-5">
-          <div className="flex items-center gap-4 rounded-3xl border border-neutral-border bg-surface-container-low p-5">
+          <div className="mt-6 space-y-5">
+            <div className="flex items-start gap-3 border-l-2 border-amber-500 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>Bank, tax, EPF, and family changes are sent to HR for review. They do not change your payroll record immediately.</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-4">
+              {([
+                ['Bank details', 'bank_details'],
+                ['Tax details', 'statutory_details'],
+                ['EPF details', 'statutory_details'],
+                ['Family details', 'family_details'],
+              ] as const).map(([label, type]) => {
+                const status = profileChangeStatus(type);
+                return (
+                  <div key={label} className="border border-neutral-border bg-surface-container-low px-3 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-on-surface-variant">{label}</p>
+                    <p className={`mt-1 text-xs font-semibold ${status === 'Pending' ? 'text-amber-800' : status === 'Rejected' || status === 'Failed' ? 'text-error' : 'text-on-background'}`}>
+                      {status === 'Pending' ? 'Pending HR review' : status}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-4 rounded-3xl border border-neutral-border bg-surface-container-low p-5">
             <EmployeeAvatar employee={selectedEmployee} className="h-16 w-16 rounded-3xl" />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
@@ -1464,6 +1758,30 @@ export default function EmployeePortalView({
               />
             </label>
           </fieldset>
+
+          {isEditingProfile && (
+            <div className="flex flex-col gap-3 border-t border-neutral-border pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-on-surface-variant">Choose the action that matches the information you changed.</p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => void handleSaveProfile('contact')}
+                  disabled={isSavingProfile || Object.keys(profileDirectChanges).length === 0}
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl border border-neutral-border bg-white px-4 py-2.5 text-sm font-semibold text-on-surface transition-colors hover:bg-surface-container disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isSavingProfile && !isSubmittingProfileChange ? 'Saving...' : 'Save contact details'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveProfile('sensitive')}
+                  disabled={isSavingProfile || !profileSensitiveChanges}
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-container disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isSubmittingProfileChange ? 'Submitting...' : 'Submit changes for HR review'}
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="rounded-3xl border border-neutral-border bg-surface-container-low p-5">
             <div className="flex items-center gap-2 text-primary">
@@ -1762,13 +2080,13 @@ export default function EmployeePortalView({
         </div>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl bg-[#fff8f1] p-4">
+          <div className="rounded-xl border border-neutral-border bg-surface-container-low p-4">
             <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-on-surface-variant">Document type</p>
             <p className="mt-2 text-lg font-bold text-on-background">
               {getPayrollDocumentProfile(selectedEmployee).documentType}
             </p>
           </div>
-          <div className="rounded-2xl bg-[#fff8f1] p-4">
+          <div className="rounded-xl border border-neutral-border bg-surface-container-low p-4">
             <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-on-surface-variant">Net pay</p>
             <p className="mt-2 text-lg font-bold text-on-background">
               RM {latestPayrollBreakdown ? currency(latestPayrollBreakdown.netPay) : '0.00'}
@@ -1776,7 +2094,7 @@ export default function EmployeePortalView({
           </div>
         </div>
 
-        <div className="mt-6 space-y-3">
+        <div className="mt-6 overflow-hidden rounded-xl border border-neutral-border">
           {employeePayrollHistory.length > 0 ? employeePayrollHistory.map((record) => {
             const breakdown = calculatePayslip(selectedEmployee, record.payrollMonth, record.payrollYear, { companyEmployees: employees });
             const documentProfile = getPayrollDocumentProfile(selectedEmployee);
@@ -1784,9 +2102,9 @@ export default function EmployeePortalView({
               <button
                 key={record.id}
                 onClick={() => openPayslip(record)}
-                className="w-full rounded-2xl border border-neutral-border bg-white p-4 text-left transition-shadow hover:shadow-[0_14px_30px_rgba(53,24,18,0.08)]"
+                className={`w-full border-b border-neutral-border p-4 text-left transition-colors last:border-b-0 hover:bg-surface-container-low active:translate-y-px ${record.id === latestPayrollRecord?.id ? 'bg-primary/[0.04]' : 'bg-white'}`}
               >
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-on-background">
                       {new Date(record.payrollYear, record.payrollMonth - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
@@ -1795,17 +2113,15 @@ export default function EmployeePortalView({
                       {record.documentType || documentProfile.documentType} · Paid {formatToDDMMMYYYY(record.paymentDate || latestPayrollDate)}
                     </p>
                   </div>
-                  <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.35em] text-primary">
-                    RM {currency(breakdown.netPay)}
-                  </span>
-                </div>
-                <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-primary">
-                  View payslip <ChevronRight className="h-4 w-4" />
+                  <div className="flex items-center justify-between gap-4 sm:justify-end">
+                    <span className="text-sm font-bold text-on-background">RM {currency(breakdown.netPay)}</span>
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary">View <ChevronRight className="h-4 w-4" /></span>
+                  </div>
                 </div>
               </button>
             );
           }) : (
-            <div className="rounded-3xl border border-dashed border-neutral-border bg-[#fffaf4] p-8 text-center">
+            <div className="rounded-xl border border-dashed border-neutral-border bg-surface-container-low p-8 text-center">
               <FileDown className="mx-auto h-6 w-6 text-primary" />
               <p className="mt-3 text-sm font-semibold text-on-background">No archived payroll records yet.</p>
               <p className="mt-1 text-xs text-on-surface-variant">A current payroll snapshot will still be available for preview.</p>
@@ -1828,7 +2144,7 @@ export default function EmployeePortalView({
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           {[
-            { label: 'Basic salary', value: latestPayrollBreakdown?.grossEarnings ? `RM ${currency(latestPayrollBreakdown.grossEarnings - (latestPayrollBreakdown.allowancesSum + latestPayrollBreakdown.reimbursementsSum + latestPayrollBreakdown.netPay ? 0 : 0))}` : '—' },
+            { label: 'Basic salary', value: latestPayrollBreakdown && selectedEmployee ? `RM ${currency(getPayrollBasicSalary(selectedEmployee, latestPayrollMonth, latestPayrollYear))}` : '—' },
             { label: 'Total deductions', value: latestPayrollBreakdown ? `RM ${currency(latestPayrollBreakdown.totalDeductions)}` : '—' },
             { label: 'Visible employer contributions', value: latestPayrollBreakdown ? `RM ${currency(latestPayrollBreakdown.totalEmployerContributions - latestPayrollBreakdown.hrdCorpVal)}` : '—' },
             { label: 'Tax / PCB', value: latestPayrollBreakdown ? `RM ${currency(latestPayrollBreakdown.taxPcbVal)}` : '—' },
@@ -1864,13 +2180,27 @@ export default function EmployeePortalView({
           <CalendarDays className="h-5 w-5 text-primary" />
         </div>
 
+        {isLeaveWorkspaceLoading && (
+          <div className="mt-5 animate-pulse space-y-3" aria-label="Loading leave workspace">
+            <div className="h-20 rounded-xl bg-surface-container" />
+            <div className="h-20 rounded-xl bg-surface-container" />
+          </div>
+        )}
+        {leaveWorkspaceError && (
+          <div className="mt-5 flex items-start justify-between gap-4 border-l-2 border-error bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
+            <span>{leaveWorkspaceError}</span>
+            <button type="button" onClick={() => setLeaveWorkspaceRevision((value) => value + 1)} className="shrink-0 font-semibold text-primary underline">
+              Retry
+            </button>
+          </div>
+        )}
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl bg-[#fff8f1] p-4">
+          <div className="rounded-xl border border-neutral-border bg-surface-container-low p-4">
             <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-on-surface-variant">Annual leave</p>
             <p className="mt-2 text-2xl font-bold text-on-background">{annualLeaveRemaining}</p>
             <p className="mt-1 text-xs text-on-surface-variant">of {annualLeaveConfig.daysEntitled} days remaining</p>
           </div>
-          <div className="rounded-2xl bg-[#fff8f1] p-4">
+          <div className="rounded-xl border border-neutral-border bg-surface-container-low p-4">
             <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-on-surface-variant">Sick leave</p>
             <p className="mt-2 text-2xl font-bold text-on-background">{sickLeaveRemaining}</p>
             <p className="mt-1 text-xs text-on-surface-variant">of {sickLeaveConfig.daysEntitled} days remaining</p>
@@ -1883,7 +2213,7 @@ export default function EmployeePortalView({
             const taken = balance?.taken || 0;
             const remaining = balance?.remaining ?? config.daysEntitled;
             return (
-              <div key={config.id} className="rounded-2xl border border-neutral-border bg-[#fffaf4] p-4">
+              <div key={config.id} className="rounded-xl border border-neutral-border bg-white p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="font-semibold text-on-background">{config.leaveType}</p>
@@ -1912,7 +2242,7 @@ export default function EmployeePortalView({
               <select
                 value={leaveType}
                 onChange={(event) => setLeaveType(event.target.value)}
-                className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none focus:border-primary"
+                className={profileInputClass}
               >
                 {leaveConfigs.map((config) => (
                   <option key={config.id} value={config.leaveType}>
@@ -1928,7 +2258,7 @@ export default function EmployeePortalView({
                   type="date"
                   value={leaveStartDate}
                   onChange={(event) => setLeaveStartDate(event.target.value)}
-                  className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none focus:border-primary"
+                  className={profileInputClass}
                 />
               </label>
               <label className="space-y-2">
@@ -1937,7 +2267,7 @@ export default function EmployeePortalView({
                   type="date"
                   value={leaveEndDate}
                   onChange={(event) => setLeaveEndDate(event.target.value)}
-                  className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none focus:border-primary"
+                  className={profileInputClass}
                 />
               </label>
             </div>
@@ -1947,25 +2277,57 @@ export default function EmployeePortalView({
                 value={leaveReason}
                 onChange={(event) => setLeaveReason(event.target.value)}
                 rows={4}
-                className="w-full rounded-2xl border border-neutral-border bg-white px-4 py-3 text-sm outline-none focus:border-primary"
+                className={profileInputClass}
                 placeholder="Tell HR why you need this leave"
               />
             </label>
+            <div className="border border-primary/15 bg-primary/[0.04] px-4 py-4">
+              <div className="grid grid-cols-2 gap-y-4 text-sm sm:grid-cols-4 sm:gap-4">
+                <div><p className="text-xs text-on-surface-variant">Eligible leave days</p><p className="mt-1 font-bold text-on-background">{leavePreview.totalDays}</p></div>
+                <div><p className="text-xs text-on-surface-variant">Excluded weekends</p><p className="mt-1 font-bold text-on-background">{leavePreview.excludedWeekends}</p></div>
+                <div><p className="text-xs text-on-surface-variant">Public holidays</p><p className="mt-1 font-bold text-on-background">{leavePreview.publicHolidays}</p></div>
+                <div><p className="text-xs text-on-surface-variant">Balance after request</p><p className={`mt-1 font-bold ${leavePreview.remainingAfter !== null && leavePreview.remainingAfter < 0 ? 'text-error' : 'text-on-background'}`}>{leavePreview.remainingAfter === null ? '—' : `${leavePreview.remainingAfter} days`}</p></div>
+              </div>
+            </div>
+            {(leaveFormError || leavePreview.error) && (
+              <p className="border-l-2 border-error bg-red-50 px-3 py-2 text-sm text-red-900" role="alert">
+                {leaveFormError || leavePreview.error}
+              </p>
+            )}
             <button
               type="submit"
-              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+              disabled={isSubmittingLeave || Boolean(leavePreview.error)}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-container active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Send className="h-4 w-4" />
-              Submit leave request
+              {isSubmittingLeave ? 'Submitting...' : 'Submit leave request'}
             </button>
           </form>
         </div>
 
         <div className={`${cardClass} p-6`}>
-          <h3 className="text-base font-bold text-on-background">My requests</h3>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-base font-bold text-on-background">My requests</h3>
+              <p className="mt-1 text-xs text-on-surface-variant">Submitted requests remain pending until HR reviews them.</p>
+            </div>
+            <select
+              value={leaveStatusFilter}
+              onChange={(event) => setLeaveStatusFilter(event.target.value as 'All' | LeaveRequest['status'])}
+              className="min-h-11 rounded-xl border border-neutral-border bg-white px-3 py-2 text-sm font-semibold text-on-background"
+              aria-label="Filter leave requests by status"
+            >
+              <option value="All">All statuses</option>
+              <option value="Pending">Pending</option>
+              <option value="Approved">Approved</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+          </div>
           <div className="mt-4 space-y-3">
-            {visibleLeaveRequests.length > 0 ? visibleLeaveRequests.map((request) => (
-              <div key={request.id} className="rounded-2xl border border-neutral-border bg-[#fffaf4] p-4">
+            {visibleLeaveRequests.filter((request) => leaveStatusFilter === 'All' || request.status === leaveStatusFilter).length > 0 ? visibleLeaveRequests
+              .filter((request) => leaveStatusFilter === 'All' || request.status === leaveStatusFilter)
+              .map((request) => (
+              <div key={request.id} className="rounded-xl border border-neutral-border bg-white p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="font-semibold text-on-background">{request.leaveType}</p>
@@ -1977,11 +2339,11 @@ export default function EmployeePortalView({
                     {request.status}
                   </span>
                 </div>
-                <p className="mt-3 text-xs text-on-surface-variant">{request.reason}</p>
+                <p className="mt-3 text-xs leading-5 text-on-surface-variant">{request.totalDays} eligible day{request.totalDays === 1 ? '' : 's'} · {request.reason}</p>
               </div>
             )) : (
-              <div className="rounded-3xl border border-dashed border-neutral-border bg-white p-8 text-center text-sm text-on-surface-variant">
-                No leave requests have been submitted yet.
+              <div className="rounded-xl border border-dashed border-neutral-border bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">
+                {leaveStatusFilter === 'All' ? 'No leave requests have been submitted yet.' : `No ${leaveStatusFilter.toLowerCase()} leave requests.`}
               </div>
             )}
           </div>
@@ -2176,18 +2538,8 @@ export default function EmployeePortalView({
 
         <div className="mt-6 space-y-3">
           <button
-            onClick={() => openPayslip(latestPayrollRecord || undefined)}
-            className="flex w-full items-center justify-between rounded-2xl border border-neutral-border bg-[#fff8f1] p-4 text-left"
-          >
-            <div>
-              <p className="font-semibold text-on-background">Latest payslip</p>
-              <p className="text-xs text-on-surface-variant">Open the printable payroll PDF viewer.</p>
-            </div>
-            <ChevronRight className="h-4 w-4 text-primary" />
-          </button>
-          <button
             onClick={() => setActiveSection('onboarding')}
-            className="flex w-full items-center justify-between rounded-2xl border border-neutral-border bg-[#fff8f1] p-4 text-left"
+            className="flex min-h-20 w-full items-center justify-between border border-neutral-border bg-surface-container-low p-4 text-left transition-colors hover:bg-white"
           >
             <div>
               <p className="font-semibold text-on-background">Handbook & compliance</p>
@@ -2195,7 +2547,7 @@ export default function EmployeePortalView({
             </div>
             <BookOpen className="h-4 w-4 text-primary" />
           </button>
-          <div className="rounded-2xl border border-neutral-border bg-[#fff8f1] p-4">
+          <div className="rounded-xl border border-neutral-border bg-surface-container-low p-4">
             <p className="font-semibold text-on-background">Tax / HR forms</p>
             <p className="mt-1 text-xs text-on-surface-variant">Use Support for ad-hoc document requests or corrections.</p>
           </div>
@@ -2314,6 +2666,11 @@ export default function EmployeePortalView({
             <Send className="h-4 w-4" />
             {isSubmittingSupport ? 'Sending...' : 'Send request'}
           </button>
+          {supportFormError && (
+            <p className="border-l-2 border-error bg-red-50 px-3 py-2 text-sm text-red-900" role="alert">
+              {supportFormError}
+            </p>
+          )}
         </form>
       </section>
 
@@ -2342,10 +2699,14 @@ export default function EmployeePortalView({
                     onShowNotification('Notification error', error instanceof Error ? error.message : 'Could not mark notification as read.');
                   }
                 }}
-                className={`w-full rounded-2xl border p-4 text-left ${notification.readAt ? 'border-neutral-border bg-white' : 'border-primary/25 bg-primary/5'}`}
+                className={`w-full border p-4 text-left transition-colors ${notification.readAt ? 'border-neutral-border bg-white' : 'border-primary/25 bg-primary/5'}`}
               >
-                <p className="text-sm font-semibold text-on-background">{notification.title}</p>
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm font-semibold text-on-background">{notification.title}</p>
+                  {!notification.readAt && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="Unread" />}
+                </div>
                 <p className="mt-1 text-xs leading-5 text-on-surface-variant">{notification.body}</p>
+                {!notification.readAt && <p className="mt-2 text-[11px] font-semibold text-primary">Click to mark as read</p>}
               </button>
             )) : (
               <div className="rounded-3xl border border-dashed border-neutral-border bg-white p-6 text-center text-sm text-on-surface-variant">
@@ -2376,33 +2737,42 @@ export default function EmployeePortalView({
         <div className={`${cardClass} p-6`}>
           <h3 className="text-base font-bold text-on-background">Open requests</h3>
           <div className="mt-4 space-y-3">
-            {supportRequests.length > 0 ? supportRequests.map((request) => (
-              <div key={request.id} className="rounded-2xl border border-neutral-border bg-[#fff8f1] p-4">
+            {supportRequests.length > 0 ? supportRequests.map((request) => {
+              const isExpanded = expandedSupportRequestId === request.id;
+              return (
+              <div key={request.id} className="rounded-xl border border-neutral-border bg-white p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <div>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedSupportRequestId((current) => current === request.id ? null : request.id)}
+                    className="min-w-0 text-left"
+                    aria-expanded={isExpanded}
+                  >
                     <p className="font-semibold text-on-background">{request.subject}</p>
                     <p className="text-xs text-on-surface-variant">{request.category} · {request.priority}</p>
-                  </div>
+                  </button>
                   <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.35em] text-primary">
                     {translateStatus(request.status)}
                   </span>
                 </div>
-                <p className="mt-3 text-xs text-on-surface-variant">{request.description}</p>
-                <p className="mt-2 text-[11px] text-on-surface-variant">
-                  Updated {formatToDDMMMYYYY(request.updatedAt)}
-                </p>
-                {request.messages.length > 0 && (
-                  <div className="mt-4 space-y-2 border-t border-neutral-border/70 pt-3">
-                    {request.messages.map((message) => (
-                      <div key={message.id} className={`rounded-xl p-3 text-xs ${message.authorType === 'hr' ? 'bg-white' : 'bg-primary/5'}`}>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="font-semibold text-on-background">{message.authorType === 'hr' ? 'HR' : 'You'}</span>
-                          <span className="text-[10px] text-on-surface-variant">{formatToDDMMMYYYY(message.createdAt)}</span>
-                        </div>
-                        <p className="mt-1 whitespace-pre-wrap leading-5 text-on-surface-variant">{message.body}</p>
+                <p className="mt-2 text-[11px] text-on-surface-variant">Updated {formatToDDMMMYYYY(request.updatedAt)} · {request.messages.length} message{request.messages.length === 1 ? '' : 's'}</p>
+                {isExpanded && (
+                  <>
+                    <p className="mt-3 text-xs leading-5 text-on-surface-variant">{request.description}</p>
+                    {request.messages.length > 0 && (
+                      <div className="mt-4 space-y-2 border-t border-neutral-border/70 pt-3">
+                        {request.messages.map((message) => (
+                          <div key={message.id} className={`rounded-lg p-3 text-xs ${message.authorType === 'hr' ? 'bg-surface-container-low' : 'bg-primary/5'}`}>
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="font-semibold text-on-background">{message.authorType === 'hr' ? 'HR' : 'You'}</span>
+                              <span className="text-[10px] text-on-surface-variant">{formatToDDMMMYYYY(message.createdAt)}</span>
+                            </div>
+                            <p className="mt-1 whitespace-pre-wrap leading-5 text-on-surface-variant">{message.body}</p>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    )}
+                  </>
                 )}
                 <div className="mt-4 flex flex-wrap gap-2">
                   {(request.status === 'Resolved' || request.status === 'Closed') && (
@@ -2448,7 +2818,8 @@ export default function EmployeePortalView({
                   </div>
                 )}
               </div>
-            )) : (
+              );
+            }) : (
               <div className="rounded-3xl border border-dashed border-neutral-border bg-white p-8 text-center text-sm text-on-surface-variant">
                 You do not have any support requests yet.
               </div>
@@ -2482,7 +2853,7 @@ export default function EmployeePortalView({
   };
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(163,38,38,0.08),_transparent_38%),linear-gradient(180deg,_#fffaf4_0%,_#f6eee4_100%)] text-on-background" style={portalTheme}>
+    <div className="min-h-screen overflow-hidden bg-[#f4f5f7] text-on-background" style={portalTheme}>
       <div className="flex min-h-screen w-full">
         <aside className="hidden lg:block lg:w-[240px] lg:shrink-0">
           <div className="sticky top-0 h-screen">
@@ -2494,6 +2865,7 @@ export default function EmployeePortalView({
           <div
             className="fixed inset-0 z-40 bg-black/40 lg:hidden"
             onClick={() => setIsMobileNavOpen(false)}
+            aria-hidden="true"
           />
         )}
 
@@ -2501,6 +2873,9 @@ export default function EmployeePortalView({
           className={`fixed inset-y-0 left-0 z-50 w-[240px] transform transition-transform duration-300 lg:hidden ${
             isMobileNavOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Employee navigation"
         >
           {sidebarContent}
         </aside>
@@ -2526,14 +2901,6 @@ export default function EmployeePortalView({
                 <p className="mt-0.5 text-xs font-semibold text-on-background">{getGmt8LongDateString()}</p>
               </div>
               <div className="hidden h-8 w-px bg-neutral-border/70 xl:block" />
-              <button
-                type="button"
-                onClick={() => setLanguage((current) => current === 'en' ? 'zh' : 'en')}
-                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-neutral-border bg-white px-3 text-xs font-bold text-on-surface"
-                aria-label="Toggle language"
-              >
-                {language === 'en' ? '中' : 'EN'}
-              </button>
               <EmployeeAvatar employee={selectedEmployee} className="h-9 w-9 rounded-full" />
               <div className="hidden min-w-0 text-left sm:block">
                 <p className="max-w-[220px] truncate text-xs font-bold text-on-background">{selectedEmployee.name}</p>
@@ -2560,14 +2927,6 @@ export default function EmployeePortalView({
               <p className="text-[10px] font-bold uppercase tracking-[0.35em] text-on-surface-variant">{copy.employeePortal}</p>
                 <p className="truncate text-sm font-semibold text-on-background">{translateSection(activeSection)}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setLanguage((current) => current === 'en' ? 'zh' : 'en')}
-                className="inline-flex h-11 min-w-11 items-center justify-center rounded-xl border border-neutral-border bg-white px-3 text-xs font-bold text-on-surface"
-                aria-label="Toggle language"
-              >
-                {language === 'en' ? '中' : 'EN'}
-              </button>
             </div>
           </header>
 
@@ -2612,7 +2971,7 @@ export default function EmployeePortalView({
       </div>
 
       {isMoreOpen && (
-        <div className="fixed inset-x-3 bottom-20 z-50 rounded-3xl border border-neutral-border bg-white p-3 shadow-[0_20px_50px_rgba(53,24,18,0.18)] lg:hidden">
+        <div className="fixed inset-x-3 bottom-20 z-50 rounded-3xl border border-neutral-border bg-white p-3 shadow-[0_20px_50px_rgba(53,24,18,0.18)] lg:hidden" role="dialog" aria-modal="true" aria-label="More employee pages">
           <div className="grid grid-cols-2 gap-2">
             {([
               ['profile', copy.profile, User],
@@ -2638,7 +2997,7 @@ export default function EmployeePortalView({
       )}
 
       {selectedPayslip && selectedEmployee && (
-        <div className="fixed inset-0 z-[80] bg-black/60 p-0 lg:p-4">
+        <div className="fixed inset-0 z-[80] bg-black/60 p-0 lg:p-4" role="dialog" aria-modal="true" aria-label="Payslip viewer">
           <div className="h-full w-full overflow-hidden bg-white lg:rounded-[2rem]">
             <PayslipDocumentView
               employees={[selectedEmployee]}

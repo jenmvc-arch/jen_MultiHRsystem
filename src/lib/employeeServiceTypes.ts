@@ -53,7 +53,7 @@ export type EmployeeProfileChangeType =
   | 'identity_details'
   | 'family_details';
 
-export type EmployeeProfileChangeStatus = 'Pending' | 'Approved' | 'Rejected';
+export type EmployeeProfileChangeStatus = 'Pending' | 'Approved' | 'Rejected' | 'Failed';
 
 export interface EmployeeProfileChangeRequest {
   id: string;

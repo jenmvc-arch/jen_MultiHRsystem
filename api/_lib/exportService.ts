@@ -13,6 +13,115 @@ const MAX_CELLS = 100000;
 
 type Row = Record<string, any>;
 
+const EMPLOYEE_EXPORT_DB_COLUMNS = [
+  'id',
+  'entity_id',
+  'entity_name',
+  'name',
+  'email',
+  'department',
+  'designation',
+  'status',
+  'employment_type',
+  'date_of_joined',
+  'date_of_confirmation',
+  'contact_number',
+  'nationality',
+  'nric_passport',
+  'tax_number',
+  'epf_number',
+  'bank_name',
+  'account_no',
+  'basic_salary',
+  'skbbk_employee',
+  'lindung24_employee',
+  'payment_mode',
+  'payment_method',
+].join(',');
+
+const PAYROLL_EXPORT_DB_COLUMNS = [
+  'id',
+  'employee_email',
+  'payroll_month',
+  'payroll_year',
+  'basic_salary',
+  'allowance_general',
+  'allowance_transport',
+  'allowance_parking',
+  'allowance_meal',
+  'allowance_accommodation',
+  'allowance_phone',
+  'overtime',
+  'bonus_amount',
+  'bonus_desc',
+  'commission_amount',
+  'commission_desc',
+  'back_pay_amount',
+  'back_pay_desc',
+  'aws_amount',
+  'aws_desc',
+  'compensation_amount',
+  'compensation_desc',
+  'reimbursement_amount',
+  'reimbursement_desc',
+  'unpaid_leave',
+  'incomplete_month_deduction',
+  'proration_deduction',
+  'gross_pay',
+  'gross_salary',
+  'total_allowance',
+  'deduction_in_lieu',
+  'deduction_cp38',
+  'deduction_others',
+  'deduction_others_desc',
+  'actual_pcb_deducted',
+  'tax_pcb',
+  'epf_employee',
+  'epf_employer',
+  'socso_employee',
+  'socso_employer',
+  'lindung24_employee',
+  'skbbk_employee',
+  'eis_employee',
+  'eis_employer',
+  'hrd_corp',
+  'net_pay',
+  'net_salary',
+  'payment_date',
+  'payslip_descriptions',
+  'payout_kind',
+  'is_separate_payout',
+  'statutory_treatment',
+  'payout_title',
+  'payout_description',
+  'line_notes',
+  'document_type',
+  'compensation_label',
+  'display_settings_snapshot',
+  'calculation_version',
+  'status',
+  'created_at',
+  'updated_at',
+].join(',');
+
+const PERFORMANCE_EXPORT_DB_COLUMNS = [
+  'id',
+  'employee_id',
+  'employee_email',
+  'review_cycle_id',
+  'manager_name',
+  'review_status',
+  'rating',
+  'teamwork_score',
+  'communication_score',
+  'problem_solving_score',
+  'self_evaluation',
+  'manager_comments',
+  'goals',
+  'created_at',
+  'updated_at',
+].join(',');
+
 const employeeColumns: ExportColumn[] = [
   { key: 'id', label: 'Employee ID' },
   { key: 'name', label: 'Employee Name' },
@@ -233,7 +342,19 @@ export const buildPayrollFileExportRow = (row: Row, employee: Row | undefined, s
 async function loadRows(actor: AdminSessionActor, request: ExportRequest, client: SupabaseClient) {
   const filters = request.filters || {};
   const isEmployee = normalize(actor.role) === 'employee';
-  const employeeResult = await client.from('employees').select('*');
+  let employeeQuery = client.from('employees').select(EMPLOYEE_EXPORT_DB_COLUMNS);
+  if (filters.department && filters.department !== 'All Departments') {
+    employeeQuery = employeeQuery.eq('department', filters.department);
+  }
+  if (filters.status && filters.status !== 'All Statuses') {
+    employeeQuery = employeeQuery.eq('status', filters.status);
+  }
+  if (filters.employeeId) {
+    employeeQuery = employeeQuery.or(
+      `id.eq.${String(filters.employeeId).replace(/[(),]/g, '')},email.ilike.${String(filters.employeeId).replace(/[(),]/g, '')}`
+    );
+  }
+  const employeeResult = await employeeQuery;
   if (employeeResult.error) throw new Error(employeeResult.error.message);
   let employees = (employeeResult.data || []) as Row[];
   if (isEmployee) employees = employees.filter(row => normalize(row.email) === normalize(actor.username));
@@ -243,13 +364,16 @@ async function loadRows(actor: AdminSessionActor, request: ExportRequest, client
     if (!entityResult.error) {
       const requestedEntity = normalize(filters.entityId);
       const matchedEntity = (entityResult.data || []).find((entity: Row) => (
-        normalize(entity.id) === requestedEntity || normalize(entity.name) === requestedEntity
+          normalize(entity.id) === requestedEntity || normalize(entity.name) === requestedEntity
       ));
       if (matchedEntity) {
         entityAliases = [matchedEntity.id, matchedEntity.name].filter(Boolean);
       }
     }
     employees = employees.filter(row => matchesExportEntity(row, filters.entityId, entityAliases));
+  }
+  if (filters.entityId && entityAliases.length === 0) {
+    throw Object.assign(new Error('The selected company entity could not be found.'), { statusCode: 404 });
   }
   employees = applyEmployeeFilters(employees, filters);
 
@@ -264,7 +388,14 @@ async function loadRows(actor: AdminSessionActor, request: ExportRequest, client
   if (request.module === 'employees') return employees;
 
   if (request.module === 'payroll' || request.module === 'payslips') {
-    const result = await client.from('payroll_records_2026').select('*');
+    let payrollQuery = client.from('payroll_records_2026').select(PAYROLL_EXPORT_DB_COLUMNS);
+    if (filters.payrollMonth) payrollQuery = payrollQuery.eq('payroll_month', filters.payrollMonth);
+    if (filters.payrollYear) payrollQuery = payrollQuery.eq('payroll_year', filters.payrollYear);
+    if (filters.status && filters.status !== 'All Statuses') payrollQuery = payrollQuery.eq('status', filters.status);
+    const employeeEmails = employees.map(row => normalize(row.email)).filter(Boolean);
+    if (employeeEmails.length === 0) return [];
+    payrollQuery = payrollQuery.in('employee_email', employeeEmails);
+    const result = await payrollQuery;
     if (result.error) throw new Error(result.error.message);
     const employeeByEmail = new Map(employees.map(row => [normalize(row.email), row]));
     let rows: Row[] = (result.data || []).map((row: Row) => ({
@@ -291,11 +422,24 @@ async function loadRows(actor: AdminSessionActor, request: ExportRequest, client
     ));
   }
 
-  const result = await client.from('performances').select('*');
-  if (result.error) throw new Error(result.error.message);
+  const performanceEmployeeIds = employees.map(row => String(row.id)).filter(Boolean);
+  const performanceEmployeeEmails = employees.map(row => String(row.email || '').trim()).filter(Boolean);
+  if (performanceEmployeeIds.length === 0 && performanceEmployeeEmails.length === 0) return [];
+  const [byId, byEmail] = await Promise.all([
+    performanceEmployeeIds.length > 0
+      ? client.from('performances').select(PERFORMANCE_EXPORT_DB_COLUMNS).in('employee_id', performanceEmployeeIds)
+      : Promise.resolve({ data: [], error: null }),
+    performanceEmployeeEmails.length > 0
+      ? client.from('performances').select(PERFORMANCE_EXPORT_DB_COLUMNS).in('employee_email', performanceEmployeeEmails)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (byId.error) throw new Error(byId.error.message);
+  if (byEmail.error) throw new Error(byEmail.error.message);
+  const performanceRows = [...(byId.data || []), ...(byEmail.data || [])]
+    .filter((row: Row, index: number, all: Row[]) => all.findIndex(item => String(item.id) === String(row.id)) === index);
   const employeeById = new Map(employees.map(row => [normalize(row.id), row]));
   const employeeByEmail = new Map(employees.map(row => [normalize(row.email), row]));
-  let rows: Row[] = (result.data || []).map((row: Row) => {
+  let rows: Row[] = performanceRows.map((row: Row) => {
     const employee = employeeById.get(normalize(row.employee_id)) || employeeByEmail.get(normalize(row.employee_email));
     return { ...row, employee_name: employee?.name || '', department: employee?.department || '' };
   }).filter((row: Row) => row.employee_name);
@@ -937,6 +1081,10 @@ export async function executeExport(actor: AdminSessionActor, request: ExportReq
   }
   const permission = EXPORT_PERMISSIONS[request.module];
   if (!hasExportPermission(actor.role, permission)) throw Object.assign(new Error('You do not have permission to export this module.'), { statusCode: 403 });
+  const role = normalize(actor.role);
+  if (['regional manager', 'leader'].includes(role) && !request.filters?.entityId) {
+    throw Object.assign(new Error('This role must export within a selected company entity.'), { statusCode: 403 });
+  }
   const sensitiveAllowed = canExportSensitive(actor.role, request.module);
   const isPayrollTemplateExport = (request.format === 'xlsx' || request.format === 'pdf')
     && (request.module === 'payroll' || request.module === 'payslips');
@@ -981,7 +1129,14 @@ export async function executeBulkPayslipZip(actor: AdminSessionActor, request: E
   return { buffer: Buffer.from(await zip.generateAsync({ type: 'nodebuffer' })), filename: safeFilename(request.filename || 'Payslips_Bulk', 'zip'), recordCount: result.recordCount, columns: result.columns };
 }
 
-export async function writeExportAudit(actor: AdminSessionActor, request: ExportRequest, result: { recordCount: number; columns: string[] }, status: 'success' | 'failed', errorMessage?: string) {
+export async function writeExportAudit(
+  actor: AdminSessionActor,
+  request: ExportRequest,
+  result: { recordCount: number; columns: string[] },
+  status: 'success' | 'failed',
+  errorMessage?: string,
+  ipAddress?: string,
+) {
   try {
     await createMainAdminClient().from('export_audit_logs').insert({
       user_id: actor.username,
@@ -995,7 +1150,7 @@ export async function writeExportAudit(actor: AdminSessionActor, request: Export
       filters: request.filters || {},
       status,
       error_message: errorMessage || null,
-      ip_address: null,
+      ip_address: ipAddress || null,
     });
   } catch (error) {
     console.warn('[Export Audit] Could not persist audit record:', error);

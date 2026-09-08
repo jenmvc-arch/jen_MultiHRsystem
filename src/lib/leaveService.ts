@@ -25,12 +25,8 @@ import {
   WorkShiftGroupDay,
   calculateWorkShiftWeeklyHours,
   normalizeWorkShiftGroupDays,
-  getGroupItems,
-  OffInLieuEntry,
   OffInLieuRequest,
 } from './leaveDomain';
-
-type RecordValue = Record<string, any>;
 
 const toCamel = (value: any): any => {
   if (Array.isArray(value)) return value.map(toCamel);
@@ -40,15 +36,6 @@ const toCamel = (value: any): any => {
     toCamel(item),
   ]));
 };
-
-const toSnake = (value: RecordValue): RecordValue => Object.fromEntries(
-  Object.entries(value)
-    .filter(([, item]) => item !== undefined)
-    .map(([key, item]) => [
-      key.replace(/([A-Z])/g, '_$1').toLowerCase(),
-      item,
-    ]),
-);
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof localStorage === 'undefined') return fallback;
@@ -67,6 +54,32 @@ function writeJson<T>(key: string, value: T) {
   } catch {
     // Local preview storage is optional.
   }
+}
+
+async function requestAdminLeaveWorkspace<T>(entityId: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`/api/admin/leave-workspace?entityId=${encodeURIComponent(entityId)}`, {
+    ...init,
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers || {}),
+    },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `Admin leave workspace request failed (${response.status}).`);
+  return payload as T;
+}
+
+async function requestEmployeeLeaveWorkspace(): Promise<LeaveWorkspaceData> {
+  const response = await fetch('/api/employee-portal/leave-workspace', {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || `Employee leave workspace request failed (${response.status}).`);
+  }
+  return payload as LeaveWorkspaceData;
 }
 
 function hasLegacyLeaveData(entityId: string): boolean {
@@ -319,9 +332,36 @@ function mapRowsToWorkspace(entityId: string, rows: Record<string, any[]>): Leav
   };
 }
 
-export async function loadLeaveWorkspace(entityId: string, options?: { employeeId?: string }): Promise<LeaveWorkspaceData> {
+export async function loadLeaveWorkspace(entityId: string, options?: { employeeId?: string; preferLocal?: boolean }): Promise<LeaveWorkspaceData> {
   const employeeId = options?.employeeId;
   const localFallback = loadLocalWorkspace(entityId, employeeId);
+  if (options?.preferLocal) return localFallback;
+  if (typeof window !== 'undefined' && isEmployeeSupabaseConfigured) {
+    if (employeeId) {
+      return requestEmployeeLeaveWorkspace();
+    }
+    const rows = await requestAdminLeaveWorkspace<Record<string, any[]>>(entityId);
+    const workspace = mapRowsToWorkspace(entityId, {
+      types: (rows.leave_types || []).map(toCamel),
+      policies: (rows.leave_condition_policies || []).map(toCamel),
+      carry: (rows.leave_carryover_settings || []).map(toCamel),
+      groups: (rows.leave_groups || []).map(toCamel),
+      items: (rows.leave_group_items || []).map(toCamel),
+      assignments: (rows.employee_leave_group_assignments || []).map(toCamel),
+      requests: (rows.leave_requests || []).map(toCamel),
+      offRequests: (rows.off_in_lieu_requests || []).map(toCamel),
+      offEntries: (rows.off_in_lieu_entries || []).map(toCamel),
+      ledger: (rows.leave_balance_ledger || []).map(toCamel),
+      deductions: (rows.leave_payroll_deductions || []).map(toCamel),
+      workGroups: (rows.work_shift_groups || []).map(toCamel),
+      workDays: (rows.work_shift_group_days || []).map(toCamel),
+      workAssignments: (rows.employee_work_shift_assignments || []).map(toCamel),
+      holidayGroups: (rows.public_holiday_groups || []).map(toCamel),
+      holidays: (rows.public_holidays || []).map(toCamel),
+    });
+    persistLocalWorkspace(entityId, workspace);
+    return workspace;
+  }
   if (!entityId || !isEmployeeSupabaseConfigured || !employeeSupabase) return localFallback;
 
   try {
@@ -402,88 +442,21 @@ export async function loadLeaveWorkspace(entityId: string, options?: { employeeI
   }
 }
 
-async function upsertRows(table: string, rows: RecordValue[]) {
-  if (!employeeSupabase || rows.length === 0) return;
-  const result = await employeeSupabase.from(table).upsert(rows.map(toSnake));
-  if (result.error) {
-    if (/relation .* does not exist|schema cache|could not find the table/i.test(result.error.message || '')) {
-      console.warn(`[Leave Service] Optional table ${table} is not migrated yet; local persistence remains active.`);
-      return;
-    }
-    throw result.error;
-  }
-}
-
 export async function persistLeaveWorkspace(entityId: string, workspace: LeaveWorkspaceData): Promise<void> {
-  persistLocalWorkspace(entityId, workspace);
-  if (!isEmployeeSupabaseConfigured || !employeeSupabase) return;
+  if (typeof window !== 'undefined' && isEmployeeSupabaseConfigured) {
+    await requestAdminLeaveWorkspace<{ ok: boolean }>(entityId, {
+      method: 'POST',
+      body: JSON.stringify({ entityId, workspace }),
+    });
+    persistLocalWorkspace(entityId, workspace);
+    return;
+  }
+  if (!isEmployeeSupabaseConfigured || !employeeSupabase) {
+    persistLocalWorkspace(entityId, workspace);
+    return;
+  }
 
-  const groupItems = workspace.groups.flatMap((group) => (
-    getGroupItems(group, workspace.configs).map((item) => ({
-      ...item,
-      entityId,
-      groupId: group.id,
-    }))
-  ));
-  const assignments = workspace.assignments.length > 0
-    ? workspace.assignments.map((assignment) => ({
-      ...assignment,
-      entityId,
-    }))
-    : workspace.groups.flatMap((group) => (
-      group.assignedEmployeeIds.map((employeeId) => ({
-      id: `${group.id}-${employeeId}`,
-      entityId,
-      employeeId,
-      groupId: group.id,
-      active: true,
-      }))
-    ));
-
-  await Promise.all([
-    upsertRows('leave_types', workspace.configs.map((config) => ({
-      id: config.id,
-      entityId,
-      name: config.leaveType,
-      code: config.code,
-      defaultEntitlementDays: config.daysEntitled,
-      leaveGroup: config.leaveGroup,
-      condition: config.condition,
-      isDefault: config.isDefault === true,
-      systemManaged: config.systemManaged === true,
-      enabled: config.enabled !== false,
-      policyId: config.policyId,
-      carryOverId: config.carryOverId,
-    }))),
-    upsertRows('leave_condition_policies', workspace.policies.map((policy) => ({ ...policy, entityId }))),
-    upsertRows('leave_carryover_settings', workspace.carryOverSettings.map((setting) => ({ ...setting, entityId }))),
-    upsertRows('leave_groups', workspace.groups.map((group) => ({
-      id: group.id,
-      entityId,
-      name: group.name,
-      description: group.description,
-      policyId: group.policyId,
-      carryOverId: group.carryOverId,
-      publicHolidayGroupIds: group.publicHolidayGroupIds || ['public-holiday-malaysia-national'],
-      enabled: group.enabled,
-    }))),
-    upsertRows('leave_group_items', groupItems),
-    upsertRows('employee_leave_group_assignments', assignments),
-    upsertRows('leave_requests', workspace.requests.map((request) => ({ ...request, entityId }))),
-    upsertRows('off_in_lieu_requests', workspace.offInLieuRequests.map(({ entries: _entries, ...request }) => ({ ...request, entityId }))),
-    upsertRows('off_in_lieu_entries', workspace.offInLieuRequests.flatMap((request) => request.entries.map((entry) => ({
-      ...entry,
-      requestId: request.id,
-      entityId,
-    })))),
-    upsertRows('leave_balance_ledger', workspace.ledgerEntries.map((entry) => ({ ...entry, entityId }))),
-    upsertRows('leave_payroll_deductions', workspace.payrollDeductions.map((deduction) => ({ ...deduction, entityId }))),
-    upsertRows('work_shift_groups', workspace.workShiftGroups.map((group) => ({ ...group, entityId }))),
-    upsertRows('work_shift_group_days', workspace.workShiftGroupDays.map((day) => ({ ...day, entityId }))),
-    upsertRows('employee_work_shift_assignments', workspace.employeeWorkShiftAssignments.map((assignment) => ({ ...assignment, entityId }))),
-    upsertRows('public_holiday_groups', workspace.publicHolidayGroups.map((group) => ({ ...group, entityId }))),
-    upsertRows('public_holidays', workspace.publicHolidays.map((holiday) => ({ ...holiday, entityId }))),
-  ]);
+  throw new Error('Leave workspace writes require the protected admin API.');
 }
 
 export async function importLegacyLeaveData(entityId: string, workspace = loadLocalWorkspace(entityId)): Promise<void> {

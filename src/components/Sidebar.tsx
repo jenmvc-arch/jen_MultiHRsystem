@@ -73,7 +73,7 @@ export default function Sidebar({
   const activeEntity = entities.find(e => e.id === activeEntityId) || entities[0];
 
   const SidebarContent = () => (
-    <div className="flex flex-col h-full bg-primary text-[#f7f0e0] py-5" style={{ viewTransitionName: 'sidebar-container' } as any}>
+    <div className="flex h-full flex-col bg-primary py-5 text-[#f7f0e0]" style={{ viewTransitionName: 'sidebar-container' } as any}>
       {/* Brand Header with Corporate Selector */}
       <div className="px-4 mb-5 mx-3 rounded-2xl border border-white/10 bg-black/10 p-4" style={{ viewTransitionName: 'sidebar-brand' } as any}>
         {/* Company Logo */}
@@ -117,15 +117,16 @@ export default function Sidebar({
       <div className="px-4 mb-5">
         <button 
           onClick={onNewRequest}
-          className="w-full rounded-xl bg-[#f7f0e0] px-4 py-2.5 text-sm font-bold text-primary shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f7f0e0]/50 flex items-center justify-center gap-2"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#f7f0e0] px-4 py-2.5 text-sm font-bold text-primary shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#f7f0e0]/50"
           id="btn-sidebar-new-request"
+          aria-label="Submit a new administrative request"
         >
           <Plus className="w-4 h-4" />
           New Request
         </button>
       </div>
 
-      <nav className="flex-1 px-2 space-y-4 overflow-y-auto style-scrollbar">
+      <nav className="flex-1 space-y-4 overflow-y-auto px-2 style-scrollbar" aria-label="Employer console navigation">
         {/* Core Operations Section */}
         <div>
           <div className="px-4 py-1 text-[9px] font-bold text-[#f7f0e0]/45 uppercase tracking-[0.18em] mb-1">
@@ -145,7 +146,7 @@ export default function Sidebar({
                     onTabChange(item.id);
                     onMobileClose();
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-[11px] font-semibold transition-all duration-150 ${
+                  className={`flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all duration-150 ${
                     isActive 
                       ? 'bg-white/12 text-[#f7f0e0] shadow-inner border-l-2 border-[#f7f0e0]'
                       : 'text-[#f7f0e0]/75 hover:bg-white/7 hover:text-[#f7f0e0]'
@@ -179,7 +180,7 @@ export default function Sidebar({
                     onTabChange(item.id);
                     onMobileClose();
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-[11px] font-semibold transition-all duration-150 ${
+                  className={`flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all duration-150 ${
                     isActive 
                       ? 'bg-white/12 text-[#f7f0e0] shadow-inner border-l-2 border-[#f7f0e0]'
                       : 'text-[#f7f0e0]/75 hover:bg-white/7 hover:text-[#f7f0e0]'
@@ -210,7 +211,7 @@ export default function Sidebar({
                 onTabChange(item.id);
                 onMobileClose();
               }}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-[11px] font-semibold transition-all duration-150 ${
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-xs font-semibold transition-all duration-150 ${
                 isActive 
                   ? 'bg-white/12 text-[#f7f0e0] shadow-inner border-l-2 border-[#f7f0e0]'
                   : 'text-[#f7f0e0]/70 hover:bg-white/7 hover:text-[#f7f0e0]'
@@ -229,7 +230,7 @@ export default function Sidebar({
   return (
     <>
       {/* Desktop Sidebar (hidden on mobile, fixed left side) */}
-      <aside className="hidden md:block w-[240px] shrink-0 border-r border-outline-variant/20 h-screen sticky top-0 bg-primary select-none z-30">
+      <aside className="sticky top-0 z-30 hidden h-[100dvh] w-[264px] shrink-0 select-none border-r border-outline-variant/20 bg-primary md:block">
         <SidebarContent />
       </aside>
 
@@ -242,7 +243,7 @@ export default function Sidebar({
       )}
 
       {/* Mobile Drawer Sidebar */}
-      <aside className={`md:hidden fixed inset-y-0 left-0 w-[240px] z-50 transform transition-transform duration-300 ease-in-out ${
+      <aside className={`fixed inset-y-0 left-0 z-50 w-[min(264px,88vw)] transform transition-transform duration-300 ease-in-out md:hidden ${
         isMobileOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         <SidebarContent />

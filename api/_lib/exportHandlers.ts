@@ -14,6 +14,9 @@ export async function handleExport(req: any, res: any) {
   }
   let actor: any;
   let request: any;
+  const ipAddress = String(
+    req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress || ''
+  ).split(',')[0].trim();
   try {
     actor = await requireAdminSession(req);
     request = req.body || {};
@@ -24,7 +27,7 @@ export async function handleExport(req: any, res: any) {
     const result = request.format === 'zip'
       ? await executeBulkPayslipZip(actor, request)
       : await executeExport(actor, request);
-    await writeExportAudit(actor, request, result, 'success');
+    await writeExportAudit(actor, request, result, 'success', undefined, ipAddress);
     res.setHeader('Content-Type', request.format === 'xlsx'
       ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       : request.format === 'pdf'
@@ -37,7 +40,16 @@ export async function handleExport(req: any, res: any) {
     res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
     res.status(200).send(result.buffer);
   } catch (error: any) {
-    if (actor && request) await writeExportAudit(actor, request, { recordCount: 0, columns: request.columns || [] }, 'failed', error?.message);
+    if (actor && request) {
+      await writeExportAudit(
+        actor,
+        request,
+        { recordCount: 0, columns: request.columns || [] },
+        'failed',
+        error?.message,
+        ipAddress,
+      );
+    }
     sendError(res, error);
   }
 }

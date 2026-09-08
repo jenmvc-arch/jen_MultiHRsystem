@@ -93,10 +93,48 @@ function toCamelCase(obj: any): any {
   return result;
 }
 
+async function requestAdminData<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers || {}),
+    },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || `Admin data request failed with status ${response.status}.`);
+  }
+  return payload as T;
+}
+
+const useProtectedAdminApi = () => typeof window !== 'undefined';
+
+async function mutateAdminData(
+  table: string,
+  operation: 'insert' | 'update' | 'delete' | 'upsert',
+  data: any,
+  idValue?: string,
+  idColumn = 'id',
+) {
+  const payload = await requestAdminData<{ data: any }>('/api/admin/data', {
+    method: 'POST',
+    body: JSON.stringify({ table, operation, data, idValue, idColumn }),
+  });
+  return toCamelCase(payload.data);
+}
+
 export const supabaseClient = {
   async loadData(): Promise<SupabaseDataPayload> {
     if (!supabase) {
       throw new Error('Supabase client is not configured.');
+    }
+    if (useProtectedAdminApi()) {
+      const payload = await requestAdminData<any>('/api/admin/bootstrap');
+      return Object.fromEntries(
+        Object.entries(payload).map(([key, value]) => [key, toCamelCase(value)])
+      ) as SupabaseDataPayload;
     }
     console.log('[Supabase Client] Fetching all tables...');
 
@@ -129,6 +167,7 @@ export const supabaseClient = {
 
   async insert(table: string, data: any): Promise<any> {
     if (!supabase) return data;
+    if (useProtectedAdminApi()) return mutateAdminData(table, 'insert', toSnakeCase(data));
     console.log('[Supabase Client] Inserting record into:', table, data);
     let snakeData = toSnakeCase(data);
     let inserted: any = null;
@@ -161,6 +200,7 @@ export const supabaseClient = {
 
   async update(table: string, idValue: string, data: any, idColumn: string = 'id'): Promise<any> {
     if (!supabase) return data;
+    if (useProtectedAdminApi()) return mutateAdminData(table, 'update', toSnakeCase(data), idValue, idColumn);
     console.log('[Supabase Client] Updating record in:', table, { idColumn, idValue, data });
     const snakeColumn = idColumn.replace(/([A-Z])/g, '_$1').toLowerCase();
     let snakeData = toSnakeCase(data);
@@ -223,6 +263,7 @@ export const supabaseClient = {
 
   async delete(table: string, idValue: string, idColumn: string = 'id'): Promise<any> {
     if (!supabase) return;
+    if (useProtectedAdminApi()) return mutateAdminData(table, 'delete', {}, idValue, idColumn);
     console.log('[Supabase Client] Deleting record from:', table, { idColumn, idValue });
     const snakeColumn = idColumn.replace(/([A-Z])/g, '_$1').toLowerCase();
     let { data: deleted, error } = await supabase
@@ -255,6 +296,7 @@ export const supabaseClient = {
 
   async upsert(table: string, data: any): Promise<any> {
     if (!supabase) return data;
+    if (useProtectedAdminApi()) return mutateAdminData(table, 'upsert', toSnakeCase(data));
     console.log('[Supabase Client] Upserting record in:', table, data);
     let snakeData = toSnakeCase(data);
     let upserted: any = null;
@@ -289,13 +331,33 @@ export const supabaseClient = {
     if (!supabase) {
       throw new Error('Supabase client is not configured.');
     }
+    if (useProtectedAdminApi()) {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let binary = '';
+      bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+      const payload = await requestAdminData<{ url: string }>('/api/admin/documents', {
+        method: 'POST',
+        body: JSON.stringify({
+          fileName: file.name,
+          contentType: file.type || 'application/octet-stream',
+          base64: btoa(binary),
+        }),
+      });
+      return payload.url;
+    }
     const fileName = `${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
     const { data, error } = await supabase.storage.from('hr-documents').upload(fileName, file);
     if (error) {
       console.error('[Supabase Storage Error]', error);
       throw new Error(`Upload Failed: ${error.message}`);
     }
-    const { data: publicUrlData } = supabase.storage.from('hr-documents').getPublicUrl(data.path);
-    return publicUrlData.publicUrl;
+    const { data: signedUrlData, error: signedUrlError } = await supabase
+      .storage
+      .from('hr-documents')
+      .createSignedUrl(data.path, 60 * 60);
+    if (signedUrlError || !signedUrlData?.signedUrl) {
+      throw new Error(`Signed document URL could not be created: ${signedUrlError?.message || 'unknown error'}`);
+    }
+    return signedUrlData.signedUrl;
   }
 };
