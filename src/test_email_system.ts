@@ -3,7 +3,7 @@ import { buildTemplate } from '../api/_lib/email/templates.js';
 import { createEmailService } from '../api/_lib/email/emailService.js';
 
 process.env.GMAIL_USER = 'smtp-test@example.com';
-process.env.GMAIL_APP_PASSWORD = 'not-a-real-password';
+process.env.GMAIL_APP_PASSWORD = 'not-a-real-pass1';
 process.env.EMAIL_FROM_NAME = 'RedPoint HRMS';
 
 const sent: any[] = [];

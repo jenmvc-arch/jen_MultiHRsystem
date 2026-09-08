@@ -23,10 +23,15 @@ export interface EmailServiceOptions {
 
 const getConfig = () => {
   const user = process.env.GMAIL_USER;
-  const password = process.env.GMAIL_APP_PASSWORD;
+  // Google displays App Passwords in groups; SMTP expects the 16 characters
+  // without separators.
+  const password = String(process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '');
   const fromName = process.env.EMAIL_FROM_NAME || 'RedPoint HRMS';
   if (!user || !password) {
     throw new Error('Gmail SMTP is not configured on the server.');
+  }
+  if (password.length !== 16) {
+    throw new Error('GMAIL_APP_PASSWORD must be a valid 16-character Google App Password.');
   }
   return { user, password, fromName };
 };
