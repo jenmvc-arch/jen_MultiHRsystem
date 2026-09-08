@@ -3,6 +3,7 @@ import { pdf } from '@react-pdf/renderer';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { PayslipPDFDocument } from '../../src/components/PayslipPDFDocument';
+import { seedSocsoConfigurationsAndBrackets } from '../../src/data';
 import type {
   CorporateEntity,
   Employee,
@@ -245,6 +246,21 @@ const defaultLogoDataUri = async () => {
   return `data:image/png;base64,${contents.toString('base64')}`;
 };
 
+const ensureServerLocalStorage = () => {
+  const current = (globalThis as any).localStorage;
+  if (current && typeof current.getItem === 'function' && typeof current.setItem === 'function') return;
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => values.get(String(key)) ?? null,
+      setItem: (key: string, value: string) => values.set(String(key), String(value)),
+      removeItem: (key: string) => values.delete(String(key)),
+      clear: () => values.clear(),
+    },
+  });
+};
+
 const logoDataUri = async (logoUrl: string | undefined) => {
   if (!logoUrl) return defaultLogoDataUri();
   if (logoUrl.startsWith('data:image/')) return logoUrl;
@@ -272,6 +288,8 @@ export const renderOfficialPayslipPdf = async (
   entityRow?: Row,
   options: { sensitiveAllowed?: boolean } = {},
 ) => {
+  ensureServerLocalStorage();
+  seedSocsoConfigurationsAndBrackets();
   const sensitiveAllowed = options.sensitiveAllowed !== false;
   const employee = mapPayrollRowToEmployee(employeeRow, payrollRow);
   const record = mapPayrollRowToRecord(payrollRow, employee);
