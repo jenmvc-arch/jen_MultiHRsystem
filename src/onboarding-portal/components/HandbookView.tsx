@@ -45,7 +45,7 @@ import { useFeedback } from '../../components/GlobalFeedbackSystem';
 interface HandbookViewProps {
   modules: HandbookModule[];
   onAcknowledgeModule: (moduleId: number, signature: string) => void;
-  onOpenAiAssistant: () => void;
+  onOpenAiAssistant?: () => void;
   partInitials: Record<number, string>;
   finalSignatureDataUrl: string | null;
   isSigningLocked?: boolean;
@@ -321,7 +321,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
 
   const activeModule = modules.find((m) => m.id === selectedModuleId) || modules[0] || {
     id: 1,
-    title: 'Part 1 – Introduction & Red Point Corporate Identity',
+    title: 'Part 1 - Introduction & Red Point Corporate Identity',
     subtitle: 'Company background, culture, and organizational values',
     status: 'in-progress',
     sectionsCount: 4,
@@ -402,7 +402,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
     : null;
   const isActiveModuleReviewComplete =
     activeSubsections.length === 0 || activeSubsectionIndex >= activeSubsections.length - 1;
-  const visibleModules = filteredModules.filter((module) => module.id === activeModule.id);
+  const visibleModules = filteredModules;
 
   const totalSectionCount = modules.reduce((total, module) => total + getSectionCount(module), 0);
   const completedSectionsAcrossHandbook = modules
@@ -430,6 +430,25 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
   const completedSectionsInCurrentPart = activePartComplete
     ? activePartSectionCount
     : furthestCompletedSection;
+  const completedPartCount = modules.filter((module) => isPartComplete(module, partInitials)).length;
+  const nextModule = modules.find(
+    (module) => module.id > activeModule.id && !isPartComplete(module, partInitials)
+  );
+  const activePartStateLabel = activePartComplete
+    ? 'Completed'
+    : briefingStatus === 'not_started'
+    ? 'Ready to start'
+    : 'In progress';
+  const sessionActionLabel =
+    briefingStatus === 'not_started'
+      ? 'Start your briefing'
+      : briefingStatus === 'saved_for_later'
+      ? 'Resume your briefing'
+      : activePartComplete
+      ? nextModule
+        ? `Continue with Part ${nextModule.id}`
+        : 'Review your final sign-off'
+      : `Finish ${activeSectionLabel}`;
   const handbookReadingProgress = Math.min(
     100,
     Math.round(
@@ -683,56 +702,55 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
       {/* ========================================================================= */}
       {/* 7-DAY BRIEFING CONTROL BAR & STATUS HEADER */}
       {/* ========================================================================= */}
-      <div className="bg-white rounded-xl shadow-xs border border-[#F2E8D8] p-5 sm:p-6 transition-all">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          <div>
-            <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
-              <span className="bg-[#810912] text-white text-[11px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                7-Day Onboarding Cycle
+      <div className="overflow-hidden rounded-2xl border border-[#eadfd2] bg-white shadow-[0_12px_30px_rgba(81,44,35,0.08)]">
+        <div className="flex flex-col gap-5 p-5 sm:p-6 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#810912] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white">
+                <BookOpen className="h-3 w-3" />
+                Handbook briefing
               </span>
               {briefingStatus === 'not_started' && (
-                <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-900">
                   <Clock className="w-3 h-3" />
                   Not Started
                 </span>
               )}
               {briefingStatus === 'in_progress' && (
-                <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-800">
                   <PlayCircle className="w-3 h-3 text-emerald-700" />
-                  In Progress ({activeSectionLabel})
+                  In Progress
                 </span>
               )}
               {briefingStatus === 'saved_for_later' && (
-                <span className="bg-blue-100 text-blue-800 border border-blue-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-bold text-sky-800">
                   <BookmarkCheck className="w-3 h-3 text-blue-700" />
                   Saved for Later
                 </span>
               )}
               {briefingStatus === 'completed' && (
-                <span className="bg-emerald-600 text-white text-[11px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-black text-white">
                   <CheckCircle className="w-3 h-3 text-white" />
-                  All 15 Parts Completed
+                  Completed
                 </span>
               )}
             </div>
 
-            <h2 className="text-xl sm:text-2xl font-black text-[#1b1c1c] tracking-tight">
+            <h2 className="text-xl font-black tracking-tight text-[#1b1c1c] sm:text-2xl">
               Employee Handbook & Policy Briefing
             </h2>
-            <p className="text-xs sm:text-sm text-[#59413f] mt-1">
-              Employees have a mandatory 7-day period to review all 15 Parts and their sections, acknowledge SOPs, and complete digital sign-off.
+            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-[#59413f] sm:text-sm">
+              Review each policy section in order, watch the briefing, then record your initial to unlock the next Part.
             </p>
           </div>
 
-          {/* Right Action Cluster for 7-Day Session Management */}
-          <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto shrink-0 justify-start lg:justify-end">
-            {/* Countdown Badge if session has started */}
+          <div className="flex w-full shrink-0 flex-wrap items-center justify-start gap-2 lg:w-auto lg:justify-end">
             {briefingStatus !== 'not_started' && deadlineAt && (
               <div
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold border shrink-0 ${
+                className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold ${
                   isOverdue
-                    ? 'bg-red-100 text-red-900 border-red-300'
-                    : 'bg-[#FAF6EF] text-[#810912] border-[#e0bfbc]'
+                    ? 'border-red-200 bg-red-50 text-red-900'
+                    : 'border-[#e0bfbc] bg-[#FAF6EF] text-[#810912]'
                 }`}
                 title={`Due by: ${new Date(deadlineAt).toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' })}`}
               >
@@ -741,23 +759,21 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
               </div>
             )}
 
-            {/* If Not Started: Show Big START button */}
             {briefingStatus === 'not_started' ? (
               <button
                 type="button"
                 onClick={handleStartBriefing}
-                className="px-6 py-2.5 rounded-xl bg-[#810912] text-white font-extrabold text-xs hover:bg-[#a32626] transition-all shadow-md flex items-center gap-2 cursor-pointer hover:-translate-y-0.5"
+                className="inline-flex items-center gap-2 rounded-xl bg-[#810912] px-5 py-2.5 text-xs font-extrabold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#a32626] active:translate-y-0"
               >
                 <Play className="w-4 h-4 fill-current" />
-                <span>START BRIEFING SESSION</span>
+                <span>Start briefing</span>
               </button>
             ) : (
-              /* If Session Active: Show Save for Later, Continue, and Start Over buttons */
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={handleSaveForLater}
-                  className="px-3.5 py-2 rounded-lg bg-[#FAF6EF] border border-[#e0bfbc] text-[#59413f] font-bold text-xs hover:bg-[#f2e8d8] transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#e0bfbc] bg-[#FAF6EF] px-3.5 py-2 text-xs font-bold text-[#59413f] transition-all hover:bg-[#f2e8d8] active:translate-y-px"
                   title="Save your current progress and resume anytime within your 7-day window"
                 >
                   <Save className="w-3.5 h-3.5 text-[#810912]" />
@@ -768,17 +784,17 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                   <button
                     type="button"
                     onClick={handleContinueSession}
-                    className="px-4 py-2 rounded-lg bg-[#810912] text-white font-bold text-xs hover:bg-[#a32626] transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#810912] px-4 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#a32626] active:translate-y-px"
                   >
                     <Play className="w-3.5 h-3.5 fill-current" />
-                    <span>Continue Session</span>
+                    <span>Resume</span>
                   </button>
                 )}
 
                 <button
                   type="button"
                   onClick={handleStartOver}
-                  className="px-3.5 py-2 rounded-lg border border-gray-300 text-gray-600 font-bold text-xs hover:bg-gray-100 transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#d9d6d2] px-3.5 py-2 text-xs font-bold text-[#59413f] transition-all hover:bg-[#f6f3f2] active:translate-y-px"
                   title="Restart handbook briefing from Part 1"
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-gray-500" />
@@ -789,35 +805,31 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
           </div>
         </div>
 
-        {/* Informative Guidance Banner if not started */}
-        {briefingStatus === 'not_started' && (
-          <div className="mt-4 p-4 rounded-xl bg-[#FAF6EF] border border-[#e0bfbc] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-[#810912] shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-bold text-[#1b1c1c]">
-                  Welcome to your Onboarding Briefing Session
-                </p>
-                <p className="text-[11px] text-[#59413f] mt-0.5">
-                  Click the <strong>START</strong> button above to activate your 7-day orientation window. You can save your progress at any time and return before the deadline.
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleStartBriefing}
-              className="px-4 py-1.5 rounded-lg bg-[#810912] text-white text-xs font-bold shrink-0 hover:bg-[#a32626] transition-colors cursor-pointer"
-            >
-              Start Now →
-            </button>
+        <div className="grid border-t border-[#eadfd2] bg-[#fcfaf6] sm:grid-cols-3">
+          <div className="border-b border-[#eadfd2] px-5 py-3 sm:border-b-0 sm:border-r">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#8a7168]">Current task</p>
+            <p className="mt-1 truncate text-xs font-extrabold text-[#1b1c1c]">{sessionActionLabel}</p>
           </div>
-        )}
+          <div className="border-b border-[#eadfd2] px-5 py-3 sm:border-b-0 sm:border-r">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#8a7168]">Handbook progress</p>
+            <p className="mt-1 text-xs font-extrabold text-[#1b1c1c]">
+              {completedPartCount} of {modules.length} Parts acknowledged
+            </p>
+          </div>
+          <div className="px-5 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#8a7168]">Part status</p>
+            <p className="mt-1 flex items-center gap-1.5 text-xs font-extrabold text-[#1b1c1c]">
+              <span className={`h-2 w-2 rounded-full ${activePartComplete ? 'bg-emerald-500' : 'bg-[#810912]'}`} />
+              Part {activeModule.id} · {activePartStateLabel}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Sticky Module Reading Progress Bar */}
-      <div className="sticky top-[-12px] z-50 self-start bg-white border border-[#F2E8D8] rounded-xl p-3 sm:p-4 shadow-[0_4px_12px_rgba(51,51,51,0.08)] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 transition-all">
+      <div className="sticky top-[-12px] z-50 flex flex-col items-stretch justify-between gap-3 self-start rounded-2xl border border-[#eadfd2] bg-white/95 p-3 shadow-[0_8px_22px_rgba(81,44,35,0.1)] backdrop-blur sm:flex-row sm:items-center sm:p-4">
         <div className="flex items-center gap-2.5 min-w-0">
-          <span className="bg-[#810912] text-white text-[10px] font-extrabold px-2.5 py-1 rounded-md uppercase tracking-wider shrink-0 shadow-xs flex items-center gap-1">
+          <span className="flex shrink-0 items-center gap-1 rounded-lg bg-[#810912] px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-xs">
             <BookOpen className="w-3 h-3" />
             <span>{activeSectionLabel}</span>
           </span>
@@ -831,7 +843,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto shrink-0 bg-[#FAF6EF] sm:bg-transparent p-2 sm:p-0 rounded-lg border sm:border-0 border-[#F2E8D8]">
+        <div className="flex w-full shrink-0 items-center gap-3 rounded-xl border border-[#eadfd2] bg-[#fcfaf6] p-2 sm:w-auto sm:border-0 sm:bg-transparent sm:p-0">
           <div className="text-right whitespace-nowrap">
             <span className="text-xs font-semibold text-[#59413f]">
               {t.readingProgress}:{' '}
@@ -847,35 +859,43 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6 relative">
+      <div className="relative grid grid-cols-1 gap-5 lg:grid-cols-[minmax(260px,0.82fr)_minmax(0,1.8fr)] lg:gap-6">
         {/* Left Column: Handbook Modules Index Card */}
-        <div className="lg:w-1/3 flex flex-col gap-4">
-          <div className="bg-white rounded-xl shadow-[0_4px_6px_-1px_rgba(51,51,51,0.05),0_10px_15px_-3px_rgba(51,51,51,0.1)] border border-[#F2E8D8] p-6 flex-1">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-[#1b1c1c]">{t.handbookHeaderTitle}</h3>
-              <button
-                type="button"
-                onClick={onOpenAiAssistant}
-                className="p-1.5 rounded-lg bg-[#a32626]/10 text-[#810912] hover:bg-[#a32626]/20 transition-colors flex items-center gap-1 text-xs font-semibold cursor-pointer"
-                title={t.askAiAboutModule}
-              >
-                <Bot className="w-4 h-4" />
-                <span>{t.aiAssistant}</span>
-              </button>
+        <div className="flex flex-col gap-4">
+          <div className="flex-1 rounded-2xl border border-[#eadfd2] bg-white p-5 shadow-[0_10px_26px_rgba(81,44,35,0.07)] sm:p-6">
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#8a7168]">Reading path</p>
+                <h3 className="mt-1 text-lg font-black tracking-tight text-[#1b1c1c]">{t.handbookHeaderTitle}</h3>
+              </div>
+              {onOpenAiAssistant && (
+                <button
+                  type="button"
+                  onClick={onOpenAiAssistant}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#a32626]/10 px-2 py-1.5 text-xs font-semibold text-[#810912] transition-colors hover:bg-[#a32626]/20"
+                  title={t.askAiAboutModule}
+                >
+                  <Bot className="h-4 w-4" />
+                  <span>{t.aiAssistant}</span>
+                </button>
+              )}
             </div>
 
             {/* Progress Header */}
-            <div className="mb-5">
+            <div className="mb-5 rounded-xl border border-[#eadfd2] bg-[#fcfaf6] p-3.5">
               <div className="flex justify-between items-end mb-2">
-                <span className="text-xs font-semibold text-[#59413f]">{t.overallProgress}</span>
-                <span className="text-xs font-bold text-[#810912]">{overallPercent}%</span>
+                <span className="text-xs font-bold text-[#59413f]">{t.overallProgress}</span>
+                <span className="font-mono text-xs font-bold text-[#810912]">{overallPercent}%</span>
               </div>
-              <div className="w-full bg-[#f0eded] rounded-full h-2 overflow-hidden">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-[#e9e2da]">
                 <div
                   className="bg-[#a32626] h-full rounded-full transition-all duration-300"
                   style={{ width: `${overallPercent}%` }}
                 ></div>
               </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-[#8a7168]">
+                Complete Parts in order. A recorded initial unlocks the next step.
+              </p>
             </div>
 
             {/* Local Search Input Filter */}
@@ -916,7 +936,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
 
             {/* Parts and Sections Index */}
             {visibleModules.length === 0 ? (
-              <div className="p-5 text-center bg-[#FAF6EF] rounded-lg border border-dashed border-[#e0bfbc] space-y-2">
+              <div className="space-y-2 rounded-xl border border-dashed border-[#e0bfbc] bg-[#FAF6EF] p-5 text-center">
                 <Search className="w-6 h-6 text-[#810912]/40 mx-auto" />
                 <p className="text-xs font-bold text-[#1b1c1c]">No modules found</p>
                 <p className="text-[11px] text-[#59413f]">
@@ -931,7 +951,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                 </button>
               </div>
             ) : (
-              <ul className="space-y-2.5 pr-1">
+              <ul className="max-h-[min(58vh,680px)] space-y-2 overflow-y-auto pr-1">
                 {visibleModules.map((m) => {
                   const isSelected = m.id === selectedModuleId;
                   const isCompleted = m.status === 'completed' || !!partInitials[m.id];
@@ -947,9 +967,9 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                   return (
                     <li key={m.id} className="space-y-1">
                       <div
-                        className={`flex items-center gap-2 rounded-lg border transition-all ${
+                        className={`flex items-center gap-2 rounded-xl border transition-all ${
                           isSelected
-                            ? 'border-[#810912]/30 bg-[#810912]/10 text-[#810912]'
+                            ? 'border-[#810912]/30 bg-[#810912]/10 text-[#810912] shadow-sm'
                             : isLocked
                             ? 'border-transparent opacity-60 text-gray-400'
                             : 'border-transparent hover:bg-[#f6f3f2] text-[#1b1c1c]'
@@ -975,7 +995,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                             }
                             handleSelectModule(m.id);
                           }}
-                          className="flex min-w-0 flex-1 items-center gap-3 p-3 text-left"
+                          className="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-3 text-left"
                         >
                           {isCompleted ? (
                             <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -1002,7 +1022,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                             type="button"
                             onClick={() => togglePartExpansion(m.id)}
                             aria-label={`${isExpanded ? 'Collapse' : 'Expand'} Part ${m.id} sections`}
-                            className="mr-2 rounded-md p-1.5 text-[#810912] transition-colors hover:bg-white"
+                            className="mr-2 rounded-lg p-1.5 text-[#810912] transition-colors hover:bg-white"
                           >
                             {isExpanded ? (
                               <ChevronDown className="h-4 w-4" />
@@ -1027,7 +1047,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                                   onClick={() => handleSelectSubsection(m, sectionIndex)}
                                   className={`flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left transition-colors ${
                                     isSectionSelected
-                                      ? 'bg-[#810912] text-white shadow-sm'
+                                    ? 'bg-[#810912] text-white shadow-sm'
                                       : isSectionLocked
                                       ? 'cursor-not-allowed text-[#59413f]/45 hover:bg-[#FAF6EF]'
                                       : 'text-[#59413f] hover:bg-[#FAF6EF]'
@@ -1067,12 +1087,12 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
         {/* Center/Main Column: Policy Content & Section Video */}
         <div
           ref={handbookColumnRef}
-          className="lg:w-2/3 flex flex-col gap-6 lg:sticky lg:top-36 lg:h-[calc(100vh-13rem)] lg:max-h-[calc(100vh-13rem)] lg:overflow-hidden lg:pr-2"
+          className="flex min-w-0 flex-col gap-5 lg:sticky lg:top-36 lg:h-[calc(100vh-13rem)] lg:max-h-[calc(100vh-13rem)] lg:overflow-hidden lg:pr-1"
         >
           {/* Reserved video slot: the video stays fixed without covering the handbook. */}
           <div className="shrink-0 self-stretch">
             {/* Each handbook Part has an independent video slot and source. */}
-            <div className="relative w-full h-64 sm:h-72 rounded-xl border border-[#F2E8D8] bg-[#403f3a] shadow-[0_4px_12px_rgba(51,51,51,0.12)] overflow-hidden">
+              <div className="relative h-56 w-full overflow-hidden rounded-2xl border border-[#eadfd2] bg-[#403f3a] shadow-[0_10px_24px_rgba(81,44,35,0.12)] sm:h-64">
               {handbookVideo.sourceUrl ? (
                 handbookVideo.kind === 'embed' ? (
                   <iframe
@@ -1112,7 +1132,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                       <Video className="mx-auto h-9 w-9 text-[#ffbbb5]" />
                       <p className="mt-3 text-sm font-extrabold">{handbookVideo.title}</p>
                       <p className="mt-1 text-xs text-white/80">
-                        Part {handbookVideo.partNumber} video · {videoDuration}
+                        Part {handbookVideo.partNumber} video - {videoDuration}
                       </p>
                       <p className="mt-3 text-[11px] text-white/70">
                         This section video is not configured yet. Add its video URL to the
@@ -1134,7 +1154,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
             className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain pr-1"
           >
             {/* Handbook Content Card */}
-            <div className="bg-white rounded-xl shadow-[0_4px_6px_-1px_rgba(51,51,51,0.05),0_10px_15px_-3px_rgba(51,51,51,0.1)] border border-[#F2E8D8] overflow-hidden flex flex-col">
+            <div className="flex flex-col overflow-hidden rounded-2xl border border-[#eadfd2] bg-white shadow-[0_10px_26px_rgba(81,44,35,0.07)]">
               {/* Text Content */}
               <div className="p-6 sm:p-8 flex-1">
               {/* View Mode Switcher Header Bar */}
@@ -1200,10 +1220,10 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                 <div className="space-y-4 text-base text-[#59413f] leading-relaxed">
                   {officialPdfUrl && (
                     <section className="space-y-3" aria-label="Official employee handbook PDF">
-                      <div className="flex flex-col gap-2 border-b border-[#F2E8D8] pb-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-sm font-extrabold text-[#1b1c1c]">
-                            Official Employee Handbook
+                        <div className="flex flex-col gap-3 rounded-xl border border-[#eadfd2] bg-[#fcfaf6] p-3.5 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-sm font-extrabold text-[#1b1c1c]">
+                              Official Employee Handbook
                           </p>
                           <p className="text-xs text-[#59413f]">
                             {officialHandbookVersion || OFFICIAL_HANDBOOK.displayVersion} · Pages {activePageRange.start}-{activePageRange.end} of {officialHandbookPageCount || OFFICIAL_HANDBOOK.pageCount}
@@ -1224,7 +1244,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                         <iframe
                           src={officialPdfUrl}
                           title={`Official Handbook Pages ${activePageRange.start}-${activePageRange.end}`}
-                          className="h-[560px] w-full bg-white"
+                          className="h-[360px] w-full bg-white sm:h-[420px]"
                         />
                       </div>
                     </section>
@@ -1308,7 +1328,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
               )}
 
                 {activeSubsections.length > 0 && (
-                  <div className="mt-6 flex flex-col gap-3 border-t border-[#F2E8D8] pt-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="mt-6 flex flex-col gap-3 rounded-xl border border-[#eadfd2] bg-[#fcfaf6] p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="space-y-2">
                       <p className="text-xs font-semibold text-[#59413f]">
                         {activeSectionLabel} of {activeSubsections.length}
@@ -1383,8 +1403,8 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
           {/* ========================================================================= */}
           {!isActiveModuleReviewComplete ? null : activeModule.id === 15 ? (
             /* FINAL COVENANTS & COMPREHENSIVE SIGN-OFF CARD FOR PART 15 */
-            <div className="bg-white rounded-xl shadow-md border-2 border-[#810912] p-6 sm:p-8 space-y-6">
-              <div className="border-b border-[#F2E8D8] pb-4">
+            <div className="space-y-6 rounded-2xl border-2 border-[#810912]/70 bg-white p-5 shadow-[0_12px_28px_rgba(129,9,18,0.1)] sm:p-7">
+              <div className="border-b border-[#eadfd2] pb-4">
                 <div className="flex items-center gap-2 mb-1">
                   <Award className="w-6 h-6 text-[#810912]" />
                   <h3 className="text-lg sm:text-xl font-extrabold text-[#1b1c1c]">
@@ -1510,10 +1530,10 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
             </div>
           ) : (
             /* INITIAL SIGNATURE & SECTION ACKNOWLEDGEMENT CARD FOR PARTS 1 - 14 */
-            <div className="bg-white rounded-xl shadow-md border-2 border-[#810912]/20 p-6 flex flex-col gap-5 relative overflow-hidden">
+            <div className="relative flex flex-col gap-5 overflow-hidden rounded-2xl border border-[#810912]/25 bg-white p-5 shadow-[0_10px_26px_rgba(81,44,35,0.08)] sm:p-6">
               <div className="absolute top-0 left-0 w-full h-1 bg-[#810912]"></div>
 
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-[#F2E8D8]">
+              <div className="flex flex-col items-start justify-between gap-3 border-b border-[#eadfd2] pb-3 sm:flex-row sm:items-center">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 bg-[#810912] text-white rounded-lg shadow-xs">
                     <PenTool className="w-5 h-5" />
@@ -1545,7 +1565,7 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                 <HandwritingCanvas
                   key={activeModule.id}
                   label={`Employee Handwritten Initial Pad (Part ${activeModule.id})`}
-                  subLabel={`Please draw your handwritten initial below to confirm you have thoroughly reviewed Part ${activeModule.id} – ${activeModule.content.sectionTitle}.`}
+                  subLabel={`Please draw your handwritten initial below to confirm you have thoroughly reviewed Part ${activeModule.id} - ${activeModule.content.sectionTitle}.`}
                   height={110}
                   existingDataUrl={partInitials[activeModule.id] || null}
                   disabled={isSigningLocked}
@@ -1611,8 +1631,8 @@ export const HandbookView: React.FC<HandbookViewProps> = ({
                 >
                   <span>
                     {activeModule.id === 14
-                      ? 'Proceed to Part 15 — Final Provisions & Signature'
-                      : `Next: Part ${activeModule.id + 1} — ${modules.find(m => m.id === activeModule.id + 1)?.title.replace(/^Part \d+ – /, '') || 'Next Section'}`}
+                      ? 'Proceed to Part 15 - Final Provisions & Signature'
+                      : `Next: Part ${activeModule.id + 1} - ${modules.find(m => m.id === activeModule.id + 1)?.title.replace(/^Part \d+ [-–] /, '') || 'Next Section'}`}
                   </span>
                   <ArrowRight className="w-4 h-4" />
                 </button>

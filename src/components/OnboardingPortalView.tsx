@@ -839,7 +839,7 @@ function OnboardingPortalContent({
           <HandbookView
             modules={modules}
             onAcknowledgeModule={handleAcknowledgeModule}
-            onOpenAiAssistant={() => undefined}
+            onOpenAiAssistant={undefined}
             partInitials={partInitialDataUrls}
             finalSignatureDataUrl={finalSignatureDataUrl}
             isSigningLocked={
