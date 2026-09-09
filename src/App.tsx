@@ -325,6 +325,7 @@ export default function App() {
   const isCandidateShareMode = window.location.search.includes('candidateShare=');
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isSessionRestoring, setIsSessionRestoring] = useState(true);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
@@ -850,124 +851,148 @@ export default function App() {
     }
   };
 
-  // Load session from local storage on mount
+  // Restore both the app session and any Supabase employee session. The latter
+  // is essential for one-time invite/reset links that land directly on the
+  // protected employee portal before the app has written its own local marker.
   useEffect(() => {
     let cancelled = false;
     const restoreSession = async () => {
-      // Let the legacy demo redirect settle before restoring a real session.
       if (isEmployeePortalDemoPath) return;
-      if (localStorage.getItem('hr-nexus-auth') !== 'true') return;
 
+      const hasLocalSession = localStorage.getItem('hr-nexus-auth') === 'true';
       const storedEmail = localStorage.getItem('hr-nexus-user-email');
       const storedRole = localStorage.getItem('hr-nexus-user-role');
+      const storedName = localStorage.getItem('hr-nexus-user-name');
       const accountPreview = new URLSearchParams(window.location.search).get('accountPreview') === '1';
 
-      if (storedRole && isAdminPortalRole(storedRole)) {
-        try {
-          const response = await fetch('/api/auth/session', {
-            credentials: 'include',
-          });
-          const payload = await response.json().catch(() => ({}));
-          if (response.ok && payload.user) {
-            if (cancelled) return;
-            const user = payload.user;
-            setIsAuthenticated(true);
-            setCurrentUserEmail(user.username || user.email || storedEmail);
-            setCurrentUserName(user.name || localStorage.getItem('hr-nexus-user-name'));
-            setCurrentUserRole(user.role || storedRole);
-            localStorage.removeItem('hr-nexus-user-nickname');
-            setCurrentUserMustChangePassword(false);
-            return;
-          }
-
-          if (!accountPreview) {
-            localStorage.removeItem('hr-nexus-auth');
-            return;
-          }
-        } catch (error) {
-          console.warn('[Admin Session] Secure session validation unavailable:', error);
-          if (!accountPreview) {
-            localStorage.removeItem('hr-nexus-auth');
-            return;
-          }
-        }
-      }
-
-      if (storedRole && isEmployeePortalRole(storedRole)) {
-        const employeeAuthClient = employeeSupabase || supabase;
-        if (employeeAuthClient && !isEmployeePortalDemoPath) {
-          const { data } = await employeeAuthClient.auth.getUser();
-          if (!data.user && !accountPreview) {
-            const cookieProfile = await fetch('/api/employee-auth/profile', {
+      try {
+        if (hasLocalSession && storedRole && isAdminPortalRole(storedRole)) {
+          try {
+            const response = await fetch('/api/auth/session', {
               credentials: 'include',
             });
-            if (!cookieProfile.ok) {
+            const payload = await response.json().catch(() => ({}));
+            if (response.ok && payload.user) {
+              if (cancelled) return;
+              const user = payload.user;
+              setIsAuthenticated(true);
+              setCurrentUserEmail(user.username || user.email || storedEmail);
+              setCurrentUserName(user.name || storedName);
+              setCurrentUserRole(user.role || storedRole);
+              localStorage.removeItem('hr-nexus-user-nickname');
+              setCurrentUserMustChangePassword(false);
+              return;
+            }
+
+            if (!accountPreview) {
               localStorage.removeItem('hr-nexus-auth');
               return;
             }
-            const profile = await cookieProfile.json();
-            if (cancelled) return;
-            setIsAuthenticated(true);
-            setCurrentUserEmail(profile.email || storedEmail);
-            setCurrentUserName(localStorage.getItem('hr-nexus-user-name'));
-            setCurrentUserRole(storedRole);
-            setCurrentUserMustChangePassword(Boolean(profile.mustChangePassword));
-            return;
-          }
-          if (data.user?.email) {
-            try {
-              const {
-                data: { session },
-              } = await employeeAuthClient.auth.getSession();
-              if (session?.access_token) {
-                const profileResponse = await fetch('/api/employee-auth/profile', {
-                  headers: { Authorization: `Bearer ${session.access_token}` },
-                });
-                if (profileResponse.ok) {
-                  const profile = await profileResponse.json();
-                  localStorage.removeItem('hr-nexus-user-nickname');
-                  localStorage.setItem(
-                    'hr-nexus-user-must-change-password',
-                    String(Boolean(profile.mustChangePassword))
-                  );
-                  if (cancelled) return;
-                  setIsAuthenticated(true);
-                  setCurrentUserEmail(data.user.email);
-                  setCurrentUserName(localStorage.getItem('hr-nexus-user-name'));
-                  setCurrentUserRole(storedRole);
-                  setCurrentUserMustChangePassword(Boolean(profile.mustChangePassword));
-                  return;
-                }
-              }
-            } catch (error) {
-              console.warn('[Employee Profile] Secure profile restore unavailable:', error);
-              if (!accountPreview) {
-                localStorage.removeItem('hr-nexus-auth');
-                return;
-              }
+          } catch (error) {
+            console.warn('[Admin Session] Secure session validation unavailable:', error);
+            if (!accountPreview) {
+              localStorage.removeItem('hr-nexus-auth');
+              return;
             }
           }
         }
-      }
 
-      if (cancelled) return;
-      setIsAuthenticated(true);
-      setCurrentUserEmail(storedEmail);
-      setCurrentUserName(localStorage.getItem('hr-nexus-user-name'));
-      setCurrentUserRole(storedRole);
-      setCurrentUserMustChangePassword(
-        localStorage.getItem('hr-nexus-user-must-change-password') === 'true'
-      );
+        const employeeAuthClient = employeeSupabase || supabase;
+        const canRestoreEmployeeCookie = (
+          isEmployeePortalRoute
+          || requestedLoginPortal === 'employee'
+          || isEmployeePortalRole(storedRole)
+        );
+
+        if (employeeAuthClient) {
+          try {
+            const { data: authData } = await employeeAuthClient.auth.getUser();
+            const { data: sessionData } = await employeeAuthClient.auth.getSession();
+            const profileResponse = authData.user?.email && sessionData.session?.access_token
+              ? await fetch('/api/employee-auth/profile', {
+                credentials: 'include',
+                headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+              })
+              : null;
+
+            if (profileResponse?.ok) {
+              const profile = await profileResponse.json();
+              if (profile.employeeId) {
+                if (cancelled) return;
+                const email = profile.email || authData.user?.email || storedEmail;
+                setIsAuthenticated(true);
+                setCurrentUserEmail(email);
+                setCurrentUserName(authData.user?.user_metadata?.name || storedName || email);
+                setCurrentUserRole('Employee');
+                setCurrentUserMustChangePassword(Boolean(profile.mustChangePassword));
+                localStorage.setItem('hr-nexus-auth', 'true');
+                localStorage.setItem('hr-nexus-user-email', email);
+                localStorage.setItem('hr-nexus-user-role', 'Employee');
+                localStorage.setItem(
+                  'hr-nexus-user-must-change-password',
+                  String(Boolean(profile.mustChangePassword))
+                );
+                return;
+              }
+            }
+          } catch (error) {
+            console.warn('[Employee Profile] Secure profile restore unavailable:', error);
+          }
+        }
+
+        // OTP reset sessions are intentionally cookie-based and may not have a
+        // browser Supabase session. This supports a refresh after OTP verify.
+        if (canRestoreEmployeeCookie) {
+          const cookieProfile = await fetch('/api/employee-auth/profile', {
+            credentials: 'include',
+          });
+          if (cookieProfile.ok) {
+            const profile = await cookieProfile.json();
+            if (profile.employeeId) {
+              if (cancelled) return;
+              const email = profile.email || storedEmail;
+              setIsAuthenticated(true);
+              setCurrentUserEmail(email);
+              setCurrentUserName(storedName || email);
+              setCurrentUserRole('Employee');
+              setCurrentUserMustChangePassword(Boolean(profile.mustChangePassword));
+              localStorage.setItem('hr-nexus-auth', 'true');
+              localStorage.setItem('hr-nexus-user-email', email);
+              localStorage.setItem('hr-nexus-user-role', 'Employee');
+              localStorage.setItem(
+                'hr-nexus-user-must-change-password',
+                String(Boolean(profile.mustChangePassword))
+              );
+              return;
+            }
+          }
+        }
+
+        // Account preview is the only remaining path that may use the legacy
+        // local session fallback. Formal employee access must be server-backed.
+        if (hasLocalSession && accountPreview && storedRole && isAdminPortalRole(storedRole)) {
+          if (cancelled) return;
+          setIsAuthenticated(true);
+          setCurrentUserEmail(storedEmail);
+          setCurrentUserName(storedName);
+          setCurrentUserRole(storedRole);
+          setCurrentUserMustChangePassword(
+            localStorage.getItem('hr-nexus-user-must-change-password') === 'true'
+          );
+        }
+      } finally {
+        if (!cancelled) setIsSessionRestoring(false);
+      }
     };
 
     void restoreSession();
     return () => {
       cancelled = true;
     };
-  }, [isEmployeePortalDemoPath]);
+  }, [isEmployeePortalDemoPath, isEmployeePortalRoute, requestedLoginPortal]);
 
   useEffect(() => {
-    if (isLegacyDemoRedirecting || isEmployeePortalDemoPath
+    if (isSessionRestoring || isLegacyDemoRedirecting || isEmployeePortalDemoPath
       || isPrintMode || isJobApplyMode || isOnboardingMode || isCandidateShareMode) return;
 
     const targetPath = getAuthRedirectPath(window.location.pathname, isAuthenticated ? currentUserRole : null);
@@ -994,6 +1019,7 @@ export default function App() {
     isPrintMode,
     isOnboardingMode,
     isLegacyDemoRedirecting,
+    isSessionRestoring,
   ]);
 
   // Load data from Supabase or Google Sheets dynamically if configured

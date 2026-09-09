@@ -82,6 +82,12 @@ const isAccountSchemaMissing = (message: string) => (
   /employee_accounts|employee_account_events|schema cache|could not find the table/i.test(message)
 );
 
+// Delivery failures are recoverable through password setup. Only an explicitly
+// disabled or not-yet-created account is blocked from Auth access.
+const isEmployeeAccountBlocked = (status: unknown) => (
+  ['disabled', 'not_created'].includes(String(status || ''))
+);
+
 const getMainSupabaseConfig = () => ({
   url: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '',
   serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
@@ -192,7 +198,7 @@ export const requestEmployeeOtp = async (input: {
     .ilike('employee_email', email)
     .maybeSingle();
   if (accountError) throw new Error(`Employee account lookup failed: ${accountError.message}`);
-  if (!account?.auth_user_id || ['disabled', 'error', 'not_created'].includes(account.account_status)) {
+  if (!account?.auth_user_id || isEmployeeAccountBlocked(account.account_status)) {
     throw otpError('This employee account is not available for OTP sign-in.', 404);
   }
   const authUserResult = await employeeAdmin.auth.admin.getUserById(account.auth_user_id);
@@ -293,7 +299,7 @@ export const verifyEmployeeOtp = async (input: {
     .eq('auth_user_id', challenge.auth_user_id)
     .maybeSingle();
   if (accountError) throw new Error(`Employee account lookup failed: ${accountError.message}`);
-  if (!account || ['disabled', 'error', 'not_created'].includes(account.account_status)) {
+  if (!account || isEmployeeAccountBlocked(account.account_status)) {
     throw otpError('This employee account is not available.', 403);
   }
   if (new Date(challenge.expires_at).getTime() <= Date.now()) {
@@ -1139,7 +1145,7 @@ export const getEmployeeAuthUser = async (req: any) => {
       .eq('auth_user_id', data.user.id)
       .maybeSingle();
     if (accountError) throw new Error(`Employee account lookup failed: ${accountError.message}`);
-    if (!account || ['disabled', 'error', 'not_created'].includes(account.account_status)) {
+    if (!account || isEmployeeAccountBlocked(account.account_status)) {
       throw Object.assign(new Error('This employee account is not active.'), { statusCode: 403 });
     }
     return { token, user: data.user };
@@ -1159,7 +1165,7 @@ export const getEmployeeAuthUser = async (req: any) => {
     .eq('auth_user_id', data.user.id)
     .maybeSingle();
   if (accountError) throw new Error(`Employee account lookup failed: ${accountError.message}`);
-  if (!account || ['disabled', 'error', 'not_created'].includes(account.account_status)) {
+  if (!account || isEmployeeAccountBlocked(account.account_status)) {
     throw Object.assign(new Error('This employee account is not active.'), { statusCode: 403 });
   }
   return { token: '', user: data.user };
@@ -1175,13 +1181,15 @@ export const loadEmployeeAuthProfile = async (req: any) => {
     .maybeSingle();
   if (error) throw new Error(`Employee account profile lookup failed: ${error.message}`);
 
-  if (!account || ['disabled', 'error', 'not_created'].includes(account.account_status)) {
+  if (!account || isEmployeeAccountBlocked(account.account_status)) {
     throw Object.assign(new Error('This employee account is not active.'), { statusCode: 403 });
   }
   return {
     email: user.email || '',
     mustChangePassword: Boolean(
-      account?.must_change_password ?? user.user_metadata?.must_change_password
+      account?.must_change_password
+      || account?.account_status === 'error'
+      || user.user_metadata?.must_change_password
     ),
     accountStatus: account?.account_status || 'active',
     employeeId: account?.employee_id || user.user_metadata?.employee_id || '',
@@ -1202,7 +1210,7 @@ export const completeEmployeeAuthSetup = async (req: any) => {
     .eq('auth_user_id', user.id)
     .maybeSingle();
   if (accountError) throw new Error(`Employee account lookup failed: ${accountError.message}`);
-  if (!account || ['disabled', 'error', 'not_created'].includes(account.account_status)) {
+  if (!account || isEmployeeAccountBlocked(account.account_status)) {
     throw Object.assign(new Error('This employee account is not allowed to complete setup.'), { statusCode: 403 });
   }
   const updatedUser = await employeeAdmin.auth.admin.updateUserById(user.id, {
@@ -1247,14 +1255,16 @@ export const updateEmployeeAuthProfile = async (req: any) => {
   if (accountError) {
     throw new Error(`Employee account profile lookup failed: ${accountError.message}`);
   }
-  if (!account || ['disabled', 'error', 'not_created'].includes(account.account_status)) {
+  if (!account || isEmployeeAccountBlocked(account.account_status)) {
     throw Object.assign(new Error('This employee account is not active.'), { statusCode: 403 });
   }
 
   return {
     email: user.email || '',
     mustChangePassword: Boolean(
-      account?.must_change_password ?? user.user_metadata?.must_change_password
+      account?.must_change_password
+      || account?.account_status === 'error'
+      || user.user_metadata?.must_change_password
     ),
     employeeId: account?.employee_id || user.user_metadata?.employee_id || '',
   };
