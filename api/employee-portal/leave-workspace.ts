@@ -1,5 +1,3 @@
-import { handleEmployeePortalLeaveWorkspace } from '../_lib/employeeServiceHandlers';
+import { handleEmployeePortalLeaveWorkspace } from '../_lib/employeeServiceHandlers.js';
 
-export default async function handler(req: any, res: any) {
-  return handleEmployeePortalLeaveWorkspace(req, res);
-}
+export default handleEmployeePortalLeaveWorkspace;
