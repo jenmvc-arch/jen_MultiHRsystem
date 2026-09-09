@@ -14,6 +14,7 @@ import {
   updateAdminProfileChangeRequest,
   updateEmployeePortalProfile,
 } from './employeeServiceServer.js';
+import { requirePortalHost } from './employeeAccountServer.js';
 
 const sendError = (res: any, error: any) => {
   const status = Number(error?.statusCode || 500);
@@ -29,6 +30,7 @@ export async function handleEmployeePortalBootstrap(req: any, res: any) {
     return;
   }
   try {
+    requirePortalHost(req, 'employee');
     res.status(200).json(await loadEmployeePortalBootstrap(req));
   } catch (error) {
     sendError(res, error);
@@ -42,6 +44,7 @@ export async function handleEmployeePortalProfile(req: any, res: any) {
     return;
   }
   try {
+    requirePortalHost(req, 'employee');
     res.status(200).json(await updateEmployeePortalProfile(req));
   } catch (error) {
     sendError(res, error);
@@ -55,6 +58,7 @@ export async function handleEmployeePortalRequest(req: any, res: any) {
     return;
   }
   try {
+    requirePortalHost(req, 'employee');
     res.status(201).json(await createEmployeeServiceRequest(req));
   } catch (error) {
     sendError(res, error);
@@ -63,6 +67,7 @@ export async function handleEmployeePortalRequest(req: any, res: any) {
 
 export async function handleEmployeePortalLeaveRequests(req: any, res: any) {
   try {
+    requirePortalHost(req, 'employee');
     if (req.method === 'GET') {
       res.status(200).json(await loadEmployeeLeaveRequests(req));
       return;
@@ -85,6 +90,7 @@ export async function handleEmployeePortalLeaveWorkspace(req: any, res: any) {
     return;
   }
   try {
+    requirePortalHost(req, 'employee');
     res.status(200).json(await loadEmployeeLeaveWorkspace(req));
   } catch (error) {
     sendError(res, error);
@@ -98,6 +104,7 @@ export async function handleEmployeePortalMessage(req: any, res: any) {
     return;
   }
   try {
+    requirePortalHost(req, 'employee');
     res.status(201).json(await addEmployeeServiceMessage(req));
   } catch (error) {
     sendError(res, error);
@@ -111,6 +118,7 @@ export async function handleEmployeePortalReopen(req: any, res: any) {
     return;
   }
   try {
+    requirePortalHost(req, 'employee');
     res.status(200).json(await reopenEmployeeServiceRequest(req));
   } catch (error) {
     sendError(res, error);
@@ -124,6 +132,7 @@ export async function handleEmployeePortalProfileChange(req: any, res: any) {
     return;
   }
   try {
+    requirePortalHost(req, 'employee');
     res.status(201).json(await createEmployeeProfileChangeRequest(req));
   } catch (error) {
     sendError(res, error);
@@ -137,6 +146,7 @@ export async function handleEmployeePortalNotificationRead(req: any, res: any) {
     return;
   }
   try {
+    requirePortalHost(req, 'employee');
     res.status(200).json(await markEmployeeNotificationRead(req));
   } catch (error) {
     sendError(res, error);

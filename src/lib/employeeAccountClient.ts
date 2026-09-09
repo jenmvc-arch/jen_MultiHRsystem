@@ -8,6 +8,7 @@ import {
   EmployeeAccountStatus,
   EmployeeAccountSummary,
 } from './employeeAccountTypes';
+import { EMPLOYEE_PORTAL_ORIGIN, getPortalSite } from './portalHosts';
 
 const PREVIEW_STORAGE_KEY = 'preview_employee_account_actions';
 const PREVIEW_TOKEN_TTL_MINUTES = 60;
@@ -77,7 +78,11 @@ const getPreviewRecord = (employee: Employee): PreviewAccountRecord => {
 
 const createPreviewLink = (employee: Employee, action: 'invite' | 'recovery') => {
   const token = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+  const baseUrl = typeof window !== 'undefined'
+    ? getPortalSite(window.location.hostname) === 'local'
+      ? window.location.origin
+      : EMPLOYEE_PORTAL_ORIGIN
+    : 'http://localhost:3000';
   const path = action === 'invite' ? '/set-password' : '/reset-password';
   return `${baseUrl}${path}?token=preview-${token}&email=${encodeURIComponent(employee.email)}`;
 };

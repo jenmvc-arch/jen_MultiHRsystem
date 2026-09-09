@@ -11,6 +11,7 @@ import {
   requireAdminSession,
   requireMasterUser,
   requirePermission,
+  requirePortalHost,
   resolveEmployeeAccountTarget,
   createEmployeeAdminClient,
   createMainAdminClient,
@@ -39,6 +40,7 @@ export async function handleAdminLogin(req: any, res: any) {
     return;
   }
   try {
+    requirePortalHost(req, 'employer');
     const username = String(req.body?.username || '').trim();
     const password = String(req.body?.password || '');
     if (!username || !password) {
@@ -70,6 +72,7 @@ export async function handleGoogleSheetsLogin(req: any, res: any) {
     return;
   }
   try {
+    requirePortalHost(req, 'employer');
     const username = String(req.body?.username || '').trim();
     const password = String(req.body?.password || '');
     if (!username || !password) {
@@ -98,7 +101,13 @@ export async function handleGoogleSheetsLogin(req: any, res: any) {
   }
 }
 
-export async function handleAdminLogout(_req: any, res: any) {
+export async function handleAdminLogout(req: any, res: any) {
+  try {
+    requirePortalHost(req, 'employer');
+  } catch (error) {
+    sendError(res, error);
+    return;
+  }
   clearAdminSessionCookie(res);
   clearEmployeeOtpSessionCookie(res);
   res.status(200).json({ ok: true });
@@ -197,6 +206,7 @@ export async function handleEmployeeAuthProfile(req: any, res: any) {
     return;
   }
   try {
+    requirePortalHost(req, 'employee');
     res.status(200).json(
       req.method === 'POST'
         ? await updateEmployeeAuthProfile(req)
@@ -214,6 +224,7 @@ export async function handleEmployeeAuthSetup(req: any, res: any) {
     return;
   }
   try {
+    requirePortalHost(req, 'employee');
     res.status(200).json(await completeEmployeeAuthSetup(req));
   } catch (error) {
     sendError(res, error);
@@ -227,6 +238,7 @@ export async function handleEmployeeOtpRequest(req: any, res: any) {
     return;
   }
   try {
+    requirePortalHost(req, 'employee');
     const result = await requestEmployeeOtp({
       email: String(req.body?.email || ''),
       purpose: req.body?.purpose,
@@ -251,6 +263,7 @@ export async function handleEmployeeOtpVerify(req: any, res: any) {
     return;
   }
   try {
+    requirePortalHost(req, 'employee');
     res.status(200).json(await verifyEmployeeOtp({
       email: String(req.body?.email || ''),
       otp: String(req.body?.otp || ''),

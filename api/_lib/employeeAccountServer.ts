@@ -15,6 +15,12 @@ import {
   EmployeeAccountSummary,
 } from '../../src/lib/employeeAccountTypes.js';
 import { isAdminPortalRole } from '../../src/lib/userRoles.js';
+import {
+  EMPLOYEE_PORTAL_ORIGIN,
+  getPortalSite,
+  normalizeHostname,
+  type PortalSite,
+} from '../../src/lib/portalHosts.js';
 import { sendEmailTemplate } from './email/emailService.js';
 import {
   generateOtp,
@@ -77,6 +83,23 @@ export interface EmployeeAccountTarget {
 const normalize = (value: unknown) => String(value || '').trim().toLowerCase();
 const EMPLOYEE_OTP_SESSION_COOKIE = 'redpoint_employee_otp_session';
 const EMPLOYEE_OTP_SESSION_TTL_SECONDS = 8 * 60 * 60;
+
+export const requirePortalHost = (
+  req: any,
+  expected: Exclude<PortalSite, 'local' | 'unknown'>
+) => {
+  const requestHost = req?.headers?.host || req?.headers?.['x-forwarded-host'];
+  const hostname = normalizeHostname(requestHost);
+  // Unit tests and direct local function calls may not provide HTTP headers.
+  if (!hostname && process.env.NODE_ENV !== 'production') return;
+  if (getPortalSite(hostname) === 'local' && process.env.NODE_ENV !== 'production') return;
+  if (getPortalSite(hostname) !== expected) {
+    throw Object.assign(
+      new Error(`This endpoint is only available on the ${expected} portal.`),
+      { statusCode: 403 }
+    );
+  }
+};
 
 const isAccountSchemaMissing = (message: string) => (
   /employee_accounts|employee_account_events|schema cache|could not find the table/i.test(message)
@@ -534,6 +557,7 @@ export const authenticateAdmin = async (
 };
 
 export const requireAdminSession = async (req: any): Promise<AdminSessionActor> => {
+  requirePortalHost(req, 'employer');
   const session = getAdminSession(req);
   if (!session) throw Object.assign(new Error('An authenticated admin session is required.'), { statusCode: 401 });
 
@@ -746,12 +770,10 @@ const writeAccountEvent = async (input: {
 
 const getEmployeeProjectUrl = () => getEmployeeSupabaseConfig().url;
 
-const getApplicationUrl = () => {
-  const configured = String(process.env.APP_URL || '').trim().replace(/\/+$/, '');
+const getEmployeeApplicationUrl = () => {
+  const configured = String(process.env.EMPLOYEE_APP_URL || '').trim().replace(/\/+$/, '');
   if (configured) return configured;
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('APP_URL must be configured in production for account links.');
-  }
+  if (process.env.NODE_ENV === 'production') return EMPLOYEE_PORTAL_ORIGIN;
   return 'http://localhost:3000';
 };
 
@@ -820,7 +842,7 @@ const createActionLink = async (target: EmployeeAccountTarget, action: EmployeeA
     type: linkType,
     email: target.email,
     options: {
-      redirectTo: `${getApplicationUrl()}/employee-portal`,
+      redirectTo: `${getEmployeeApplicationUrl()}/employee-portal`,
     },
   });
   if (generated.error || !generated.data?.properties?.action_link) {

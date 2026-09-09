@@ -4,6 +4,7 @@ import {
   isEmployeePortalRole,
   type LoginPortal,
 } from './userRoles';
+import { getPortalSite } from './portalHosts';
 
 export const AUTH_PATHS: Record<LoginPortal, string> = {
   admin: '/login',
@@ -60,6 +61,49 @@ export const isEmployeePortalPath = (pathname: string) =>
 
 export const isLegacyEmployeeDemoPath = (pathname: string) =>
   normalizePath(pathname) === LEGACY_EMPLOYEE_DEMO_PATH;
+
+const isPublicEmployerPath = (pathname: string, search = '') => {
+  const params = new URLSearchParams(search);
+  return (
+    params.has('candidateShare')
+    || params.get('form') === 'job-apply'
+    || params.get('form') === 'onboarding'
+    || params.get('print') === 'true'
+  );
+};
+
+export const getPortalHostRedirectPath = (
+  hostname: string,
+  pathname: string,
+  search = ''
+): string | null => {
+  const site = getPortalSite(hostname);
+  const normalizedPath = normalizePath(pathname);
+
+  if (site === 'employee') {
+    if (
+      isEmployeeLoginPath(normalizedPath)
+      || isEmployeePortalPath(normalizedPath)
+      || isLegacyEmployeeDemoPath(normalizedPath)
+    ) {
+      return null;
+    }
+    return AUTH_PATHS.employee;
+  }
+
+  if (site === 'employer') {
+    if (
+      isEmployeeLoginPath(normalizedPath)
+      || isEmployeePortalPath(normalizedPath)
+      || isLegacyEmployeeDemoPath(normalizedPath)
+    ) {
+      return AUTH_PATHS.admin;
+    }
+    if (isPublicEmployerPath(normalizedPath, search)) return null;
+  }
+
+  return null;
+};
 
 export const getLoginPortalFromPath = (pathname: string): LoginPortal | null => {
   if (isEmployeeLoginPath(pathname)) return 'employee';

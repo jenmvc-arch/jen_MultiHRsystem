@@ -8,6 +8,7 @@ import {
   getPathForAppTab,
   getPathForHireOnboardingSection,
   getLoginPortalFromPath,
+  getPortalHostRedirectPath,
   isEmployeePortalPath,
   isLegacyEmployeeDemoPath,
 } from './lib/appRoutes';
@@ -27,6 +28,13 @@ assert.equal(getAuthRedirectPath('/employee-login', 'Master User'), '/dashboard'
 assert.equal(getAuthRedirectPath('/employee-portal/demo', null), '/employee-login?notice=demo-removed');
 assert.equal(getAuthRedirectPath('/employee-portal', 'Employee'), null);
 assert.equal(getAuthRedirectPath('/dashboard', 'Master User'), null);
+assert.equal(getPortalHostRedirectPath('user-redpoint.hrmsystem.app', '/', ''), '/employee-login');
+assert.equal(getPortalHostRedirectPath('user-redpoint.hrmsystem.app', '/dashboard', ''), '/employee-login');
+assert.equal(getPortalHostRedirectPath('user-redpoint.hrmsystem.app', '/employee-portal', ''), null);
+assert.equal(getPortalHostRedirectPath('admin-redpoint.hrmsystem.app', '/employee-login', ''), '/login');
+assert.equal(getPortalHostRedirectPath('admin-redpoint.hrmsystem.app', '/employee-portal', ''), '/login');
+assert.equal(getPortalHostRedirectPath('admin-redpoint.hrmsystem.app', '/payroll', ''), null);
+assert.equal(getPortalHostRedirectPath('localhost:3000', '/employee-login', ''), null);
 
 assert.equal(getPathForAppTab('payroll'), '/payroll');
 assert.equal(getAppTabFromPath('/payroll'), 'payroll');

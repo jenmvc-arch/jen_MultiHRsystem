@@ -65,6 +65,7 @@ import {
   getAuthRedirectPath,
   getLoginPortalFromPath,
   getPathForAppTab,
+  getPortalHostRedirectPath,
   isEmployeePortalPath,
   isLegacyEmployeeDemoPath,
 } from './lib/appRoutes';
@@ -333,6 +334,12 @@ export default function App() {
   const isEmployeePortalDemoPath = isLegacyEmployeeDemoPath(window.location.pathname);
   const isEmployeePortalRoute = isEmployeePortalPath(window.location.pathname);
   const requestedLoginPortal = getLoginPortalFromPath(window.location.pathname);
+  const portalHostRedirectPath = getPortalHostRedirectPath(
+    window.location.hostname,
+    window.location.pathname,
+    window.location.search
+  );
+  const [isPortalHostRedirecting] = useState(Boolean(portalHostRedirectPath));
   const [isLegacyDemoRedirecting, setIsLegacyDemoRedirecting] = useState(isEmployeePortalDemoPath);
   const isAccountPreview = new URLSearchParams(window.location.search).get('accountPreview') === '1';
   const isEmployeeAccount = isEmployeePortalRole(currentUserRole);
@@ -855,9 +862,19 @@ export default function App() {
   // is essential for one-time invite/reset links that land directly on the
   // protected employee portal before the app has written its own local marker.
   useEffect(() => {
+    if (portalHostRedirectPath) {
+      window.location.replace(portalHostRedirectPath);
+      return;
+    }
+  }, [portalHostRedirectPath]);
+
+  useEffect(() => {
     let cancelled = false;
     const restoreSession = async () => {
-      if (isEmployeePortalDemoPath) return;
+      if (isEmployeePortalDemoPath || isPortalHostRedirecting) {
+        setIsSessionRestoring(false);
+        return;
+      }
 
       const hasLocalSession = localStorage.getItem('hr-nexus-auth') === 'true';
       const storedEmail = localStorage.getItem('hr-nexus-user-email');
@@ -989,10 +1006,16 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [isEmployeePortalDemoPath, isEmployeePortalRoute, requestedLoginPortal]);
+  }, [
+    isEmployeePortalDemoPath,
+    isEmployeePortalRoute,
+    isPortalHostRedirecting,
+    requestedLoginPortal,
+  ]);
 
   useEffect(() => {
     if (isSessionRestoring || isLegacyDemoRedirecting || isEmployeePortalDemoPath
+      || isPortalHostRedirecting
       || isPrintMode || isJobApplyMode || isOnboardingMode || isCandidateShareMode) return;
 
     const targetPath = getAuthRedirectPath(window.location.pathname, isAuthenticated ? currentUserRole : null);
@@ -1018,6 +1041,7 @@ export default function App() {
     isEmployeePortalDemoPath,
     isPrintMode,
     isOnboardingMode,
+    isPortalHostRedirecting,
     isLegacyDemoRedirecting,
     isSessionRestoring,
   ]);
@@ -2773,6 +2797,14 @@ export default function App() {
     return (
       <div className="flex min-h-[100dvh] items-center justify-center bg-neutral-100 p-6 text-sm text-neutral-600">
         Redirecting to the secure employee login...
+      </div>
+    );
+  }
+
+  if (isPortalHostRedirecting) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center bg-neutral-100 p-6 text-sm text-neutral-600">
+        Redirecting to the correct portal...
       </div>
     );
   }
