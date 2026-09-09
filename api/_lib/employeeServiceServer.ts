@@ -116,6 +116,33 @@ const EMPLOYEE_PORTAL_COLUMNS = [
   'dependants',
 ].join(',');
 
+const EMPLOYEE_PORTAL_COLUMN_LIST = EMPLOYEE_PORTAL_COLUMNS.split(',');
+
+const getMissingEmployeeColumn = (error: any) => {
+  const message = String(error?.message || error || '');
+  const qualifiedColumn = message.match(/column [\w$]+\.(\w+) does not exist/i);
+  if (qualifiedColumn) return qualifiedColumn[1];
+  const schemaColumn = message.match(/(?:Could not find|not find) the ['"]([^'"]+)['"] column/i);
+  return schemaColumn?.[1] || null;
+};
+
+// Production databases can lag behind the portal code during migrations.
+// Retry employee reads without only the optional column reported by PostgREST.
+const selectEmployeePortal = async <T = any>(
+  queryFactory: (columns: string) => PromiseLike<{ data: T; error: any }>,
+) => {
+  let columns = [...EMPLOYEE_PORTAL_COLUMN_LIST];
+  for (let attempt = 0; attempt < EMPLOYEE_PORTAL_COLUMN_LIST.length; attempt += 1) {
+    const result = await queryFactory(columns.join(','));
+    if (!result.error) return result;
+
+    const missingColumn = getMissingEmployeeColumn(result.error);
+    if (!missingColumn || !columns.includes(missingColumn)) return result;
+    columns = columns.filter((column) => column !== missingColumn);
+  }
+  return queryFactory(columns.join(','));
+};
+
 const PAYROLL_PORTAL_COLUMNS = [
   'id',
   'employee_email',
@@ -388,11 +415,11 @@ const getEmployeeContext = async (req: any) => {
   }
 
   const main = createMainAdminClient();
-  const { data: employee, error: employeeError } = await main
+  const { data: employee, error: employeeError } = await selectEmployeePortal((columns) => main
     .from('employees')
-    .select(EMPLOYEE_PORTAL_COLUMNS)
+    .select(columns)
     .eq('id', account.employee_id)
-    .maybeSingle();
+    .maybeSingle());
   if (employeeError) throw new Error(`Employee profile lookup failed: ${employeeError.message}`);
   if (!employee) throw serviceError('The employee profile could not be found.', 404);
 
@@ -870,12 +897,12 @@ export const updateEmployeePortalProfile = async (req: any) => {
     DIRECT_PROFILE_DB_FIELDS[key],
     String(updates[key] ?? '').trim(),
   ]));
-  const { data, error } = await context.main
+  const { data, error } = await selectEmployeePortal((columns) => context.main
     .from('employees')
     .update(cleanUpdates)
     .eq('id', context.employeeId)
-    .select(EMPLOYEE_PORTAL_COLUMNS)
-    .single();
+    .select(columns)
+    .single());
   if (error) throw new Error(`Employee profile could not be updated: ${error.message}`);
   return { employee: mapEmployeePortalDto(data) };
 };
@@ -1440,11 +1467,11 @@ export const updateAdminProfileChangeRequest = async (req: any) => {
     }
     let employee: any;
     if (workflowRequest.status === 'Approved') {
-      const { data: employeeRow, error: employeeError } = await createMainAdminClient()
+      const { data: employeeRow, error: employeeError } = await selectEmployeePortal((columns) => createMainAdminClient()
         .from('employees')
-        .select(EMPLOYEE_PORTAL_COLUMNS)
+        .select(columns)
         .eq('id', change.employee_id)
-        .maybeSingle();
+        .maybeSingle());
       if (employeeError) throw new Error(`Approved employee profile could not be loaded: ${employeeError.message}`);
       employee = employeeRow ? toCamel(employeeRow) : undefined;
     }
@@ -1478,12 +1505,12 @@ export const updateAdminProfileChangeRequest = async (req: any) => {
           return [dbField, change.current_values?.[profileField || dbField] ?? null];
         })
       );
-      const { data, error } = await main
+      const { data, error } = await selectEmployeePortal((columns) => main
         .from('employees')
         .update(approvedValues)
         .eq('id', change.employee_id)
-        .select(EMPLOYEE_PORTAL_COLUMNS)
-        .single();
+        .select(columns)
+        .single());
       if (error || !data) throw new Error(`Approved profile changes could not be applied: ${error?.message || 'unknown error'}`);
       updatedEmployee = toCamel(data);
       const auditResult = await main.from('audit_logs').insert({
