@@ -30,7 +30,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error || `Employee portal request failed with status ${response.status}.`);
+    throw new Error(
+      payload.error
+      || `Employee portal request failed for ${path} with status ${response.status}.`
+    );
   }
   return payload as T;
 }
