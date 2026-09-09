@@ -109,6 +109,7 @@ function normalizeConfig(value: LeaveConfig, index: number): LeaveConfig {
     policyId: value.policyId || fallback.policyId,
     carryOverId: value.carryOverId || fallback.carryOverId,
     canCarryOver: value.canCarryOver !== false,
+    requiresAttachment: value.requiresAttachment === true,
   };
 }
 

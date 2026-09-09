@@ -64,6 +64,7 @@ export const persistAdminLeaveWorkspace = async (req: any) => {
       policyId: row.policyId,
       carryOverId: row.carryOverId,
       canCarryOver: row.canCarryOver !== false,
+      requiresAttachment: row.requiresAttachment === true,
     })),
     leave_condition_policies: workspace.policies || [],
     leave_carryover_settings: workspace.carryOverSettings || [],

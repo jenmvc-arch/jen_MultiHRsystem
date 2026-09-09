@@ -260,6 +260,7 @@ export default function LeaveManagementView({
   const [newTypeCondition, setNewTypeCondition] = useState('Paid leave');
   const [newTypePolicyId, setNewTypePolicyId] = useState(STANDARD_POLICY_ID);
   const [newTypeCarryOverId, setNewTypeCarryOverId] = useState(STANDARD_CARRY_OVER_ID);
+  const [newTypeRequiresAttachment, setNewTypeRequiresAttachment] = useState(false);
 
   const [newPolicyName, setNewPolicyName] = useState('');
   const [newCarryOverName, setNewCarryOverName] = useState('');
@@ -975,7 +976,8 @@ export default function LeaveManagementView({
       isDefault: false,
       enabled: true,
       policyId: newTypePolicyId,
-      carryOverId: newTypeCarryOverId
+      carryOverId: newTypeCarryOverId,
+      requiresAttachment: newTypeRequiresAttachment,
     };
 
     saveConfigs([...leaveConfigs, nextConfig]);
@@ -983,6 +985,7 @@ export default function LeaveManagementView({
     setNewTypeCode('');
     setNewTypeDays(14);
     setNewTypeCondition('Paid leave');
+    setNewTypeRequiresAttachment(false);
     onShowNotification('Leave Type Added', `${name} has been added to the leave type catalogue.`);
   };
 
@@ -2003,6 +2006,7 @@ export default function LeaveManagementView({
                 <th className="p-4">Entitlement</th>
                 <th className="p-4">Conditioning Policy</th>
                 <th className="p-4">Able to Carry Forward?</th>
+                <th className="p-4">Required for attachment(s)?</th>
                 <th className="p-4 text-center">Enabled</th>
                 <th className="p-4 text-right">Action</th>
               </tr>
@@ -2050,6 +2054,16 @@ export default function LeaveManagementView({
                       )}
                     </div>
                   </td>
+                  <td className="p-3">
+                    <select
+                      value={config.requiresAttachment === true ? 'yes' : 'no'}
+                      onChange={(event) => updateConfig(config.id, 'requiresAttachment', event.target.value === 'yes')}
+                      className={inputClass}
+                    >
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </td>
                   <td className="p-4 text-center">
                     <input type="checkbox" checked={config.enabled !== false} onChange={(event) => updateConfig(config.id, 'enabled', event.target.checked)} className="h-4 w-4 accent-[#b42318]" />
                   </td>
@@ -2078,6 +2092,7 @@ export default function LeaveManagementView({
           <div className="md:col-span-2"><label className={labelClass}>Code</label><input value={newTypeCode} onChange={(event) => setNewTypeCode(event.target.value)} placeholder="VL" className={inputClass} /></div>
           <div className="md:col-span-2"><label className={labelClass}>Entitlement Days</label><input type="number" min={0} value={newTypeDays} onChange={(event) => setNewTypeDays(Number(event.target.value))} className={`${inputClass} font-mono`} /></div>
           <div className="md:col-span-3"><label className={labelClass}>Condition</label><input value={newTypeCondition} onChange={(event) => setNewTypeCondition(event.target.value)} className={inputClass} /></div>
+          <div className="md:col-span-2"><label className={labelClass}>Required for attachment(s)?</label><select value={newTypeRequiresAttachment ? 'yes' : 'no'} onChange={(event) => setNewTypeRequiresAttachment(event.target.value === 'yes')} className={inputClass}><option value="yes">Yes</option><option value="no">No</option></select></div>
           <div className="md:col-span-2"><label className={labelClass}>Add</label><button type="submit" className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-xs font-bold text-white hover:opacity-90"><Plus className="h-4 w-4" /> Add Type</button></div>
           <div className="md:col-span-6"><label className={labelClass}>Conditioning Policy</label><select value={newTypePolicyId} onChange={(event) => setNewTypePolicyId(event.target.value)} className={inputClass}>{conditioningPolicies.map((policy) => <option key={policy.id} value={policy.id}>{policy.name}</option>)}</select></div>
           <div className="md:col-span-6"><label className={labelClass}>Carry Over Setting</label><select value={newTypeCarryOverId} onChange={(event) => setNewTypeCarryOverId(event.target.value)} className={inputClass}>{carryOverSettings.map((setting) => <option key={setting.id} value={setting.id}>{setting.name}</option>)}</select></div>

@@ -626,7 +626,7 @@ const validateAndCalculateLeaveRequest = async (context: any, input: {
 
   const { data: leaveType, error: leaveTypeError } = await context.employeeAdmin
     .from('leave_types')
-    .select('id,entity_id,name,enabled,policy_id,default_entitlement_days,condition')
+    .select('id,entity_id,name,enabled,policy_id,default_entitlement_days,condition,requires_attachment')
     .eq('id', input.leaveTypeId)
     .eq('entity_id', entityId)
     .eq('enabled', true)
@@ -844,6 +844,16 @@ export const createEmployeeLeaveRequest = async (req: any) => {
     endDate,
     reason,
   });
+  const { data: selectedLeaveType } = await context.employeeAdmin
+    .from('leave_types')
+    .select('requires_attachment')
+    .eq('id', leaveTypeId)
+    .eq('entity_id', entityId)
+    .eq('enabled', true)
+    .maybeSingle();
+  if (selectedLeaveType?.requires_attachment === true && !attachmentInput) {
+    throw serviceError('An attachment is required for the selected leave type.');
+  }
   if (attachmentInput) {
     const contentType = String(attachmentInput.contentType || '').trim().toLowerCase();
     const fileName = String(attachmentInput.fileName || '').trim();

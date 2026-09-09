@@ -1028,6 +1028,10 @@ export default function EmployeePortalView({
       setLeaveFormError(leavePreview.error);
       return;
     }
+    if (selectedLeaveConfig?.requiresAttachment === true && !leaveAttachment) {
+      setLeaveFormError('An attachment is required for the selected leave type.');
+      return;
+    }
     setLeaveFormError(null);
     setIsSubmittingLeave(true);
     const totalDays = leavePreview.totalDays;
@@ -2319,7 +2323,7 @@ export default function EmployeePortalView({
             </label>
             <div className="space-y-2">
               <label htmlFor="leave-attachment" className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">
-                Supporting document <span className="font-normal normal-case tracking-normal">(optional)</span>
+                Supporting document <span className="font-normal normal-case tracking-normal">({selectedLeaveConfig?.requiresAttachment ? 'required' : 'optional'})</span>
               </label>
               <div className="rounded-2xl border border-dashed border-neutral-border bg-surface-container-low p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

@@ -102,6 +102,7 @@ export interface LeaveConfig {
   enabled?: boolean;
   systemManaged?: boolean;
   canCarryOver?: boolean;
+  requiresAttachment?: boolean;
   policyId?: string;
   carryOverId?: string;
 }
@@ -438,6 +439,7 @@ export const DEFAULT_LEAVE_CONFIGS: LeaveConfig[] = [
     enabled: true,
     policyId: STANDARD_POLICY_ID,
     carryOverId: STANDARD_CARRY_OVER_ID,
+    requiresAttachment: false,
   },
   {
     id: 'sick-leave',
@@ -450,6 +452,7 @@ export const DEFAULT_LEAVE_CONFIGS: LeaveConfig[] = [
     enabled: true,
     policyId: STANDARD_POLICY_ID,
     carryOverId: STANDARD_CARRY_OVER_ID,
+    requiresAttachment: false,
   },
   {
     id: 'hospitalisation-leave',
@@ -462,6 +465,7 @@ export const DEFAULT_LEAVE_CONFIGS: LeaveConfig[] = [
     enabled: true,
     policyId: STANDARD_POLICY_ID,
     carryOverId: STANDARD_CARRY_OVER_ID,
+    requiresAttachment: false,
   },
   {
     id: 'maternity-leave',
@@ -474,6 +478,7 @@ export const DEFAULT_LEAVE_CONFIGS: LeaveConfig[] = [
     enabled: true,
     policyId: STANDARD_POLICY_ID,
     carryOverId: STANDARD_CARRY_OVER_ID,
+    requiresAttachment: false,
   },
   {
     id: 'paternity-leave',
@@ -486,6 +491,7 @@ export const DEFAULT_LEAVE_CONFIGS: LeaveConfig[] = [
     enabled: true,
     policyId: STANDARD_POLICY_ID,
     carryOverId: STANDARD_CARRY_OVER_ID,
+    requiresAttachment: false,
   },
   {
     id: 'compassionate-leave',
@@ -498,6 +504,7 @@ export const DEFAULT_LEAVE_CONFIGS: LeaveConfig[] = [
     enabled: true,
     policyId: STANDARD_POLICY_ID,
     carryOverId: STANDARD_CARRY_OVER_ID,
+    requiresAttachment: false,
   },
   {
     id: 'unpaid-leave',
@@ -510,6 +517,7 @@ export const DEFAULT_LEAVE_CONFIGS: LeaveConfig[] = [
     enabled: true,
     policyId: STANDARD_POLICY_ID,
     carryOverId: STANDARD_CARRY_OVER_ID,
+    requiresAttachment: false,
   },
   {
     id: REPLACEMENT_LEAVE_TYPE_ID,
@@ -523,6 +531,7 @@ export const DEFAULT_LEAVE_CONFIGS: LeaveConfig[] = [
     enabled: true,
     policyId: STANDARD_POLICY_ID,
     carryOverId: STANDARD_CARRY_OVER_ID,
+    requiresAttachment: false,
   },
 ];
 
