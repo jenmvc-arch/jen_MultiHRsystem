@@ -11,13 +11,20 @@ import {
 } from './employeeServiceTypes';
 import { LeaveRequest } from './leaveDomain';
 import { LeaveWorkspaceData } from './leaveDomain';
+import { employeeSupabase, supabase } from './supabaseClient';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const employeeAuthClient = employeeSupabase || supabase;
+  const { data: sessionData } = await employeeAuthClient?.auth.getSession()
+    || { data: { session: null } };
+  const accessToken = sessionData.session?.access_token;
+
   const response = await fetch(path, {
     ...init,
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...(init?.headers || {}),
     },
   });
