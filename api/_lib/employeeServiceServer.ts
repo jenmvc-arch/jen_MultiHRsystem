@@ -324,16 +324,6 @@ const mapEmployeePortalDto = (row: any) => {
       row[column] ?? row[column.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())],
     ])
   );
-  const mask = (value: unknown) => {
-    const text = String(value || '');
-    if (!text) return '';
-    return text.length <= 4 ? '****' : `${'*'.repeat(Math.min(8, text.length - 4))}${text.slice(-4)}`;
-  };
-  dto.account_no = mask(dto.account_no);
-  dto.tax_number = mask(dto.tax_number);
-  dto.epf_number = mask(dto.epf_number);
-  dto.nric_passport = mask(dto.nric_passport);
-  dto.spouse_nric = mask(dto.spouse_nric);
   return toCamel(dto);
 };
 

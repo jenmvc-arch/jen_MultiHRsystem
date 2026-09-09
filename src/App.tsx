@@ -3066,7 +3066,8 @@ export default function App() {
                 const currentCycleId = reviewCycles[0]?.id || 'cycle-2026-annual';
                 const completedCount = performances.filter(p => p.reviewCycleId === currentCycleId && p.reviewStatus === 'Completed').length;
                 const pendingCount = Math.max(0, employees.length - completedCount);
-                triggerNotification('HR Directives', `You have ${pendingCount} outstanding performance reviews due.`, 'info');
+                handleTabChange('dashboard');
+                triggerNotification('Action Center', `${pendingCount} performance review${pendingCount === 1 ? '' : 's'} still need attention.`, 'info');
               }}
               aria-label="View HR notifications"
               className="relative rounded-xl border border-transparent p-2 transition-colors hover:border-neutral-border hover:bg-surface-container cursor-pointer"
@@ -3109,8 +3110,7 @@ export default function App() {
               onNavigate={handleTabChange}
               onOpenPayslip={handleNavigateToDocument}
               onOpenNewEmployeeModal={() => {
-                handleTabChange('directory');
-                triggerNotification('Directory Navigated', 'Click Add New Employee to register custom personnel.', 'info');
+                handleTabChange('directory', { search: 'openAdd=1' });
               }}
               activeEntityId={activeEntityId}
               onChangeActiveEntity={handleCorporateSwitch}

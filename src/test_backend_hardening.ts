@@ -23,6 +23,7 @@ assert.match(employeeService, /idempotency_key: notificationKey/);
 assert.match(employeeService, /idempotency_key: String\(payload\.idempotencyKey/);
 assert.match(employeeService, /employee_id,request_id,created_at/);
 assert.match(employeeService, /return \{ employee: mapEmployeePortalDto\(data\) \}/);
+assert.doesNotMatch(employeeService, /dto\.(account_no|tax_number|epf_number|nric_passport|spouse_nric)\s*=\s*mask/);
 
 assert.doesNotMatch(employeeAccounts, /select\('email,password,password_hash/);
 assert.doesNotMatch(employeeAccounts, /perPage: 1000/);

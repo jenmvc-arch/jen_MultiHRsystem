@@ -49,7 +49,7 @@ export default function Sidebar({
   onChangeActiveEntity
 }: SidebarProps) {
   const coreItems = [
-    { id: 'dashboard' as AppTab, label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'dashboard' as AppTab, label: 'Home & Action Center', icon: LayoutDashboard },
     { id: 'directory' as AppTab, label: 'Employee Directory', icon: Users },
     { id: 'payroll' as AppTab, label: 'Payroll Center', icon: CreditCard },
     { id: 'leave-management' as AppTab, label: 'Leave Management', icon: Calendar },
@@ -68,6 +68,7 @@ export default function Sidebar({
   ];
 
   const bottomItems = [
+    { id: 'entities' as AppTab, label: 'Organization & Entities', icon: Building2 },
     { id: 'settings' as AppTab, label: 'System Settings', icon: Settings },
     { id: 'help' as AppTab, label: 'Help & Documentation', icon: HelpCircle },
   ];
@@ -199,7 +200,7 @@ export default function Sidebar({
       </nav>
 
       {/* Footer System Nav */}
-      <div className="px-2 pt-4 border-t border-white/10">
+      <div className="space-y-0.5 border-t border-white/10 px-2 pt-4">
         {bottomItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentTab === item.id;

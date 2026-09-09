@@ -3174,8 +3174,8 @@ export default function EmployeePortalView({
       )}
 
       {selectedPayslip && selectedEmployee && (
-        <div className="fixed inset-0 z-[80] bg-black/60 p-0 lg:p-4" role="dialog" aria-modal="true" aria-label="Payslip viewer">
-          <div className="h-full w-full overflow-hidden bg-white lg:rounded-[2rem]">
+        <div className="fixed inset-0 z-[80] isolate overflow-hidden overscroll-contain bg-black/60 p-0 lg:p-4" role="dialog" aria-modal="true" aria-label="Payslip viewer">
+          <div className="h-full min-h-0 min-w-0 w-full overflow-hidden bg-white lg:rounded-[2rem]">
             <PayslipDocumentView
               employees={[selectedEmployee]}
               selectedEmployeeId={selectedEmployee.id}

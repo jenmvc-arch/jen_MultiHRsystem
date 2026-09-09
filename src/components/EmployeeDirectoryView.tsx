@@ -290,7 +290,9 @@ export default function EmployeeDirectoryView({
   const [payslipRotation, setPayslipRotation] = useState(0);
 
   // Add Employee Modal form states
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(() => (
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('openAdd') === '1'
+  ));
   const [isSavingForm, setIsSavingForm] = useState(false);
   const [savingAction, setSavingAction] = useState<string | null>(null);
   const [accountSummaries, setAccountSummaries] = useState<Record<string, EmployeeAccountSummary>>({});
