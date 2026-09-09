@@ -13,6 +13,7 @@ const TABLES = new Set([
   'payroll_records_2026',
   'audit_logs',
   'candidate_share_links',
+  'email_templates',
 ]);
 
 const serviceError = (message: string, statusCode = 400) =>
@@ -48,9 +49,13 @@ export const loadAdminData = async (req: any) => {
     'appraisal_access_grants',
     'payroll_records_2026',
     'audit_logs',
+    'email_templates',
   ];
   const results = await Promise.all(tables.map(async (table) => {
     const { data, error } = await client.from(table).select('*');
+    if (error && table === 'email_templates' && /email_templates|schema cache|could not find the table/i.test(error.message || '')) {
+      return [table, []] as const;
+    }
     if (error) throw new Error(`Admin ${table} data could not be loaded: ${error.message}`);
     return [table, data || []] as const;
   }));

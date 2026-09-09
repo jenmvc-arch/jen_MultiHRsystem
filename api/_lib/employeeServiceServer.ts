@@ -966,20 +966,21 @@ const emailEmployee = async (
   name: string,
   subject: string,
   details: string,
+  entityId?: string,
 ) => {
   try {
     const delivery = await sendEmailTemplate('employee_request_updated', email, {
       name,
       subject,
       details,
-    }, createEmployeeAdminClient());
+    }, createEmployeeAdminClient(), undefined, { entityId }, createMainAdminClient());
     if (!delivery.ok) throw new Error(delivery.failureReason || 'Employee notification email failed.');
   } catch (error) {
     console.warn('[Employee Request Email] Employee notification failed:', error);
     await enqueueNotificationOutbox(createEmployeeAdminClient(), `employee-email:${email}:${subject}:${details}`, {
       recipient: email,
       template: 'employee_request_updated',
-      payload: { name, subject, details },
+      payload: { name, subject, details, entityId },
     });
   }
 };
@@ -992,7 +993,8 @@ const notifyHr = async (request: EmployeeServiceRequest) => {
       category: request.category,
       priority: request.priority,
       details: request.description,
-    }, createEmployeeAdminClient());
+      entity_name: request.entityId,
+    }, createEmployeeAdminClient(), undefined, { entityId: request.entityId }, createMainAdminClient());
     if (!delivery.ok) throw new Error(delivery.failureReason || 'HR notification email failed.');
   } catch (error) {
     console.warn('[Employee Request Email] HR notification failed:', error);
@@ -1006,6 +1008,7 @@ const notifyHr = async (request: EmployeeServiceRequest) => {
         category: request.category,
         priority: request.priority,
         details: request.description,
+        entityId: request.entityId,
       },
     });
   }
@@ -1364,7 +1367,7 @@ export const updateAdminEmployeeRequest = async (req: any) => {
       message,
       requestId
     );
-    await emailEmployee(existing.employee_email, existing.employee_name, existing.subject, message);
+    await emailEmployee(existing.employee_email, existing.employee_name, existing.subject, message, existing.entity_id);
   } else if (status) {
     await notifyEmployee(
       employeeAdmin,
@@ -1377,7 +1380,8 @@ export const updateAdminEmployeeRequest = async (req: any) => {
       existing.employee_email,
       existing.employee_name,
       existing.subject,
-      `Your request is now ${status}.`
+      `Your request is now ${status}.`,
+      existing.entity_id,
     );
   }
 
@@ -1604,6 +1608,9 @@ export const processNotificationOutbox = async (req: any) => {
           item.recipient,
           item.payload || {},
           client,
+          undefined,
+          { entityId: item.payload?.entityId as string | undefined },
+          createMainAdminClient(),
         );
         if (!delivery.ok) throw new Error(delivery.failureReason || 'Email delivery failed.');
       }

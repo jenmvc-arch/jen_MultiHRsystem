@@ -127,18 +127,20 @@ const MONTHS = [
 const SECTION_TABS: Array<{ id: LeaveWorkspaceSection; label: string; icon: React.ElementType }> = [
   { id: 'overview', label: 'Requests & Balances', icon: ListChecks },
   { id: 'off-in-lieu', label: 'Off in Lieu', icon: Clock3 },
+  { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'groups', label: 'Leave Groups', icon: Layers3 },
   { id: 'employee-assignment', label: 'Employee Assignment', icon: UserCog },
+  { id: 'work-shifts', label: 'Work & Shift Groups', icon: Briefcase },
   { id: 'public-holidays', label: 'Public Holidays', icon: Calendar },
   { id: 'types', label: 'Type of Leave', icon: FileText },
   { id: 'policy', label: 'Conditioning Policy', icon: SlidersHorizontal },
-  { id: 'carry-over', label: 'Carry Over Settings', icon: RotateCcw },
-  { id: 'calendar', label: 'Calendar', icon: CalendarDays }
+  { id: 'carry-over', label: 'Carry Over Settings', icon: RotateCcw }
 ];
 
-const inputClass = 'w-full rounded-md border border-neutral-border bg-white px-3 py-2 text-xs text-on-surface outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/10';
+const inputClass = 'w-full rounded-xl border border-neutral-border bg-white px-3 py-2.5 text-xs text-on-surface outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15';
 const labelClass = 'mb-1 block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant';
-const cardClass = 'rounded-xl border border-neutral-border bg-white shadow-sm';
+const cardClass = 'rounded-2xl border border-neutral-border bg-white shadow-sm';
+const PRIMARY_SECTIONS: LeaveWorkspaceSection[] = ['overview', 'off-in-lieu', 'calendar'];
 
 function readScopedJson<T>(key: string, fallback: T): T {
   try {
@@ -217,6 +219,7 @@ export default function LeaveManagementView({
 }: LeaveManagementViewProps) {
   const { confirmAction, showUndoToast } = useFeedback();
   const [activeSection, setActiveSection] = useState<LeaveWorkspaceSection>('overview');
+  const [isLeaveSetupOpen, setIsLeaveSetupOpen] = useState(false);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
@@ -356,6 +359,12 @@ export default function LeaveManagementView({
         : leaveConfigs.find((config) => config.enabled !== false)?.leaveType || ''
     ));
   }, [leaveConfigs]);
+
+  useEffect(() => {
+    if (!PRIMARY_SECTIONS.includes(activeSection)) {
+      setIsLeaveSetupOpen(true);
+    }
+  }, [activeSection]);
 
   useEffect(() => {
     setAssignmentDates(activeEntityId ? readScopedJson(`leave_assignment_dates_${activeEntityId}`, {}) : {});
@@ -879,6 +888,7 @@ export default function LeaveManagementView({
         name: employee.name,
         status: status.toLowerCase(),
         details: `${request.leaveType}: ${formatToDDMMMYYYY(request.startDate)} to ${formatToDDMMMYYYY(request.endDate)}.`,
+        entityId: activeEntityId,
       }).catch((error) => onShowNotification('Email Notification Failed', error.message));
     }
     showUndoToast({
@@ -1546,6 +1556,7 @@ export default function LeaveManagementView({
           name: employee.name,
           status: status.toLowerCase(),
           details: `Off in Lieu request ${request.id} has been ${status.toLowerCase()}.`,
+          entityId: activeEntityId,
         }).catch((error) => onShowNotification('Email Notification Failed', error.message));
       }
     });
@@ -2898,52 +2909,100 @@ export default function LeaveManagementView({
   );
 
   return (
-    <div className="mx-auto max-w-[1440px] space-y-6 pb-8 text-left">
-      <div className="flex flex-col justify-between gap-5 border-b border-neutral-border/70 pb-6 lg:flex-row lg:items-end">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-on-background">Leave Management</h1>
-          <p className="mt-2 max-w-3xl text-sm text-on-surface-variant">Configure leave policies, employee leave groups, leave requests, Off in Lieu credits, balances, and payroll deductions.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-[10px] font-bold uppercase text-primary">{activeEmployees.length} active employees</span>
-          <button
-            type="button"
-            onClick={() => setRefreshKey((key) => key + 1)}
-            disabled={isLoadingWorkspace}
-            className="flex items-center justify-center gap-2 rounded-md border border-neutral-border bg-white px-3 py-2 text-xs font-bold text-on-surface transition hover:bg-neutral-50 disabled:cursor-wait disabled:opacity-60"
-          >
-            <RefreshCw className={`h-4 w-4 ${isLoadingWorkspace ? 'animate-spin' : ''}`} /> {isLoadingWorkspace ? 'Loading leave data...' : 'Refresh Leave Data'}
-          </button>
-          <button type="button" onClick={() => setActiveSection('off-in-lieu')} className="flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-xs font-bold text-white shadow-sm hover:opacity-90"><Plus className="h-4 w-4" /> Off in Lieu Request</button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          { label: 'Active Leave Types', value: enabledLeaveConfigs.length, icon: FileText, tone: 'text-primary bg-primary/10' },
-          { label: 'Leave Groups', value: leaveGroups.filter((group) => group.enabled).length, icon: Layers3, tone: 'text-secondary bg-secondary/10' },
-          { label: 'Pending Leave', value: pendingLeaveCount, icon: CalendarDays, tone: 'text-amber-700 bg-amber-100' },
-          { label: 'Pending OIL', value: pendingOffInLieuCount, icon: Clock3, tone: 'text-emerald-700 bg-emerald-100' }
-        ].map(({ label, value, icon: Icon, tone }) => (
-          <div key={label} className={`${cardClass} p-4`}>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">{label}</span>
-              <span className={`rounded-lg p-2 ${tone}`}><Icon className="h-4 w-4" /></span>
+    <div className="mx-auto w-full max-w-[1440px] space-y-5 pb-8 text-left">
+      <header className="overflow-hidden rounded-2xl border border-neutral-border bg-white shadow-sm">
+        <div className="border-b border-neutral-border/70 bg-surface-container-low/55 px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Leave operations</p>
+              <h1 className="mt-1 text-3xl font-black tracking-tight text-on-background sm:text-4xl">Leave Management</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-on-surface-variant">
+                Review employee leave, maintain policy rules, and keep payroll deductions aligned.
+              </p>
             </div>
-            <p className="mt-4 font-mono text-3xl font-bold text-on-surface">{isLoadingWorkspace ? '—' : value}</p>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="inline-flex items-center gap-2 rounded-xl border border-neutral-border bg-white px-3 py-2 font-bold text-on-background">
+                <Users className="h-4 w-4 text-primary" aria-hidden="true" />
+                {activeEmployees.length} active employees
+              </span>
+              <button
+                type="button"
+                onClick={() => setRefreshKey((key) => key + 1)}
+                disabled={isLoadingWorkspace}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-border bg-white px-3 py-2 font-bold text-on-surface transition-colors hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-wait disabled:opacity-60"
+              >
+                <RefreshCw className={`h-4 w-4 ${isLoadingWorkspace ? 'animate-spin' : ''}`} aria-hidden="true" />
+                {isLoadingWorkspace ? 'Refreshing' : 'Refresh data'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSection('off-in-lieu')}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2 font-bold text-white shadow-sm transition-colors hover:bg-primary-container focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" /> New Off in Lieu
+              </button>
+            </div>
           </div>
-        ))}
-      </div>
 
-      <div className={`${cardClass} overflow-x-auto p-2`}>
-        <div className="flex min-w-max gap-1">
-          {SECTION_TABS.map(({ id, label, icon: Icon }) => (
-            <button key={id} type="button" onClick={() => setActiveSection(id)} className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-bold transition ${activeSection === id ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:bg-neutral-50 hover:text-on-surface'}`}>
-              <Icon className="h-4 w-4" /> {label}
+          <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-neutral-border bg-neutral-border sm:grid-cols-4">
+            {[
+              { label: 'Active leave types', value: enabledLeaveConfigs.length, detail: 'Available in applications', icon: FileText, tone: 'text-primary' },
+              { label: 'Leave groups', value: leaveGroups.filter((group) => group.enabled).length, detail: 'Employee rule sets', icon: Layers3, tone: 'text-secondary' },
+              { label: 'Pending leave', value: pendingLeaveCount, detail: 'Awaiting approval', icon: CalendarDays, tone: 'text-amber-700' },
+              { label: 'Pending OIL', value: pendingOffInLieuCount, detail: 'Awaiting credit review', icon: Clock3, tone: 'text-emerald-700' }
+            ].map(({ label, value, detail, icon: Icon, tone }) => (
+              <div key={label} className="bg-white px-3 py-3 sm:px-4">
+                <span className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.12em] text-on-surface-variant">
+                  <Icon className={`h-3.5 w-3.5 ${tone}`} aria-hidden="true" /> {label}
+                </span>
+                <span className="mt-1 block font-mono text-xl font-bold text-on-surface">{isLoadingWorkspace ? 'Loading' : value}</span>
+                <span className="mt-0.5 block text-[10px] text-on-surface-variant">{detail}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </header>
+
+      <nav aria-label="Leave workspace navigation" className="rounded-2xl border border-neutral-border bg-white p-1.5 shadow-sm">
+        <div className="flex gap-1 overflow-x-auto">
+          {SECTION_TABS.filter(({ id }) => PRIMARY_SECTIONS.includes(id)).map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setActiveSection(id)}
+              aria-current={activeSection === id ? 'page' : undefined}
+              className={`flex min-w-max items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/20 ${activeSection === id ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`}
+            >
+              <Icon className="h-4 w-4" aria-hidden="true" /> {label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => setIsLeaveSetupOpen((open) => !open)}
+            aria-expanded={isLeaveSetupOpen}
+            className={`ml-auto flex min-w-max items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/20 ${!PRIMARY_SECTIONS.includes(activeSection) ? 'bg-primary/10 text-primary' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`}
+          >
+            <Settings2 className="h-4 w-4" aria-hidden="true" />
+            Leave setup
+            <ChevronDown className={`h-4 w-4 transition-transform ${isLeaveSetupOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+          </button>
         </div>
-      </div>
+        {isLeaveSetupOpen && (
+          <div className="mt-1 flex gap-1 overflow-x-auto border-t border-neutral-border/70 pt-1">
+            {SECTION_TABS.filter(({ id }) => !PRIMARY_SECTIONS.includes(id)).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveSection(id)}
+                aria-current={activeSection === id ? 'page' : undefined}
+                className={`flex min-w-max items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/20 ${activeSection === id ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`}
+              >
+                <Icon className="h-4 w-4" aria-hidden="true" /> {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </nav>
 
       <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900">
         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
@@ -2984,6 +3043,7 @@ export default function LeaveManagementView({
       {activeSection === 'types' && renderLeaveTypes()}
       {activeSection === 'groups' && renderLeaveGroups()}
       {activeSection === 'employee-assignment' && renderEmployeeAssignment()}
+      {activeSection === 'work-shifts' && renderWorkShiftGroups()}
       {activeSection === 'public-holidays' && renderPublicHolidays()}
       {activeSection === 'off-in-lieu' && renderOffInLieu()}
       {activeSection === 'calendar' && renderCalendar()}

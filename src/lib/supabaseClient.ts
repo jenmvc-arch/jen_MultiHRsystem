@@ -43,6 +43,7 @@ export interface SupabaseDataPayload {
   audit_logs: any[];
   candidates?: any[];
   payroll_records_2026?: any[];
+  email_templates?: any[];
 }
 
 function extractMissingColumn(errorMessage: string): string | null {

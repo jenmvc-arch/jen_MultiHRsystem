@@ -120,7 +120,22 @@ export default async function handler(req: any, res: any) {
       res.status(403).json({ error: 'The payroll record does not belong to the selected employee.' });
       return;
     }
-    const employeeRow = employee as any;
+    let employeeRow = employee as any;
+    if (!employeeRow) {
+      const employeeByEmailResult = await client
+        .from('employees')
+        .select('*')
+        .ilike('email', String(payrollRow.employee_email || ''))
+        .maybeSingle();
+      if (employeeByEmailResult.error) {
+        throw new Error(`Employee lookup failed: ${employeeByEmailResult.error.message}`);
+      }
+      employeeRow = employeeByEmailResult.data;
+    }
+    if (!employeeRow) {
+      res.status(404).json({ error: 'The employee for this payroll record was not found.' });
+      return;
+    }
     const entityResult = await client.from('corporate_entities').select('*');
     if (entityResult.error) throw new Error(`Entity lookup failed: ${entityResult.error.message}`);
     const entityRow = (entityResult.data || []).find((candidate: any) => (

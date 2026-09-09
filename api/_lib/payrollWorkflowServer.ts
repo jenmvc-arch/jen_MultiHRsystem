@@ -149,6 +149,23 @@ export const updatePayrollStatuses = async (req: any, action: PayrollAction) => 
 const attachmentName = (email: string, month: number, year: number) =>
   safeFilename(`Payslip_${email}_${year}_${String(month).padStart(2, '0')}`, 'pdf');
 
+const payrollMonthLabel = (month: number, year: number) => {
+  const parsed = new Date(Date.UTC(year, month - 1, 1));
+  return Number.isNaN(parsed.getTime())
+    ? String(month)
+    : parsed.toLocaleString('en-US', { month: 'long', timeZone: 'UTC' });
+};
+
+const payrollTypeLabel = (row: any) => (
+  String(
+    row.payout_title
+      || row.compensation_label
+      || (row.payout_kind && row.payout_kind !== 'regular'
+        ? row.payout_kind
+        : 'Monthly Payslip'),
+  )
+);
+
 export const sendPayrollPayslipEmails = async (req: any) => {
   const actor = await requirePermission(req, 'payroll.manage');
   const recordIds = readRecordIds(req.body?.recordIds);
@@ -191,6 +208,11 @@ export const sendPayrollPayslipEmails = async (req: any) => {
         employee.email,
         {
           name: employee.name,
+          employee_name: employee.name,
+          entity_name: employeeEntity?.name || row.entity_name || employee.entity_id,
+          payslip_type: payrollTypeLabel(row),
+          payroll_month: payrollMonthLabel(Number(row.payroll_month), Number(row.payroll_year)),
+          payroll_year: String(row.payroll_year || ''),
           details: `${row.payroll_month}/${row.payroll_year} payslip attached.`,
         },
         createEmployeeAdminClient(),
@@ -199,6 +221,11 @@ export const sendPayrollPayslipEmails = async (req: any) => {
           content: pdf,
           contentType: 'application/pdf',
         }],
+        {
+          entityId: employeeEntity?.id || employee?.entity_id || row.entity_id,
+          entityName: employeeEntity?.name,
+        },
+        client,
       );
       const message = emailResult.ok ? 'Payslip PDF sent by email.' : emailResult.failureReason;
       await updatePayrollRow(client, recordId, {

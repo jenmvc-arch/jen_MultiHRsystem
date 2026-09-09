@@ -19,7 +19,8 @@ export const APP_TAB_PATHS: Record<AppTab, string> = {
   'forms-directory': '/forms-directory',
   'hire-onboarding': '/hire-onboarding',
   'department-role': '/department-roles',
-  'socso-config': '/socso-config'
+  'socso-config': '/socso-config',
+  'email-template-setup': '/email-template-setup'
 };
 
 const APP_PATH_ALIASES: Partial<Record<string, AppTab>> = {

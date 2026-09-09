@@ -23,6 +23,7 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
+  Search,
   Send,
   Share2,
   Trash2,
@@ -170,6 +171,7 @@ export default function HireOnboardingView({
     getHireOnboardingSectionFromPath(window.location.pathname)
   ));
   const [activeQueue, setActiveQueue] = useState<PipelineQueue>('applied');
+  const [candidateQuery, setCandidateQuery] = useState('');
   const [interviewQueue, setInterviewQueue] = useState<InterviewQueue>('upcoming');
   const [offerFilter, setOfferFilter] = useState<OfferFilter>('all');
   const [pipelineData, setPipelineData] = useState<HiringPipelineData>({
@@ -323,6 +325,12 @@ export default function HireOnboardingView({
   };
 
   const visibleCandidates = getQueueCandidates();
+  const filteredVisibleCandidates = visibleCandidates.filter((candidate) => {
+    const query = candidateQuery.trim().toLowerCase();
+    if (!query) return true;
+    return [candidate.name, candidate.email, candidate.phone, candidate.designation, candidate.department]
+      .some((value) => String(value || '').toLowerCase().includes(query));
+  });
 
   const transitionCandidate = async (
     candidate: Candidate,
@@ -908,7 +916,7 @@ export default function HireOnboardingView({
         type="button"
         key={candidate.id}
         onClick={() => setSelectedCandidateId(candidate.id)}
-        className={`w-full rounded-xl border p-3 text-left transition-all ${isSelected ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20' : 'border-neutral-border bg-white hover:border-primary/40'}`}
+        className={`w-full rounded-2xl border p-3 text-left transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 ${isSelected ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20' : 'border-neutral-border bg-white hover:border-primary/40'}`}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -937,14 +945,14 @@ export default function HireOnboardingView({
 
   const renderPipeline = () => (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-neutral-border bg-neutral-border lg:grid-cols-4">
         {[
           ['Applied', appliedCandidates.length, FileText, 'text-blue-600 bg-blue-50'],
           ['KIV', kivCandidates.length, CircleHelp, 'text-amber-600 bg-amber-50'],
           ['Pending Interviews', upcomingInterviewCandidates.length, CalendarClock, 'text-indigo-600 bg-indigo-50'],
           ['Pending Offers', offeredCandidates.filter((candidate) => ['offer_preparing', 'offer_sent'].includes(getStatus(candidate))).length, BriefcaseBusiness, 'text-emerald-600 bg-emerald-50'],
         ].map(([label, value, Icon, classes]) => (
-          <div key={String(label)} className="rounded-xl border border-neutral-border bg-white p-4 shadow-sm">
+          <div key={String(label)} className="bg-white p-4">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-bold uppercase tracking-wide text-on-surface-variant">{label}</span>
               <span className={`rounded-lg p-2 ${classes}`}><Icon className="h-4 w-4" /></span>
@@ -954,7 +962,7 @@ export default function HireOnboardingView({
         ))}
       </div>
 
-      <div className="flex gap-1 overflow-x-auto rounded-xl border border-neutral-border bg-white p-1 shadow-sm">
+      <nav aria-label="Candidate pipeline queues" className="flex gap-1 overflow-x-auto rounded-2xl border border-neutral-border bg-white p-1.5 shadow-sm">
         {([
           ['applied', 'Applied', appliedCandidates.length],
           ['kiv', 'KIV', kivCandidates.length],
@@ -966,12 +974,12 @@ export default function HireOnboardingView({
             type="button"
             key={queue}
             onClick={() => setActiveQueue(queue)}
-            className={`flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold ${activeQueue === queue ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:bg-neutral-50'}`}
+            className={`flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/20 ${activeQueue === queue ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low'}`}
           >
             {label}<span className={`rounded-full px-1.5 py-0.5 text-[10px] ${activeQueue === queue ? 'bg-white/20' : 'bg-neutral-100'}`}>{count}</span>
           </button>
         ))}
-      </div>
+      </nav>
 
       <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50/60 p-4 text-xs text-blue-900">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
@@ -981,7 +989,7 @@ export default function HireOnboardingView({
       </div>
 
       {activeQueue === 'interviewing' && (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {([
             ['upcoming', `Upcoming Interview (${upcomingInterviewCandidates.length})`],
             ['passed', `Passed Interview (${passedInterviewCandidates.length})`],
@@ -990,7 +998,7 @@ export default function HireOnboardingView({
               type="button"
               key={queue}
               onClick={() => setInterviewQueue(queue)}
-              className={`rounded-lg border px-3 py-2 text-xs font-bold ${interviewQueue === queue ? 'border-primary bg-primary/5 text-primary' : 'border-neutral-border text-on-surface-variant'}`}
+              className={`rounded-xl border px-3 py-2 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 ${interviewQueue === queue ? 'border-primary bg-primary/5 text-primary' : 'border-neutral-border text-on-surface-variant hover:bg-surface-container-low'}`}
             >
               {label}
             </button>
@@ -999,7 +1007,7 @@ export default function HireOnboardingView({
       )}
 
       {activeQueue === 'offered' && (
-        <div className="flex gap-2 overflow-x-auto">
+          <div className="flex gap-2 overflow-x-auto">
           {([
             ['all', 'All Offers'],
             ['offer_preparing', 'Offer Preparing'],
@@ -1010,7 +1018,7 @@ export default function HireOnboardingView({
               type="button"
               key={filter}
               onClick={() => setOfferFilter(filter)}
-              className={`shrink-0 rounded-lg border px-3 py-2 text-xs font-bold ${offerFilter === filter ? 'border-primary bg-primary/5 text-primary' : 'border-neutral-border text-on-surface-variant'}`}
+              className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 ${offerFilter === filter ? 'border-primary bg-primary/5 text-primary' : 'border-neutral-border text-on-surface-variant hover:bg-surface-container-low'}`}
             >
               {label}
             </button>
@@ -1019,43 +1027,69 @@ export default function HireOnboardingView({
       )}
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(18rem,25rem)_minmax(0,1fr)]">
-        <div className="rounded-xl border border-neutral-border bg-neutral-50 p-3">
-          <div className="mb-3 flex items-center justify-between gap-3 px-1">
+        <section className="rounded-2xl border border-neutral-border bg-surface-container-low/55 p-3">
+          <div className="mb-3 space-y-3 px-1">
             <div>
-              <h2 className="text-sm font-black text-on-background">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-black text-on-background">
                 {activeQueue === 'interviewing' ? (interviewQueue === 'upcoming' ? 'Upcoming Interviews' : 'Passed Interviews') : activeQueue[0].toUpperCase() + activeQueue.slice(1)}
-              </h2>
+                </h2>
+                <span className="font-mono text-[10px] font-bold text-on-surface-variant">{filteredVisibleCandidates.length}/{visibleCandidates.length}</span>
+              </div>
               <p className="mt-0.5 text-[11px] text-on-surface-variant">Select a candidate to review the full record.</p>
             </div>
-            <div className="flex items-center gap-1">
+            <label className="relative block">
+              <span className="sr-only">Search candidates in this queue</span>
+              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-outline" aria-hidden="true" />
+              <input
+                type="search"
+                value={candidateQuery}
+                onChange={(event) => setCandidateQuery(event.target.value)}
+                placeholder="Search this queue"
+                className="w-full rounded-xl border border-neutral-border bg-white py-2.5 pl-10 pr-3 text-xs outline-none transition-colors placeholder:text-on-surface-variant/70 focus:border-primary focus:ring-2 focus:ring-primary/15"
+              />
+            </label>
+            <div className="flex items-center justify-end gap-1">
               {activeQueue === 'applied' && selectedCandidate && visibleCandidates.some((candidate) => candidate.id === selectedCandidate.id) && (
                 <button
                   type="button"
                   onClick={() => void handleDeleteSelectedCandidate()}
                   disabled={isSaving}
-                  className="rounded-md p-2 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-xl p-2 text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200 disabled:cursor-not-allowed disabled:opacity-50"
                   aria-label="Delete selected candidate"
                   title="Delete selected candidate"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
               )}
-              <button type="button" onClick={() => void loadHiringPipelineData().then(setPipelineData)} className="rounded-md p-2 text-on-surface-variant hover:bg-white hover:text-primary" aria-label="Refresh pipeline">
+              <button type="button" onClick={() => {
+                setIsLoadingPipeline(true);
+                void loadHiringPipelineData()
+                  .then(setPipelineData)
+                  .catch((error) => onShowNotification('Hiring Pipeline', error.message || 'Pipeline could not be refreshed.'))
+                  .finally(() => setIsLoadingPipeline(false));
+              }} className="rounded-xl p-2 text-on-surface-variant transition-colors hover:bg-white hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/20" aria-label="Refresh pipeline">
                 <RefreshCw className={`h-4 w-4 ${isLoadingPipeline ? 'animate-spin' : ''}`} />
               </button>
             </div>
           </div>
           <div className="max-h-[32rem] space-y-2 overflow-y-auto">
             {visibleCandidates.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-neutral-border bg-white px-4 py-10 text-center text-xs text-on-surface-variant">
-                <ClipboardCheck className="mx-auto mb-2 h-8 w-8 text-neutral-300" />
-                No candidates in this queue.
+              <div className="rounded-2xl border border-dashed border-neutral-border bg-white px-4 py-10 text-center text-xs text-on-surface-variant">
+                <ClipboardCheck className="mx-auto mb-2 h-8 w-8 text-neutral-300" aria-hidden="true" />
+                <p className="font-semibold">No candidates in this queue.</p>
+                <p className="mt-1 text-[11px]">Candidates will appear here as the hiring stage changes.</p>
               </div>
-            ) : visibleCandidates.map(renderCandidateCard)}
+            ) : filteredVisibleCandidates.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-neutral-border bg-white px-4 py-10 text-center text-xs text-on-surface-variant">
+                <Search className="mx-auto mb-2 h-7 w-7 text-neutral-300" aria-hidden="true" />
+                No candidates match this search.
+              </div>
+            ) : filteredVisibleCandidates.map(renderCandidateCard)}
           </div>
-        </div>
+        </section>
 
-        <div className="rounded-xl border border-neutral-border bg-white p-5 shadow-sm">
+        <section className="rounded-2xl border border-neutral-border bg-white p-5 shadow-sm">
           {!selectedCandidate ? (
             <div className="flex min-h-[28rem] items-center justify-center text-center text-sm text-on-surface-variant">
               Select a candidate to open the detail workspace.
@@ -1069,7 +1103,7 @@ export default function HireOnboardingView({
                   </div>
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-lg font-black text-on-background">{selectedCandidate.name}</h2>
+                    <h2 className="text-lg font-black text-on-background">{selectedCandidate.name}</h2>
                       <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase ${statusBadgeClass(getStatus(selectedCandidate))}`}>
                         {getPipelineStatusLabel(getStatus(selectedCandidate))}
                       </span>
@@ -1081,7 +1115,7 @@ export default function HireOnboardingView({
                     </div>
                   </div>
                 </div>
-                <div className="rounded-lg bg-neutral-50 px-3 py-2 text-right text-[10px] text-on-surface-variant">
+                  <div className="rounded-xl bg-surface-container-low px-3 py-2 text-right text-[10px] text-on-surface-variant">
                   <p className="font-bold uppercase tracking-wider">Entity</p>
                   <p className="mt-1 font-black text-primary">{activeEntityName}</p>
                 </div>
@@ -1090,19 +1124,19 @@ export default function HireOnboardingView({
               {activeQueue === 'applied' && (
                 <div className="flex flex-wrap gap-2">
                   {getStatus(selectedCandidate) === 'applied' && (
-                    <button type="button" onClick={() => void handleShortlist(selectedCandidate)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white hover:opacity-90">
+                      <button type="button" onClick={() => void handleShortlist(selectedCandidate)} className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2.5 text-xs font-bold text-white transition-colors hover:bg-primary-container focus:outline-none focus:ring-2 focus:ring-primary/20">
                       <CheckCircle2 className="h-4 w-4" /> Shortlist
                     </button>
                   )}
                   {getStatus(selectedCandidate) === 'shortlisted' && (
-                    <button type="button" onClick={() => { setScheduleCandidateId(selectedCandidate.id); setScheduleDate(dateInDays(1)); setScheduleTime('10:00'); setScheduleMeetingLink(''); setScheduleNotes(''); }} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white hover:opacity-90">
+                    <button type="button" onClick={() => { setScheduleCandidateId(selectedCandidate.id); setScheduleDate(dateInDays(1)); setScheduleTime('10:00'); setScheduleMeetingLink(''); setScheduleNotes(''); }} className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2.5 text-xs font-bold text-white transition-colors hover:bg-primary-container focus:outline-none focus:ring-2 focus:ring-primary/20">
                       <CalendarClock className="h-4 w-4" /> Schedule Interview
                     </button>
                   )}
-                  <button type="button" onClick={() => setStatusModal({ kind: 'kiv', candidateId: selectedCandidate.id, notes: '', followUpDate: '' })} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-50">
+                  <button type="button" onClick={() => setStatusModal({ kind: 'kiv', candidateId: selectedCandidate.id, notes: '', followUpDate: '' })} className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 px-3 py-2.5 text-xs font-bold text-amber-800 hover:bg-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-200">
                     <CircleHelp className="h-4 w-4" /> KIV
                   </button>
-                  <button type="button" onClick={() => setStatusModal({ kind: 'reject', candidateId: selectedCandidate.id, notes: '', followUpDate: '' })} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50">
+                  <button type="button" onClick={() => setStatusModal({ kind: 'reject', candidateId: selectedCandidate.id, notes: '', followUpDate: '' })} className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 px-3 py-2.5 text-xs font-bold text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200">
                     <XCircle className="h-4 w-4" /> Reject
                   </button>
                 </div>
@@ -1110,7 +1144,7 @@ export default function HireOnboardingView({
 
               {activeQueue === 'kiv' && (
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => void transitionCandidate(selectedCandidate, 'applied', { kivNotes: undefined, kivFollowUpDate: undefined }, 'kiv_resumed').then(() => onShowNotification('KIV Resumed', `${selectedCandidate.name} returned to Applied.`))} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white">
+                  <button type="button" onClick={() => void transitionCandidate(selectedCandidate, 'applied', { kivNotes: undefined, kivFollowUpDate: undefined }, 'kiv_resumed').then(() => onShowNotification('KIV Resumed', `${selectedCandidate.name} returned to Applied.`))} className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2.5 text-xs font-bold text-white transition-colors hover:bg-primary-container focus:outline-none focus:ring-2 focus:ring-primary/20">
                     <RotateCcw className="h-4 w-4" /> Resume Applied
                   </button>
                 </div>
@@ -1220,7 +1254,7 @@ export default function HireOnboardingView({
               </div>
             </div>
           )}
-        </div>
+        </section>
       </div>
 
       <div className="rounded-xl border border-neutral-border bg-white p-5 shadow-sm">
@@ -1234,29 +1268,67 @@ export default function HireOnboardingView({
   );
 
   const renderHeader = () => (
-    <div className="flex flex-col justify-between gap-4 border-b border-neutral-200/50 pb-4 md:flex-row md:items-end">
-      <div>
-        <h1 className="text-3xl font-black tracking-tight text-on-background">Hire & Onboarding</h1>
-        <p className="mt-1 max-w-3xl text-sm text-on-surface-variant">Manage Applied submissions, KIV decisions, interviews, offers, secure candidate handoffs, and onboarding progress in one auditable lifecycle.</p>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap gap-1 rounded-lg border border-neutral-border bg-white p-1">
-          <button type="button" onClick={() => navigateToSection('pipeline')} className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs font-bold ${activeTab === 'pipeline' ? 'bg-primary text-white' : 'text-on-surface-variant hover:bg-neutral-50'}`}><LayoutGrid className="h-4 w-4" /> Pipeline</button>
-          <button type="button" onClick={() => navigateToSection('application-form')} className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs font-bold ${activeTab === 'application-form' ? 'bg-primary text-white' : 'text-on-surface-variant hover:bg-neutral-50'}`}><FileText className="h-4 w-4" /> Application Form</button>
-          <button type="button" onClick={() => navigateToSection('onboarding-form')} className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs font-bold ${activeTab === 'onboarding-form' ? 'bg-primary text-white' : 'text-on-surface-variant hover:bg-neutral-50'}`}><UserCheck className="h-4 w-4" /> Employee Enrollment</button>
-          <button type="button" onClick={() => navigateToSection('onboarding-portal')} className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs font-bold ${activeTab === 'onboarding-portal' ? 'bg-primary text-white' : 'text-on-surface-variant hover:bg-neutral-50'}`}><BookOpen className="h-4 w-4" /> Onboarding Portal</button>
+    <header className="overflow-hidden rounded-2xl border border-neutral-border bg-white shadow-sm">
+      <div className="border-b border-neutral-border/70 bg-surface-container-low/55 px-5 py-5 sm:px-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Hiring operations</p>
+            <h1 className="mt-1 text-3xl font-black tracking-tight text-on-background sm:text-4xl">Hire & Onboarding</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-on-surface-variant">
+              Move candidates from application to onboarding with a clear, auditable workflow.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              void navigator.clipboard?.writeText(`${window.location.origin}/?form=job-apply`);
+              onShowNotification('Application Link Copied', 'Public job application form URL copied to your clipboard.');
+            }}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-neutral-border bg-white px-3 py-2.5 text-xs font-bold text-on-surface transition-colors hover:bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <Share2 className="h-4 w-4 text-primary" aria-hidden="true" /> Share apply link
+          </button>
         </div>
-        <button type="button" onClick={() => { void navigator.clipboard?.writeText(`${window.location.origin}/?form=job-apply`); onShowNotification('Application Link Copied', 'Public job application form URL copied to your clipboard.'); }} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-border bg-white px-3 py-2 text-xs font-bold text-on-surface-variant hover:bg-neutral-50"><Share2 className="h-4 w-4 text-primary" /> Share Apply Link</button>
       </div>
-    </div>
+      <nav aria-label="Hiring workspace navigation" className="flex gap-1 overflow-x-auto p-1.5">
+        <button
+          type="button"
+          onClick={() => navigateToSection('pipeline')}
+          className={`flex min-w-max items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/20 ${activeTab === 'pipeline' ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`}
+        >
+          <LayoutGrid className="h-4 w-4" aria-hidden="true" /> Pipeline
+        </button>
+        <button
+          type="button"
+          onClick={() => navigateToSection('application-form')}
+          className={`flex min-w-max items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/20 ${activeTab === 'application-form' ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`}
+        >
+          <FileText className="h-4 w-4" aria-hidden="true" /> Application form
+        </button>
+        <button
+          type="button"
+          onClick={() => navigateToSection('onboarding-form')}
+          className={`flex min-w-max items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/20 ${activeTab === 'onboarding-form' ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`}
+        >
+          <UserCheck className="h-4 w-4" aria-hidden="true" /> Employee enrollment
+        </button>
+        <button
+          type="button"
+          onClick={() => navigateToSection('onboarding-portal')}
+          className={`flex min-w-max items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/20 ${activeTab === 'onboarding-portal' ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`}
+        >
+          <BookOpen className="h-4 w-4" aria-hidden="true" /> Onboarding portal
+        </button>
+      </nav>
+    </header>
   );
 
   return (
-    <div className="mx-auto max-w-7xl animate-in fade-in duration-200">
+    <div className="mx-auto w-full max-w-[1440px] space-y-5 pb-8 animate-in fade-in duration-200">
       {renderHeader()}
 
       {activeTab === 'onboarding-portal' ? (
-        <div className="mt-6">
+        <div>
           <React.Suspense fallback={<div className="flex min-h-64 items-center justify-center text-sm font-semibold text-on-surface-variant">Loading Onboarding Portal...</div>}>
             <OnboardingPortalView
               employees={employees}
@@ -1271,11 +1343,11 @@ export default function HireOnboardingView({
           </React.Suspense>
         </div>
       ) : activeTab === 'application-form' ? (
-        <div className="mt-6">
+        <div>
           <JobApplicationForm onApplicationSubmit={handleApplicationSubmit} onShowNotification={onShowNotification} />
         </div>
       ) : activeTab === 'onboarding-form' ? (
-        <div className="mt-6">
+        <div>
           <OnboardingForm
             candidates={candidates}
             entities={entities}
@@ -1285,7 +1357,7 @@ export default function HireOnboardingView({
           />
         </div>
       ) : (
-        <div className="mt-6">{renderPipeline()}</div>
+        <div>{renderPipeline()}</div>
       )}
 
       {scheduleCandidateId && (

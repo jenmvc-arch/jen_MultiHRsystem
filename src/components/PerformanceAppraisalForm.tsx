@@ -45,9 +45,9 @@ interface PerformanceAppraisalFormProps {
 
 type DraftAction = 'save' | 'send' | 'submit' | 'agree' | 'finalise';
 
-const inputClass = 'w-full rounded border border-neutral-border bg-white px-3 py-2 text-sm text-on-background outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:bg-surface-container-low disabled:text-on-surface-variant';
+const inputClass = 'w-full rounded-xl border border-neutral-border bg-white px-3 py-2.5 text-sm text-on-background outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:bg-surface-container-low disabled:text-on-surface-variant';
 const textareaClass = `${inputClass} min-h-20 resize-y`;
-const labelClass = 'block text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant mb-1.5';
+const labelClass = 'mb-1.5 block text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant';
 
 const REVIEW_TYPES = [
   'Annual Performance Review',
@@ -126,10 +126,10 @@ const Section = ({
   aside?: React.ReactNode;
   children: React.ReactNode;
 }) => (
-  <section className="overflow-hidden rounded-lg border border-[#e0bfbc] bg-white shadow-sm">
-    <div className="flex flex-col gap-2 bg-primary px-5 py-3 text-white md:flex-row md:items-center md:justify-between">
-      <h2 className="text-lg font-bold tracking-tight">{title}</h2>
-      {aside}
+  <section className="overflow-hidden rounded-2xl border border-neutral-border bg-white shadow-sm">
+    <div className="flex flex-col gap-2 border-b border-neutral-border bg-surface-container-low/65 px-5 py-4 md:flex-row md:items-center md:justify-between">
+      <h2 className="border-l-2 border-primary pl-3 text-lg font-bold tracking-tight text-on-background">{title}</h2>
+      {aside && <div className="text-xs font-semibold text-on-surface-variant">{aside}</div>}
     </div>
     <div className="p-5">{children}</div>
   </section>
@@ -356,7 +356,7 @@ export default function PerformanceAppraisalForm({
       {onBack && (
         <button
           onClick={onBack}
-          className="inline-flex items-center gap-2 rounded border border-neutral-border bg-white px-3 py-2 text-xs font-bold text-on-surface transition-colors hover:bg-surface-container"
+          className="inline-flex items-center gap-2 rounded-xl border border-neutral-border bg-white px-3 py-2.5 text-xs font-bold text-on-surface transition-colors hover:bg-surface-container focus:outline-none focus:ring-2 focus:ring-primary/20"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           Back
@@ -365,7 +365,7 @@ export default function PerformanceAppraisalForm({
       {(isManagerMode || canEmployeeEdit) && (
         <button
           onClick={() => void runAction('save')}
-          className="inline-flex items-center gap-2 rounded border border-primary bg-white px-3 py-2 text-xs font-bold text-primary transition-colors hover:bg-primary/5"
+          className="inline-flex items-center gap-2 rounded-xl border border-primary bg-white px-3 py-2.5 text-xs font-bold text-primary transition-colors hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary/20"
         >
           <Save className="h-3.5 w-3.5" />
           Save Draft
@@ -374,7 +374,7 @@ export default function PerformanceAppraisalForm({
       {isManagerMode && !isFinalised && employeeAccessStatus === 'open' && (
         <button
           onClick={() => void runAction('send')}
-          className="inline-flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700 transition-colors hover:bg-amber-100"
+          className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs font-bold text-amber-700 transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-300/40"
         >
           <Send className="h-3.5 w-3.5" />
           Send to Employee
@@ -383,7 +383,7 @@ export default function PerformanceAppraisalForm({
       {mode === 'employee' && canEmployeeEdit && (
         <button
           onClick={() => runAction('submit')}
-          className="inline-flex items-center gap-2 rounded bg-primary px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-primary-container"
+          className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-xs font-bold text-white transition-colors hover:bg-primary-container focus:outline-none focus:ring-2 focus:ring-primary/20"
         >
           <Send className="h-3.5 w-3.5" />
           {employeeSubmitLabel}
@@ -392,7 +392,7 @@ export default function PerformanceAppraisalForm({
       {isManagerMode && !isFinalised && (
         <button
           onClick={() => runAction('agree')}
-          className="inline-flex items-center gap-2 rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 transition-colors hover:bg-emerald-100"
+          className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-xs font-bold text-emerald-700 transition-colors hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-300/40"
         >
           <UserCheck className="h-3.5 w-3.5" />
           Mark Agreed
@@ -401,7 +401,7 @@ export default function PerformanceAppraisalForm({
       {isManagerMode && !isFinalised && (
         <button
           onClick={() => runAction('finalise')}
-          className="inline-flex items-center gap-2 rounded bg-primary px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-primary-container"
+          className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-xs font-bold text-white transition-colors hover:bg-primary-container focus:outline-none focus:ring-2 focus:ring-primary/20"
         >
           <FileCheck2 className="h-3.5 w-3.5" />
           Finalise
@@ -412,7 +412,7 @@ export default function PerformanceAppraisalForm({
           type="button"
           onClick={handleDownloadPdf}
           disabled={isPdfDownloading}
-          className="inline-flex items-center gap-2 rounded border border-neutral-border bg-surface-container px-3 py-2 text-xs font-bold text-on-surface transition-colors hover:bg-surface-container-high disabled:cursor-wait disabled:opacity-60"
+          className="inline-flex items-center gap-2 rounded-xl border border-neutral-border bg-surface-container px-3 py-2.5 text-xs font-bold text-on-surface transition-colors hover:bg-surface-container-high focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-wait disabled:opacity-60"
         >
           <Download className="h-3.5 w-3.5" />
           {isPdfDownloading ? 'Generating PDF...' : 'Download PDF'}
@@ -439,14 +439,14 @@ export default function PerformanceAppraisalForm({
 
   return (
     <div className="space-y-6 text-left">
-      <div className="rounded-xl border border-neutral-border bg-white p-5 shadow-sm">
+      <div className="rounded-2xl border border-neutral-border bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 gap-4">
             <EmployeeAvatar employee={employee} className="h-14 w-14 rounded-2xl" />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-2xl font-bold text-on-background">Performance & Appraisal</h1>
-                <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.25em] ${statusTone(draft.status)}`}>
+                <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${statusTone(draft.status)}`}>
                   {draft.status}
                 </span>
               </div>
@@ -465,7 +465,7 @@ export default function PerformanceAppraisalForm({
       </div>
 
       {mode === 'employee' && employeeAccessStatus === 'open' && (
-        <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+        <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
           <Lock className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <p className="font-bold">Available for viewing</p>
@@ -475,7 +475,7 @@ export default function PerformanceAppraisalForm({
       )}
 
       {!scores.isKpiWeightValid && (
-        <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+        <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <p className="font-bold">KPI weight validation</p>
@@ -591,7 +591,7 @@ export default function PerformanceAppraisalForm({
             ['2.0-2.5', 'Partially Meets', 'Achieves some requirements, but improvement is required.'],
             ['1.0-1.5', 'Does Not Meet', 'Fails to achieve most requirements or has repeated gaps.'],
           ].map(([score, title, body]) => (
-            <div key={score} className="rounded border border-neutral-border bg-surface-container-low p-3 text-xs">
+            <div key={score} className="rounded-xl border border-neutral-border bg-surface-container-low p-3 text-xs">
               <p className="font-bold text-primary">{score}: {title}</p>
               <p className="mt-1 leading-5 text-on-surface-variant">{body}</p>
             </div>

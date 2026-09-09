@@ -40,6 +40,8 @@ import adminDocumentsHandler from './api/admin/documents';
 import adminLeaveWorkspaceHandler from './api/admin/leave-workspace';
 import adminPayrollPublishHandler from './api/admin/payroll/publish';
 import adminPayrollEmailHandler from './api/admin/payroll/email';
+import adminEmailTemplatesHandler from './api/admin/email-templates/index';
+import adminEmailTemplateHandler from './api/admin/email-templates/[id]';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -92,6 +94,9 @@ app.get('/api/admin/leave-workspace', adminLeaveWorkspaceHandler);
 app.post('/api/admin/leave-workspace', adminLeaveWorkspaceHandler);
 app.post('/api/admin/payroll/publish', adminPayrollPublishHandler);
 app.post('/api/admin/payroll/email', adminPayrollEmailHandler);
+app.get('/api/admin/email-templates', adminEmailTemplatesHandler);
+app.post('/api/admin/email-templates', adminEmailTemplatesHandler);
+app.patch('/api/admin/email-templates/:id', adminEmailTemplateHandler);
 app.post('/api/google-sheets', handleGoogleSheetsProxy);
 
 app.get('/api/generate-pdf', handleGeneratePdf);

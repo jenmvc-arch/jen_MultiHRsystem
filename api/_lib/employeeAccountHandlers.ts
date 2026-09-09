@@ -13,6 +13,7 @@ import {
   requirePermission,
   resolveEmployeeAccountTarget,
   createEmployeeAdminClient,
+  createMainAdminClient,
   setAdminSessionCookie,
   toChannel,
   toEmployeeAccountTarget,
@@ -276,7 +277,7 @@ export async function handleAdminEmailTest(req: any, res: any) {
     }
     const result = await sendEmailTemplate('test_email', recipient, {
       requestedBy: actor.username,
-    }, createEmployeeAdminClient());
+    }, createEmployeeAdminClient(), undefined, undefined, createMainAdminClient());
     res.status(result.ok ? 200 : 502).json({
       ok: result.ok,
       recipient: result.recipient,
@@ -312,7 +313,8 @@ export async function handleBusinessEmailNotification(req: any, res: any) {
       name: req.body?.name,
       status: req.body?.status,
       details: req.body?.details,
-    }, createEmployeeAdminClient());
+      entity_name: req.body?.entityName,
+    }, createEmployeeAdminClient(), undefined, { entityId: req.body?.entityId }, createMainAdminClient());
     res.status(result.ok ? 200 : 502).json({
       ok: result.ok,
       status: result.status,

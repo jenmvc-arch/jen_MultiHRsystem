@@ -706,15 +706,15 @@ export default function LeaveCalendar({
             <div className="space-y-1 font-medium">
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-blue-500" />
-                <span>Annual Leave — Plan temporary cover or redirect project workflows</span>
+                <span>Annual Leave: plan temporary cover or redirect project workflows</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-red-500" />
-                <span>Sick / Hospitalisation Leave — Urgent backfill recommendations</span>
+                <span>Sick / Hospitalisation Leave: urgent backfill recommendations</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-amber-500" />
-                <span>Emergency Leave — Immediate review of active shifts required</span>
+                <span>Emergency Leave: immediate review of active shifts required</span>
               </div>
             </div>
           </div>

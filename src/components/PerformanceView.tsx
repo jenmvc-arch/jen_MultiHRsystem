@@ -11,9 +11,12 @@ import {
   Clock,
   FileCheck2,
   Lock,
+  RefreshCw,
   Search,
   Star,
+  Target,
   TrendingUp,
+  Users,
 } from 'lucide-react';
 import { AppraisalAccessGrant, AppraisalAccessStatus, Employee, EmployeePerformance, ReviewCycle } from '../types';
 import EmployeeAvatar from './EmployeeAvatar';
@@ -237,7 +240,7 @@ export default function PerformanceView({
 
   if (selectedRecord) {
     return (
-      <div className="mx-auto max-w-7xl animate-in fade-in duration-200">
+      <div className="mx-auto w-full max-w-[1440px] animate-in fade-in duration-200">
         <PerformanceAppraisalForm
           employee={selectedRecord.employee}
           reviewCycle={selectedCycle}
@@ -271,118 +274,130 @@ export default function PerformanceView({
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8 animate-in fade-in duration-200">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-on-background">Performance & Appraisal</h1>
-          <p className="mt-1 text-on-surface-variant">
-            Admin/manager view for active entity employees, self-appraisal routing, scoring, and finalisation.
-          </p>
-        </div>
-        <label className="min-w-64">
-          <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">Review Cycle</span>
-          <select
-            value={selectedCycleId}
-            onChange={(event) => setSelectedCycleId(event.target.value)}
-            className="w-full rounded border border-neutral-border bg-white px-3 py-2 text-sm font-semibold text-on-background outline-none focus:border-primary"
-          >
-            {availableReviewCycles.map((cycle) => (
-              <option key={cycle.id} value={cycle.id}>{cycle.name}</option>
+    <div className="mx-auto w-full max-w-[1440px] space-y-5 pb-8 animate-in fade-in duration-200">
+      <header className="overflow-hidden rounded-2xl border border-neutral-border bg-white shadow-sm">
+        <div className="border-b border-neutral-border/70 bg-surface-container-low/55 px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Performance operations</p>
+              <h1 className="mt-1 text-3xl font-black tracking-tight text-on-background sm:text-4xl">Performance Appraisal</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-on-surface-variant">
+                Run review cycles, route self-appraisals, and close the loop with evidence-backed ratings.
+              </p>
+            </div>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end">
+              <label className="min-w-0 sm:min-w-64">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.18em] text-on-surface-variant">Review cycle</span>
+                <select
+                  value={selectedCycleId}
+                  onChange={(event) => setSelectedCycleId(event.target.value)}
+                  className="w-full rounded-xl border border-neutral-border bg-white px-3 py-2.5 text-sm font-bold text-on-background outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
+                >
+                  {availableReviewCycles.map((cycle) => (
+                    <option key={cycle.id} value={cycle.id}>{cycle.name}</option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() => setDraftRefreshKey((key) => key + 1)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-border bg-white px-3 py-2.5 text-xs font-bold text-on-surface transition-colors hover:bg-surface-container-low focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                <RefreshCw className="h-4 w-4 text-primary" aria-hidden="true" />
+                Refresh view
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-neutral-border bg-neutral-border sm:grid-cols-4">
+            {[
+              { label: 'Total appraisals', value: totalReviews, detail: 'Active employees', icon: Users, tone: 'text-primary' },
+              { label: 'Finalised', value: finalisedReviews, detail: `${completionRate}% complete`, icon: CheckCircle, tone: 'text-green-700' },
+              { label: 'Employee input', value: pendingEmployeeInput, detail: 'Awaiting self-appraisal', icon: Clock, tone: 'text-amber-700' },
+              { label: 'Manager queue', value: managerReviewQueue, detail: averageRating > 0 ? `${averageRating.toFixed(1)} average rating` : 'Ready for review', icon: Target, tone: 'text-blue-700' },
+            ].map(({ label, value, detail, icon: Icon, tone }) => (
+              <div key={label} className="bg-white px-3 py-3 sm:px-4">
+                <span className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.12em] text-on-surface-variant">
+                  <Icon className={`h-3.5 w-3.5 ${tone}`} aria-hidden="true" /> {label}
+                </span>
+                <span className="mt-1 block font-mono text-xl font-bold text-on-surface">{value}</span>
+                <span className="mt-0.5 block text-[10px] text-on-surface-variant">{detail}</span>
+              </div>
             ))}
-          </select>
-        </label>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
-        <div className="rounded-lg border border-neutral-border bg-surface-container-lowest p-5 shadow-sm">
-          <span className="text-sm font-medium text-on-surface-variant">Total Appraisals</span>
-          <div className="mt-2 text-3xl font-bold text-on-background">{totalReviews}</div>
-          <div className="mt-1.5 text-xs font-semibold text-on-surface-variant">Active entity employees</div>
-        </div>
-
-        <div className="rounded-lg border border-neutral-border bg-surface-container-lowest p-5 shadow-sm">
-          <span className="text-sm font-medium text-on-surface-variant">Finalised</span>
-          <div className="mt-2 text-3xl font-bold text-green-600">{finalisedReviews}</div>
-          <div className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-green-600">
-            <CheckCircle className="h-3 w-3" /> {completionRate}% completed
           </div>
         </div>
-
-        <div className="rounded-lg border border-neutral-border bg-surface-container-lowest p-5 shadow-sm">
-          <span className="text-sm font-medium text-on-surface-variant">Employee Input</span>
-          <div className="mt-2 text-3xl font-bold text-amber-600">{pendingEmployeeInput}</div>
-          <div className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-amber-700">
-            <Clock className="h-3.5 w-3.5" /> Awaiting self appraisal
-          </div>
+        <div className="flex flex-wrap items-center gap-2 px-5 py-3 text-xs sm:px-6">
+          <span className="font-bold text-on-background">{selectedCycle.name}</span>
+          <span className="text-on-surface-variant">{selectedCycle.period}</span>
+          <span className="rounded-full bg-primary/10 px-2.5 py-1 font-bold text-primary">{selectedCycle.status}</span>
+          <span className="ml-auto text-on-surface-variant">{totalReviews} employee records in this cycle</span>
         </div>
+      </header>
 
-        <div className="rounded-lg border border-neutral-border bg-surface-container-lowest p-5 shadow-sm">
-          <span className="text-sm font-medium text-on-surface-variant">Avg Final Rating</span>
-          <div className="mt-2 text-3xl font-bold text-primary">{averageRating.toFixed(1)} / 5.0</div>
-          <div className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-on-surface-variant">
-            <TrendingUp className="h-3.5 w-3.5 text-primary" /> {managerReviewQueue} in manager queue
-          </div>
-        </div>
-      </div>
-
-      <div className="flex gap-6 border-b border-neutral-border">
+      <nav aria-label="Performance workspace navigation" className="rounded-2xl border border-neutral-border bg-white p-1.5 shadow-sm">
+        <div className="flex gap-1 overflow-x-auto">
         <button
+          type="button"
           onClick={() => setActiveSubTab('appraisals')}
-          className={`pb-3 text-sm font-bold transition-colors border-b-2 ${
-            activeSubTab === 'appraisals' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
-          }`}
+          className={`flex min-w-max items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/20 ${activeSubTab === 'appraisals' ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`}
         >
-          Appraisal Queue
+          <FileCheck2 className="h-4 w-4" aria-hidden="true" /> Appraisal queue
         </button>
         <button
+          type="button"
           onClick={() => setActiveSubTab('cycles')}
-          className={`pb-3 text-sm font-bold transition-colors border-b-2 ${
-            activeSubTab === 'cycles' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
-          }`}
+          className={`flex min-w-max items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/20 ${activeSubTab === 'cycles' ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`}
         >
-          Review Cycles ({availableReviewCycles.length})
+          <Award className="h-4 w-4" aria-hidden="true" /> Review cycles ({availableReviewCycles.length})
         </button>
         <button
+          type="button"
           onClick={() => setActiveSubTab('analytics')}
-          className={`pb-3 text-sm font-bold transition-colors border-b-2 ${
-            activeSubTab === 'analytics' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-on-surface'
-          }`}
+          className={`flex min-w-max items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary/20 ${activeSubTab === 'analytics' ? 'bg-primary text-white shadow-sm' : 'text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface'}`}
         >
-          Performance Analytics
+          <TrendingUp className="h-4 w-4" aria-hidden="true" /> Performance analytics
         </button>
-      </div>
+        </div>
+      </nav>
 
       {activeSubTab === 'appraisals' && (
-        <div className="overflow-hidden rounded-lg border border-neutral-border bg-white shadow-sm">
-          <div className="flex flex-col gap-4 border-b border-neutral-border bg-surface-container-low p-4 text-sm md:flex-row md:items-center md:justify-between">
-            <div className="flex w-full flex-1 gap-3">
-              <div className="relative max-w-sm flex-1">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-outline" />
+        <div className="overflow-hidden rounded-2xl border border-neutral-border bg-white shadow-sm">
+          <div className="border-b border-neutral-border bg-surface-container-low/70 px-4 py-4 sm:px-5">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h2 className="text-lg font-bold tracking-tight text-on-background">Appraisal queue</h2>
+                <p className="mt-1 text-xs text-on-surface-variant">Open a record to update goals, evidence, scores, and finalisation.</p>
+              </div>
+              <span className="text-xs font-semibold text-on-surface-variant">{filteredList.length} of {employees.length} records shown</span>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+              <label className="relative block">
+                <span className="sr-only">Search employee by name, ID, or email</span>
+                <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-outline" aria-hidden="true" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search employee by name, ID, or email..."
-                  className="w-full rounded border border-neutral-border bg-white py-1.5 pl-9 pr-4 text-xs outline-none focus:ring-1 focus:ring-primary"
+                  placeholder="Search employee by name, ID, or email"
+                  className="w-full rounded-xl border border-neutral-border bg-white py-2.5 pl-10 pr-4 text-xs outline-none transition-colors placeholder:text-on-surface-variant/70 focus:border-primary focus:ring-2 focus:ring-primary/15"
                 />
-              </div>
-              <select
-                value={deptFilter}
-                onChange={(event) => setDeptFilter(event.target.value)}
-                className="rounded border border-neutral-border bg-white p-1.5 text-xs outline-none"
-              >
-                {departments.map((department) => (
-                  <option key={department} value={department}>{department}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="text-xs font-semibold text-on-surface-variant">
-              Showing {filteredList.length} of {employees.length} employee records
+              </label>
+              <label>
+                <span className="sr-only">Filter by department</span>
+                <select
+                  value={deptFilter}
+                  onChange={(event) => setDeptFilter(event.target.value)}
+                  className="w-full rounded-xl border border-neutral-border bg-white px-3 py-2.5 text-xs font-semibold outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
+                >
+                  {departments.map((department) => (
+                    <option key={department} value={department}>{department}</option>
+                  ))}
+                </select>
+              </label>
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 border-b border-neutral-border bg-white px-4 py-3 text-xs md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-3 border-b border-neutral-border px-4 py-3 text-xs sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div className="flex items-center gap-3">
               <label className="inline-flex items-center gap-2 font-semibold text-on-surface">
                 <input
@@ -402,165 +417,262 @@ export default function PerformanceView({
                   type="button"
                   disabled={isAccessUpdating}
                   onClick={() => void updateAccess(selectedVisibleRecords, 'open', true)}
-                  className="inline-flex items-center gap-1.5 rounded border border-amber-300 bg-amber-50 px-3 py-1.5 font-bold text-amber-700 disabled:cursor-wait disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 font-bold text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-wait disabled:opacity-50"
                 >
-                  <Lock className="h-3.5 w-3.5" />
-                  Open Selected
+                  <Lock className="h-3.5 w-3.5" aria-hidden="true" />
+                  Open selected
                 </button>
                 <button
                   type="button"
                   disabled={isAccessUpdating}
                   onClick={() => void updateAccess(selectedVisibleRecords, 'closed', true)}
-                  className="inline-flex items-center gap-1.5 rounded border border-red-200 bg-red-50 px-3 py-1.5 font-bold text-red-700 disabled:cursor-wait disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 font-bold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-wait disabled:opacity-50"
                 >
-                  Close Selected
+                  Close selected
                 </button>
               </div>
             )}
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="hidden overflow-x-auto lg:block">
             <table className="w-full border-collapse text-left text-xs">
               <thead>
-                <tr className="border-b border-neutral-border bg-surface text-on-surface-variant">
+                <tr className="border-b border-neutral-border bg-surface-container-low/45 text-on-surface-variant">
                   <th className="w-10 p-4">
                     <span className="sr-only">Select</span>
                   </th>
-                  <th className="p-4 font-bold uppercase tracking-wider">Employee Details</th>
+                  <th className="p-4 font-bold uppercase tracking-wider">Employee</th>
                   <th className="p-4 font-bold uppercase tracking-wider">Department</th>
-                  <th className="p-4 font-bold uppercase tracking-wider">Employee Access</th>
-                  <th className="p-4 font-bold uppercase tracking-wider">Draft Status</th>
-                  <th className="p-4 font-bold uppercase tracking-wider">Total Score</th>
-                  <th className="p-4 font-bold uppercase tracking-wider">Final Rating</th>
+                  <th className="p-4 font-bold uppercase tracking-wider">Access</th>
+                  <th className="p-4 font-bold uppercase tracking-wider">Draft</th>
+                  <th className="p-4 font-bold uppercase tracking-wider">Score</th>
+                  <th className="p-4 font-bold uppercase tracking-wider">Rating</th>
                   <th className="p-4 text-right font-bold uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-border/50">
-                {filteredList.map(({ employee, draft, scores, accessStatus }) => {
-                  const resolvedAccessLabel = accessLabel(accessStatus, draft.status);
-                  const isHistorical = resolvedAccessLabel === 'Finalised';
-                  return (
-                  <tr key={employee.id} className="transition-colors hover:bg-surface-container-low/50">
-                    <td className="p-4">
-                      <input
-                        type="checkbox"
-                        checked={selectedEmployeeIds.includes(employee.id)}
-                        onChange={(event) => setSelectedEmployeeIds((current) => (
-                          event.target.checked
-                            ? Array.from(new Set([...current, employee.id]))
-                            : current.filter((id) => id !== employee.id)
-                        ))}
-                        aria-label={`Select ${employee.name}`}
-                        className="h-4 w-4 accent-primary"
-                      />
-                    </td>
-                    <td className="flex items-center gap-3 p-4">
-                      <EmployeeAvatar employee={employee} className="h-8 w-8 rounded-full" />
-                      <div>
-                        <div className="text-sm font-bold text-on-surface">{employee.name}</div>
-                        <div className="mt-0.5 text-xs text-on-surface-variant">
-                          {employee.designation} - <span className="font-mono text-[10px] font-medium">{employee.id}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-4 font-medium text-on-surface">{employee.department}</td>
-                    <td className="p-4">
-                      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${accessTone(resolvedAccessLabel)}`}>
-                        {resolvedAccessLabel}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${statusTone(draft.status)}`}>
-                        <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                        {draft.status}
-                      </span>
-                    </td>
-                    <td className="p-4 font-bold text-on-surface">{scores.totalPoints.toFixed(2)}</td>
-                    <td className="p-4">
-                      {scores.finalRating > 0 ? (
-                        <div className="flex items-center gap-1">
-                          {Array.from({ length: 5 }).map((_, index) => (
-                            <Star
-                              key={index}
-                              className={`h-3.5 w-3.5 ${
-                                index < scores.finalRating ? 'fill-amber-400 text-amber-400' : 'text-gray-300'
-                              }`}
-                            />
-                          ))}
-                          <span className="ml-1 font-semibold text-on-surface">{scores.finalRating}.0</span>
-                        </div>
-                      ) : (
-                        <span className="text-[11px] italic text-on-surface-variant">Unrated</span>
-                      )}
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex flex-wrap justify-end gap-2">
-                        {!isHistorical && (
-                          <button
-                            type="button"
-                            disabled={isAccessUpdating || accessStatus === 'open' || accessStatus === 'sent'}
-                            onClick={() => void updateAccess([{ employee, performance: {} as EmployeePerformance, draft, scores, accessStatus }], 'open', false)}
-                            className="inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold text-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <Lock className="h-3 w-3" />
-                            Open Appraisal
-                          </button>
-                        )}
-                        {!isHistorical && accessStatus !== 'closed' && (
-                          <button
-                            type="button"
-                            disabled={isAccessUpdating}
-                            onClick={() => void updateAccess([{ employee, performance: {} as EmployeePerformance, draft, scores, accessStatus }], 'closed', false)}
-                            className="inline-flex items-center gap-1 rounded border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] font-bold text-red-700 disabled:cursor-wait disabled:opacity-50"
-                          >
-                            Close
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setSelectedEmployeeId(employee.id)}
-                          className="inline-flex cursor-pointer items-center gap-1 rounded bg-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-container"
-                        >
-                          <FileCheck2 className="h-3 w-3" />
-                          Edit Appraisal
-                        </button>
-                      </div>
+                {filteredList.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="p-12 text-center">
+                      <Search className="mx-auto h-7 w-7 text-outline" aria-hidden="true" />
+                      <h3 className="mt-3 text-sm font-bold text-on-background">No appraisals match these filters</h3>
+                      <p className="mt-1 text-xs text-on-surface-variant">Try a different name, employee ID, email, or department.</p>
                     </td>
                   </tr>
+                ) : filteredList.map(({ employee, draft, scores, accessStatus }) => {
+                  const resolvedAccessLabel = accessLabel(accessStatus, draft.status);
+                  const isHistorical = resolvedAccessLabel === 'Finalised';
+                  const hasRecordedScore = draft.status !== 'Draft' && scores.finalRating > 0;
+                  return (
+                    <tr key={employee.id} className="transition-colors hover:bg-surface-container-low/45">
+                      <td className="p-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedEmployeeIds.includes(employee.id)}
+                          onChange={(event) => setSelectedEmployeeIds((current) => (
+                            event.target.checked
+                              ? Array.from(new Set([...current, employee.id]))
+                              : current.filter((id) => id !== employee.id)
+                          ))}
+                          aria-label={`Select ${employee.name}`}
+                          className="h-4 w-4 accent-primary"
+                        />
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <EmployeeAvatar employee={employee} className="h-9 w-9 rounded-xl" />
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-bold text-on-surface">{employee.name}</div>
+                            <div className="mt-0.5 truncate text-xs text-on-surface-variant">
+                              {employee.designation} <span className="font-mono text-[10px] font-medium">({employee.id})</span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4 font-medium text-on-surface">{employee.department}</td>
+                      <td className="p-4">
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${accessTone(resolvedAccessLabel)}`}>
+                          {resolvedAccessLabel}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ${statusTone(draft.status)}`}>
+                          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                          {draft.status}
+                        </span>
+                      </td>
+                      <td className="p-4 font-mono font-bold text-on-surface">
+                        {draft.status === 'Draft' ? <span className="font-sans text-[11px] font-medium text-on-surface-variant">Not scored</span> : scores.totalPoints.toFixed(2)}
+                      </td>
+                      <td className="p-4">
+                        {hasRecordedScore ? (
+                          <div className="flex items-center gap-1">
+                            {Array.from({ length: 5 }).map((_, index) => (
+                              <Star
+                                key={index}
+                                className={`h-3.5 w-3.5 ${
+                                  index < scores.finalRating ? 'fill-amber-400 text-amber-400' : 'text-gray-300'
+                                }`}
+                                aria-hidden="true"
+                              />
+                            ))}
+                            <span className="ml-1 font-mono font-semibold text-on-surface">{scores.finalRating}.0</span>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] italic text-on-surface-variant">Unrated</span>
+                        )}
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {!isHistorical && (
+                            <button
+                              type="button"
+                              disabled={isAccessUpdating || accessStatus === 'open' || accessStatus === 'sent'}
+                              onClick={() => void updateAccess([{ employee, performance: {} as EmployeePerformance, draft, scores, accessStatus }], 'open', false)}
+                              className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Lock className="h-3 w-3" aria-hidden="true" />
+                              Open
+                            </button>
+                          )}
+                          {!isHistorical && accessStatus !== 'closed' && (
+                            <button
+                              type="button"
+                              disabled={isAccessUpdating}
+                              onClick={() => void updateAccess([{ employee, performance: {} as EmployeePerformance, draft, scores, accessStatus }], 'closed', false)}
+                              className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] font-bold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-wait disabled:opacity-50"
+                            >
+                              Close
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedEmployeeId(employee.id)}
+                            className="inline-flex cursor-pointer items-center gap-1 rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-container focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          >
+                            <FileCheck2 className="h-3 w-3" aria-hidden="true" />
+                            Open appraisal
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
+
+          <div className="grid gap-3 p-3 lg:hidden">
+            {filteredList.map(({ employee, draft, scores, accessStatus }) => {
+              const resolvedAccessLabel = accessLabel(accessStatus, draft.status);
+              const isHistorical = resolvedAccessLabel === 'Finalised';
+              return (
+                <article key={employee.id} className="rounded-2xl border border-neutral-border bg-surface-container-low/35 p-4">
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedEmployeeIds.includes(employee.id)}
+                      onChange={(event) => setSelectedEmployeeIds((current) => (
+                        event.target.checked
+                          ? Array.from(new Set([...current, employee.id]))
+                          : current.filter((id) => id !== employee.id)
+                      ))}
+                      aria-label={`Select ${employee.name}`}
+                      className="mt-1 h-4 w-4 accent-primary"
+                    />
+                    <EmployeeAvatar employee={employee} className="h-10 w-10 rounded-xl" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-bold text-on-surface">{employee.name}</div>
+                      <div className="mt-0.5 truncate text-xs text-on-surface-variant">{employee.designation}</div>
+                    </div>
+                    <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${accessTone(resolvedAccessLabel)}`}>
+                      {resolvedAccessLabel}
+                    </span>
+                  </div>
+                  <div className="mt-4 grid grid-cols-3 gap-2 border-y border-neutral-border/70 py-3 text-xs">
+                    <div>
+                      <span className="block text-[10px] uppercase tracking-wider text-on-surface-variant">Department</span>
+                      <span className="mt-1 block truncate font-semibold text-on-surface">{employee.department}</span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] uppercase tracking-wider text-on-surface-variant">Draft</span>
+                      <span className="mt-1 block truncate font-semibold text-on-surface">{draft.status}</span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] uppercase tracking-wider text-on-surface-variant">Score</span>
+                      <span className="mt-1 block font-semibold text-on-surface">{draft.status === 'Draft' ? 'Not scored' : scores.totalPoints.toFixed(2)}</span>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap justify-end gap-2">
+                    {!isHistorical && accessStatus !== 'open' && accessStatus !== 'sent' && (
+                      <button
+                        type="button"
+                        disabled={isAccessUpdating}
+                        onClick={() => void updateAccess([{ employee, performance: {} as EmployeePerformance, draft, scores, accessStatus }], 'open', false)}
+                        className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        <Lock className="h-3 w-3" aria-hidden="true" /> Open
+                      </button>
+                    )}
+                    {!isHistorical && accessStatus !== 'closed' && (
+                      <button
+                        type="button"
+                        disabled={isAccessUpdating}
+                        onClick={() => void updateAccess([{ employee, performance: {} as EmployeePerformance, draft, scores, accessStatus }], 'closed', false)}
+                        className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] font-bold text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50"
+                      >
+                        Close
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedEmployeeId(employee.id)}
+                      className="inline-flex items-center gap-1 rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-container focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    >
+                      <FileCheck2 className="h-3 w-3" aria-hidden="true" /> Open appraisal
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+            {filteredList.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-neutral-border bg-surface-container-low/30 px-5 py-12 text-center">
+                <Search className="mx-auto h-7 w-7 text-outline" aria-hidden="true" />
+                <h3 className="mt-3 text-sm font-bold text-on-background">No appraisals match these filters</h3>
+                <p className="mt-1 text-xs text-on-surface-variant">Try a different name, employee ID, email, or department.</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {activeSubTab === 'cycles' && (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {availableReviewCycles.map((cycle) => (
-            <div key={cycle.id} className="flex flex-col justify-between rounded-lg border border-neutral-border bg-white p-6 shadow-sm">
+            <div key={cycle.id} className="flex flex-col justify-between rounded-2xl border border-neutral-border bg-white p-5 shadow-sm transition-colors hover:border-primary/40">
               <div className="space-y-3">
-                <div className="flex items-start justify-between">
-                  <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                <div className="flex items-start justify-between gap-3">
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
                     cycle.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-primary'
                   }`}>
                     {cycle.status}
                   </span>
-                  <Award className="h-5 w-5 text-primary-container" />
+                  <Award className="h-5 w-5 text-primary-container" aria-hidden="true" />
                 </div>
                 <h3 className="text-lg font-bold text-on-surface">{cycle.name}</h3>
                 <p className="text-xs leading-relaxed text-on-surface-variant">
-                  Evaluation active period: <span className="font-semibold">{cycle.period}</span>
+                  Review period: <span className="font-semibold">{cycle.period}</span>
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => {
                   setSelectedCycleId(cycle.id);
                   setActiveSubTab('appraisals');
                 }}
-                className="mt-6 flex items-center justify-between border-t border-neutral-border/50 pt-4 text-xs font-bold text-primary hover:underline"
+                className="mt-6 flex items-center justify-between rounded-xl border border-neutral-border px-3 py-2.5 text-xs font-bold text-primary transition-colors hover:bg-primary/5"
               >
-                Open queue for this cycle <ChevronRight className="h-3.5 w-3.5" />
+                Open queue <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
             </div>
           ))}

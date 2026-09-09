@@ -71,6 +71,7 @@ export interface EmployeeAccountTarget {
   email: string;
   name: string;
   contactNumber?: string;
+  entityId?: string;
 }
 
 const normalize = (value: unknown) => String(value || '').trim().toLowerCase();
@@ -256,7 +257,7 @@ export const requestEmployeeOtp = async (input: {
     name: input.name || authUser.user_metadata?.name || email,
     otp,
     action: purpose === 'login' ? 'sign in' : purpose.replace('_', ' '),
-  }, employeeAdmin);
+  }, employeeAdmin, undefined, undefined, createMainAdminClient());
   if (!delivery.ok) {
     await employeeAdmin.from('email_otp_challenges').update({ invalidated_at: new Date().toISOString() }).eq('id', challenge.id);
     throw otpError('The verification email could not be sent. Please try again later.', 502);
@@ -854,7 +855,7 @@ const sendEmail = async (
   const delivery = await sendEmailTemplate(actionType, target.email, {
     name: target.name,
     actionLink: message.match(/https?:\/\/\S+/)?.[0] || '',
-  }, createEmployeeAdminClient());
+  }, createEmployeeAdminClient(), undefined, { entityId: target.entityId }, createMainAdminClient());
   return {
     channel: 'email',
     provider: 'Gmail SMTP',
@@ -1062,14 +1063,14 @@ export const resolveEmployeeAccountTarget = async (
   const admin = createMainAdminClient();
   const { data: byId, error: idError } = await admin
     .from('employees')
-    .select('id,email,name,contact_number')
+    .select('id,email,name,contact_number,entity_id')
     .eq('id', requested.id)
     .maybeSingle();
   if (idError) throw new Error(`Employee target lookup failed: ${idError.message}`);
 
   const row = byId || (await admin
     .from('employees')
-    .select('id,email,name,contact_number')
+    .select('id,email,name,contact_number,entity_id')
     .ilike('email', requested.email)
     .maybeSingle()).data;
   if (!row) {
@@ -1084,6 +1085,7 @@ export const resolveEmployeeAccountTarget = async (
     email: String(row.email || requested.email).trim().toLowerCase(),
     name: String(row.name || requested.name).trim(),
     contactNumber: row.contact_number ? String(row.contact_number).trim() : undefined,
+    entityId: row.entity_id ? String(row.entity_id).trim() : undefined,
   };
 };
 

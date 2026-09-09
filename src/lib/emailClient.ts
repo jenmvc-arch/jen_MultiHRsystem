@@ -6,6 +6,8 @@ export async function requestBusinessEmail(input: {
   name?: string;
   status?: string;
   details?: string;
+  entityId?: string;
+  entityName?: string;
 }) {
   const response = await fetch('/api/admin/email/notification', {
     method: 'POST',

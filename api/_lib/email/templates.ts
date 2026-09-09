@@ -1,6 +1,6 @@
 import { EmailType } from './emailTypes.js';
 
-const escapeHtml = (value: unknown) => String(value ?? '')
+export const escapeHtml = (value: unknown) => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;')
@@ -19,6 +19,10 @@ const layout = (title: string, body: string) => `
     </div>
   </body>
 </html>`;
+
+export const renderPlainTextAsHtml = (value: string) => (
+  escapeHtml(value).replace(/\r?\n/g, '<br />')
+);
 
 export const buildTemplate = (type: EmailType, data: Record<string, unknown>) => {
   const name = escapeHtml(data.name || 'there');

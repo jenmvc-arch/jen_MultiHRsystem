@@ -15,6 +15,8 @@ assert.equal(getPathForAppTab('employee-portal'), '/employee-portal');
 assert.equal(getAppTabFromPath('/employee-portal'), 'employee-portal');
 assert.equal(getPathForAppTab('work-shift-groups'), '/work-shift-groups');
 assert.equal(getAppTabFromPath('/work-shift-groups'), 'work-shift-groups');
+assert.equal(getPathForAppTab('email-template-setup'), '/email-template-setup');
+assert.equal(getAppTabFromPath('/email-template-setup'), 'email-template-setup');
 assert.equal(getAppTabFromPath('/employee-portal/demo'), 'employee-portal');
 assert.equal(getAppTabFromPath('/employee-directory/'), 'directory');
 assert.equal(getAppTabFromPath('/hire-onboarding/onboarding-portal'), 'hire-onboarding');

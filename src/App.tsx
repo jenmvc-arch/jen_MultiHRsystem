@@ -82,6 +82,7 @@ import FormsDirectoryView from './components/FormsDirectoryView';
 import HireOnboardingView from './components/HireOnboardingView';
 import DepartmentRoleView from './components/DepartmentRoleView';
 import SocsoConfigAdminView from './components/SocsoConfigAdminView';
+import EmailTemplateSetupView from './components/EmailTemplateSetupView';
 const EmployeePortalView = React.lazy(() => import('./components/EmployeePortalView'));
 const EmployeeRequestsView = React.lazy(() => import('./components/EmployeeRequestsView'));
 import AppAccessSettingsPreview from './components/AppAccessSettingsPreview';
@@ -317,6 +318,7 @@ export default function App() {
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [currentUserMustChangePassword, setCurrentUserMustChangePassword] = useState(false);
   const isEmployeePortalDemoPath = window.location.pathname.startsWith('/employee-portal/demo');
+  const isAccountPreview = new URLSearchParams(window.location.search).get('accountPreview') === '1';
   const isEmployeeAccount = isEmployeePortalRole(currentUserRole);
   const employeePortalQueryEmployeeId = new URLSearchParams(window.location.search).get('employeeId') || 'EMP-84729';
 
@@ -2313,7 +2315,7 @@ export default function App() {
     action: 'process' | 'publish' | 'unpublish',
   ): Promise<PayrollActionResult[]> => {
     const records = payrollRecords2026.filter(record => recordIds.includes(record.id));
-    if (isSupabaseConfigured) {
+    if (isSupabaseConfigured && !isAccountPreview) {
       const response = await updatePayrollStatus(recordIds, action);
       return applyPayrollActionResults(response.results, action);
     }
@@ -2347,7 +2349,7 @@ export default function App() {
   const handleSendPayslipEmails = async (
     recordIds: string[],
   ): Promise<PayrollActionResult[]> => {
-    if (isSupabaseConfigured) {
+    if (isSupabaseConfigured && !isAccountPreview) {
       const response = await sendPayslipEmails(recordIds);
       return applyPayrollActionResults(response.results, 'email');
     }
@@ -3202,6 +3204,16 @@ export default function App() {
               activeEntityId={activeEntityId}
               employees={filteredEmployees}
               onUpdateEmployee={handleUpdateEmployeeSalary}
+            />
+          )}
+
+          {currentTab === 'email-template-setup' && (
+            <EmailTemplateSetupView
+              activeEntityId={activeEntityId}
+              entities={entities}
+              currentUserName={currentUserName}
+              currentUserEmail={currentUserEmail}
+              onShowNotification={triggerNotification}
             />
           )}
 

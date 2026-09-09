@@ -1,6 +1,11 @@
 import nodemailer, { Transporter } from 'nodemailer';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildTemplate } from './templates.js';
+import { renderPlainTextAsHtml } from './templates.js';
+import {
+  EMAIL_TEMPLATE_PLACEHOLDER_VALUES,
+  extractEmailTemplatePlaceholders,
+} from '../../../src/lib/emailTemplateTypes.js';
 import {
   EmailDeliveryResult,
   EmailTemplateInput,
@@ -18,8 +23,36 @@ const RETRYABLE_CODES = new Set([
 export interface EmailServiceOptions {
   transporter?: Transporter;
   db?: SupabaseClient;
+  templateDb?: SupabaseClient;
   sleep?: (milliseconds: number) => Promise<void>;
 }
+
+export interface EmailTemplateContext {
+  entityId?: string;
+  entityName?: string;
+}
+
+const buildTemplateValues = (
+  data: Record<string, unknown>,
+  context: EmailTemplateContext,
+) => {
+  const values: Record<string, unknown> = {};
+  EMAIL_TEMPLATE_PLACEHOLDER_VALUES.forEach((key) => {
+    values[key] = '';
+  });
+  Object.assign(values, data);
+  Object.assign(values, {
+    employee_name: data.employee_name ?? data.name ?? '',
+    entity_name: data.entity_name ?? data.entityName ?? context.entityName ?? '',
+    date: data.date ?? new Date().toLocaleDateString('en-GB'),
+    payslip_type: data.payslip_type ?? data.payslipType ?? '',
+    payroll_month: data.payroll_month ?? data.payrollMonth ?? '',
+    payroll_year: data.payroll_year ?? data.payrollYear ?? '',
+    action_link: data.action_link ?? data.actionLink ?? '',
+    request_subject: data.request_subject ?? data.subject ?? '',
+  });
+  return values;
+};
 
 const getConfig = () => {
   const user = process.env.GMAIL_USER;
@@ -116,8 +149,53 @@ export const createEmailService = (options: EmailServiceOptions = {}) => {
     recipient: string,
     data: Record<string, unknown>,
     attachments?: EmailTemplateInput['attachments'],
+    context: EmailTemplateContext = {},
   ) => {
-    const template = buildTemplate(type, data);
+    let template = buildTemplate(type, data);
+    const templateDb = options.templateDb;
+    if (templateDb) {
+      try {
+        const { data: rows, error } = await templateDb
+          .from('email_templates')
+          .select('entity_id,subject_template,body_template,is_active')
+          .eq('assigned_function', type)
+          .eq('is_active', true);
+        if (!error) {
+          const entityId = String(context.entityId || '').trim();
+          const configured = (rows || []).find((row: any) => (
+            entityId && String(row.entity_id || '') === entityId
+          )) || (rows || []).find((row: any) => !row.entity_id);
+          if (configured) {
+            const values = buildTemplateValues(data, context);
+            const replace = (value: string) => value.replace(
+              /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g,
+              (_match, key) => String(values[key] ?? ''),
+            );
+            const subject = replace(String(configured.subject_template || '')).replace(/[\r\n]/g, ' ').trim();
+            const body = replace(String(configured.body_template || ''));
+            const subjectPlaceholders = extractEmailTemplatePlaceholders(String(configured.subject_template || ''));
+            const bodyPlaceholders = extractEmailTemplatePlaceholders(String(configured.body_template || ''));
+            if (
+              subject
+              && body.trim()
+              && [...subjectPlaceholders, ...bodyPlaceholders].every((key) => (
+                Object.prototype.hasOwnProperty.call(values, key)
+              ))
+            ) {
+              template = {
+                subject,
+                text: body,
+                html: renderPlainTextAsHtml(body),
+              };
+            }
+          }
+        } else if (!/email_templates|schema cache|could not find the table/i.test(error.message || '')) {
+          console.warn('[Email Template] Template lookup failed:', error.message);
+        }
+      } catch (error: any) {
+        console.warn('[Email Template] Template lookup skipped:', error?.message || error);
+      }
+    }
     return send({
       type,
       recipient,
@@ -137,4 +215,6 @@ export const sendEmailTemplate = async (
   data: Record<string, unknown>,
   db?: SupabaseClient,
   attachments?: EmailTemplateInput['attachments'],
-) => createEmailService({ db }).sendTemplate(type, recipient, data, attachments);
+  context?: EmailTemplateContext,
+  templateDb?: SupabaseClient,
+) => createEmailService({ db, templateDb }).sendTemplate(type, recipient, data, attachments, context);

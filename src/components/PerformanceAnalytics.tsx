@@ -211,14 +211,14 @@ export default function PerformanceAnalytics({
   const activeCycleName = reviewCycles.find(c => c.id === selectedCycleId)?.name || 'Annual Review 2026';
 
   return (
-    <div className="space-y-6 text-xs animate-in fade-in duration-300">
+    <div className="space-y-5 text-xs animate-in fade-in duration-300">
       
       {/* Overview Cards (Bento style) */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         
         {/* Metric 1 */}
-        <div className="bg-white p-5 rounded-lg border border-neutral-border shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-primary/10 text-primary rounded-lg">
+        <div className="flex items-center gap-4 rounded-2xl border border-neutral-border bg-white p-5 shadow-sm">
+          <div className="rounded-xl bg-primary/10 p-3 text-primary">
             <TrendingUp className="w-5 h-5" />
           </div>
           <div className="text-left">
@@ -233,22 +233,22 @@ export default function PerformanceAnalytics({
         </div>
 
         {/* Metric 2 */}
-        <div className="bg-white p-5 rounded-lg border border-neutral-border shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-purple-100 text-purple-700 rounded-lg">
+        <div className="flex items-center gap-4 rounded-2xl border border-neutral-border bg-white p-5 shadow-sm">
+          <div className="rounded-xl bg-primary/10 p-3 text-primary">
             <Target className="w-5 h-5" />
           </div>
           <div className="text-left">
             <span className="text-on-surface-variant text-[11px] font-bold uppercase tracking-wider block">Target Attainment</span>
-            <span className="text-2xl font-bold text-purple-700 mt-1 block">{overallAttainment}%</span>
+            <span className="mt-1 block text-2xl font-bold text-primary">{overallAttainment}%</span>
             <div className="w-24 bg-neutral-100 h-1.5 rounded-full mt-1.5 overflow-hidden">
-              <div className="bg-purple-600 h-full rounded-full" style={{ width: `${overallAttainment}%` }} />
+              <div className="h-full rounded-full bg-primary" style={{ width: `${overallAttainment}%` }} />
             </div>
           </div>
         </div>
 
         {/* Metric 3 */}
-        <div className="bg-white p-5 rounded-lg border border-neutral-border shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-green-100 text-green-700 rounded-lg">
+        <div className="flex items-center gap-4 rounded-2xl border border-neutral-border bg-white p-5 shadow-sm">
+          <div className="rounded-xl bg-green-100 p-3 text-green-700">
             <CheckCircle2 className="w-5 h-5" />
           </div>
           <div className="text-left">
@@ -263,8 +263,8 @@ export default function PerformanceAnalytics({
         </div>
 
         {/* Metric 4 */}
-        <div className="bg-white p-5 rounded-lg border border-neutral-border shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-amber-100 text-amber-700 rounded-lg">
+        <div className="flex items-center gap-4 rounded-2xl border border-neutral-border bg-white p-5 shadow-sm">
+          <div className="rounded-xl bg-amber-100 p-3 text-amber-700">
             <Award className="w-5 h-5" />
           </div>
           <div className="text-left">
@@ -280,10 +280,10 @@ export default function PerformanceAnalytics({
       </div>
 
       {/* Row 1: Departmental Trends & Average Appraisal Core Scores */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         
         {/* Trend Area Chart */}
-        <div className="bg-white p-5 border border-neutral-border rounded-lg shadow-sm flex flex-col justify-between">
+        <div className="flex flex-col justify-between rounded-2xl border border-neutral-border bg-white p-5 shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <div className="text-left">
               <h3 className="font-bold text-sm text-on-surface flex items-center gap-1.5">
@@ -342,7 +342,7 @@ export default function PerformanceAnalytics({
         </div>
 
         {/* Competency Radar & Average Appraisal Details */}
-        <div className="bg-white p-5 border border-neutral-border rounded-lg shadow-sm flex flex-col justify-between">
+        <div className="flex flex-col justify-between rounded-2xl border border-neutral-border bg-white p-5 shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <div className="text-left">
               <h3 className="font-bold text-sm text-on-surface flex items-center gap-1.5">
@@ -366,8 +366,8 @@ export default function PerformanceAnalytics({
                   <Radar 
                     name="Completed Appraisal" 
                     dataKey="score" 
-                    stroke="#8b5cf6" 
-                    fill="#8b5cf6" 
+                    stroke="#b3261e"
+                    fill="#b3261e"
                     fillOpacity={0.25} 
                   />
                   <Tooltip contentStyle={{ fontSize: '11px', textAlign: 'left' }} />
@@ -401,10 +401,10 @@ export default function PerformanceAnalytics({
       </div>
 
       {/* Row 2: Target Attainment & Appraisal Scores Distribution */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         
         {/* Company Target Attainment (Bar Chart) */}
-        <div className="bg-white p-5 border border-neutral-border rounded-lg shadow-sm flex flex-col justify-between">
+        <div className="flex flex-col justify-between rounded-2xl border border-neutral-border bg-white p-5 shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <div className="text-left">
               <h3 className="font-bold text-sm text-on-surface flex items-center gap-1.5">
@@ -443,7 +443,7 @@ export default function PerformanceAnalytics({
         </div>
 
         {/* Rating Distribution (Bar Chart) */}
-        <div className="bg-white p-5 border border-neutral-border rounded-lg shadow-sm flex flex-col justify-between">
+        <div className="flex flex-col justify-between rounded-2xl border border-neutral-border bg-white p-5 shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <div className="text-left">
               <h3 className="font-bold text-sm text-on-surface flex items-center gap-1.5">

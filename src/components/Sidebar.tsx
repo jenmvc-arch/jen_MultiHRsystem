@@ -20,7 +20,8 @@ import {
   UserPlus,
   Tags,
   Clock3,
-  MessageSquareText
+  MessageSquareText,
+  Mail
 } from 'lucide-react';
 import { AppTab, CorporateEntity } from '../types';
 import { getDirectLogoUrl } from '../data';
@@ -62,6 +63,7 @@ export default function Sidebar({
     { id: 'department-role' as AppTab, label: 'Department & Roles', icon: Tags },
     { id: 'tax-settings' as AppTab, label: 'Tax Compliance (LHDN)', icon: Percent },
     { id: 'forms-directory' as AppTab, label: 'Forms Directory', icon: ClipboardList },
+    { id: 'email-template-setup' as AppTab, label: 'Email Template Setup', icon: Mail },
     { id: 'reports' as AppTab, label: 'Reports & Borang', icon: FileText },
   ];
 

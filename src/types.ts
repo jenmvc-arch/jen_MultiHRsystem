@@ -22,7 +22,24 @@ export type AppTab =
   | 'forms-directory'
   | 'hire-onboarding'
   | 'department-role'
-  | 'socso-config';
+  | 'socso-config'
+  | 'email-template-setup';
+
+export type EmailTemplateScope = 'entity' | 'global';
+
+export interface EmailTemplate {
+  id: string;
+  entityId?: string;
+  name: string;
+  assignedFunction: string;
+  subjectTemplate: string;
+  bodyTemplate: string;
+  isActive: boolean;
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface CorporateEntity {
   id: string; // Mapped to name (company name) - ENT ID removed from DB
