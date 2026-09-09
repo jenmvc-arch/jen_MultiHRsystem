@@ -2,6 +2,14 @@ import { Employee } from '../types';
 
 export type LeaveRequestStatus = 'Pending' | 'Approved' | 'Rejected';
 
+export interface LeaveRequestAttachment {
+  name: string;
+  type: 'image/jpeg' | 'image/png' | 'application/pdf';
+  size: number;
+  path?: string;
+  url?: string;
+}
+
 export interface LeaveRequest {
   id: string;
   entityId?: string;
@@ -20,6 +28,7 @@ export interface LeaveRequest {
   excessDays?: number;
   payrollMonth?: number;
   payrollYear?: number;
+  attachment?: LeaveRequestAttachment;
 }
 
 export type LeaveDeductionRule =

@@ -80,6 +80,25 @@ export default function PayslipDocumentView({
     ...(activePayrollRecord?.displaySettingsSnapshot || getPayrollDocumentDisplaySettings(activeEmployee)),
     ...(displaySettingsOverride || {})
   };
+  if (String(userRole).toLowerCase() === 'employee') {
+    Object.assign(displaySettings, {
+      showDesignation: true,
+      showDepartment: true,
+      showEmail: true,
+      showNricPassport: true,
+      showTin: true,
+      showEpfNumber: true,
+      showDateJoined: true,
+      showLastWorkingDay: true,
+      showBankAccount: true,
+      showCompanyAddress: true,
+      showEarningsDetails: true,
+      showDeductionDetails: true,
+      showEmployerContributions: true,
+      showYtdSummary: true,
+      showNotesFooter: true,
+    });
+  }
   if (!documentProfile.statutoryEnabled) {
     displaySettings.showEpfNumber = false;
     displaySettings.showEmployerContributions = false;
@@ -268,7 +287,7 @@ export default function PayslipDocumentView({
           month={payMonth}
           year={payYear}
           payrollRecordOverride={activePayrollRecord || undefined}
-          displaySettingsOverride={displaySettingsOverride}
+          displaySettingsOverride={displaySettings}
         />
       );
       const blob = await pdf(doc).toBlob();

@@ -584,7 +584,29 @@ export const loadEmployeePortalBootstrap = async (req: any): Promise<EmployeePor
   };
 };
 
-const mapLeaveRequest = (row: any): LeaveRequest => toCamel(row) as LeaveRequest;
+const LEAVE_REQUEST_SELECT = 'id,entity_id,employee_id,employee_name,leave_type_id,leave_type,start_date,end_date,total_days,reason,status,applied_date,approved_at,approved_by,excess_days,payroll_month,payroll_year,attachment_path,attachment_name,attachment_type,attachment_size,created_at,updated_at';
+const LEAVE_ATTACHMENT_TYPES = new Set(['image/jpeg', 'image/png', 'application/pdf']);
+const LEAVE_ATTACHMENT_MAX_SIZE = 5 * 1024 * 1024;
+
+const mapLeaveRequest = (row: any): LeaveRequest => {
+  const mapped = toCamel(row) as LeaveRequest & {
+    attachmentPath?: string;
+    attachmentName?: string;
+    attachmentType?: string;
+    attachmentSize?: number;
+    attachmentUrl?: string;
+  };
+  if (mapped.attachmentName || mapped.attachmentPath) {
+    mapped.attachment = {
+      name: mapped.attachmentName || 'Supporting document',
+      type: (mapped.attachmentType || 'application/pdf') as 'image/jpeg' | 'image/png' | 'application/pdf',
+      size: Number(mapped.attachmentSize || 0),
+      path: mapped.attachmentPath,
+      url: mapped.attachmentUrl,
+    };
+  }
+  return mapped;
+};
 
 const validateAndCalculateLeaveRequest = async (context: any, input: {
   leaveTypeId: string;
@@ -687,7 +709,7 @@ export const loadEmployeeLeaveRequests = async (req: any) => {
   const context = await getEmployeeContext(req);
   const { data, error } = await context.employeeAdmin
     .from('leave_requests')
-    .select('id,entity_id,employee_id,employee_name,leave_type_id,leave_type,start_date,end_date,total_days,reason,status,applied_date,approved_at,approved_by,excess_days,payroll_month,payroll_year,created_at,updated_at')
+    .select(LEAVE_REQUEST_SELECT)
     .eq('employee_id', context.employeeId)
     .order('applied_date', { ascending: false });
   if (error) {
@@ -696,7 +718,16 @@ export const loadEmployeeLeaveRequests = async (req: any) => {
     }
     throw new Error(`Employee leave requests could not be loaded: ${error.message}`);
   }
-  return { requests: (data || []).map(mapLeaveRequest) };
+  const requests = await Promise.all((data || []).map(async (row: any) => {
+    if (row.attachment_path) {
+      const signed = await context.employeeAdmin.storage
+        .from('hr-documents')
+        .createSignedUrl(row.attachment_path, 60 * 60 * 24);
+      if (!signed.error && signed.data?.signedUrl) row.attachment_url = signed.data.signedUrl;
+    }
+    return mapLeaveRequest(row);
+  }));
+  return { requests };
 };
 
 export const loadEmployeeLeaveWorkspace = async (req: any) => {
@@ -738,7 +769,7 @@ export const loadEmployeeLeaveWorkspace = async (req: any) => {
     select('leave_groups', 'id,entity_id,name,description,policy_id,carry_over_id,public_holiday_group_ids,enabled'),
     select('leave_group_items', 'id,entity_id,group_id,leave_type_id,policy_id,carry_over_id,entitlement_days,enabled'),
     select('employee_leave_group_assignments', 'id,entity_id,employee_id,group_id,active,assigned_at', [['employee_id', context.employeeId]]),
-    select('leave_requests', 'id,entity_id,employee_id,employee_name,leave_type_id,leave_type,start_date,end_date,total_days,reason,status,applied_date,approved_at,approved_by,excess_days,payroll_month,payroll_year,created_at,updated_at', [['employee_id', context.employeeId]]),
+    select('leave_requests', `${LEAVE_REQUEST_SELECT}`, [['employee_id', context.employeeId]]),
     select('leave_balance_ledger', 'id,entity_id,employee_id,leave_type_id,leave_type,entry_type,source_type,source_id,quantity,expires_at,occurred_at,notes,created_at', [['employee_id', context.employeeId]]),
     select('leave_payroll_deductions', 'id,entity_id,employee_id,leave_request_id,payroll_month,payroll_year,leave_days,daily_rate,amount,status,synced_at,reason,created_at,updated_at', [['employee_id', context.employeeId]]),
     select('work_shift_groups', 'id,entity_id,name,description,enabled,weekly_hours,weekly_hours_warning'),
@@ -804,6 +835,8 @@ export const createEmployeeLeaveRequest = async (req: any) => {
   if (!leaveType || !leaveTypeId || !startDate || !endDate || !reason || reason.length > 2000) {
     throw serviceError('A complete leave request is required.');
   }
+  const attachmentInput = body.attachment && typeof body.attachment === 'object' ? body.attachment : null;
+  let attachmentPath = '';
   const { entityId, totalDays } = await validateAndCalculateLeaveRequest(context, {
     leaveTypeId,
     leaveType,
@@ -811,9 +844,28 @@ export const createEmployeeLeaveRequest = async (req: any) => {
     endDate,
     reason,
   });
+  if (attachmentInput) {
+    const contentType = String(attachmentInput.contentType || '').trim().toLowerCase();
+    const fileName = String(attachmentInput.fileName || '').trim();
+    const encoded = String(attachmentInput.base64 || '').replace(/^data:[^;]+;base64,/, '');
+    if (!fileName || !LEAVE_ATTACHMENT_TYPES.has(contentType) || !encoded) {
+      throw serviceError('Only JPG, PNG, or PDF attachments are supported.');
+    }
+    const attachmentBuffer = Buffer.from(encoded, 'base64');
+    if (!attachmentBuffer.length || attachmentBuffer.length > LEAVE_ATTACHMENT_MAX_SIZE) {
+      throw serviceError('Attachments must be 5 MB or smaller.');
+    }
+    const safeName = fileName.replace(/[^a-z0-9._-]+/gi, '_').slice(-120) || 'attachment';
+    attachmentPath = `leave-attachments/${context.employeeId}/${Date.now()}-${safeName}`;
+    const upload = await context.employeeAdmin.storage
+      .from('hr-documents')
+      .upload(attachmentPath, attachmentBuffer, { contentType, upsert: false });
+    if (upload.error) throw new Error(`Leave attachment upload failed: ${upload.error.message}`);
+  }
   const idempotencyKey = getIdempotencyKey(req, `leave:${context.employeeId}`);
+  const requestId = `LR-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const rpcResult = await context.employeeAdmin.rpc('create_leave_request', {
-    p_id: `LR-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    p_id: requestId,
     p_entity_id: entityId,
     p_employee_id: context.employeeId,
     p_employee_name: context.employee.name,
@@ -841,7 +893,7 @@ export const createEmployeeLeaveRequest = async (req: any) => {
       : await context.employeeAdmin
         .from('leave_requests')
         .insert({
-        id: `LR-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        id: requestId,
         entity_id: entityId,
         employee_id: context.employeeId,
         employee_name: context.employee.name,
@@ -855,12 +907,39 @@ export const createEmployeeLeaveRequest = async (req: any) => {
         applied_date: new Date().toISOString().slice(0, 10),
         idempotency_key: idempotencyKey,
         })
-        .select('id,entity_id,employee_id,employee_name,leave_type_id,leave_type,start_date,end_date,total_days,reason,status,applied_date,approved_at,approved_by,excess_days,payroll_month,payroll_year,created_at,updated_at')
+        .select(LEAVE_REQUEST_SELECT)
         .single();
     data = fallback.data;
     error = fallback.error;
   }
   if (error || !data) throw new Error(`Employee leave request could not be created: ${error?.message || 'unknown error'}`);
+  if (attachmentPath) {
+    const contentType = String(attachmentInput.contentType).toLowerCase();
+    const fileName = String(attachmentInput.fileName).trim();
+    const attachmentSize = Buffer.from(String(attachmentInput.base64).replace(/^data:[^;]+;base64,/, ''), 'base64').length;
+    const updated = await context.employeeAdmin
+      .from('leave_requests')
+      .update({
+        attachment_path: attachmentPath,
+        attachment_name: fileName,
+        attachment_type: contentType,
+        attachment_size: attachmentSize,
+      })
+      .eq('id', data.id)
+      .eq('employee_id', context.employeeId)
+      .select(LEAVE_REQUEST_SELECT)
+      .single();
+    if (updated.error || !updated.data) {
+      throw new Error(`Leave attachment metadata could not be saved: ${updated.error?.message || 'unknown error'}`);
+    }
+    data = updated.data;
+  }
+  if (data.attachment_path) {
+    const signed = await context.employeeAdmin.storage
+      .from('hr-documents')
+      .createSignedUrl(data.attachment_path, 60 * 60 * 24);
+    if (!signed.error && signed.data?.signedUrl) data.attachment_url = signed.data.signedUrl;
+  }
   return { request: mapLeaveRequest(data) };
 };
 

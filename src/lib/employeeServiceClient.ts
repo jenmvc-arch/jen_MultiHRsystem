@@ -9,7 +9,7 @@ import {
   EmployeeServiceRequestPriority,
   EmployeeServiceRequestStatus,
 } from './employeeServiceTypes';
-import { LeaveRequest } from './leaveDomain';
+import { LeaveRequest, LeaveRequestAttachment } from './leaveDomain';
 import { LeaveWorkspaceData } from './leaveDomain';
 import { employeeSupabase, supabase } from './supabaseClient';
 
@@ -106,6 +106,12 @@ export const createEmployeeLeaveRequest = (input: {
   endDate: string;
   totalDays: number;
   reason: string;
+  attachment?: {
+    fileName: string;
+    contentType: LeaveRequestAttachment['type'];
+    size: number;
+    base64: string;
+  };
 }) => request<{ request: LeaveRequest }>('/api/employee-portal/leave-requests', {
   method: 'POST',
   headers: { 'X-Idempotency-Key': idempotencyKey() },

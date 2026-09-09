@@ -34,6 +34,7 @@ import {
   ExternalLink,
   ClipboardList,
   Pencil,
+  Paperclip,
 } from 'lucide-react';
 import {
   AppraisalAccessGrant,
@@ -66,6 +67,7 @@ import {
   LeaveGroup,
   LeavePayrollDeduction,
   LeaveRequest,
+  LeaveRequestAttachment,
   OffInLieuRequest,
   PublicHoliday,
   PublicHolidayGroup,
@@ -170,12 +172,19 @@ const sortPayrollRecords = (records: PayrollRecord2026[]) =>
 const currency = (value: number) =>
   value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const maskSensitive = (value?: string | null) => {
-  const normalized = String(value || '').trim();
-  if (!normalized) return 'Not provided';
-  if (normalized.length <= 4) return '****';
-  return `${'*'.repeat(Math.max(4, normalized.length - 4))}${normalized.slice(-4)}`;
-};
+const LEAVE_ATTACHMENT_MAX_SIZE = 5 * 1024 * 1024;
+const LEAVE_ATTACHMENT_TYPES: LeaveRequestAttachment['type'][] = ['image/jpeg', 'image/png', 'application/pdf'];
+
+const readFileAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const value = String(reader.result || '');
+    const separator = value.indexOf(',');
+    resolve(separator >= 0 ? value.slice(separator + 1) : value);
+  };
+  reader.onerror = () => reject(new Error('The attachment could not be read.'));
+  reader.readAsDataURL(file);
+});
 
 const getEmployeeProfileDraft = (employee: Employee) => ({
   contactNumber: employee.contactNumber || '',
@@ -230,6 +239,8 @@ export default function EmployeePortalView({
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [selectedPayslip, setSelectedPayslip] = useState<{ month: number; year: number; record?: PayrollRecord2026 } | null>(null);
+  const [selectedPayrollYear, setSelectedPayrollYear] = useState(new Date().getFullYear());
+  const [selectedTaxYear, setSelectedTaxYear] = useState(new Date().getFullYear());
   const [expandedSupportRequestId, setExpandedSupportRequestId] = useState<string | null>(null);
   const [leaveConfigs, setLeaveConfigs] = useState<LeaveConfig[]>(DEFAULT_LEAVE_CONFIGS);
   const [leavePolicies, setLeavePolicies] = useState<LeaveConditioningPolicy[]>([]);
@@ -254,6 +265,8 @@ export default function EmployeePortalView({
   const [leaveStartDate, setLeaveStartDate] = useState(getGmt8DateString());
   const [leaveEndDate, setLeaveEndDate] = useState(getGmt8DateString());
   const [leaveReason, setLeaveReason] = useState('');
+  const [leaveAttachment, setLeaveAttachment] = useState<File | null>(null);
+  const [leaveAttachmentError, setLeaveAttachmentError] = useState<string | null>(null);
   const [leaveStatusFilter, setLeaveStatusFilter] = useState<'All' | LeaveRequest['status']>('All');
   const [supportRequests, setSupportRequests] = useState<SupportRequest[]>([]);
   const [employeeProfileChanges, setEmployeeProfileChanges] = useState<EmployeeProfileChangeRequest[]>(profileChangeRequests);
@@ -313,6 +326,122 @@ export default function EmployeePortalView({
     ? calculatePayslip(selectedEmployee, latestPayrollMonth, latestPayrollYear, { companyEmployees: employees })
     : null;
   const latestPayrollDate = latestPayrollRecord?.paymentDate || selectedEmployee?.paymentDate || `${latestPayrollYear}-${String(latestPayrollMonth).padStart(2, '0')}-28`;
+  const payrollYears = useMemo(() => {
+    const years = new Set<number>();
+    employeePayrollHistory.forEach((record) => {
+      const year = Number(record.payrollYear);
+      if (Number.isFinite(year)) years.add(year);
+    });
+    years.add(Number(latestPayrollYear));
+    return [...years].sort((left, right) => right - left);
+  }, [employeePayrollHistory, latestPayrollYear]);
+  const selectedYearRecords = useMemo(
+    () => employeePayrollHistory.filter((record) => record.payrollYear === selectedPayrollYear),
+    [employeePayrollHistory, selectedPayrollYear]
+  );
+  const selectedYearSummary = useMemo(() => {
+    const records = selectedYearRecords.map((record) => ({
+      record,
+      breakdown: selectedEmployee
+        ? calculatePayslip(selectedEmployee, record.payrollMonth, record.payrollYear, { companyEmployees: employees })
+        : null,
+    }));
+    const summary = records.reduce(
+      (totals, item) => {
+        if (!item.breakdown || !selectedEmployee) return totals;
+        return {
+          basicSalary: totals.basicSalary + getPayrollBasicSalary(selectedEmployee, item.record.payrollMonth, item.record.payrollYear),
+          deductions: totals.deductions + item.breakdown.totalDeductions,
+          employerContributions: totals.employerContributions + (item.breakdown.totalEmployerContributions - item.breakdown.hrdCorpVal),
+          taxPcb: totals.taxPcb + item.breakdown.taxPcbVal,
+          netPay: totals.netPay + item.breakdown.netPay,
+        };
+      },
+      { basicSalary: 0, deductions: 0, employerContributions: 0, taxPcb: 0, netPay: 0 }
+    );
+    if (records.length > 0 || !latestPayrollBreakdown || selectedPayrollYear !== latestPayrollYear) {
+      return { ...summary, periodCount: records.length };
+    }
+    return {
+      basicSalary: getPayrollBasicSalary(selectedEmployee!, latestPayrollMonth, latestPayrollYear),
+      deductions: latestPayrollBreakdown.totalDeductions,
+      employerContributions: latestPayrollBreakdown.totalEmployerContributions - latestPayrollBreakdown.hrdCorpVal,
+      taxPcb: latestPayrollBreakdown.taxPcbVal,
+      netPay: latestPayrollBreakdown.netPay,
+      periodCount: 1,
+    };
+  }, [
+    employees,
+    latestPayrollBreakdown,
+    latestPayrollMonth,
+    latestPayrollYear,
+    selectedEmployee,
+    selectedPayrollYear,
+    selectedYearRecords,
+  ]);
+
+  useEffect(() => {
+    if (payrollYears.length > 0 && !payrollYears.includes(selectedPayrollYear)) {
+      setSelectedPayrollYear(payrollYears[0]);
+    }
+  }, [payrollYears, selectedPayrollYear]);
+  useEffect(() => {
+    if (payrollYears.length > 0 && !payrollYears.includes(selectedTaxYear)) {
+      setSelectedTaxYear(payrollYears[0]);
+    }
+  }, [payrollYears, selectedTaxYear]);
+
+  const taxYearRecords = useMemo(
+    () => employeePayrollHistory.filter((record) => record.payrollYear === selectedTaxYear),
+    [employeePayrollHistory, selectedTaxYear]
+  );
+  const taxFileSummary = useMemo(() => {
+    const emptySummary = {
+      grossPay: 0,
+      epf: 0,
+      pcb: 0,
+      incentives: 0,
+      periods: 0,
+    };
+    if (!selectedEmployee) return emptySummary;
+    if (taxYearRecords.length > 0) {
+      return taxYearRecords.reduce((summary, record) => {
+        const breakdown = calculatePayslip(selectedEmployee, record.payrollMonth, record.payrollYear, { companyEmployees: employees });
+        return {
+          grossPay: summary.grossPay + breakdown.grossPay,
+          epf: summary.epf + breakdown.epfEmployeeValue,
+          pcb: summary.pcb + breakdown.taxPcbVal,
+          incentives: summary.incentives
+            + Number(record.bonusAmount || 0)
+            + Number(record.commissionAmount || 0)
+            + Number(record.awsAmount || 0)
+            + Number(record.compensationAmount || 0),
+          periods: summary.periods + 1,
+        };
+      }, emptySummary);
+    }
+    if (selectedTaxYear === latestPayrollYear && latestPayrollBreakdown) {
+      return {
+        grossPay: latestPayrollBreakdown.grossPay,
+        epf: latestPayrollBreakdown.epfEmployeeValue,
+        pcb: latestPayrollBreakdown.taxPcbVal,
+        incentives: Number(selectedEmployee.bonusAmount || 0)
+          + Number(selectedEmployee.commissionAmount || 0)
+          + Number(selectedEmployee.awsAmount || 0)
+          + Number(selectedEmployee.compensationAmount || 0),
+        periods: 1,
+      };
+    }
+    return emptySummary;
+  }, [
+    employees,
+    employeePayrollHistory,
+    latestPayrollBreakdown,
+    latestPayrollYear,
+    selectedEmployee,
+    selectedTaxYear,
+    taxYearRecords,
+  ]);
 
   const activeReviewCycle = reviewCycles.find((cycle) => cycle.id === selectedReviewCycleId)
     || reviewCycles[0]
@@ -867,7 +996,28 @@ export default function EmployeePortalView({
     setIsEditingProfile(false);
   };
 
-  const handleSubmitLeave = (event: React.FormEvent) => {
+  const handleLeaveAttachmentChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = '';
+    setLeaveAttachmentError(null);
+    if (!file) {
+      setLeaveAttachment(null);
+      return;
+    }
+    if (!LEAVE_ATTACHMENT_TYPES.includes(file.type as LeaveRequestAttachment['type'])) {
+      setLeaveAttachmentError('Upload a JPG, PNG, or PDF file.');
+      setLeaveAttachment(null);
+      return;
+    }
+    if (file.size > LEAVE_ATTACHMENT_MAX_SIZE) {
+      setLeaveAttachmentError('Attachments must be 5 MB or smaller.');
+      setLeaveAttachment(null);
+      return;
+    }
+    setLeaveAttachment(file);
+  };
+
+  const handleSubmitLeave = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedEmployee) return;
     if (!leaveReason.trim()) {
@@ -881,21 +1031,15 @@ export default function EmployeePortalView({
     setLeaveFormError(null);
     setIsSubmittingLeave(true);
     const totalDays = leavePreview.totalDays;
-    const newRequest: LeaveRequest = {
-      id: `LR-${Date.now()}`,
-      entityId: selectedEmployee.entityId,
-      employeeId: selectedEmployee.id,
-      employeeName: selectedEmployee.name,
-      leaveTypeId: selectedLeaveConfig?.id,
-      leaveType,
-      startDate: leaveStartDate,
-      endDate: leaveEndDate,
-      totalDays,
-      reason: leaveReason.trim(),
-      status: 'Pending',
-      appliedDate: getGmt8DateString(),
-    };
     const submit = async () => {
+      const attachment = leaveAttachment
+        ? {
+          fileName: leaveAttachment.name,
+          contentType: leaveAttachment.type as LeaveRequestAttachment['type'],
+          size: leaveAttachment.size,
+          base64: await readFileAsBase64(leaveAttachment),
+        }
+        : undefined;
       const created = await createEmployeeLeaveRequest({
         leaveTypeId: String(selectedLeaveConfig?.id || ''),
         leaveType,
@@ -903,9 +1047,12 @@ export default function EmployeePortalView({
         endDate: leaveEndDate,
         totalDays,
         reason: leaveReason.trim(),
+        attachment,
       });
       setAllLeaveRequests((previous) => [created.request, ...previous]);
       setLeaveReason('');
+      setLeaveAttachment(null);
+      setLeaveAttachmentError(null);
       onShowNotification('Leave request submitted', `Your ${leaveType.toLowerCase()} request is now pending review.`);
     };
     void submit().catch((error) => {
@@ -1641,15 +1788,15 @@ export default function EmployeePortalView({
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">Bank account</p>
-                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{maskSensitive(selectedEmployee.accountNo)}</p>
+                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{selectedEmployee.accountNo || 'Not provided'}</p>
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">Tax number</p>
-                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{maskSensitive(selectedEmployee.taxNumber)}</p>
+                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{selectedEmployee.taxNumber || 'Not provided'}</p>
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-on-surface-variant">EPF number</p>
-                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{maskSensitive(selectedEmployee.epfNumber)}</p>
+                <p className="mt-1 font-mono text-sm font-semibold text-on-background">{selectedEmployee.epfNumber || 'Not provided'}</p>
               </div>
             </div>
           </div>
@@ -1903,18 +2050,31 @@ export default function EmployeePortalView({
   const renderPayslips = () => (
     <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
       <section className={`${cardClass} p-6`}>
-        <div className="flex items-center justify-between border-b border-neutral-border/70 pb-4">
+        <div className="flex flex-col gap-4 border-b border-neutral-border/70 pb-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="text-xl font-bold text-on-background">Payslips</h2>
-            <p className="text-xs text-on-surface-variant">Review monthly payslips and open the printable PDF viewer.</p>
+            <p className="text-xs text-on-surface-variant">Browse monthly cards by year and open the printable PDF viewer.</p>
           </div>
-          <button
-            onClick={() => openPayslip(latestPayrollRecord || undefined)}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
-          >
-            <Download className="h-4 w-4" />
-            Latest PDF
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-2 text-xs font-semibold text-on-surface-variant">
+              <span>Year</span>
+              <select
+                value={selectedPayrollYear}
+                onChange={(event) => setSelectedPayrollYear(Number(event.target.value))}
+                className="rounded-xl border border-neutral-border bg-white px-3 py-2 text-sm font-bold text-on-background outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+                aria-label="Payslip year"
+              >
+                {payrollYears.map((year) => <option key={year} value={year}>{year}</option>)}
+              </select>
+            </label>
+            <button
+              onClick={() => openPayslip(latestPayrollRecord || undefined)}
+              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+            >
+              <Download className="h-4 w-4" />
+              Latest PDF
+            </button>
+          </div>
         </div>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -1932,60 +2092,89 @@ export default function EmployeePortalView({
           </div>
         </div>
 
-        <div className="mt-6 overflow-hidden rounded-xl border border-neutral-border">
-          {employeePayrollHistory.length > 0 ? employeePayrollHistory.map((record) => {
+        <div className="mt-6">
+          {selectedYearRecords.length > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+            {selectedYearRecords.map((record) => {
             const breakdown = calculatePayslip(selectedEmployee, record.payrollMonth, record.payrollYear, { companyEmployees: employees });
             const documentProfile = getPayrollDocumentProfile(selectedEmployee);
             return (
               <button
                 key={record.id}
                 onClick={() => openPayslip(record)}
-                className={`w-full border-b border-neutral-border p-4 text-left transition-colors last:border-b-0 hover:bg-surface-container-low active:translate-y-px ${record.id === latestPayrollRecord?.id ? 'bg-primary/[0.04]' : 'bg-white'}`}
+                className={`group rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary/35 hover:bg-surface-container-low active:translate-y-px ${record.id === latestPayrollRecord?.id ? 'border-primary/35 bg-primary/[0.04]' : 'border-neutral-border bg-white'}`}
               >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-on-background">
-                      {new Date(record.payrollYear, record.payrollMonth - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                    </p>
-                    <p className="mt-1 text-xs text-on-surface-variant">
-                      {record.documentType || documentProfile.documentType} · Paid {formatToDDMMMYYYY(record.paymentDate || latestPayrollDate)}
-                    </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <FileText className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-bold text-on-background">
+                        {new Date(record.payrollYear, record.payrollMonth - 1).toLocaleDateString('en-US', { month: 'long' })}
+                      </p>
+                      <p className="text-[11px] font-semibold text-on-surface-variant">
+                        {record.documentType || documentProfile.documentType}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between gap-4 sm:justify-end">
-                    <span className="text-sm font-bold text-on-background">RM {currency(breakdown.netPay)}</span>
-                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary">View <ChevronRight className="h-4 w-4" /></span>
-                  </div>
+                  <span className="text-sm font-bold text-on-background">RM {currency(breakdown.netPay)}</span>
+                </div>
+                <div className="mt-5 flex items-center justify-between border-t border-neutral-border/70 pt-3">
+                  <span className="text-[11px] text-on-surface-variant">
+                    Paid {formatToDDMMMYYYY(record.paymentDate || latestPayrollDate)}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary transition-transform group-hover:translate-x-0.5">
+                    View payslip <ChevronRight className="h-4 w-4" />
+                  </span>
                 </div>
               </button>
             );
-          }) : (
+            })}
+            </div>
+          ) : (
             <div className="rounded-xl border border-dashed border-neutral-border bg-surface-container-low p-8 text-center">
               <FileDown className="mx-auto h-6 w-6 text-primary" />
-              <p className="mt-3 text-sm font-semibold text-on-background">No archived payroll records yet.</p>
-              <p className="mt-1 text-xs text-on-surface-variant">A current payroll snapshot will still be available for preview.</p>
-              <button
-                onClick={() => openPayslip(undefined)}
-                className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
-              >
-                Open current payslip
-              </button>
+              <p className="mt-3 text-sm font-semibold text-on-background">
+                {selectedPayrollYear === latestPayrollYear ? 'No archived payroll records yet.' : `No payslips found for ${selectedPayrollYear}.`}
+              </p>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                {selectedPayrollYear === latestPayrollYear
+                  ? 'A current payroll snapshot will still be available for preview.'
+                  : 'Try another year to view available monthly payslip cards.'}
+              </p>
+              {selectedPayrollYear === latestPayrollYear && (
+                <button
+                  onClick={() => openPayslip(undefined)}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+                >
+                  Open current payslip
+                </button>
+              )}
             </div>
           )}
         </div>
       </section>
 
       <section className={`${cardClass} p-6`}>
-        <h3 className="text-base font-bold text-on-background">Quick breakdown</h3>
-        <p className="mt-1 text-xs text-on-surface-variant">
-          This summary is based on your latest payroll data.
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold text-on-background">YTD summary</h3>
+            <p className="mt-1 text-xs text-on-surface-variant">
+              Year-to-date totals for {selectedPayrollYear}, across {selectedYearSummary.periodCount} pay period{selectedYearSummary.periodCount === 1 ? '' : 's'}.
+            </p>
+          </div>
+          <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-primary">
+            {selectedPayrollYear} YTD
+          </span>
+        </div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           {[
-            { label: 'Basic salary', value: latestPayrollBreakdown && selectedEmployee ? `RM ${currency(getPayrollBasicSalary(selectedEmployee, latestPayrollMonth, latestPayrollYear))}` : '—' },
-            { label: 'Total deductions', value: latestPayrollBreakdown ? `RM ${currency(latestPayrollBreakdown.totalDeductions)}` : '—' },
-            { label: 'Visible employer contributions', value: latestPayrollBreakdown ? `RM ${currency(latestPayrollBreakdown.totalEmployerContributions - latestPayrollBreakdown.hrdCorpVal)}` : '—' },
-            { label: 'Tax / PCB', value: latestPayrollBreakdown ? `RM ${currency(latestPayrollBreakdown.taxPcbVal)}` : '—' },
+            { label: 'Basic salary', value: selectedYearSummary.periodCount ? `RM ${currency(selectedYearSummary.basicSalary)}` : '—' },
+            { label: 'Total deductions', value: selectedYearSummary.periodCount ? `RM ${currency(selectedYearSummary.deductions)}` : '—' },
+            { label: 'Visible employer contributions', value: selectedYearSummary.periodCount ? `RM ${currency(selectedYearSummary.employerContributions)}` : '—' },
+            { label: 'Tax / PCB', value: selectedYearSummary.periodCount ? `RM ${currency(selectedYearSummary.taxPcb)}` : '—' },
           ].map((item) => (
             <div key={item.label} className="rounded-2xl border border-neutral-border bg-[#fff8f1] p-4">
               <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-on-surface-variant">{item.label}</p>
@@ -1994,7 +2183,16 @@ export default function EmployeePortalView({
           ))}
         </div>
 
-        <div className="mt-6 rounded-3xl border border-neutral-border bg-[#fffaf4] p-5">
+        <div className="mt-4 rounded-2xl border border-primary/15 bg-primary/5 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-semibold text-on-surface-variant">Net pay received</span>
+            <span className="text-lg font-bold text-primary">
+              {selectedYearSummary.periodCount ? `RM ${currency(selectedYearSummary.netPay)}` : '—'}
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-3xl border border-neutral-border bg-[#fffaf4] p-5">
           <div className="flex items-center gap-2 text-primary">
             <MessageSquareText className="h-4 w-4" />
             <span className="text-[10px] font-bold uppercase tracking-[0.35em]">Need a PDF?</span>
@@ -2119,6 +2317,62 @@ export default function EmployeePortalView({
                 placeholder="Tell HR why you need this leave"
               />
             </label>
+            <div className="space-y-2">
+              <label htmlFor="leave-attachment" className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">
+                Supporting document <span className="font-normal normal-case tracking-normal">(optional)</span>
+              </label>
+              <div className="rounded-2xl border border-dashed border-neutral-border bg-surface-container-low p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <Paperclip className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-on-background">
+                        {leaveAttachment ? leaveAttachment.name : 'Attach medical or supporting document'}
+                      </p>
+                      <p className="mt-1 text-xs text-on-surface-variant">
+                        {leaveAttachment
+                          ? `${leaveAttachment.type.split('/')[1].toUpperCase()} · ${(leaveAttachment.size / 1024 / 1024).toFixed(2)} MB`
+                          : 'JPG, PNG, or PDF · max 5 MB'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {leaveAttachment && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLeaveAttachment(null);
+                          setLeaveAttachmentError(null);
+                        }}
+                        className="rounded-lg px-3 py-2 text-xs font-semibold text-on-surface-variant hover:bg-white hover:text-primary"
+                      >
+                        Remove
+                      </button>
+                    )}
+                    <label
+                      htmlFor="leave-attachment"
+                      className="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-xl border border-primary/25 bg-white px-3 py-2 text-xs font-semibold text-primary transition-colors hover:border-primary/50 hover:bg-primary/[0.04]"
+                    >
+                      {leaveAttachment ? 'Replace file' : 'Choose file'}
+                    </label>
+                    <input
+                      id="leave-attachment"
+                      type="file"
+                      accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+                      onChange={handleLeaveAttachmentChange}
+                      className="sr-only"
+                    />
+                  </div>
+                </div>
+              </div>
+              {leaveAttachmentError && (
+                <p className="border-l-2 border-error bg-red-50 px-3 py-2 text-sm text-red-900" role="alert">
+                  {leaveAttachmentError}
+                </p>
+              )}
+            </div>
             <div className="border border-primary/15 bg-primary/[0.04] px-4 py-4">
               <div className="grid grid-cols-2 gap-y-4 text-sm sm:grid-cols-4 sm:gap-4">
                 <div><p className="text-xs text-on-surface-variant">Eligible leave days</p><p className="mt-1 font-bold text-on-background">{leavePreview.totalDays}</p></div>
@@ -2127,14 +2381,14 @@ export default function EmployeePortalView({
                 <div><p className="text-xs text-on-surface-variant">Balance after request</p><p className={`mt-1 font-bold ${leavePreview.remainingAfter !== null && leavePreview.remainingAfter < 0 ? 'text-error' : 'text-on-background'}`}>{leavePreview.remainingAfter === null ? '—' : `${leavePreview.remainingAfter} days`}</p></div>
               </div>
             </div>
-            {(leaveFormError || leavePreview.error) && (
+            {(leaveFormError || leavePreview.error || leaveAttachmentError) && (
               <p className="border-l-2 border-error bg-red-50 px-3 py-2 text-sm text-red-900" role="alert">
-                {leaveFormError || leavePreview.error}
+                {leaveFormError || leavePreview.error || leaveAttachmentError}
               </p>
             )}
             <button
               type="submit"
-              disabled={isSubmittingLeave || Boolean(leavePreview.error)}
+              disabled={isSubmittingLeave || Boolean(leavePreview.error) || Boolean(leaveAttachmentError)}
               className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-container active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Send className="h-4 w-4" />
@@ -2178,6 +2432,21 @@ export default function EmployeePortalView({
                   </span>
                 </div>
                 <p className="mt-3 text-xs leading-5 text-on-surface-variant">{request.totalDays} eligible day{request.totalDays === 1 ? '' : 's'} · {request.reason}</p>
+                {request.attachment && (
+                  <a
+                    href={request.attachment.url || '#'}
+                    target={request.attachment.url ? '_blank' : undefined}
+                    rel={request.attachment.url ? 'noreferrer' : undefined}
+                    onClick={(event) => {
+                      if (!request.attachment?.url) event.preventDefault();
+                    }}
+                    className={`mt-3 inline-flex items-center gap-2 text-xs font-semibold ${request.attachment.url ? 'text-primary hover:underline' : 'cursor-default text-on-surface-variant'}`}
+                  >
+                    <Paperclip className="h-3.5 w-3.5" />
+                    {request.attachment.name}
+                    <span className="font-normal">({request.attachment.type === 'application/pdf' ? 'PDF' : 'Image'})</span>
+                  </a>
+                )}
               </div>
             )) : (
               <div className="rounded-xl border border-dashed border-neutral-border bg-surface-container-low p-8 text-center text-sm text-on-surface-variant">
@@ -2364,78 +2633,144 @@ export default function EmployeePortalView({
   };
 
   const renderDocuments = () => (
-    <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-      <section className={`${cardClass} p-6`}>
-        <div className="flex items-center justify-between border-b border-neutral-border/70 pb-4">
+    <div className="space-y-6">
+      <section className={`${cardClass} overflow-hidden`}>
+        <div className="flex flex-col gap-5 border-b border-neutral-border/70 bg-[#fffaf4] p-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-xl font-bold text-on-background">Documents</h2>
-            <p className="text-xs text-on-surface-variant">Find payslips, handbook access, and uploaded records.</p>
+            <div className="flex items-center gap-2 text-primary">
+              <FileText className="h-4 w-4" />
+              <span className="text-[10px] font-bold uppercase tracking-[0.35em]">Tax File</span>
+            </div>
+            <h2 className="mt-2 text-2xl font-bold text-on-background">Your annual tax documents</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-on-surface-variant">
+              Review your tax number and annual payroll summary. Official forms appear here when HR uploads them.
+            </p>
           </div>
-          <FileText className="h-5 w-5 text-primary" />
+          <label className="block w-full sm:w-40">
+            <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface-variant">Tax year</span>
+            <select
+              value={selectedTaxYear}
+              onChange={(event) => setSelectedTaxYear(Number(event.target.value))}
+              className="w-full rounded-xl border border-neutral-border bg-white px-3 py-2.5 text-sm font-semibold text-on-background outline-none focus:border-primary"
+            >
+              {payrollYears.map((year) => <option key={year} value={year}>{year}</option>)}
+            </select>
+          </label>
         </div>
 
-        <div className="mt-6 space-y-3">
-          <button
-            onClick={() => setActiveSection('onboarding')}
-            className="flex min-h-20 w-full items-center justify-between border border-neutral-border bg-surface-container-low p-4 text-left transition-colors hover:bg-white"
-          >
-            <div>
-              <p className="font-semibold text-on-background">Handbook & compliance</p>
-              <p className="text-xs text-on-surface-variant">Open the onboarding tab for handbook signing, quiz, and completion records.</p>
+        <div className="grid gap-4 p-6 md:grid-cols-3">
+          <div className="rounded-2xl border border-neutral-border bg-white p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Tax number</p>
+              <ShieldCheck className="h-4 w-4 text-primary" />
             </div>
-            <BookOpen className="h-4 w-4 text-primary" />
-          </button>
-          <div className="rounded-xl border border-neutral-border bg-surface-container-low p-4">
-            <p className="font-semibold text-on-background">Tax / HR forms</p>
-            <p className="mt-1 text-xs text-on-surface-variant">Use Support for ad-hoc document requests or corrections.</p>
+            <p className="mt-4 text-lg font-bold text-on-background">
+              {selectedEmployee.taxNumber || 'Not provided'}
+            </p>
+            <p className="mt-1 text-xs text-on-surface-variant">Keep this detail accurate for HR filings.</p>
+          </div>
+          <div className="rounded-2xl border border-neutral-border bg-white p-5">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">Gross pay</p>
+            <p className="mt-4 text-lg font-bold text-on-background">RM {currency(taxFileSummary.grossPay)}</p>
+            <p className="mt-1 text-xs text-on-surface-variant">{taxFileSummary.periods} published payroll period{taxFileSummary.periods === 1 ? '' : 's'}</p>
+          </div>
+          <div className="rounded-2xl border border-neutral-border bg-white p-5">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-on-surface-variant">PCB deducted</p>
+            <p className="mt-4 text-lg font-bold text-on-background">RM {currency(taxFileSummary.pcb)}</p>
+            <p className="mt-1 text-xs text-on-surface-variant">Based on published payroll records.</p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 border-t border-neutral-border/70 p-6 md:grid-cols-2">
+          <div className="rounded-2xl border border-neutral-border bg-[#fff8f1] p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-base font-bold text-on-background">EA Form</p>
+                <p className="mt-1 text-xs leading-5 text-on-surface-variant">Annual employment income statement for {selectedTaxYear}.</p>
+              </div>
+              <FileDown className="h-5 w-5 shrink-0 text-primary" />
+            </div>
+            <div className="mt-5 grid grid-cols-3 gap-3 text-xs">
+              <div><p className="text-on-surface-variant">Gross</p><p className="mt-1 font-bold text-on-background">RM {currency(taxFileSummary.grossPay)}</p></div>
+              <div><p className="text-on-surface-variant">EPF</p><p className="mt-1 font-bold text-on-background">RM {currency(taxFileSummary.epf)}</p></div>
+              <div><p className="text-on-surface-variant">PCB</p><p className="mt-1 font-bold text-on-background">RM {currency(taxFileSummary.pcb)}</p></div>
+            </div>
+            <p className="mt-5 border-t border-neutral-border/70 pt-3 text-xs text-on-surface-variant">
+              {taxFileSummary.periods > 0 ? 'Annual summary available' : 'Awaiting HR upload'}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-neutral-border bg-[#fff8f1] p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-base font-bold text-on-background">CP58</p>
+                <p className="mt-1 text-xs leading-5 text-on-surface-variant">Incentive and commission income statement for {selectedTaxYear}.</p>
+              </div>
+              <FileDown className="h-5 w-5 shrink-0 text-primary" />
+            </div>
+            <p className="mt-6 text-2xl font-bold text-on-background">RM {currency(taxFileSummary.incentives)}</p>
+            <p className="mt-1 text-xs text-on-surface-variant">Recorded incentive income</p>
+            <p className="mt-5 border-t border-neutral-border/70 pt-3 text-xs text-on-surface-variant">
+              {taxFileSummary.incentives > 0 ? 'Summary available' : 'No CP58 income recorded'}
+            </p>
           </div>
         </div>
       </section>
 
-      <section className={`${cardClass} p-6`}>
-        <h3 className="text-base font-bold text-on-background">Uploaded records</h3>
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
-          {[
-            { label: 'IC Front', url: selectedEmployee.icFrontUrl },
-            { label: 'IC Back', url: selectedEmployee.icBackUrl },
-            { label: 'Education cert', url: selectedEmployee.educationCertUrl },
-          ].map((document) => (
-            <div key={document.label} className="rounded-2xl border border-neutral-border bg-[#fff8f1] p-4">
-              <p className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">{document.label}</p>
-              {document.url ? (
-                <a
-                  href={document.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-primary"
-                >
-                  Open file <ExternalLink className="h-4 w-4" />
-                </a>
-              ) : (
-                <p className="mt-3 text-xs text-on-surface-variant">Not uploaded</p>
-              )}
+      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <section className={`${cardClass} p-6`}>
+          <div className="flex items-center justify-between border-b border-neutral-border/70 pb-4">
+            <div>
+              <h2 className="text-xl font-bold text-on-background">Handbook & compliance</h2>
+              <p className="text-xs text-on-surface-variant">Signing, quiz, and completion records live in Onboarding.</p>
             </div>
-          ))}
-        </div>
-
-        <div className="mt-6 rounded-3xl border border-neutral-border bg-[#fffaf4] p-5">
-          <div className="flex items-center gap-2 text-primary">
-            <BookOpen className="h-4 w-4" />
-            <span className="text-[10px] font-bold uppercase tracking-[0.35em]">Need handbook access?</span>
+            <BookOpen className="h-5 w-5 text-primary" />
           </div>
-          <p className="mt-3 text-sm text-on-surface-variant">
-            The handbook and compliance quiz now live in the Onboarding tab, alongside your completion record.
-          </p>
           <button
             type="button"
             onClick={() => setActiveSection('onboarding')}
-            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+            className="mt-5 flex min-h-20 w-full items-center justify-between rounded-xl border border-neutral-border bg-surface-container-low p-4 text-left transition-colors hover:bg-white"
           >
-            <ClipboardList className="h-4 w-4" />
-            Open onboarding
+            <span className="text-sm font-semibold text-on-background">Open onboarding handbook</span>
+            <ArrowUpRight className="h-4 w-4 text-primary" />
           </button>
-        </div>
-      </section>
+        </section>
+
+        <section className={`${cardClass} p-6`}>
+          <div className="flex items-center justify-between border-b border-neutral-border/70 pb-4">
+            <div>
+              <h3 className="text-base font-bold text-on-background">Uploaded records</h3>
+              <p className="text-xs text-on-surface-variant">Personal documents currently held in your profile.</p>
+            </div>
+            <ClipboardList className="h-5 w-5 text-primary" />
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            {[
+              { label: 'IC Front', url: selectedEmployee.icFrontUrl },
+              { label: 'IC Back', url: selectedEmployee.icBackUrl },
+              { label: 'Education cert', url: selectedEmployee.educationCertUrl },
+            ].map((document) => (
+              <div key={document.label} className="rounded-2xl border border-neutral-border bg-[#fff8f1] p-4">
+                <p className="text-xs font-bold uppercase tracking-[0.25em] text-on-surface-variant">{document.label}</p>
+                {document.url ? (
+                  <a
+                    href={document.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-primary"
+                  >
+                    Open file <ExternalLink className="h-4 w-4" />
+                  </a>
+                ) : (
+                  <p className="mt-3 text-xs text-on-surface-variant">Not uploaded</p>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="mt-5 text-xs text-on-surface-variant">
+            Need another document or a correction? Use Support to contact HR.
+          </p>
+        </section>
+      </div>
     </div>
   );
 
