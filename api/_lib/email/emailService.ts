@@ -5,6 +5,7 @@ import { renderPlainTextAsHtml } from './templates.js';
 import {
   EMAIL_TEMPLATE_PLACEHOLDER_VALUES,
   extractEmailTemplatePlaceholders,
+  replaceEmailTemplatePlaceholders,
 } from '../../../src/lib/emailTemplateTypes.js';
 import {
   EmailDeliveryResult,
@@ -46,6 +47,7 @@ const buildTemplateValues = (
     entity_name: data.entity_name ?? data.entityName ?? context.entityName ?? '',
     date: data.date ?? new Date().toLocaleDateString('en-GB'),
     payslip_type: data.payslip_type ?? data.payslipType ?? '',
+    'pay type': data['pay type'] ?? data.pay_type ?? data.payType ?? '',
     payroll_month: data.payroll_month ?? data.payrollMonth ?? '',
     payroll_year: data.payroll_year ?? data.payrollYear ?? '',
     action_link: data.action_link ?? data.actionLink ?? '',
@@ -167,9 +169,9 @@ export const createEmailService = (options: EmailServiceOptions = {}) => {
           )) || (rows || []).find((row: any) => !row.entity_id);
           if (configured) {
             const values = buildTemplateValues(data, context);
-            const replace = (value: string) => value.replace(
-              /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g,
-              (_match, key) => String(values[key] ?? ''),
+            const replace = (value: string) => replaceEmailTemplatePlaceholders(
+              value,
+              (key) => String(values[key] ?? ''),
             );
             const subject = replace(String(configured.subject_template || '')).replace(/[\r\n]/g, ' ').trim();
             const body = replace(String(configured.body_template || ''));

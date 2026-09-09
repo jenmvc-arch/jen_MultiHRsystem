@@ -3,6 +3,7 @@ import {
   EMAIL_TEMPLATE_PLACEHOLDER_VALUES,
   extractEmailTemplatePlaceholders,
   getEmailTemplateFunctionLabel,
+  replaceEmailTemplatePlaceholders,
 } from './lib/emailTemplateTypes';
 import { createEmailService } from '../api/_lib/email/emailService.js';
 
@@ -53,13 +54,29 @@ const rendered = await service.sendTemplate(
 );
 
 assert.deepEqual(
-  extractEmailTemplatePlaceholders('Hello {{ employee_name }} on {{date}}: {{details}}'),
-  ['employee_name', 'date', 'details'],
+  extractEmailTemplatePlaceholders('Hello {{ employee_name }} on {{date}}: {{details lowercase}} / {{pay type}}'),
+  ['employee_name', 'date', 'details', 'pay type'],
 );
 assert.equal(EMAIL_TEMPLATE_PLACEHOLDER_VALUES.has('employee_name'), true);
+assert.equal(EMAIL_TEMPLATE_PLACEHOLDER_VALUES.has('pay type'), true);
 assert.equal(EMAIL_TEMPLATE_PLACEHOLDER_VALUES.has('unknown_value'), false);
+assert.deepEqual(
+  extractEmailTemplatePlaceholders('{{unknown-value}}'),
+  ['unknown-value'],
+);
 assert.equal(getEmailTemplateFunctionLabel('payslip_notification'), 'Payslip Notification');
 assert.equal(getEmailTemplateFunctionLabel('custom:announcement'), 'Custom: announcement');
+assert.equal(
+  replaceEmailTemplatePlaceholders(
+    '{{employee_name uppercase}} / {{pay type}} / {{details lowercase}}',
+    (key) => ({
+      employee_name: 'Alicia Tan',
+      'pay type': 'Salary',
+      details: 'PDF Attached',
+    }[key] || ''),
+  ),
+  'ALICIA TAN / Salary / pdf attached',
+);
 assert.equal(rendered.ok, true);
 assert.equal(sent[0].subject, 'Payslip August for Alicia Tan');
 assert.match(sent[0].html, /&lt;unsafe&gt;/);
@@ -72,8 +89,8 @@ const payslipTemplateQuery: any = {
     return Promise.resolve({
       data: [{
         entity_id: 'ENT-92',
-        subject_template: '{{payslip_type}} - {{payroll_month}} {{payroll_year}}',
-        body_template: '{{employee_name}} / {{entity_name}} / {{details}}',
+        subject_template: '{{payslip_type}} - {{pay type}} - {{payroll_month}} {{payroll_year}}',
+        body_template: '{{employee_name uppercase}} / {{entity_name}} / {{details}}',
         is_active: true,
       }],
       error: null,
@@ -96,6 +113,7 @@ await payslipService.sendTemplate(
   {
     name: 'Alicia Tan',
     payslipType: 'Payslip',
+    payType: 'Salary',
     payrollMonth: 'August',
     payrollYear: '2026',
     entityName: 'Red Point Sdn Bhd',
@@ -104,7 +122,7 @@ await payslipService.sendTemplate(
   undefined,
   { entityId: 'ENT-92', entityName: 'Red Point Sdn Bhd' },
 );
-assert.equal(payslipSent[0].subject, 'Payslip - August 2026');
-assert.match(payslipSent[0].text, /Alicia Tan \/ Red Point Sdn Bhd \/ Payslip PDF attached\./);
+assert.equal(payslipSent[0].subject, 'Payslip - Salary - August 2026');
+assert.match(payslipSent[0].text, /ALICIA TAN \/ Red Point Sdn Bhd \/ Payslip PDF attached\./);
 
 console.log('Email template tests passed.');

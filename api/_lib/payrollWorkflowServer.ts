@@ -164,6 +164,10 @@ const payrollTypeLabel = (row: any) => {
     : 'Payslip';
 };
 
+const payrollPayTypeLabel = (row: any) => (
+  payrollTypeLabel(row) === 'Payment Voucher' ? 'Payment' : 'Salary'
+);
+
 export const sendPayrollPayslipEmails = async (req: any) => {
   const actor = await requirePermission(req, 'payroll.manage');
   const recordIds = readRecordIds(req.body?.recordIds);
@@ -209,6 +213,7 @@ export const sendPayrollPayslipEmails = async (req: any) => {
           employee_name: employee.name,
           entity_name: employeeEntity?.name || row.entity_name || employee.entity_id,
           payslip_type: payrollTypeLabel(row),
+          'pay type': payrollPayTypeLabel(row),
           payroll_month: payrollMonthLabel(Number(row.payroll_month), Number(row.payroll_year)),
           payroll_year: String(row.payroll_year || ''),
           details: `${row.payroll_month}/${row.payroll_year} payslip attached.`,

@@ -19,6 +19,7 @@ import {
   extractEmailTemplatePlaceholders,
   getEmailTemplateFunctionLabel,
   normalizeEmailTemplate,
+  replaceEmailTemplatePlaceholders,
 } from '../lib/emailTemplateTypes';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
 
@@ -42,6 +43,7 @@ const BUILT_IN_PREVIEW_VALUES: Record<string, string> = {
   date: '9 September 2026',
   entity_name: 'Red Point Sdn Bhd',
   payslip_type: 'Payslip',
+  'pay type': 'Salary',
   payroll_month: 'August',
   payroll_year: '2026',
   details: 'Your payroll document is ready for review.',
@@ -94,7 +96,7 @@ const escapePreviewHtml = (value: string) => value
   .replace(/'/g, '&#039;');
 
 const renderPreview = (value: string) => {
-  const text = value.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => (
+  const text = replaceEmailTemplatePlaceholders(value, (key) => (
     BUILT_IN_PREVIEW_VALUES[key] ?? `{{${key}}}`
   ));
   return escapePreviewHtml(text).replace(/\r?\n/g, '<br />');
@@ -640,15 +642,32 @@ function PlaceholderBar({ onInsert }: { onInsert: (value: string) => void }) {
     <div className="mt-2 flex flex-wrap items-center gap-1.5">
       <span className="mr-1 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Insert:</span>
       {EMAIL_TEMPLATE_PLACEHOLDERS.map((placeholder) => (
-        <button
-          type="button"
-          key={placeholder.value}
-          onClick={() => onInsert(placeholder.value)}
-          className="rounded-full border border-neutral-border bg-white px-2 py-1 text-[10px] font-semibold text-primary transition hover:border-primary hover:bg-primary/5"
-          title={`Insert {{${placeholder.value}}}`}
-        >
-          {`{{${placeholder.value}}}`}
-        </button>
+        <div key={placeholder.value} className="inline-flex overflow-hidden rounded-full border border-neutral-border bg-white">
+          <button
+            type="button"
+            onClick={() => onInsert(placeholder.value)}
+            className="px-2 py-1 text-[10px] font-semibold text-primary transition hover:bg-primary/5"
+            title={`Insert {{${placeholder.value}}}`}
+          >
+            {`{{${placeholder.value}}}`}
+          </button>
+          <button
+            type="button"
+            onClick={() => onInsert(`${placeholder.value} uppercase`)}
+            className="border-l border-neutral-border px-1.5 py-1 text-[9px] font-bold uppercase text-on-surface-variant transition hover:bg-primary/5 hover:text-primary"
+            title={`Insert uppercase {{${placeholder.value}}}`}
+          >
+            AA
+          </button>
+          <button
+            type="button"
+            onClick={() => onInsert(`${placeholder.value} lowercase`)}
+            className="border-l border-neutral-border px-1.5 py-1 text-[9px] font-bold lowercase text-on-surface-variant transition hover:bg-primary/5 hover:text-primary"
+            title={`Insert lowercase {{${placeholder.value}}}`}
+          >
+            aa
+          </button>
+        </div>
       ))}
     </div>
   );

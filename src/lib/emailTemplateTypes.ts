@@ -18,6 +18,7 @@ export const EMAIL_TEMPLATE_PLACEHOLDERS = [
   { value: 'date', label: 'Date' },
   { value: 'entity_name', label: 'Entity name' },
   { value: 'payslip_type', label: 'Payslip type' },
+  { value: 'pay type', label: 'Pay type' },
   { value: 'payroll_month', label: 'Payroll month' },
   { value: 'payroll_year', label: 'Payroll year' },
   { value: 'details', label: 'Details' },
@@ -34,14 +35,46 @@ export const EMAIL_TEMPLATE_PLACEHOLDER_VALUES: Set<string> = new Set(
   EMAIL_TEMPLATE_PLACEHOLDERS.map((placeholder) => placeholder.value),
 );
 
+export type EmailTemplatePlaceholderCase = 'original' | 'uppercase' | 'lowercase';
+
+const PLACEHOLDER_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
+
+export const normalizeEmailTemplatePlaceholderKey = (key: string) => (
+  key.trim().toLowerCase().replace(/\s+/g, ' ') === 'pay_type'
+    ? 'pay type'
+    : key.trim().toLowerCase().replace(/\s+/g, ' ')
+);
+
+const parsePlaceholderToken = (token: string) => {
+  const match = token.trim().match(/^(.*?)(?:\s+(uppercase|lowercase))?$/i);
+  return {
+    key: normalizeEmailTemplatePlaceholderKey(match?.[1] || ''),
+    casing: (match?.[2]?.toLowerCase() || 'original') as EmailTemplatePlaceholderCase,
+  };
+};
+
+export const parseEmailTemplatePlaceholders = (value: string) => (
+  [...value.matchAll(PLACEHOLDER_PATTERN)].map((match) => parsePlaceholderToken(match[1]))
+);
+
+export const replaceEmailTemplatePlaceholders = (
+  value: string,
+  resolve: (key: string) => string,
+) => value.replace(PLACEHOLDER_PATTERN, (_match, token: string) => {
+  const { key, casing } = parsePlaceholderToken(token);
+  const resolved = resolve(key);
+  return casing === 'uppercase' ? resolved.toUpperCase()
+    : casing === 'lowercase' ? resolved.toLowerCase()
+      : resolved;
+});
+
 export const getEmailTemplateFunctionLabel = (value: string) => (
   EMAIL_TEMPLATE_FUNCTIONS.find((item) => item.value === value)?.label
   || (value.startsWith('custom:') ? `Custom: ${value.slice(7)}` : value)
 );
 
 export const extractEmailTemplatePlaceholders = (value: string) => (
-  [...value.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)]
-    .map((match) => match[1])
+  parseEmailTemplatePlaceholders(value).map((placeholder) => placeholder.key)
 );
 
 export const normalizeEmailTemplate = (raw: any): EmailTemplate => ({
