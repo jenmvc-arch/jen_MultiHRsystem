@@ -156,15 +156,13 @@ const payrollMonthLabel = (month: number, year: number) => {
     : parsed.toLocaleString('en-US', { month: 'long', timeZone: 'UTC' });
 };
 
-const payrollTypeLabel = (row: any) => (
-  String(
-    row.payout_title
-      || row.compensation_label
-      || (row.payout_kind && row.payout_kind !== 'regular'
-        ? row.payout_kind
-        : 'Monthly Payslip'),
-  )
-);
+const payrollTypeLabel = (row: any) => {
+  if (row.document_type === 'Payment Voucher') return 'Payment Voucher';
+  if (row.document_type === 'Payslip') return 'Payslip';
+  return row.statutory_treatment === 'without_statutory'
+    ? 'Payment Voucher'
+    : 'Payslip';
+};
 
 export const sendPayrollPayslipEmails = async (req: any) => {
   const actor = await requirePermission(req, 'payroll.manage');

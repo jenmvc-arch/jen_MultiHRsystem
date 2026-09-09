@@ -42,7 +42,7 @@ const rendered = await service.sendTemplate(
   {
     name: 'Alicia Tan',
     employee_name: 'Alicia Tan',
-    payslipType: 'Monthly Payslip',
+    payslipType: 'Payslip',
     payrollMonth: 'August',
     payrollYear: '2026',
     entityName: 'Red Point Sdn Bhd',
@@ -95,7 +95,7 @@ await payslipService.sendTemplate(
   'employee@example.com',
   {
     name: 'Alicia Tan',
-    payslipType: 'Monthly Payslip',
+    payslipType: 'Payslip',
     payrollMonth: 'August',
     payrollYear: '2026',
     entityName: 'Red Point Sdn Bhd',
@@ -104,7 +104,7 @@ await payslipService.sendTemplate(
   undefined,
   { entityId: 'ENT-92', entityName: 'Red Point Sdn Bhd' },
 );
-assert.equal(payslipSent[0].subject, 'Monthly Payslip - August 2026');
+assert.equal(payslipSent[0].subject, 'Payslip - August 2026');
 assert.match(payslipSent[0].text, /Alicia Tan \/ Red Point Sdn Bhd \/ Payslip PDF attached\./);
 
 console.log('Email template tests passed.');

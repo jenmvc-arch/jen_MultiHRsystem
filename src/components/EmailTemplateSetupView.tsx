@@ -41,7 +41,7 @@ const BUILT_IN_PREVIEW_VALUES: Record<string, string> = {
   employee_name: 'Alicia Tan',
   date: '9 September 2026',
   entity_name: 'Red Point Sdn Bhd',
-  payslip_type: 'Monthly Payslip',
+  payslip_type: 'Payslip',
   payroll_month: 'August',
   payroll_year: '2026',
   details: 'Your payroll document is ready for review.',
@@ -500,7 +500,7 @@ export default function EmailTemplateSetupView({
                 value={draft.name}
                 onChange={(event) => updateDraft({ name: event.target.value })}
                 className="mt-1.5 w-full rounded-xl border border-neutral-border px-3 py-2.5 text-sm font-normal text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
-                placeholder="e.g. Monthly Payslip Ready"
+                placeholder="e.g. Payslip Ready"
               />
             </label>
             <label className="text-xs font-bold text-on-surface-variant">
