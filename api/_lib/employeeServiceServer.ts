@@ -71,7 +71,8 @@ const EMPLOYEE_PORTAL_COLUMNS = [
   'employment_type',
   'marital_status',
   'eligible_for_statutory',
-  'contract_statutory_treatment',
+  // Optional in older production employee schemas. Portal access must not
+  // fail when this payroll-only field has not been migrated yet.
   'payroll_document_display_settings',
   'opt_in_epf',
   'opt_in_socso',
