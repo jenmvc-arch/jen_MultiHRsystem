@@ -72,7 +72,6 @@ import {
   WorkShiftGroup,
   WorkShiftGroupDay,
 } from '../lib/leaveDomain';
-import { loadLeaveWorkspace } from '../lib/leaveService';
 import {
   addEmployeeServiceMessage,
   createEmployeeProfileChangeRequest,
@@ -133,8 +132,6 @@ interface EmployeePortalViewProps {
   notifications?: EmployeeNotification[];
   portalLoadError?: string | null;
   isPortalLoading?: boolean;
-  isPreviewMode?: boolean;
-  previewEmployeeId?: string;
 }
 
 const PORTAL_NAV_ITEMS: Array<{
@@ -164,33 +161,6 @@ const SUPPORT_CATEGORIES = [
   'Confidential complaint',
   'Other',
 ] as EmployeeServiceRequestCategory[];
-
-const readJson = <T,>(key: string, fallback: T): T => {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch (_error) {
-    return fallback;
-  }
-};
-
-const saveJson = (key: string, value: unknown) => {
-  localStorage.setItem(key, JSON.stringify(value));
-};
-
-type PreviewEmployeeOverrides = Partial<Employee>;
-
-const readPreviewEmployeeOverrides = (employeeId: string): PreviewEmployeeOverrides =>
-  readJson<PreviewEmployeeOverrides>(`employee_portal_demo_employee_${employeeId}`, {});
-
-const savePreviewEmployeeOverrides = (employeeId: string, updates: PreviewEmployeeOverrides) => {
-  const key = `employee_portal_demo_employee_${employeeId}`;
-  saveJson(key, {
-    ...readPreviewEmployeeOverrides(employeeId),
-    ...updates,
-  });
-};
 
 const sortPayrollRecords = (records: PayrollRecord2026[]) =>
   [...records].sort((left, right) =>
@@ -246,12 +216,8 @@ export default function EmployeePortalView({
   notifications = [],
   portalLoadError = null,
   isPortalLoading = false,
-  isPreviewMode = false,
-  previewEmployeeId = '',
 }: EmployeePortalViewProps) {
-  const initialActiveSectionKey = isPreviewMode
-    ? 'employee_portal_demo_active_section'
-    : 'employee_portal_active_section';
+  const initialActiveSectionKey = 'employee_portal_active_section';
   const [activeSection, setActiveSection] = useState<PortalSection>(() => {
     const saved = localStorage.getItem(initialActiveSectionKey);
     return PORTAL_NAV_ITEMS.some((item) => item.id === saved)
@@ -259,12 +225,10 @@ export default function EmployeePortalView({
       : 'home';
   });
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState(previewEmployeeId);
   const [selectedReviewCycleId, setSelectedReviewCycleId] = useState(reviewCycles[0]?.id || '');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [profileRevision, setProfileRevision] = useState(0);
   const [selectedPayslip, setSelectedPayslip] = useState<{ month: number; year: number; record?: PayrollRecord2026 } | null>(null);
   const [expandedSupportRequestId, setExpandedSupportRequestId] = useState<string | null>(null);
   const [leaveConfigs, setLeaveConfigs] = useState<LeaveConfig[]>(DEFAULT_LEAVE_CONFIGS);
@@ -314,19 +278,8 @@ export default function EmployeePortalView({
   );
 
   const selectedEmployee = useMemo(() => {
-    if (isPreviewMode) {
-      const previewEmployee = employees.find((employee) => employee.id === selectedEmployeeId)
-        || employeeFromSession
-        || employees[0]
-        || null;
-      if (!previewEmployee) return null;
-      return {
-        ...previewEmployee,
-        ...readPreviewEmployeeOverrides(previewEmployee.id),
-      };
-    }
     return employeeFromSession || null;
-  }, [employees, employeeFromSession, isPreviewMode, profileRevision, selectedEmployeeId]);
+  }, [employeeFromSession]);
 
   const employeeEntity = useMemo(
     () => entities.find((entity) => entity.id === selectedEmployee?.entityId) || entities[0] || null,
@@ -341,10 +294,10 @@ export default function EmployeePortalView({
         selectedEmployee.email &&
         !/^pending-email-\d+@redpoint\.local$/i.test(selectedEmployee.email) &&
         record.employeeEmail.toLowerCase() === selectedEmployee.email.toLowerCase() &&
-        (record.status === 'Published' || (isPreviewMode && !record.status))
+        record.status === 'Published'
       ))
     );
-    const merged = directHistory.filter((record) => isPreviewMode || record.status === 'Published');
+    const merged = directHistory.filter((record) => record.status === 'Published');
     fallbackHistory.forEach((record) => {
       if (!merged.some((existing) => existing.id === record.id)) {
         merged.push(record);
@@ -395,11 +348,7 @@ export default function EmployeePortalView({
     return candidates.filter((candidate) => String(candidate.email || '').toLowerCase() === employeeEmail);
   }, [candidates, selectedEmployee?.email]);
 
-  const storagePrefix = isPreviewMode ? 'employee_portal_demo_' : 'employee_portal_';
-  const leaveStorageKey = selectedEmployee?.entityId ? `${storagePrefix}leave_requests_${selectedEmployee.entityId}` : '';
-  const leaveConfigKey = selectedEmployee?.entityId ? `${storagePrefix}leave_configs_${selectedEmployee.entityId}` : '';
-  const supportStorageKey = selectedEmployee?.id ? `${storagePrefix}employee_support_requests_${selectedEmployee.id}` : '';
-  const activeSectionStorageKey = `${storagePrefix}active_section`;
+  const activeSectionStorageKey = 'employee_portal_active_section';
 
   const copy = {
     employeePortal: 'Employee Site',
@@ -419,7 +368,6 @@ export default function EmployeePortalView({
     serviceUnavailable: 'Employee services are temporarily unavailable.',
     retry: 'Reload',
     secureAccount: 'Secure account',
-    previewMode: 'Preview mode',
   };
   const translateSection = (section: PortalSection) => PORTAL_NAV_ITEMS.find((item) => item.id === section)?.label || copy.home;
   const translateStatus = (status: string) => status;
@@ -437,28 +385,14 @@ export default function EmployeePortalView({
   }, [isMobileNavOpen, isMoreOpen, selectedPayslip]);
 
   useEffect(() => {
-    if (!isPreviewMode) setSupportRequests(serviceRequests);
+    setSupportRequests(serviceRequests);
     setEmployeeProfileChanges(profileChangeRequests);
     setEmployeeNotifications(notifications);
-  }, [isPreviewMode, notifications, profileChangeRequests, serviceRequests]);
+  }, [notifications, profileChangeRequests, serviceRequests]);
 
   useEffect(() => {
     localStorage.setItem(activeSectionStorageKey, activeSection);
   }, [activeSection, activeSectionStorageKey]);
-
-  useEffect(() => {
-    if (!isPreviewMode) {
-      setSelectedEmployeeId('');
-      return;
-    }
-    if (previewEmployeeId && employees.some((employee) => employee.id === previewEmployeeId)) {
-      setSelectedEmployeeId(previewEmployeeId);
-      return;
-    }
-    if (!selectedEmployeeId && employees[0]) {
-      setSelectedEmployeeId(employees[0].id);
-    }
-  }, [employees, isPreviewMode, previewEmployeeId, selectedEmployeeId]);
 
   useEffect(() => {
     if (!reviewCycles.some((cycle) => cycle.id === selectedReviewCycleId)) {
@@ -469,23 +403,14 @@ export default function EmployeePortalView({
   useEffect(() => {
     if (!selectedEmployee?.entityId) return;
     let cancelled = false;
-    const employeeOnly = !isPreviewMode ? { employeeId: selectedEmployee.id } : undefined;
     setIsLeaveWorkspaceLoading(true);
     setLeaveWorkspaceError(null);
     void Promise.all([
-      isPreviewMode
-        ? loadLeaveWorkspace(selectedEmployee.entityId, { ...employeeOnly, preferLocal: true })
-        : loadEmployeeLeaveWorkspace(),
-      !isPreviewMode ? loadEmployeeLeaveRequests() : Promise.resolve(null),
+      loadEmployeeLeaveWorkspace(),
+      loadEmployeeLeaveRequests(),
     ]).then(([workspace, employeeRequests]) => {
       if (cancelled) return;
-      const previewConfigs = isPreviewMode
-        ? readJson<LeaveConfig[]>(leaveConfigKey, workspace.configs)
-        : workspace.configs;
-      const previewRequests = isPreviewMode
-        ? readJson<LeaveRequest[]>(leaveStorageKey, workspace.requests)
-        : employeeRequests?.requests || workspace.requests;
-      const configs = previewConfigs.length > 0 ? previewConfigs : DEFAULT_LEAVE_CONFIGS;
+      const configs = workspace.configs.length > 0 ? workspace.configs : DEFAULT_LEAVE_CONFIGS;
       setLeaveConfigs(configs);
       setLeavePolicies(workspace.policies);
       setLeaveCarryOverSettings(workspace.carryOverSettings);
@@ -499,7 +424,7 @@ export default function EmployeePortalView({
       setLeaveLedgerEntries(workspace.ledgerEntries);
       setOffInLieuRequests(workspace.offInLieuRequests);
       setLeavePayrollDeductions(workspace.payrollDeductions);
-      setAllLeaveRequests(previewRequests);
+      setAllLeaveRequests(employeeRequests?.requests || workspace.requests);
       setLeaveType(configs[0]?.leaveType || 'Annual Leave');
       setLeaveStartDate(getGmt8DateString());
       setLeaveEndDate(getGmt8DateString());
@@ -513,25 +438,16 @@ export default function EmployeePortalView({
     return () => {
       cancelled = true;
     };
-  }, [isPreviewMode, leaveConfigKey, leaveStorageKey, leaveWorkspaceRevision, selectedEmployee?.entityId]);
+  }, [leaveWorkspaceRevision, selectedEmployee?.entityId]);
 
   useEffect(() => {
     if (!selectedEmployee?.id) return;
-    if (!isPreviewMode) {
-      setSupportRequests(serviceRequests);
-      setSupportCategory(SUPPORT_CATEGORIES[0]);
-      setSupportSubject('');
-      setSupportDescription('');
-      setSupportPriority('Normal');
-      return;
-    }
-    const requests = readJson<SupportRequest[]>(supportStorageKey, []);
-    setSupportRequests(requests);
+    setSupportRequests(serviceRequests);
     setSupportCategory(SUPPORT_CATEGORIES[0]);
     setSupportSubject('');
     setSupportDescription('');
     setSupportPriority('Normal');
-  }, [isPreviewMode, selectedEmployee?.id, serviceRequests, supportStorageKey]);
+  }, [selectedEmployee?.id, serviceRequests]);
 
   const [profileDraft, setProfileDraft] = useState({
     contactNumber: '',
@@ -834,20 +750,6 @@ export default function EmployeePortalView({
     '--color-neutral-border': '#cfd6de',
   } as React.CSSProperties;
 
-  const updateLeaveRequests = (next: LeaveRequest[]) => {
-    setAllLeaveRequests(next);
-    if (leaveStorageKey) {
-      saveJson(leaveStorageKey, next);
-    }
-  };
-
-  const updateSupportRequests = (next: SupportRequest[]) => {
-    setSupportRequests(next);
-    if (supportStorageKey) {
-      saveJson(supportStorageKey, next);
-    }
-  };
-
   const handleSaveProfile = async (mode: 'contact' | 'sensitive' | 'all' = 'all') => {
     if (!selectedEmployee || !isEditingProfile) return;
     setProfileSaveError(null);
@@ -896,60 +798,48 @@ export default function EmployeePortalView({
       };
       const shouldSaveContact = mode !== 'sensitive';
       const shouldSubmitSensitive = mode !== 'contact';
-      if (isPreviewMode) {
-        savePreviewEmployeeOverrides(selectedEmployee.id, {
-          ...(shouldSaveContact ? profileUpdates : {}),
-          ...(shouldSubmitSensitive ? {
-            ...requestedBankValues,
-            ...requestedStatutoryValues,
-            ...requestedFamilyValues,
-          } : {}),
-        });
-        setProfileRevision((revision) => revision + 1);
-      } else {
-        const directKeys = Object.keys(profileUpdates) as Array<keyof typeof profileUpdates>;
-        const changedDirectUpdates = Object.fromEntries(
-          directKeys.filter((key) => shouldSaveContact && String(profileUpdates[key] ?? '') !== String(selectedEmployee[key] ?? ''))
-            .map((key) => [key, profileUpdates[key]])
-        ) as Partial<Employee>;
-        if (Object.keys(changedDirectUpdates).length > 0) {
-          await onUpdateEmployee(selectedEmployee.id, changedDirectUpdates);
-        }
+      const directKeys = Object.keys(profileUpdates) as Array<keyof typeof profileUpdates>;
+      const changedDirectUpdates = Object.fromEntries(
+        directKeys.filter((key) => shouldSaveContact && String(profileUpdates[key] ?? '') !== String(selectedEmployee[key] ?? ''))
+          .map((key) => [key, profileUpdates[key]])
+      ) as Partial<Employee>;
+      if (Object.keys(changedDirectUpdates).length > 0) {
+        await onUpdateEmployee(selectedEmployee.id, changedDirectUpdates);
+      }
 
-        const changeRequests: Array<Promise<{ request: EmployeeProfileChangeRequest }>> = [];
-        if (shouldSubmitSensitive && (
-          requestedBankValues.bankName !== String(selectedEmployee.bankName || '')
-          || requestedBankValues.accountNo !== String(selectedEmployee.accountNo || '')
-        )) {
-          changeRequests.push(createEmployeeProfileChangeRequest({
-            changeType: 'bank_details',
-            requestedValues: requestedBankValues,
-          }));
-        }
-        if (shouldSubmitSensitive && (
-          requestedStatutoryValues.taxNumber !== String(selectedEmployee.taxNumber || '')
-          || requestedStatutoryValues.epfNumber !== String(selectedEmployee.epfNumber || '')
-        )) {
-          changeRequests.push(createEmployeeProfileChangeRequest({
-            changeType: 'statutory_details',
-            requestedValues: requestedStatutoryValues,
-          }));
-        }
-        const familyKeys = Object.keys(requestedFamilyValues) as Array<keyof typeof requestedFamilyValues>;
-        if (shouldSubmitSensitive && familyKeys.some((key) => JSON.stringify(requestedFamilyValues[key]) !== JSON.stringify(selectedEmployee[key] ?? (key === 'dependants' ? [] : '')))) {
-          changeRequests.push(createEmployeeProfileChangeRequest({
-            changeType: 'family_details',
-            requestedValues: requestedFamilyValues,
-          }));
-        }
-        if (changeRequests.length > 0) {
-          setIsSubmittingProfileChange(true);
-          const created = await Promise.all(changeRequests);
-          setEmployeeProfileChanges((previous) => [
-            ...created.map((result) => result.request),
-            ...previous,
-          ]);
-        }
+      const changeRequests: Array<Promise<{ request: EmployeeProfileChangeRequest }>> = [];
+      if (shouldSubmitSensitive && (
+        requestedBankValues.bankName !== String(selectedEmployee.bankName || '')
+        || requestedBankValues.accountNo !== String(selectedEmployee.accountNo || '')
+      )) {
+        changeRequests.push(createEmployeeProfileChangeRequest({
+          changeType: 'bank_details',
+          requestedValues: requestedBankValues,
+        }));
+      }
+      if (shouldSubmitSensitive && (
+        requestedStatutoryValues.taxNumber !== String(selectedEmployee.taxNumber || '')
+        || requestedStatutoryValues.epfNumber !== String(selectedEmployee.epfNumber || '')
+      )) {
+        changeRequests.push(createEmployeeProfileChangeRequest({
+          changeType: 'statutory_details',
+          requestedValues: requestedStatutoryValues,
+        }));
+      }
+      const familyKeys = Object.keys(requestedFamilyValues) as Array<keyof typeof requestedFamilyValues>;
+      if (shouldSubmitSensitive && familyKeys.some((key) => JSON.stringify(requestedFamilyValues[key]) !== JSON.stringify(selectedEmployee[key] ?? (key === 'dependants' ? [] : '')))) {
+        changeRequests.push(createEmployeeProfileChangeRequest({
+          changeType: 'family_details',
+          requestedValues: requestedFamilyValues,
+        }));
+      }
+      if (changeRequests.length > 0) {
+        setIsSubmittingProfileChange(true);
+        const created = await Promise.all(changeRequests);
+        setEmployeeProfileChanges((previous) => [
+          ...created.map((result) => result.request),
+          ...previous,
+        ]);
       }
       setIsEditingProfile(false);
       onShowNotification(
@@ -958,9 +848,7 @@ export default function EmployeePortalView({
           ? 'Contact details were saved.'
           : mode === 'sensitive'
             ? 'Sensitive detail changes were submitted for HR approval.'
-            : isPreviewMode
-              ? 'Your profile details were saved in preview mode.'
-              : 'Contact details were saved. Sensitive detail changes are waiting for HR approval.'
+            : 'Contact details were saved. Sensitive detail changes are waiting for HR approval.'
       );
     } catch (error) {
       console.error('[Employee Portal] Profile save failed:', error);
@@ -1008,20 +896,15 @@ export default function EmployeePortalView({
       appliedDate: getGmt8DateString(),
     };
     const submit = async () => {
-      if (isPreviewMode) {
-        const nextRequests = [newRequest, ...allLeaveRequests];
-        updateLeaveRequests(nextRequests);
-      } else {
-        const created = await createEmployeeLeaveRequest({
-          leaveTypeId: String(selectedLeaveConfig?.id || ''),
-          leaveType,
-          startDate: leaveStartDate,
-          endDate: leaveEndDate,
-          totalDays,
-          reason: leaveReason.trim(),
-        });
-        setAllLeaveRequests((previous) => [created.request, ...previous]);
-      }
+      const created = await createEmployeeLeaveRequest({
+        leaveTypeId: String(selectedLeaveConfig?.id || ''),
+        leaveType,
+        startDate: leaveStartDate,
+        endDate: leaveEndDate,
+        totalDays,
+        reason: leaveReason.trim(),
+      });
+      setAllLeaveRequests((previous) => [created.request, ...previous]);
       setLeaveReason('');
       onShowNotification('Leave request submitted', `Your ${leaveType.toLowerCase()} request is now pending review.`);
     };
@@ -1042,33 +925,13 @@ export default function EmployeePortalView({
     setSupportFormError(null);
     setIsSubmittingSupport(true);
     try {
-      if (isPreviewMode) {
-        const now = getGmt8Timestamp();
-        const newRequest: SupportRequest = {
-          id: `SR-${Date.now()}`,
-          employeeId: selectedEmployee.id,
-          employeeEmail: selectedEmployee.email,
-          employeeName: selectedEmployee.name,
-          entityId: selectedEmployee.entityId,
-          category: supportCategory,
-          subject: supportSubject.trim(),
-          description: supportDescription.trim(),
-          priority: supportPriority,
-          status: 'Open',
-          createdAt: now,
-          updatedAt: now,
-          messages: [],
-        };
-        updateSupportRequests([newRequest, ...supportRequests]);
-      } else {
-        const result = await createEmployeeServiceRequest({
-          category: supportCategory,
-          subject: supportSubject.trim(),
-          description: supportDescription.trim(),
-          priority: supportPriority,
-        });
-        setSupportRequests((previous) => [result.request, ...previous]);
-      }
+      const result = await createEmployeeServiceRequest({
+        category: supportCategory,
+        subject: supportSubject.trim(),
+        description: supportDescription.trim(),
+        priority: supportPriority,
+      });
+      setSupportRequests((previous) => [result.request, ...previous]);
       setSupportSubject('');
       setSupportDescription('');
       setSupportPriority('Normal');
@@ -1087,35 +950,15 @@ export default function EmployeePortalView({
     if (!body || isSubmittingReply) return;
     setIsSubmittingReply(true);
     try {
-      if (isPreviewMode) {
-        const message = {
-          id: `SM-${Date.now()}`,
-          requestId: request.id,
-          authorType: 'employee' as const,
-          authorId: selectedEmployee?.id,
-          authorName: selectedEmployee?.name || 'Employee',
-          body,
-          createdAt: getGmt8Timestamp(),
-        };
-        updateSupportRequests(supportRequests.map((item) => item.id === request.id
-          ? {
-            ...item,
-            status: item.status === 'Resolved' ? 'Open' : item.status,
-            updatedAt: message.createdAt,
-            messages: [...item.messages, message],
-          }
-          : item));
-      } else {
-        const result = await addEmployeeServiceMessage(request.id, body);
-        setSupportRequests((previous) => previous.map((item) => (
-          item.id === request.id ? (result.request || {
-            ...item,
-            messages: [...item.messages, result.message],
-            status: item.status === 'Resolved' ? 'Open' : item.status,
-            updatedAt: result.message.createdAt,
-          }) : item
-        )));
-      }
+      const result = await addEmployeeServiceMessage(request.id, body);
+      setSupportRequests((previous) => previous.map((item) => (
+        item.id === request.id ? (result.request || {
+          ...item,
+          messages: [...item.messages, result.message],
+          status: item.status === 'Resolved' ? 'Open' : item.status,
+          updatedAt: result.message.createdAt,
+        }) : item
+      )));
       setSupportReply('');
       onShowNotification('Reply sent', 'Your reply was added to the HR conversation.');
     } catch (error) {
@@ -1127,14 +970,8 @@ export default function EmployeePortalView({
 
   const handleReopenSupportRequest = async (request: SupportRequest) => {
     try {
-      if (isPreviewMode) {
-        updateSupportRequests(supportRequests.map((item) => item.id === request.id
-          ? { ...item, status: 'Open', resolvedAt: undefined, updatedAt: getGmt8Timestamp() }
-          : item));
-      } else {
-        const result = await reopenEmployeeServiceRequest(request.id);
-        setSupportRequests((previous) => previous.map((item) => item.id === request.id ? result.request : item));
-      }
+      const result = await reopenEmployeeServiceRequest(request.id);
+      setSupportRequests((previous) => previous.map((item) => item.id === request.id ? result.request : item));
       onShowNotification('Request reopened', 'HR will see your request again.');
     } catch (error) {
       onShowNotification('Could not reopen request', error instanceof Error ? error.message : 'Please try again.');
@@ -1247,7 +1084,7 @@ export default function EmployeePortalView({
         </div>
         <div className="mt-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/70">
           <ShieldCheck className="h-3.5 w-3.5" />
-          {isPreviewMode ? copy.previewMode : copy.secureAccount}
+          {copy.secureAccount}
         </div>
       </div>
 
@@ -1817,7 +1654,7 @@ export default function EmployeePortalView({
             </div>
           </div>
 
-          {!isPreviewMode && employeeProfileChanges.length > 0 && (
+          {employeeProfileChanges.length > 0 && (
             <div className="rounded-3xl border border-neutral-border bg-surface-container-low p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -2690,7 +2527,7 @@ export default function EmployeePortalView({
                 type="button"
                 key={notification.id}
                 onClick={async () => {
-                  if (notification.readAt || isPreviewMode) return;
+                  if (notification.readAt) return;
                   try {
                     const result = await markEmployeeNotificationRead(notification.id);
                     setEmployeeNotifications((previous) => previous.map((item) => (

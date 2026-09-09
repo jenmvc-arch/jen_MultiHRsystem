@@ -7,7 +7,6 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
-  UserRound,
 } from 'lucide-react';
 import { MOCK_USERS, UserAccount } from '../data';
 import { googleSheetsClient, isGoogleConfigured } from '../lib/googleSheetsClient';
@@ -26,11 +25,12 @@ import { useFeedback } from './GlobalFeedbackSystem';
 
 interface LoginViewProps {
   onLoginSuccess: (user: UserAccount) => void;
+  portal: LoginPortal;
 }
 
-export default function LoginView({ onLoginSuccess }: LoginViewProps) {
+export default function LoginView({ onLoginSuccess, portal }: LoginViewProps) {
   const { showInfoModal } = useFeedback();
-  const [loginPortal, setLoginPortal] = useState<LoginPortal>('admin');
+  const loginPortal = portal;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [employeeOtp, setEmployeeOtp] = useState('');
@@ -41,13 +41,16 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(() => {
+    if (typeof window === 'undefined' || portal !== 'employee') return null;
+    return new URLSearchParams(window.location.search).get('notice') === 'demo-removed'
+      ? 'Demo access has been removed. Sign in with your employee account to continue.'
+      : null;
+  });
   const [isLoading, setIsLoading] = useState(false);
 
   const isLocalPreview = typeof window !== 'undefined'
     && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-  const isEmployeeDemoPath = typeof window !== 'undefined'
-    && window.location.pathname.startsWith('/employee-portal/demo');
 
   const isEmployeeSigner = (user: Pick<UserAccount, 'role'>) => {
     return isEmployeeSignerRole(user.role);
@@ -55,8 +58,6 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
   const accountMatchesSelectedPortal = (user: Pick<UserAccount, 'role'>) =>
     isRoleAllowedForLoginPortal(user.role, loginPortal);
-
-  const selectedPortalLabel = loginPortal === 'admin' ? 'Admin User' : 'Employee';
 
   const getPortalMismatchMessage = (role: string) => {
     const accountType = isEmployeeSignerRole(role) ? 'Employee' : 'Admin User';
@@ -89,18 +90,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     }
   };
 
-  const handlePortalChange = (portal: LoginPortal) => {
-    setLoginPortal(portal);
-    setError(null);
-    setAuthNotice(null);
-    setOtpRequested(false);
-    setEmployeeOtp('');
-    setEmployeeRecoveryMode(false);
-    setRecoveryPassword('');
-    setRecoveryPasswordConfirm('');
-  };
-
   useEffect(() => {
+    if (loginPortal !== 'employee') return;
     const employeeAuthClient = employeeSupabase || supabase;
     if (!employeeAuthClient) return;
     let cancelled = false;
@@ -138,7 +129,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loginPortal]);
 
   const completeLogin = async (matchedUser: UserAccount) => {
     const employeeAuthClient = employeeSupabase || supabase;
@@ -363,11 +354,6 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
     }
 
     const performLocalFallback = async () => {
-      if (loginPortal === 'employee' && !isEmployeeDemoPath) {
-        setIsLoading(false);
-        setError('Secure employee login is unavailable. Please contact HR.');
-        return;
-      }
       const credentialMatch = MOCK_USERS.find(
         u => u.email === email.trim().toLowerCase() && u.password === password
       );
@@ -384,40 +370,6 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
 
     const performRemoteAuth = async (client: any, sourceName: string) => {
       try {
-        if (loginPortal === 'employee' && supabase) {
-          const [
-            { data: employee, error: employeeError },
-            { data: candidate, error: candidateError },
-          ] = await Promise.all([
-            supabase
-              .from('employees')
-              .select('email, name')
-              .ilike('email', email.trim())
-              .maybeSingle(),
-            supabase
-              .from('candidates')
-              .select('email, name')
-              .ilike('email', email.trim())
-              .maybeSingle(),
-          ]);
-          const matchedSigner = employee || candidate;
-          if (matchedSigner && !employeeError && !candidateError) {
-            await completeLogin({
-              email: matchedSigner.email,
-              password: '',
-              name: matchedSigner.name,
-              role: employee ? 'Employee' : 'Candidate',
-            });
-          } else {
-            if (isEmployeeDemoPath) await performLocalFallback();
-            else {
-              setIsLoading(false);
-              setError('Secure employee login is unavailable. Please contact HR.');
-            }
-          }
-          return;
-        }
-
         const payload = await client.loadData();
         const users = payload.users || [];
         const credentialMatch = users.find(
@@ -453,12 +405,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         }
       } catch (err) {
         console.error(`[${sourceName} Auth Error] Falling back to local accounts:`, err);
-        if (loginPortal === 'employee' && !isEmployeeDemoPath) {
-          setIsLoading(false);
-          setError('Secure employee login is unavailable. Please contact HR.');
-        } else {
-          await performLocalFallback();
-        }
+        await performLocalFallback();
       }
     };
 
@@ -498,22 +445,34 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         <div className="hidden max-w-xl text-left lg:block">
           <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#A32626]/15 bg-white/60 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-[#A32626]">
             <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-            Employer workspace
+            {loginPortal === 'admin' ? 'Employer workspace' : 'Employee workspace'}
           </div>
           <h1 className="max-w-lg text-5xl font-bold leading-[0.98] tracking-[-0.04em] text-[#342624]">
-            Keep people, payroll and compliance moving.
+            {loginPortal === 'admin'
+              ? 'Keep people, payroll and compliance moving.'
+              : 'Access the work information you need, securely.'}
           </h1>
           <p className="mt-5 max-w-md text-base leading-7 text-[#745f59]">
-            A focused workspace for the decisions that keep your company running.
+            {loginPortal === 'admin'
+              ? 'A focused workspace for the decisions that keep your company running.'
+              : 'View your profile, payslips, leave, documents and HR support in one place.'}
           </p>
           <div className="mt-10 grid max-w-md grid-cols-2 gap-3">
             <div className="rounded-2xl border border-[#A32626]/10 bg-white/55 p-4">
-              <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#A32626]">People</p>
-              <p className="mt-1 text-xs font-semibold text-[#745f59]">One employer console</p>
+              <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#A32626]">
+                {loginPortal === 'admin' ? 'People' : 'Profile'}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-[#745f59]">
+                {loginPortal === 'admin' ? 'One employer console' : 'Your employee workspace'}
+              </p>
             </div>
             <div className="rounded-2xl border border-[#A32626]/10 bg-white/55 p-4">
-              <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#A32626]">Control</p>
-              <p className="mt-1 text-xs font-semibold text-[#745f59]">Clear employee access</p>
+              <p className="text-sm font-bold uppercase tracking-[0.16em] text-[#A32626]">
+                {loginPortal === 'admin' ? 'Control' : 'Support'}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-[#745f59]">
+                {loginPortal === 'admin' ? 'Clear employee access' : 'Help when you need it'}
+              </p>
             </div>
           </div>
         </div>
@@ -544,51 +503,6 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
                 ? 'Access the RedPoint HRMS administration console'
                 : 'Access your personal employee workspace'}
             </p>
-          </div>
-
-          {/* Login Portal Switch */}
-          <div className="mb-6 rounded-2xl border border-[#EBDCCB] bg-[#FFF8EF] p-1.5">
-            <div className="grid grid-cols-2 gap-1.5">
-              {([
-                {
-                  id: 'admin' as const,
-                  label: 'Admin User',
-                  description: 'HRMS console',
-                  Icon: ShieldCheck,
-                },
-                {
-                  id: 'employee' as const,
-                  label: 'Employee',
-                  description: 'Self-service portal',
-                  Icon: UserRound,
-                },
-              ]).map(({ id, label, description, Icon }) => {
-                const isActive = loginPortal === id;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => handlePortalChange(id)}
-                    className={`flex min-h-[66px] items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all ${
-                      isActive
-                        ? 'bg-white text-[#A32626] shadow-sm ring-1 ring-[#A32626]/15'
-                        : 'text-[#7A625A] hover:bg-white/70'
-                    }`}
-                    aria-pressed={isActive}
-                  >
-                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-                      isActive ? 'bg-[#A32626]/10' : 'bg-white/70'
-                    }`}>
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-sm font-bold">{label}</span>
-                      <span className="mt-0.5 block text-[11px] opacity-75">{description}</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
           </div>
 
           {/* Error Notification HUD */}
@@ -781,14 +695,6 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
               )}
             </button>
 
-            {loginPortal === 'employee' && (
-              <a
-                href="/employee-portal/demo?employeeId=EMP-84729"
-                className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-xl border border-[#A32626]/20 bg-[#FFF8EF] text-sm font-semibold text-[#A32626] transition-colors hover:bg-[#F9EBDD]"
-              >
-                Open employee demo
-              </a>
-            )}
           </form>
 
         </div>

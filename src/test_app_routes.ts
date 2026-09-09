@@ -1,10 +1,32 @@
 import assert from 'node:assert/strict';
 import {
+  AUTH_PATHS,
+  EMPLOYEE_PORTAL_PATH,
+  getAuthRedirectPath,
   getAppTabFromPath,
   getHireOnboardingSectionFromPath,
   getPathForAppTab,
-  getPathForHireOnboardingSection
+  getPathForHireOnboardingSection,
+  getLoginPortalFromPath,
+  isEmployeePortalPath,
+  isLegacyEmployeeDemoPath,
 } from './lib/appRoutes';
+
+assert.equal(AUTH_PATHS.admin, '/login');
+assert.equal(AUTH_PATHS.employee, '/employee-login');
+assert.equal(EMPLOYEE_PORTAL_PATH, '/employee-portal');
+assert.equal(getLoginPortalFromPath('/login'), 'admin');
+assert.equal(getLoginPortalFromPath('/employee-login/'), 'employee');
+assert.equal(isEmployeePortalPath('/employee-portal'), true);
+assert.equal(isEmployeePortalPath('/employee-portal/demo'), false);
+assert.equal(isLegacyEmployeeDemoPath('/employee-portal/demo/'), true);
+assert.equal(getAuthRedirectPath('/employee-portal', null), '/employee-login');
+assert.equal(getAuthRedirectPath('/dashboard', null), '/login');
+assert.equal(getAuthRedirectPath('/login', 'Employee'), '/employee-portal');
+assert.equal(getAuthRedirectPath('/employee-login', 'Master User'), '/dashboard');
+assert.equal(getAuthRedirectPath('/employee-portal/demo', null), '/employee-login?notice=demo-removed');
+assert.equal(getAuthRedirectPath('/employee-portal', 'Employee'), null);
+assert.equal(getAuthRedirectPath('/dashboard', 'Master User'), null);
 
 assert.equal(getPathForAppTab('payroll'), '/payroll');
 assert.equal(getAppTabFromPath('/payroll'), 'payroll');
@@ -17,7 +39,7 @@ assert.equal(getPathForAppTab('work-shift-groups'), '/work-shift-groups');
 assert.equal(getAppTabFromPath('/work-shift-groups'), 'work-shift-groups');
 assert.equal(getPathForAppTab('email-template-setup'), '/email-template-setup');
 assert.equal(getAppTabFromPath('/email-template-setup'), 'email-template-setup');
-assert.equal(getAppTabFromPath('/employee-portal/demo'), 'employee-portal');
+assert.equal(getAppTabFromPath('/employee-portal/demo'), null);
 assert.equal(getAppTabFromPath('/employee-directory/'), 'directory');
 assert.equal(getAppTabFromPath('/hire-onboarding/onboarding-portal'), 'hire-onboarding');
 assert.equal(getAppTabFromPath('/unknown-page'), null);

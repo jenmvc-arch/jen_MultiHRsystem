@@ -58,7 +58,16 @@ import {
 } from './lib/payrollClient';
 import { getGmt8Timestamp, getGmt8DateString } from './lib/dateUtils';
 import { formatNricOrPassport } from './lib/employeeInput';
-import { getAppTabFromPath, getPathForAppTab } from './lib/appRoutes';
+import {
+  AUTH_PATHS,
+  EMPLOYEE_PORTAL_PATH,
+  getAppTabFromPath,
+  getAuthRedirectPath,
+  getLoginPortalFromPath,
+  getPathForAppTab,
+  isEmployeePortalPath,
+  isLegacyEmployeeDemoPath,
+} from './lib/appRoutes';
 import { isAdminPortalRole, isEmployeePortalRole } from './lib/userRoles';
 import { normalizeAppraisalAccessGrant } from './lib/appraisalAccess';
 import {
@@ -311,16 +320,21 @@ export default function App() {
 
   // Check if we are in print/Puppeteer mode
   const isPrintMode = window.location.search.includes('print=true');
+  const isJobApplyMode = window.location.search.includes('form=job-apply');
+  const isOnboardingMode = window.location.search.includes('form=onboarding');
+  const isCandidateShareMode = window.location.search.includes('candidateShare=');
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [currentUserMustChangePassword, setCurrentUserMustChangePassword] = useState(false);
-  const isEmployeePortalDemoPath = window.location.pathname.startsWith('/employee-portal/demo');
+  const isEmployeePortalDemoPath = isLegacyEmployeeDemoPath(window.location.pathname);
+  const isEmployeePortalRoute = isEmployeePortalPath(window.location.pathname);
+  const requestedLoginPortal = getLoginPortalFromPath(window.location.pathname);
+  const [isLegacyDemoRedirecting, setIsLegacyDemoRedirecting] = useState(isEmployeePortalDemoPath);
   const isAccountPreview = new URLSearchParams(window.location.search).get('accountPreview') === '1';
   const isEmployeeAccount = isEmployeePortalRole(currentUserRole);
-  const employeePortalQueryEmployeeId = new URLSearchParams(window.location.search).get('employeeId') || 'EMP-84729';
 
   const handleLoginSuccess = (user: UserAccount) => {
     localStorage.setItem('hr-nexus-auth', 'true');
@@ -340,12 +354,12 @@ export default function App() {
 
     if (isEmployeePortalRole(user.role)) {
       setCurrentTab('employee-portal');
-      if (!window.location.pathname.startsWith('/employee-portal')) {
-        window.history.replaceState({ tab: 'employee-portal' }, '', '/employee-portal');
+      if (window.location.pathname !== EMPLOYEE_PORTAL_PATH) {
+        window.history.replaceState({ tab: 'employee-portal' }, '', EMPLOYEE_PORTAL_PATH);
       }
-    } else if (isAdminPortalRole(user.role) && window.location.pathname.startsWith('/employee-portal')) {
+    } else if (isAdminPortalRole(user.role) && window.location.pathname !== getPathForAppTab('dashboard')) {
       setCurrentTab('dashboard');
-      window.history.replaceState({ tab: 'dashboard' }, '', '/dashboard');
+      window.history.replaceState({ tab: 'dashboard' }, '', getPathForAppTab('dashboard'));
     }
 
     // Read and restore preferences
@@ -369,6 +383,9 @@ export default function App() {
   };
 
   const handleSignOut = () => {
+    const loginPath = isEmployeeAccount || isEmployeePortalRoute || requestedLoginPortal === 'employee'
+      ? AUTH_PATHS.employee
+      : AUTH_PATHS.admin;
     void fetch('/api/auth/logout', {
       method: 'POST',
       credentials: 'include',
@@ -387,8 +404,22 @@ export default function App() {
     setCurrentUserRole(null);
     setCurrentUserMustChangePassword(false);
     setCurrentTab('dashboard');
-    window.history.replaceState({}, '', '/');
+    window.history.replaceState({}, '', loginPath);
   };
+
+  useEffect(() => {
+    if (!isEmployeePortalDemoPath) {
+      setIsLegacyDemoRedirecting(false);
+      return;
+    }
+
+    window.history.replaceState(
+      { redirect: 'legacy-employee-demo' },
+      '',
+      `${AUTH_PATHS.employee}?notice=demo-removed`
+    );
+    setIsLegacyDemoRedirecting(false);
+  }, [isEmployeePortalDemoPath]);
 
   // Core Database States
   const [employees, setEmployees] = useState<Employee[]>(() => {
@@ -458,39 +489,39 @@ export default function App() {
 
   // Offline persistence sync
   React.useEffect(() => {
-    if (isEmployeePortalRole(currentUserRole) && !isEmployeePortalDemoPath) return;
+    if (isEmployeePortalRole(currentUserRole)) return;
     localStorage.setItem('offline_entities', JSON.stringify(entities));
-  }, [entities, currentUserRole, isEmployeePortalDemoPath]);
+  }, [entities, currentUserRole]);
 
   React.useEffect(() => {
-    if (isEmployeePortalRole(currentUserRole) && !isEmployeePortalDemoPath) return;
+    if (isEmployeePortalRole(currentUserRole)) return;
     localStorage.setItem('offline_employees', JSON.stringify(employees));
-  }, [employees, currentUserRole, isEmployeePortalDemoPath]);
+  }, [employees, currentUserRole]);
 
   React.useEffect(() => {
-    if (isEmployeePortalRole(currentUserRole) && !isEmployeePortalDemoPath) return;
+    if (isEmployeePortalRole(currentUserRole)) return;
     localStorage.setItem('offline_performances', JSON.stringify(performances));
-  }, [performances, currentUserRole, isEmployeePortalDemoPath]);
+  }, [performances, currentUserRole]);
 
   React.useEffect(() => {
-    if (isEmployeePortalRole(currentUserRole) && !isEmployeePortalDemoPath) return;
+    if (isEmployeePortalRole(currentUserRole)) return;
     localStorage.setItem('offline_review_cycles', JSON.stringify(reviewCycles));
-  }, [reviewCycles, currentUserRole, isEmployeePortalDemoPath]);
+  }, [reviewCycles, currentUserRole]);
 
   React.useEffect(() => {
-    if (isEmployeePortalRole(currentUserRole) && !isEmployeePortalDemoPath) return;
+    if (isEmployeePortalRole(currentUserRole)) return;
     localStorage.setItem('offline_appraisal_access', JSON.stringify(appraisalAccessGrants));
-  }, [appraisalAccessGrants, currentUserRole, isEmployeePortalDemoPath]);
+  }, [appraisalAccessGrants, currentUserRole]);
 
   React.useEffect(() => {
-    if (isEmployeePortalRole(currentUserRole) && !isEmployeePortalDemoPath) return;
+    if (isEmployeePortalRole(currentUserRole)) return;
     localStorage.setItem('offline_candidates', JSON.stringify(candidates));
-  }, [candidates, currentUserRole, isEmployeePortalDemoPath]);
+  }, [candidates, currentUserRole]);
 
   React.useEffect(() => {
-    if (isEmployeePortalRole(currentUserRole) && !isEmployeePortalDemoPath) return;
+    if (isEmployeePortalRole(currentUserRole)) return;
     localStorage.setItem('offline_payroll_records_2026', JSON.stringify(payrollRecords2026));
-  }, [payrollRecords2026, currentUserRole, isEmployeePortalDemoPath]);
+  }, [payrollRecords2026, currentUserRole]);
 
   const employeesWithHistory = React.useMemo(() => {
     return employees.map(emp => {
@@ -823,8 +854,7 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     const restoreSession = async () => {
-      // The demo portal is intentionally isolated from every real account.
-      // Do not restore a stale admin or employee session into preview mode.
+      // Let the legacy demo redirect settle before restoring a real session.
       if (isEmployeePortalDemoPath) return;
       if (localStorage.getItem('hr-nexus-auth') !== 'true') return;
 
@@ -937,32 +967,37 @@ export default function App() {
   }, [isEmployeePortalDemoPath]);
 
   useEffect(() => {
-    if (!isAuthenticated || !currentUserRole) return;
+    if (isLegacyDemoRedirecting || isEmployeePortalDemoPath
+      || isPrintMode || isJobApplyMode || isOnboardingMode || isCandidateShareMode) return;
 
-    const onEmployeePortalPath = window.location.pathname.startsWith('/employee-portal');
-
-    if (isEmployeePortalRole(currentUserRole)) {
-      if (!onEmployeePortalPath) {
-        setCurrentTab('employee-portal');
-        window.history.replaceState({ tab: 'employee-portal' }, '', '/employee-portal');
+    const targetPath = getAuthRedirectPath(window.location.pathname, isAuthenticated ? currentUserRole : null);
+    if (!isAuthenticated && targetPath) {
+      if (window.location.pathname !== targetPath) {
+        window.history.replaceState({ redirect: 'authentication-required' }, '', targetPath);
       }
       return;
     }
-
-    if (isAdminPortalRole(currentUserRole) && onEmployeePortalPath) {
-      setCurrentTab('dashboard');
-      window.history.replaceState({ tab: 'dashboard' }, '', '/dashboard');
+    if (isAuthenticated && targetPath) {
+      setCurrentTab(isEmployeePortalRole(currentUserRole) ? 'employee-portal' : 'dashboard');
+      window.history.replaceState(
+        { tab: isEmployeePortalRole(currentUserRole) ? 'employee-portal' : 'dashboard' },
+        '',
+        targetPath
+      );
     }
-  }, [isAuthenticated, currentUserRole]);
+  }, [
+    currentUserRole,
+    isAuthenticated,
+    isCandidateShareMode,
+    isJobApplyMode,
+    isEmployeePortalDemoPath,
+    isPrintMode,
+    isOnboardingMode,
+    isLegacyDemoRedirecting,
+  ]);
 
   // Load data from Supabase or Google Sheets dynamically if configured
   useEffect(() => {
-    if (isEmployeePortalDemoPath) {
-      setIsLoadingDb(false);
-      setEmployeePortalBootstrap(null);
-      setEmployeePortalLoadError(null);
-      return;
-    }
     if (!isAuthenticated) {
       setIsLoadingDb(false);
       return;
@@ -1528,7 +1563,7 @@ export default function App() {
     }
 
     loadData();
-  }, [isAuthenticated, isEmployeeAccount, isEmployeePortalDemoPath]);
+  }, [isAuthenticated, isEmployeeAccount]);
 
   // Active corporate views
   const activeEntity = entities.find(e => e.id === activeEntityId) || entities[0];
@@ -1669,7 +1704,7 @@ export default function App() {
 
   // Restore persisted tab per-entity on entity switch
   useEffect(() => {
-    if (activeEntityId) {
+    if (activeEntityId && isAuthenticated && !isEmployeeAccount) {
       const params = new URLSearchParams(window.location.search);
       if (params.has('form') || params.has('print')) return;
 
@@ -1689,7 +1724,7 @@ export default function App() {
         handleTabChange('dashboard', { replace: true });
       }
     }
-  }, [activeEntityId]);
+  }, [activeEntityId, isAuthenticated, isEmployeeAccount]);
 
   // GMT+8 Real-Time Clock
   const [gmt8TimeStr, setGmt8TimeStr] = useState('');
@@ -2534,44 +2569,29 @@ export default function App() {
     );
   };
 
-  // The demo URL is always a local preview, even if another tab left a real
-  // account session in localStorage.
-  const isEmployeePortalPreview = isEmployeePortalDemoPath;
   const employeePortalSessionEmail = String(currentUserEmail || '').toLowerCase();
-  const employeePortalDemoEmployee = getCurrentActiveEmployees(SEED_EMPLOYEES).find(employee =>
-    employee.id === employeePortalQueryEmployeeId ||
-    (!isPendingEmployeeEmail(employee.email) && employee.email.toLowerCase() === employeePortalQueryEmployeeId.toLowerCase())
-  ) || getCurrentActiveEmployees(SEED_EMPLOYEES)[0] || null;
   const employeePortalLiveEmployee = isEmployeeAccount
     ? currentActiveEmployees.find(employee => (
       !isPendingEmployeeEmail(employee.email) &&
       employee.email.toLowerCase() === employeePortalSessionEmail
     )) || null
     : null;
-  const employeePortalEmployee = isEmployeePortalPreview
-    ? employeePortalDemoEmployee
-    : employeePortalLiveEmployee;
+  const employeePortalEmployee = employeePortalLiveEmployee;
   const employeePortalEmployeeEmail = String(employeePortalEmployee?.email || '').toLowerCase();
   const employeePortalEmployees = employeePortalEmployee ? [employeePortalEmployee] : [];
-  const employeePortalEntitiesSource = isEmployeePortalPreview
-    ? SEED_ENTITIES
-    : entities;
   const employeePortalEntity = employeePortalEmployee
-    ? (
-      employeePortalEntitiesSource.find(entity => entity.id === employeePortalEmployee.entityId) ||
-      SEED_ENTITIES.find(entity => entity.id === employeePortalEmployee.entityId)
-    )
+    ? entities.find(entity => entity.id === employeePortalEmployee.entityId) || null
     : null;
-  const employeePortalEntities = employeePortalEntity ? [employeePortalEntity] : (isEmployeePortalPreview ? employeePortalEntitiesSource : []);
+  const employeePortalEntities = employeePortalEntity ? [employeePortalEntity] : [];
   const employeePortalPayrollRecords = employeePortalEmployeeEmail
     ? payrollRecords2026.filter(record => (
-      !isPendingEmployeeEmail(employeePortalEmployeeEmail) &&
-      record.employeeEmail.toLowerCase() === employeePortalEmployeeEmail &&
-      (record.status === 'Published' || (isEmployeePortalPreview && !record.status))
-    ))
+        !isPendingEmployeeEmail(employeePortalEmployeeEmail) &&
+        record.employeeEmail.toLowerCase() === employeePortalEmployeeEmail &&
+      record.status === 'Published'
+      ))
     : [];
   const employeePortalCandidates = employeePortalEmployeeEmail
-    ? (isEmployeePortalPreview ? SEED_CANDIDATES : candidates).filter(candidate => (
+    ? candidates.filter(candidate => (
       candidate.email.toLowerCase() === employeePortalEmployeeEmail &&
       (!employeePortalEmployee?.entityId || candidate.entityId === employeePortalEmployee.entityId)
     ))
@@ -2581,45 +2601,22 @@ export default function App() {
       .filter(Boolean)
       .map(value => String(value).toLowerCase())
   );
-  const employeePortalPerformances = (isEmployeePortalPreview ? SEED_PERFORMANCES : performances)
+  const employeePortalPerformances = performances
     .filter(performance => employeePortalEmployeeKeys.has(performance.employeeId.toLowerCase()));
-  const employeePortalAccessGrants = (isEmployeePortalPreview
-    ? appraisalAccessGrants
-    : (employeePortalBootstrap?.appraisalAccessGrants || [])
-  ).map(normalizeAppraisalAccessGrant);
-  const employeePortalReviewCycles = isEmployeePortalPreview
-    ? SEED_REVIEW_CYCLES
-    : (reviewCycles.length > 0 ? reviewCycles : SEED_REVIEW_CYCLES);
-  const shouldRenderEmployeePortal = isEmployeePortalPreview || (isAuthenticated && isEmployeeAccount);
+  const employeePortalAccessGrants = (employeePortalBootstrap?.appraisalAccessGrants || [])
+    .map(normalizeAppraisalAccessGrant);
+  const employeePortalReviewCycles = reviewCycles;
+  const shouldRenderEmployeePortal = isAuthenticated && isEmployeeAccount;
   const handleEmployeePortalUpdateEmployee = async (id: string, updates: Partial<Employee>) => {
-    if (isEmployeeAccount && !isEmployeePortalPreview) {
-      const result = await updateEmployeePortalProfile(updates as Record<string, unknown>);
-      const nextEmployee = mapEmployeePortalEmployee(result.employee);
-      setEmployees([nextEmployee]);
-      setEmployeePortalBootstrap((previous) => previous
-        ? { ...previous, employee: result.employee }
-        : previous);
-      return;
+    if (!isEmployeeAccount) {
+      throw new Error('Employee portal access is required to update this profile.');
     }
-    const normalizedId = id.toLowerCase();
-    const existingEmployee = employees.find(employee =>
-      employee.id.toLowerCase() === normalizedId ||
-      (!isPendingEmployeeEmail(employee.email) && employee.email.toLowerCase() === normalizedId)
-    );
-    if (existingEmployee) {
-      await handleUpdateEmployeeSalary(id, updates);
-      return;
-    }
-
-    const fallbackEmployee = getCurrentActiveEmployees(SEED_EMPLOYEES).find(employee =>
-      employee.id.toLowerCase() === normalizedId ||
-      (!isPendingEmployeeEmail(employee.email) && employee.email.toLowerCase() === normalizedId)
-    );
-    if (!fallbackEmployee) {
-      throw new Error('The employee record could not be found.');
-    }
-
-    setEmployees(prev => [{ ...fallbackEmployee, ...updates }, ...prev]);
+    const result = await updateEmployeePortalProfile(updates as Record<string, unknown>);
+    const nextEmployee = mapEmployeePortalEmployee(result.employee);
+    setEmployees([nextEmployee]);
+    setEmployeePortalBootstrap((previous) => previous
+      ? { ...previous, employee: result.employee }
+      : previous);
   };
 
   if (isLoadingDb && !shouldRenderEmployeePortal) {
@@ -2671,10 +2668,6 @@ export default function App() {
       </div>
     );
   }
-
-  const isJobApplyMode = window.location.search.includes('form=job-apply');
-  const isOnboardingMode = window.location.search.includes('form=onboarding');
-  const isCandidateShareMode = window.location.search.includes('candidateShare=');
 
   if (isCandidateShareMode) {
     return (
@@ -2750,8 +2743,21 @@ export default function App() {
     );
   }
 
-  if (!isAuthenticated && !isEmployeePortalPreview) {
-    return <LoginView onLoginSuccess={handleLoginSuccess} />;
+  if (isLegacyDemoRedirecting) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center bg-neutral-100 p-6 text-sm text-neutral-600">
+        Redirecting to the secure employee login...
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <LoginView
+        onLoginSuccess={handleLoginSuccess}
+        portal={requestedLoginPortal || (isEmployeePortalRoute ? 'employee' : 'admin')}
+      />
+    );
   }
 
   if (isAuthenticated && !isEmployeeAccount && adminDataLoadError) {
@@ -2880,20 +2886,18 @@ export default function App() {
             performances={employeePortalPerformances}
             appraisalAccessGrants={employeePortalAccessGrants}
             reviewCycles={employeePortalReviewCycles}
-            serviceRequests={isEmployeePortalPreview ? [] : (employeePortalBootstrap?.serviceRequests || [])}
-            profileChangeRequests={isEmployeePortalPreview ? [] : (employeePortalBootstrap?.profileChangeRequests || [])}
-            notifications={isEmployeePortalPreview ? [] : (employeePortalBootstrap?.notifications || [])}
-            portalLoadError={isEmployeePortalPreview ? null : employeePortalLoadError}
+            serviceRequests={employeePortalBootstrap?.serviceRequests || []}
+            profileChangeRequests={employeePortalBootstrap?.profileChangeRequests || []}
+            notifications={employeePortalBootstrap?.notifications || []}
+            portalLoadError={employeePortalLoadError}
             isPortalLoading={isEmployeeAccount && isLoadingDb && !employeePortalBootstrap}
-            currentUserName={isEmployeePortalPreview ? employeePortalEmployee?.name || 'Employee' : currentUserName}
-            currentUserEmail={isEmployeePortalPreview ? employeePortalEmployee?.email || 'employee@redpoint.com' : currentUserEmail}
-            currentUserRole={isEmployeePortalPreview ? 'Employee' : currentUserRole}
+            currentUserName={currentUserName}
+            currentUserEmail={currentUserEmail}
+            currentUserRole={currentUserRole}
             onShowNotification={triggerNotification}
-            onUpdateEmployee={isEmployeePortalPreview ? async () => {} : handleEmployeePortalUpdateEmployee}
-            onSavePerformance={isEmployeePortalPreview ? () => {} : handleSavePerformance}
+            onUpdateEmployee={handleEmployeePortalUpdateEmployee}
+            onSavePerformance={handleSavePerformance}
             onSignOut={handleSignOut}
-            isPreviewMode={isEmployeePortalPreview}
-            previewEmployeeId={isEmployeePortalPreview ? employeePortalEmployee?.id || employeePortalQueryEmployeeId : undefined}
           />
         </React.Suspense>
       </ErrorBoundary>

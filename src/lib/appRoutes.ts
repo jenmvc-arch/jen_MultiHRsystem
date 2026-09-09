@@ -1,8 +1,21 @@
 import type { AppTab } from '../types';
+import {
+  isAdminPortalRole,
+  isEmployeePortalRole,
+  type LoginPortal,
+} from './userRoles';
+
+export const AUTH_PATHS: Record<LoginPortal, string> = {
+  admin: '/login',
+  employee: '/employee-login',
+};
+
+export const EMPLOYEE_PORTAL_PATH = '/employee-portal';
+export const LEGACY_EMPLOYEE_DEMO_PATH = '/employee-portal/demo';
 
 export const APP_TAB_PATHS: Record<AppTab, string> = {
   dashboard: '/dashboard',
-  'employee-portal': '/employee-portal',
+  'employee-portal': EMPLOYEE_PORTAL_PATH,
   'employee-requests': '/employee-requests',
   directory: '/employee-directory',
   payroll: '/payroll',
@@ -36,6 +49,52 @@ const normalizePath = (pathname: string) => {
   return path.length > 1 ? path.replace(/\/+$/, '') : path;
 };
 
+export const isEmployerLoginPath = (pathname: string) =>
+  normalizePath(pathname) === AUTH_PATHS.admin;
+
+export const isEmployeeLoginPath = (pathname: string) =>
+  normalizePath(pathname) === AUTH_PATHS.employee;
+
+export const isEmployeePortalPath = (pathname: string) =>
+  normalizePath(pathname) === EMPLOYEE_PORTAL_PATH;
+
+export const isLegacyEmployeeDemoPath = (pathname: string) =>
+  normalizePath(pathname) === LEGACY_EMPLOYEE_DEMO_PATH;
+
+export const getLoginPortalFromPath = (pathname: string): LoginPortal | null => {
+  if (isEmployeeLoginPath(pathname)) return 'employee';
+  if (isEmployerLoginPath(pathname)) return 'admin';
+  return null;
+};
+
+export const getAuthRedirectPath = (
+  pathname: string,
+  role?: string | null
+): string | null => {
+  const normalizedPath = normalizePath(pathname);
+
+  if (isLegacyEmployeeDemoPath(normalizedPath)) {
+    return `${AUTH_PATHS.employee}?notice=demo-removed`;
+  }
+
+  if (!role) {
+    if (isEmployeeLoginPath(normalizedPath) || isEmployerLoginPath(normalizedPath)) return null;
+    return isEmployeePortalPath(normalizedPath)
+      ? AUTH_PATHS.employee
+      : AUTH_PATHS.admin;
+  }
+
+  if (isEmployeePortalRole(role)) {
+    return normalizedPath === EMPLOYEE_PORTAL_PATH ? null : EMPLOYEE_PORTAL_PATH;
+  }
+
+  if (isAdminPortalRole(role)) {
+    return normalizedPath === APP_TAB_PATHS.dashboard ? null : APP_TAB_PATHS.dashboard;
+  }
+
+  return AUTH_PATHS.admin;
+};
+
 export const getPathForAppTab = (tab: AppTab) => APP_TAB_PATHS[tab];
 
 export const getAppTabFromPath = (pathname: string): AppTab | null => {
@@ -45,6 +104,8 @@ export const getAppTabFromPath = (pathname: string): AppTab | null => {
 
   const matches = (Object.entries(APP_TAB_PATHS) as Array<[AppTab, string]>)
     .sort(([, left], [, right]) => right.length - left.length);
+
+  if (isLegacyEmployeeDemoPath(normalizedPath)) return null;
 
   const match = matches.find(([, path]) => (
     normalizedPath === path || normalizedPath.startsWith(`${path}/`)
