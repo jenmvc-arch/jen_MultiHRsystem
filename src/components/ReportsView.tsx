@@ -17,7 +17,6 @@ import {
   Award
 } from 'lucide-react';
 import { Employee, EmployeePerformance } from '../types';
-import ExportButton from './ExportButton';
 import { requestExport } from '../lib/exportClient';
 
 interface ReportsViewProps {
@@ -68,7 +67,7 @@ export default function ReportsView({
   });
 
   // Export formats
-  const [format, setFormat] = useState<'pdf' | 'excel' | 'csv' | 'ppt'>('pdf');
+  const [format, setFormat] = useState<'pdf' | 'excel' | 'csv'>('pdf');
 
   // Loading animation simulation
   const [isExporting, setIsExporting] = useState(false);
@@ -104,10 +103,6 @@ export default function ReportsView({
       return;
     }
 
-    if (format === 'ppt') {
-      onShowNotification('Unsupported Format', 'PowerPoint export is not part of the universal export system yet. Choose PDF, Excel, CSV, or Text.');
-      return;
-    }
     setIsExporting(true);
     setExportProgress(20);
     try {
@@ -147,34 +142,6 @@ export default function ReportsView({
 
   return (
     <div className="max-w-6xl mx-auto animate-in fade-in duration-200">
-      <div className="mb-4 flex justify-end">
-        <ExportButton
-          module="performance"
-          title="Performance report"
-          currentUserRole={currentUserRole}
-          onShowNotification={onShowNotification}
-          filters={{
-            entityId: activeEntityId,
-            department: activeDepts.length === 1 ? activeDepts[0] : undefined,
-            startDate,
-            endDate,
-            reportType,
-            metrics: activeMetricsList,
-          }}
-          columns={[
-            { key: 'employee_id', label: 'Employee ID' },
-            { key: 'employee_name', label: 'Employee Name' },
-            { key: 'department', label: 'Department' },
-            { key: 'review_cycle_id', label: 'Review Cycle' },
-            { key: 'review_status', label: 'Review Status' },
-            { key: 'rating', label: 'Rating', type: 'number' },
-            { key: 'teamwork_score', label: 'Teamwork', type: 'number' },
-            { key: 'communication_score', label: 'Communication', type: 'number' },
-            { key: 'problem_solving_score', label: 'Problem Solving', type: 'number' },
-            { key: 'manager_comments', label: 'Manager Comments', sensitive: true },
-          ]}
-        />
-      </div>
       <div className="flex flex-col lg:flex-row gap-6 items-stretch">
         
         {/* Left Side: Report Export Configuration Form */}
@@ -230,7 +197,7 @@ export default function ReportsView({
             {/* Target Audience Checkboxes */}
             <div className="space-y-2 pt-2 border-t border-neutral-border/30">
               <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-wider">Target Audience (FTE Cohorts)</label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {Object.keys(audience).map(dept => (
                   <label key={dept} className="flex items-center gap-2 p-2.5 bg-surface-container-low rounded border border-neutral-border/40 hover:border-primary transition-colors cursor-pointer text-xs">
                     <input 
@@ -270,8 +237,7 @@ export default function ReportsView({
                 {[
                   { id: 'pdf', label: 'Adobe PDF Document (.pdf)', desc: 'Executive printable copy' },
                   { id: 'excel', label: 'Microsoft Excel (.xlsx)', desc: 'Dynamic data sheets' },
-                  { id: 'csv', label: 'CSV Comma Delimited (.csv)', desc: 'System import format' },
-                  { id: 'ppt', label: 'PowerPoint (.pptx)', desc: 'Slide presentation deck' }
+                  { id: 'csv', label: 'CSV Comma Delimited (.csv)', desc: 'System import format' }
                 ].map(item => (
                   <label 
                     key={item.id} 

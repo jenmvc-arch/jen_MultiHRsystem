@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { 
   LayoutDashboard, 
   Users, 
@@ -21,7 +21,8 @@ import {
   Tags,
   Clock3,
   MessageSquareText,
-  Mail
+  Mail,
+  X
 } from 'lucide-react';
 import { AppTab, CorporateEntity } from '../types';
 import { getDirectLogoUrl } from '../data';
@@ -75,8 +76,25 @@ export default function Sidebar({
 
   const activeEntity = entities.find(e => e.id === activeEntityId) || entities[0];
 
+  useEffect(() => {
+    if (!isMobileOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onMobileClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isMobileOpen, onMobileClose]);
+
   const SidebarContent = () => (
-    <div className="flex h-full flex-col bg-primary py-5 text-[#f7f0e0]" style={{ viewTransitionName: 'sidebar-container' } as any}>
+    <div className="relative flex h-full flex-col bg-primary py-5 text-[#f7f0e0]" style={{ viewTransitionName: 'sidebar-container' } as any}>
+      <button
+        type="button"
+        onClick={onMobileClose}
+        aria-label="Close navigation menu"
+        className="absolute right-3 top-3 z-10 rounded-xl p-2 text-[#f7f0e0]/80 transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#f7f0e0]/60 md:hidden"
+      >
+        <X className="h-5 w-5" aria-hidden="true" />
+      </button>
       {/* Brand Header with Corporate Selector */}
       <div className="px-4 mb-5 mx-3 rounded-2xl border border-white/10 bg-black/10 p-4" style={{ viewTransitionName: 'sidebar-brand' } as any}>
         {/* Company Logo */}

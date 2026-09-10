@@ -574,7 +574,7 @@ export const loadEmployeePortalBootstrap = async (req: any): Promise<EmployeePor
   };
 };
 
-const LEAVE_REQUEST_SELECT = 'id,entity_id,employee_id,employee_name,leave_type_id,leave_type,start_date,end_date,total_days,reason,status,applied_date,approved_at,approved_by,excess_days,payroll_month,payroll_year,attachment_path,attachment_name,attachment_type,attachment_size,created_at,updated_at';
+const LEAVE_REQUEST_SELECT = 'id,entity_id,employee_id,employee_name,leave_type_id,leave_type,start_date,end_date,total_days,reason,status,applied_date,approved_at,approved_by,review_note,excess_days,payroll_month,payroll_year,attachment_path,attachment_name,attachment_type,attachment_size,created_at,updated_at';
 const LEAVE_ATTACHMENT_TYPES = new Set(['image/jpeg', 'image/png', 'application/pdf']);
 const LEAVE_ATTACHMENT_MAX_SIZE = 5 * 1024 * 1024;
 
@@ -883,7 +883,7 @@ export const createEmployeeLeaveRequest = async (req: any) => {
   if (error && isMissingFunction(error)) {
     const existing = await context.employeeAdmin
       .from('leave_requests')
-      .select('id,entity_id,employee_id,employee_name,leave_type_id,leave_type,start_date,end_date,total_days,reason,status,applied_date,approved_at,approved_by,excess_days,payroll_month,payroll_year,created_at,updated_at')
+      .select('id,entity_id,employee_id,employee_name,leave_type_id,leave_type,start_date,end_date,total_days,reason,status,applied_date,approved_at,approved_by,review_note,excess_days,payroll_month,payroll_year,created_at,updated_at')
       .eq('employee_id', context.employeeId)
       .eq('idempotency_key', idempotencyKey)
       .maybeSingle();

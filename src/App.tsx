@@ -1732,6 +1732,7 @@ export default function App() {
   const [companyEpfReferenceNo, setCompanyEpfReferenceNo] = useState('');
   const [companySocsoReferenceNo, setCompanySocsoReferenceNo] = useState('');
   const [isSavingCompanySettings, setIsSavingCompanySettings] = useState(false);
+  const [companySettingsSaveState, setCompanySettingsSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
 
   const [taxRate, setTaxRate] = useState(() => {
     const saved = localStorage.getItem('company_tax_rate');
@@ -3408,7 +3409,14 @@ export default function App() {
                   )}
                 </div>
 
-                <div className="pt-6 border-t border-neutral-border flex justify-end">
+                <div className="pt-6 border-t border-neutral-border flex flex-wrap items-center justify-end gap-3">
+                  {companySettingsSaveState !== 'idle' && (
+                    <span className={`text-[11px] font-semibold ${
+                      companySettingsSaveState === 'error' ? 'text-amber-800' : 'text-emerald-700'
+                    }`}>
+                      {companySettingsSaveState === 'error' ? 'Save failed. Please retry.' : 'Saved just now.'}
+                    </span>
+                  )}
                   <button 
                     onClick={async () => {
                       if (isSavingCompanySettings) return;
@@ -3433,9 +3441,10 @@ export default function App() {
                         } else {
                           triggerNotification('Settings Saved', 'Global override variables recalculated successfully.');
                         }
-                        handleTabChange('dashboard');
+                        setCompanySettingsSaveState('saved');
                       } catch (err: any) {
-                        triggerNotification('Save Failed', err.message || 'Company settings could not be saved.', 'info');
+                        setCompanySettingsSaveState('error');
+                        triggerNotification('Save Failed', 'Company settings could not be saved. Check your connection and try again.', 'info');
                       } finally {
                         setIsSavingCompanySettings(false);
                       }

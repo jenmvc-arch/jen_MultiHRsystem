@@ -2436,6 +2436,12 @@ export default function EmployeePortalView({
                   </span>
                 </div>
                 <p className="mt-3 text-xs leading-5 text-on-surface-variant">{request.totalDays} eligible day{request.totalDays === 1 ? '' : 's'} · {request.reason}</p>
+                {request.reviewNote && (
+                  <div className="mt-3 rounded-xl border border-primary/15 bg-primary/[0.04] p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-primary">HR note</p>
+                    <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-on-surface-variant">{request.reviewNote}</p>
+                  </div>
+                )}
                 {request.attachment && (
                   <a
                     href={request.attachment.url || '#'}

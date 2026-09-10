@@ -778,7 +778,12 @@ export default function PayrollView({
                 All employees in the active payroll population appear here. Save and process an employee to add them to the export file.
               </p>
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-end gap-2 rounded-xl border border-neutral-border/80 bg-white/95 p-2 shadow-lg backdrop-blur">
+              {selectedPayrollFileRecordIds.length > 0 && (
+                <span className="mr-auto rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold text-primary">
+                  {selectedPayrollFileRecordIds.length} selected
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => void runPayrollAction('process', selectedDraftIds)}
@@ -834,7 +839,120 @@ export default function PayrollView({
               <p className="mt-1">Change the payroll filters or register employees in the active corporate entity.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded border border-neutral-border">
+            <>
+              <div className="space-y-3 md:hidden">
+                {payrollFileRows.map(({ employee, record }) => {
+                  if (!record) {
+                    return (
+                      <article key={`mobile-pending-${employee.id}`} className="rounded-xl border border-neutral-border bg-surface-container-low/40 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-bold text-on-background">{employee.name}</p>
+                            <p className="mt-0.5 text-[10px] text-on-surface-variant">{employee.department || 'Department not set'}</p>
+                          </div>
+                          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-800">Draft not saved</span>
+                        </div>
+                        <p className="mt-3 text-[11px] text-on-surface-variant">
+                          No payroll record exists for {HISTORY_MONTHS[payMonthIndex]} {payYear}.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedEmployeeId(employee.id);
+                            setSelectedPayoutKind(null);
+                            setActiveSubTab('editor');
+                          }}
+                          className="mt-3 min-h-11 w-full rounded-lg bg-primary/10 px-3 py-2.5 text-xs font-bold text-primary hover:bg-primary/20"
+                        >
+                          Open Payroll Editor
+                        </button>
+                      </article>
+                    );
+                  }
+
+                  const legacyGross = Number(record.basicSalary || 0)
+                    + Number(record.allowanceGeneral || 0)
+                    + Number(record.allowanceTransport || 0)
+                    + Number(record.allowanceParking || 0)
+                    + Number(record.allowanceMeal || 0)
+                    + Number(record.allowanceAccommodation || 0)
+                    + Number(record.allowancePhone || 0)
+                    + Number(record.overtime || 0)
+                    + Number(record.bonusAmount || 0)
+                    + Number(record.commissionAmount || 0)
+                    + Number(record.backPayAmount || 0)
+                    + Number(record.awsAmount || 0)
+                    + Number(record.compensationAmount || 0);
+                  const grossPay = record.grossPay ?? (record as PayrollRecord2026 & { grossSalary?: number }).grossSalary ?? legacyGross;
+                  const netPay = record.netPay || (record as PayrollRecord2026 & { netSalary?: number }).netSalary || 0;
+                  const deductions = Math.max(0, grossPay + Number(record.reimbursementAmount || 0) - Number(netPay));
+                  const status = record.status || 'Draft';
+
+                  return (
+                    <article key={`mobile-${record.id}`} className="rounded-xl border border-neutral-border bg-white p-4 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedPayrollFileRecordIds.includes(record.id)}
+                          onChange={event => setSelectedPayrollFileRecordIds(previous => event.target.checked
+                            ? [...new Set([...previous, record.id])]
+                            : previous.filter(id => id !== record.id))}
+                          className="mt-1 h-5 w-5 shrink-0 accent-primary"
+                          aria-label={`Select ${employee?.name || record.employeeEmail}`}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="truncate text-sm font-bold text-primary">{employee?.name || record.employeeEmail}</p>
+                              <p className="mt-0.5 truncate text-[10px] text-on-surface-variant">{employee?.department || 'Department not set'}</p>
+                            </div>
+                            <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                              status === 'Published'
+                                ? 'bg-blue-100 text-blue-800'
+                                : status === 'Processed'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {status}
+                            </span>
+                          </div>
+                          <div className="mt-4 grid grid-cols-3 gap-2 rounded-lg bg-surface-container-low p-3">
+                            <div>
+                              <span className="block text-[9px] font-bold uppercase tracking-wider text-on-surface-variant">Gross</span>
+                              <span className="mt-1 block truncate font-mono text-xs font-bold text-on-background">{formatMoney(grossPay)}</span>
+                            </div>
+                            <div>
+                              <span className="block text-[9px] font-bold uppercase tracking-wider text-on-surface-variant">Deductions</span>
+                              <span className="mt-1 block truncate font-mono text-xs font-bold text-red-700">{formatMoney(deductions)}</span>
+                            </div>
+                            <div>
+                              <span className="block text-[9px] font-bold uppercase tracking-wider text-on-surface-variant">Net pay</span>
+                              <span className="mt-1 block truncate font-mono text-xs font-bold text-green-700">{formatMoney(netPay)}</span>
+                            </div>
+                          </div>
+                          <p className="mt-3 text-[10px] text-on-surface-variant">
+                            {HISTORY_MONTHS[record.payrollMonth]} {record.payrollYear} · Saved {record.createdAt || 'not dated'}
+                          </p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button type="button" onClick={() => openPayrollPreview(record, employee?.id || selectedEmployeeId)} className="min-h-11 flex-1 rounded-lg bg-primary/10 px-3 py-2 text-[11px] font-bold text-primary hover:bg-primary/20">Preview</button>
+                            {status === 'Draft' && (
+                              <button type="button" onClick={() => void runPayrollAction('process', [record.id])} disabled={isPayrollActionRunning} className="min-h-11 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800 disabled:opacity-40">Process</button>
+                            )}
+                            {status === 'Processed' && (
+                              <>
+                                <button type="button" onClick={() => void runPayrollAction('publish', [record.id])} disabled={isPayrollActionRunning} className="min-h-11 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-[11px] font-bold text-primary disabled:opacity-40">Publish</button>
+                                <button type="button" onClick={() => void runPayrollAction('email', [record.id])} disabled={isPayrollActionRunning} className="min-h-11 rounded-lg border border-neutral-border bg-white px-3 py-2 text-[11px] font-bold text-on-surface-variant disabled:opacity-40">Email</button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="hidden overflow-x-auto rounded border border-neutral-border md:block">
               <table className="w-full min-w-[900px] text-left text-xs">
                 <thead className="bg-neutral-50 text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
                   <tr>
@@ -976,7 +1094,8 @@ export default function PayrollView({
                   })}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           )}
           <p className="flex items-center gap-2 text-[11px] text-on-surface-variant"><Check className="h-3.5 w-3.5 text-green-700" /> Drafts are saved for this month. Only Processed records can be published or emailed; Published records are visible in the employee site.</p>
         </div>

@@ -252,7 +252,18 @@ export default function LeaveManagementView({
   const [endDate, setEndDate] = useState(getGmt8DateString());
   const [reason, setReason] = useState('');
   const [requestStatusFilter, setRequestStatusFilter] = useState<RequestStatusFilter>('All');
+  const [requestSearch, setRequestSearch] = useState('');
+  const [requestDepartmentFilter, setRequestDepartmentFilter] = useState('All');
+  const [requestLeaveTypeFilter, setRequestLeaveTypeFilter] = useState('All');
+  const [selectedLeaveRequestIds, setSelectedLeaveRequestIds] = useState<string[]>([]);
+  const [reviewRequestId, setReviewRequestId] = useState('');
   const [offInLieuStatusFilter, setOffInLieuStatusFilter] = useState<OffInLieuStatusFilter>('All');
+  const [workspaceSaveState, setWorkspaceSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [reviewNoteRequest, setReviewNoteRequest] = useState<LeaveRequest | null>(null);
+  const [reviewNoteStatus, setReviewNoteStatus] = useState<Exclude<LeaveRequestStatus, 'Pending'> | null>(null);
+  const [reviewNoteBatchStatus, setReviewNoteBatchStatus] = useState<Exclude<LeaveRequestStatus, 'Pending'> | null>(null);
+  const [reviewNoteDraft, setReviewNoteDraft] = useState('');
+  const [isSavingReviewDecision, setIsSavingReviewDecision] = useState(false);
 
   const [newTypeName, setNewTypeName] = useState('');
   const [newTypeCode, setNewTypeCode] = useState('');
@@ -497,9 +508,17 @@ export default function LeaveManagementView({
       payrollDeductions: overrides.payrollDeductions || payrollDeductions,
       source: 'local' as const
     };
-    void persistLeaveWorkspace(activeEntityId, workspace).catch((error) => {
-      console.warn('[Leave Management] Supabase save failed; local fallback remains active:', error);
-    });
+    setWorkspaceSaveState('saving');
+    void persistLeaveWorkspace(activeEntityId, workspace)
+      .then(() => setWorkspaceSaveState('saved'))
+      .catch((error) => {
+        console.warn('[Leave Management] Supabase save failed; local fallback remains active:', error);
+        setWorkspaceSaveState('error');
+        onShowNotification(
+          'Leave Changes Saved Locally',
+          'The local copy is safe, but cloud sync failed. Retry after checking the connection.'
+        );
+      });
   };
 
   const currentEmployee = activeEmployees.find((employee) => employee.id === selectedEmployeeId);
@@ -516,9 +535,69 @@ export default function LeaveManagementView({
     (policy) => policy.id === leaveConfigs.find((config) => config.leaveType === leaveType)?.policyId
   ) || conditioningPolicies[0];
 
-  const filteredRequests = requestStatusFilter === 'All'
-    ? requests
-    : requests.filter((request) => request.status === requestStatusFilter);
+  const requestDepartments = Array.from(new Set(
+    activeEmployees
+      .map((employee) => employee.department?.trim())
+      .filter((department): department is string => Boolean(department))
+  )).sort();
+  const normalizedRequestSearch = requestSearch.trim().toLowerCase();
+  const filteredRequests = requests.filter((request) => {
+    const employee = activeEmployees.find((item) => item.id === request.employeeId);
+    const matchesStatus = requestStatusFilter === 'All' || request.status === requestStatusFilter;
+    const matchesDepartment = requestDepartmentFilter === 'All' || employee?.department === requestDepartmentFilter;
+    const matchesLeaveType = requestLeaveTypeFilter === 'All' || request.leaveType === requestLeaveTypeFilter;
+    const matchesSearch = !normalizedRequestSearch || [
+      request.employeeName,
+      request.id,
+      request.leaveType,
+      request.reason,
+      employee?.department,
+      employee?.designation,
+    ].some((value) => value?.toLowerCase().includes(normalizedRequestSearch));
+    return matchesStatus && matchesDepartment && matchesLeaveType && matchesSearch;
+  });
+
+  const reviewRequest = filteredRequests.find((request) => request.id === reviewRequestId)
+    || filteredRequests.find((request) => request.status === 'Pending')
+    || filteredRequests[0]
+    || null;
+  const reviewRequestEmployee = reviewRequest
+    ? activeEmployees.find((employee) => employee.id === reviewRequest.employeeId)
+    : undefined;
+  const reviewRequestPayrollDeduction = reviewRequest
+    ? payrollDeductions
+      .filter((deduction) => deduction.leaveRequestId === reviewRequest.id)
+      .reduce((total, deduction) => total + deduction.amount, 0)
+    : 0;
+  const reviewRequestPayrollStatus = reviewRequest
+    ? payrollDeductions.some((deduction) => deduction.leaveRequestId === reviewRequest.id && deduction.status === 'Synced')
+      ? 'Synced'
+      : payrollDeductions.some((deduction) => deduction.leaveRequestId === reviewRequest.id)
+        ? 'Pending'
+        : 'Not applicable'
+    : 'Not applicable';
+
+  useEffect(() => {
+    const visibleRequests = requestStatusFilter === 'All'
+      ? requests
+      : requests.filter((request) => request.status === requestStatusFilter);
+    const visiblePendingIds = new Set(
+      visibleRequests
+        .filter((request) => request.status === 'Pending')
+        .map((request) => request.id)
+    );
+    setSelectedLeaveRequestIds((previous) => previous.filter((id) => visiblePendingIds.has(id)));
+  }, [requestStatusFilter, requests]);
+
+  useEffect(() => {
+    if (!reviewRequestId || !filteredRequests.some((request) => request.id === reviewRequestId)) {
+      setReviewRequestId(
+        filteredRequests.find((request) => request.status === 'Pending')?.id
+          || filteredRequests[0]?.id
+          || ''
+      );
+    }
+  }, [filteredRequests, reviewRequestId]);
 
   const filteredOffInLieuRequests = offInLieuStatusFilter === 'All'
     ? offInLieuRequests
@@ -737,7 +816,176 @@ export default function LeaveManagementView({
     onShowNotification('Leave Request Submitted', `${totalDays} day(s) of ${leaveType} are pending review for ${employee.name}.`);
   };
 
-  const updateLeaveRequestStatus = async (id: string, status: Exclude<LeaveRequestStatus, 'Pending'>) => {
+  const calculateLeaveDecision = (
+    request: LeaveRequest,
+    status: Exclude<LeaveRequestStatus, 'Pending'>,
+    reviewNote: string,
+    currentRequests: LeaveRequest[],
+    currentLedgerEntries: LeaveBalanceLedgerEntry[],
+    currentPayrollDeductions: LeavePayrollDeduction[],
+  ) => {
+    const updatedRequest = {
+      ...request,
+      status,
+      approvedAt: status === 'Approved' ? new Date().toISOString() : undefined,
+      approvedBy: status === 'Approved' ? 'HR Admin' : undefined,
+      reviewNote: reviewNote.trim() || undefined,
+    };
+    let nextRequests = currentRequests.map((item) => item.id === request.id ? updatedRequest : item);
+    let nextLedgerEntries = currentLedgerEntries;
+    let nextPayrollDeductions = currentPayrollDeductions;
+    let employeeDelta = 0;
+
+    if (status === 'Approved' && !currentLedgerEntries.some((entry) => entry.sourceId === request.id)) {
+      const config = leaveConfigs.find((item) => item.id === request.leaveTypeId || item.leaveType === request.leaveType);
+      const policy = conditioningPolicies.find((item) => item.id === config?.policyId) || conditioningPolicies[0];
+      const employee = activeEmployees.find((item) => item.id === request.employeeId);
+      const approvedPreviously = currentRequests
+        .filter((item) => item.employeeId === request.employeeId && item.leaveType === request.leaveType && item.status === 'Approved')
+        .reduce((sum, item) => sum + item.totalDays, 0);
+      const entitlement = config?.daysEntitled || 0;
+      const excessDays = Math.max(0, approvedPreviously + request.totalDays - entitlement);
+      if (excessDays > 0 && policy?.excessLeaveHandling === 'reject') {
+        return {
+          error: `This request exceeds the ${entitlement}-day entitlement by ${excessDays} day(s).`,
+        };
+      }
+
+      const isReplacementLeave = config?.systemManaged === true || request.leaveType === 'Replacement Leave';
+      if (isReplacementLeave) {
+        const consumption = consumeReplacementLeaveFIFO(
+          currentLedgerEntries.filter((entry) => entry.employeeId === request.employeeId && entry.leaveTypeId === (config?.id || request.leaveTypeId)),
+          request.totalDays,
+          request.appliedDate,
+        );
+        if (consumption.remaining > 0) {
+          return {
+            error: `Only ${consumption.consumed} of ${request.totalDays} replacement leave day(s) are available.`,
+          };
+        }
+        nextLedgerEntries = [
+          ...currentLedgerEntries,
+          ...consumption.debits.map((debit) => ({
+            ...debit,
+            entityId: activeEntityId,
+            sourceId: request.id,
+            leaveTypeId: config?.id || request.leaveTypeId || REPLACEMENT_LEAVE_TYPE_ID,
+            leaveType: 'Replacement Leave',
+          })),
+        ];
+      }
+
+      const deductionDays = isReplacementLeave
+        ? 0
+        : policy?.paidTreatment === 'unpaid' || policy?.payrollDeductionBehavior === 'deduct_all'
+          ? request.totalDays
+          : policy?.payrollDeductionBehavior === 'deduct_excess'
+            ? excessDays
+            : 0;
+      const leaveTypeId = config?.id || request.leaveTypeId || request.leaveType;
+      if (!isReplacementLeave) {
+        nextLedgerEntries = [
+          ...nextLedgerEntries,
+          {
+            id: `LBD-${request.id}`,
+            entityId: activeEntityId,
+            employeeId: request.employeeId,
+            leaveTypeId,
+            leaveType: request.leaveType,
+            entryType: 'debit',
+            sourceType: 'leave_request',
+            sourceId: request.id,
+            quantity: request.totalDays,
+            occurredAt: request.appliedDate,
+            notes: `Approved by HR Admin${excessDays > 0 ? `; ${excessDays} excess day(s)` : ''}`,
+          },
+        ];
+      }
+
+      if (deductionDays > 0 && employee) {
+        const appliedDate = new Date(`${request.appliedDate}T00:00:00`);
+        const fallbackMonth = request.payrollMonth || (Number.isNaN(appliedDate.getTime()) ? new Date().getMonth() + 1 : appliedDate.getMonth() + 1);
+        const fallbackYear = request.payrollYear || (Number.isNaN(appliedDate.getTime()) ? new Date().getFullYear() : appliedDate.getFullYear());
+        const periods = splitLeaveDaysAcrossPayrollMonths({
+          startDate: request.startDate,
+          endDate: request.endDate,
+          totalDays: deductionDays,
+        });
+        const effectivePeriods = periods.length > 0
+          ? periods
+          : [{ payrollMonth: fallbackMonth, payrollYear: fallbackYear, leaveDays: deductionDays }];
+        const deductions = effectivePeriods.map((period, index) => ({
+          ...calculatePayrollDeduction({
+            employee,
+            leaveDays: period.leaveDays,
+            payrollMonth: period.payrollMonth,
+            payrollYear: period.payrollYear,
+          }),
+          id: `LPD-${request.id}-${index + 1}`,
+          entityId: activeEntityId,
+          employeeId: request.employeeId,
+          leaveRequestId: request.id,
+          reason: policy?.paidTreatment === 'unpaid' ? 'Approved unpaid leave' : 'Approved excess leave',
+        }));
+        employeeDelta = deductions.reduce((sum, deduction) => sum + deduction.amount, 0);
+        nextPayrollDeductions = [
+          ...currentPayrollDeductions.filter((item) => item.leaveRequestId !== request.id),
+          ...deductions,
+        ];
+      }
+    }
+
+    return { nextRequests, nextLedgerEntries, nextPayrollDeductions, employeeDelta };
+  };
+
+  const persistLeaveDecision = (
+    nextRequests: LeaveRequest[],
+    nextLedgerEntries: LeaveBalanceLedgerEntry[],
+    nextPayrollDeductions: LeavePayrollDeduction[],
+  ) => {
+    setRequests(nextRequests);
+    setLedgerEntries(nextLedgerEntries);
+    setPayrollDeductions(nextPayrollDeductions);
+    if (activeEntityId) {
+      writeScopedJson(`leave_requests_${activeEntityId}`, nextRequests);
+      writeScopedJson(`leave_balance_ledger_${activeEntityId}`, nextLedgerEntries);
+      writeScopedJson(`leave_payroll_deductions_${activeEntityId}`, nextPayrollDeductions);
+    }
+    persistWorkspace({
+      requests: nextRequests,
+      ledgerEntries: nextLedgerEntries,
+      payrollDeductions: nextPayrollDeductions,
+    });
+  };
+
+  const openReviewDecision = (request: LeaveRequest, status: Exclude<LeaveRequestStatus, 'Pending'>) => {
+    setReviewNoteRequest(request);
+    setReviewNoteStatus(status);
+    setReviewNoteBatchStatus(null);
+    setReviewNoteDraft(reviewNoteRequest?.id === request.id ? reviewNoteDraft : request.reviewNote || '');
+  };
+
+  const openBatchReviewDecision = (status: Exclude<LeaveRequestStatus, 'Pending'>) => {
+    if (selectedLeaveRequestIds.length === 0) return;
+    setReviewNoteRequest(null);
+    setReviewNoteStatus(null);
+    setReviewNoteBatchStatus(status);
+    setReviewNoteDraft('');
+  };
+
+  const closeReviewDecision = (force = false) => {
+    if (isSavingReviewDecision && !force) return;
+    setReviewNoteRequest(null);
+    setReviewNoteStatus(null);
+    setReviewNoteBatchStatus(null);
+    setReviewNoteDraft('');
+  };
+
+  const updateLeaveRequestStatus = async (
+    id: string,
+    status: Exclude<LeaveRequestStatus, 'Pending'>,
+    reviewNote = ''
+  ) => {
     const request = requests.find((item) => item.id === id);
     if (!request) return;
     const previousRequests = requests;
@@ -753,166 +1001,36 @@ export default function LeaveManagementView({
       confirmLabel: status === 'Approved' ? 'Approve Request' : 'Reject Request',
     });
     if (!confirmed) return;
-    const updatedRequest = {
-      ...request,
-      status,
-      approvedAt: status === 'Approved' ? new Date().toISOString() : undefined,
-      approvedBy: status === 'Approved' ? 'HR Admin' : undefined,
-    };
-    const nextRequests = requests.map((item) => item.id === id ? updatedRequest : item);
-    let nextLedgerEntries = ledgerEntries;
-    let nextPayrollDeductions = payrollDeductions;
-
-    if (status === 'Approved' && !ledgerEntries.some((entry) => entry.sourceId === request.id)) {
-      const config = leaveConfigs.find((item) => item.id === request.leaveTypeId || item.leaveType === request.leaveType);
-      const policy = conditioningPolicies.find((item) => item.id === config?.policyId) || conditioningPolicies[0];
-      const employee = activeEmployees.find((item) => item.id === request.employeeId);
-      const approvedPreviously = requests
-        .filter((item) => item.employeeId === request.employeeId && item.leaveType === request.leaveType && item.status === 'Approved')
-        .reduce((sum, item) => sum + item.totalDays, 0);
-      const entitlement = config?.daysEntitled || 0;
-      const excessDays = Math.max(0, approvedPreviously + request.totalDays - entitlement);
-      if (excessDays > 0 && policy?.excessLeaveHandling === 'reject') {
-        onShowNotification(
-          'Leave Exceeds Entitlement',
-          `This request exceeds the ${entitlement}-day entitlement by ${excessDays} day(s) and the active policy rejects excess leave.`,
-        );
-        return;
-      }
-      const isReplacementLeave = config?.systemManaged === true || request.leaveType === 'Replacement Leave';
-      if (isReplacementLeave) {
-        const consumption = consumeReplacementLeaveFIFO(
-          ledgerEntries.filter((entry) => entry.employeeId === request.employeeId && entry.leaveTypeId === (config?.id || request.leaveTypeId)),
-          request.totalDays,
-          request.appliedDate,
-        );
-        if (consumption.remaining > 0) {
-          onShowNotification(
-            'Insufficient Replacement Leave',
-            `This request needs ${request.totalDays} day(s), but only ${consumption.consumed} day(s) of unexpired Replacement Leave credit are available.`,
-          );
-          return;
-        }
-        nextLedgerEntries = [
-          ...ledgerEntries,
-          ...consumption.debits.map((debit) => ({
-            ...debit,
-            entityId: activeEntityId,
-            sourceId: request.id,
-            leaveTypeId: config?.id || request.leaveTypeId || REPLACEMENT_LEAVE_TYPE_ID,
-            leaveType: 'Replacement Leave',
-          })),
-        ];
-      }
-      const deductionDays = isReplacementLeave
-        ? 0
-        : policy?.paidTreatment === 'unpaid' || policy?.payrollDeductionBehavior === 'deduct_all'
-        ? request.totalDays
-        : policy?.payrollDeductionBehavior === 'deduct_excess'
-          ? excessDays
-          : 0;
-      const leaveTypeId = config?.id || request.leaveTypeId || request.leaveType;
-      if (!isReplacementLeave) {
-        const debit: LeaveBalanceLedgerEntry = {
-          id: `LBD-${request.id}`,
-          entityId: activeEntityId,
-          employeeId: request.employeeId,
-          leaveTypeId,
-          leaveType: request.leaveType,
-          entryType: 'debit',
-          sourceType: 'leave_request',
-          sourceId: request.id,
-          quantity: request.totalDays,
-          occurredAt: request.appliedDate,
-          notes: `Approved by HR Admin${excessDays > 0 ? `; ${excessDays} excess day(s)` : ''}`,
-        };
-        nextLedgerEntries = [...ledgerEntries, debit];
-      }
-
-      if (deductionDays > 0 && employee) {
-        const appliedDate = new Date(`${request.appliedDate}T00:00:00`);
-        const fallbackMonth = request.payrollMonth || (Number.isNaN(appliedDate.getTime()) ? new Date().getMonth() + 1 : appliedDate.getMonth() + 1);
-        const fallbackYear = request.payrollYear || (Number.isNaN(appliedDate.getTime()) ? new Date().getFullYear() : appliedDate.getFullYear());
-        const periods = splitLeaveDaysAcrossPayrollMonths({
-          startDate: request.startDate,
-          endDate: request.endDate,
-          totalDays: deductionDays,
-        });
-        const effectivePeriods = periods.length > 0
-          ? periods
-          : [{ payrollMonth: fallbackMonth, payrollYear: fallbackYear, leaveDays: deductionDays }];
-        const deductions = effectivePeriods.map((period, index) => {
-          const deductionBase = calculatePayrollDeduction({
-            employee,
-            leaveDays: period.leaveDays,
-            payrollMonth: period.payrollMonth,
-            payrollYear: period.payrollYear,
-          });
-          return {
-            ...deductionBase,
-            id: `LPD-${request.id}-${index + 1}`,
-            entityId: activeEntityId,
-            employeeId: request.employeeId,
-            leaveRequestId: request.id,
-            reason: policy?.paidTreatment === 'unpaid' ? 'Approved unpaid leave' : 'Approved excess leave',
-          };
-        });
-        const deductionAmount = deductions.reduce((sum, deduction) => sum + deduction.amount, 0);
-        nextPayrollDeductions = [
-          ...payrollDeductions.filter((item) => item.leaveRequestId !== request.id),
-          ...deductions,
-        ];
-        void onUpdateEmployee?.(employee.id, {
-          unpaidLeave: Math.round(((employee.unpaidLeave || 0) + deductionAmount) * 100) / 100,
-        });
-      }
+    const result = calculateLeaveDecision(request, status, reviewNote, requests, ledgerEntries, payrollDeductions);
+    if ('error' in result) {
+      onShowNotification(status === 'Approved' ? 'Leave Approval Blocked' : 'Leave Update Blocked', result.error);
+      return;
     }
-
-    setRequests(nextRequests);
-    setLedgerEntries(nextLedgerEntries);
-    setPayrollDeductions(nextPayrollDeductions);
-    if (activeEntityId) {
-      writeScopedJson(`leave_requests_${activeEntityId}`, nextRequests);
-      writeScopedJson(`leave_balance_ledger_${activeEntityId}`, nextLedgerEntries);
-      writeScopedJson(`leave_payroll_deductions_${activeEntityId}`, nextPayrollDeductions);
+    persistLeaveDecision(result.nextRequests, result.nextLedgerEntries, result.nextPayrollDeductions);
+    if (result.employeeDelta > 0 && employeeBeforeDecision) {
+      await onUpdateEmployee?.(employeeBeforeDecision.id, {
+        unpaidLeave: Math.round(((employeeBeforeDecision.unpaidLeave || 0) + result.employeeDelta) * 100) / 100,
+      });
     }
-    persistWorkspace({
-      requests: nextRequests,
-      ledgerEntries: nextLedgerEntries,
-      payrollDeductions: nextPayrollDeductions,
-    });
-    const employee = activeEmployees.find((item) => item.id === request.employeeId);
-    if (employee?.email?.includes('@')) {
+    if (employeeBeforeDecision?.email?.includes('@')) {
       void requestBusinessEmail({
         type: 'leave_decision',
-        recipient: employee.email,
-        name: employee.name,
+        recipient: employeeBeforeDecision.email,
+        name: employeeBeforeDecision.name,
         status: status.toLowerCase(),
-        details: `${request.leaveType}: ${formatToDDMMMYYYY(request.startDate)} to ${formatToDDMMMYYYY(request.endDate)}.`,
+        details: `${request.leaveType}: ${formatToDDMMMYYYY(request.startDate)} to ${formatToDDMMMYYYY(request.endDate)}.${reviewNote.trim() ? ` HR note: ${reviewNote.trim()}` : ''}`,
         entityId: activeEntityId,
       }).catch((error) => onShowNotification('Email Notification Failed', error.message));
     }
     showUndoToast({
       title: `Request ${status}`,
-      message: `Leave request ${id} is now ${status.toLowerCase()}. The notification email cannot be recalled.`,
+      message: `Leave request ${id} is now ${status.toLowerCase()}.`,
       type: 'success',
       action: {
         label: 'Undo',
         expiresAt: Date.now() + 8_000,
         undo: async () => {
-          setRequests(previousRequests);
-          setLedgerEntries(previousLedgerEntries);
-          setPayrollDeductions(previousPayrollDeductions);
-          if (activeEntityId) {
-            writeScopedJson(`leave_requests_${activeEntityId}`, previousRequests);
-            writeScopedJson(`leave_balance_ledger_${activeEntityId}`, previousLedgerEntries);
-            writeScopedJson(`leave_payroll_deductions_${activeEntityId}`, previousPayrollDeductions);
-          }
-          persistWorkspace({
-            requests: previousRequests,
-            ledgerEntries: previousLedgerEntries,
-            payrollDeductions: previousPayrollDeductions,
-          });
+          persistLeaveDecision(previousRequests, previousLedgerEntries, previousPayrollDeductions);
           if (employeeBeforeDecision) {
             await onUpdateEmployee?.(employeeBeforeDecision.id, {
               unpaidLeave: employeeBeforeDecision.unpaidLeave || 0,
@@ -922,6 +1040,99 @@ export default function LeaveManagementView({
         },
       },
     });
+  };
+
+  const updateSelectedLeaveRequests = async (
+    status: Exclude<LeaveRequestStatus, 'Pending'>,
+    reviewNote = ''
+  ) => {
+    const selected = requests.filter((request) => selectedLeaveRequestIds.includes(request.id) && request.status === 'Pending');
+    if (selected.length === 0) return;
+    const confirmed = await confirmAction({
+      title: status === 'Approved' ? 'Approve Selected Leave' : 'Reject Selected Leave',
+      message: `${status === 'Approved' ? 'Approve' : 'Reject'} ${selected.length} selected leave request(s) in one action?`,
+      type: status === 'Approved' ? 'info' : 'danger',
+      confirmLabel: status === 'Approved' ? 'Approve Selected' : 'Reject Selected',
+    });
+    if (!confirmed) return;
+
+    const previousRequests = requests;
+    const previousLedgerEntries = ledgerEntries;
+    const previousPayrollDeductions = payrollDeductions;
+    let nextRequests = requests;
+    let nextLedgerEntries = ledgerEntries;
+    let nextPayrollDeductions = payrollDeductions;
+    const employeeDeltas = new Map<string, number>();
+    const failures: string[] = [];
+    for (const request of selected) {
+      const result = calculateLeaveDecision(request, status, reviewNote, nextRequests, nextLedgerEntries, nextPayrollDeductions);
+      if ('error' in result) {
+        failures.push(`${request.employeeName}: ${result.error}`);
+        continue;
+      }
+      nextRequests = result.nextRequests;
+      nextLedgerEntries = result.nextLedgerEntries;
+      nextPayrollDeductions = result.nextPayrollDeductions;
+      if (result.employeeDelta > 0) {
+        employeeDeltas.set(request.employeeId, (employeeDeltas.get(request.employeeId) || 0) + result.employeeDelta);
+      }
+    }
+    const completed = selected.length - failures.length;
+    if (completed === 0) {
+      onShowNotification('Leave Approval Blocked', failures.join(' '));
+      return;
+    }
+    persistLeaveDecision(nextRequests, nextLedgerEntries, nextPayrollDeductions);
+    for (const [employeeId, delta] of employeeDeltas) {
+      const employee = activeEmployees.find((item) => item.id === employeeId);
+      if (employee) {
+        await onUpdateEmployee?.(employee.id, {
+          unpaidLeave: Math.round(((employee.unpaidLeave || 0) + delta) * 100) / 100,
+        });
+      }
+    }
+    setSelectedLeaveRequestIds([]);
+    onShowNotification(
+      failures.length ? 'Leave Batch Needs Attention' : 'Leave Batch Complete',
+      `${completed} request(s) updated${failures.length ? `; ${failures.length} blocked. ${failures.join(' ')}` : '.'}`,
+    );
+    showUndoToast({
+      title: 'Leave Batch Updated',
+      message: `${completed} leave request(s) were updated.`,
+      type: 'success',
+      action: {
+        label: 'Undo',
+        expiresAt: Date.now() + 8_000,
+        undo: async () => {
+          persistLeaveDecision(previousRequests, previousLedgerEntries, previousPayrollDeductions);
+          for (const [employeeId, delta] of employeeDeltas) {
+            const employee = activeEmployees.find((item) => item.id === employeeId);
+            if (employee) {
+              await onUpdateEmployee?.(employee.id, {
+                unpaidLeave: Math.max(0, (employee.unpaidLeave || 0) - delta),
+              });
+            }
+          }
+          onShowNotification('Leave Batch Reverted', 'The selected leave decisions were restored.');
+        },
+      },
+    });
+  };
+
+  const handleSaveReviewDecision = async () => {
+    if ((!reviewNoteRequest || !reviewNoteStatus) && !reviewNoteBatchStatus) return;
+    if (isSavingReviewDecision) return;
+    setIsSavingReviewDecision(true);
+    try {
+      if (reviewNoteBatchStatus) {
+        await updateSelectedLeaveRequests(reviewNoteBatchStatus, reviewNoteDraft);
+      } else if (reviewNoteRequest && reviewNoteStatus) {
+        await updateLeaveRequestStatus(reviewNoteRequest.id, reviewNoteStatus, reviewNoteDraft);
+      }
+      closeReviewDecision(true);
+    } finally {
+      setIsSavingReviewDecision(false);
+    }
   };
 
   const addPolicy = (event: React.FormEvent) => {
@@ -1639,193 +1850,338 @@ export default function LeaveManagementView({
   const getGroupPolicyName = (group: LeaveGroup) => conditioningPolicies.find((policy) => policy.id === group.policyId)?.name || 'Not configured';
   const getGroupCarryOverName = (group: LeaveGroup) => carryOverSettings.find((setting) => setting.id === group.carryOverId)?.name || 'Not configured';
 
-  const renderOverview = () => (
-    <div className="space-y-6">
-      <div className={`${cardClass} overflow-hidden p-5`}>
-        <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-          <div>
-            <h2 className="text-base font-bold text-on-surface">Employee Leave Balance</h2>
-            <p className="mt-1 text-xs text-on-surface-variant">Review remaining, taken, pending, carry-forward, and credit balances for an active employee.</p>
+  const renderOverview = () => {
+    const pendingRequests = filteredRequests.filter((request) => request.status === 'Pending');
+    const allPendingSelected = pendingRequests.length > 0
+      && pendingRequests.every((request) => selectedLeaveRequestIds.includes(request.id));
+
+    const selectVisiblePending = (checked: boolean) => {
+      const visiblePendingIds = pendingRequests.map((request) => request.id);
+      setSelectedLeaveRequestIds((previous) => checked
+        ? [...new Set([...previous, ...visiblePendingIds])]
+        : previous.filter((id) => !visiblePendingIds.includes(id)));
+    };
+
+    const renderRequestRow = (request: LeaveRequest) => {
+      const employee = activeEmployees.find((item) => item.id === request.employeeId);
+      const isBatchSelected = selectedLeaveRequestIds.includes(request.id);
+      const isReviewSelected = reviewRequest?.id === request.id;
+      const requestPayrollDeduction = payrollDeductions
+        .filter((deduction) => deduction.leaveRequestId === request.id)
+        .reduce((total, deduction) => total + deduction.amount, 0);
+      const requestPayrollStatus = payrollDeductions.some((deduction) => deduction.leaveRequestId === request.id && deduction.status === 'Synced')
+        ? 'Synced'
+        : payrollDeductions.some((deduction) => deduction.leaveRequestId === request.id)
+          ? 'Pending'
+          : 'Not applicable';
+
+      return (
+        <div
+          key={request.id}
+          role="button"
+          tabIndex={0}
+          onClick={() => setReviewRequestId(request.id)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              setReviewRequestId(request.id);
+            }
+          }}
+          className={`group grid cursor-pointer grid-cols-1 gap-3 border-b border-neutral-border/70 px-4 py-4 transition-colors last:border-b-0 md:grid-cols-[32px_minmax(190px,1.45fr)_minmax(145px,1fr)_minmax(125px,.9fr)_110px_minmax(138px,1.05fr)] md:items-center md:gap-3 md:px-4 md:py-3 ${isReviewSelected ? 'bg-primary/[0.045] shadow-[inset_3px_0_0_var(--color-primary)]' : 'hover:bg-surface-container-low/60'}`}
+        >
+          <div className="flex items-center justify-between md:block" onClick={(event) => event.stopPropagation()}>
+            {request.status === 'Pending' ? (
+              <label className="flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-lg border border-neutral-border bg-white md:min-h-8 md:min-w-8" title="Select pending request">
+                <input
+                  type="checkbox"
+                  checked={isBatchSelected}
+                  onChange={(event) => setSelectedLeaveRequestIds((previous) => (
+                    event.target.checked
+                      ? [...new Set([...previous, request.id])]
+                      : previous.filter((id) => id !== request.id)
+                  ))}
+                  className="h-4 w-4 accent-primary"
+                  aria-label={`Select ${request.employeeName}'s leave request`}
+                />
+              </label>
+            ) : <span className="hidden md:block" />}
+            <span className="text-[10px] font-bold text-on-surface-variant md:hidden">{isReviewSelected ? 'Selected for review' : 'Tap to review'}</span>
           </div>
-          <select value={selectedEmployeeId} onChange={(event) => setSelectedEmployeeId(event.target.value)} className={`${inputClass} sm:max-w-[280px]`}>
-            {activeEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
-          </select>
-        </div>
-        {currentEmployee && (
-          <div className="mb-4 flex items-center gap-3 rounded-lg border border-primary/15 bg-primary/5 p-3">
-            <EmployeeAvatar employee={currentEmployee} className="h-10 w-10 rounded-full" />
-            <div>
-              <p className="text-sm font-bold text-on-surface">{currentEmployee.name}</p>
-              <p className="text-xs text-on-surface-variant">{currentEmployee.department} · {currentEmployee.designation}</p>
+          <div className="flex min-w-0 items-center gap-3">
+            <EmployeeAvatar employee={employee} className="h-10 w-10 shrink-0 rounded-full md:h-8 md:w-8" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold text-on-surface">{request.employeeName}</p>
+              <p className="mt-0.5 truncate text-[10px] text-on-surface-variant">{employee?.department || 'Department not set'} · {employee?.designation || 'Designation not set'}</p>
+              <p className="mt-0.5 truncate font-mono text-[9px] text-on-surface-variant">{request.id} · Applied {formatToDDMMMYYYY(request.appliedDate)}</p>
             </div>
           </div>
-        )}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {enabledLeaveConfigs.map((config) => {
-            const balance = selectedEmployeeBalances.find((item) => item.leaveTypeId === config.id);
-            const remaining = balance?.remaining ?? config.daysEntitled;
-            const expiryDate = ledgerEntries
-              .filter((entry) => entry.employeeId === selectedEmployeeId && entry.leaveTypeId === config.id && entry.expiresAt)
-              .map((entry) => entry.expiresAt as string)
-              .sort()[0];
-            return (
-              <div key={config.id} className="rounded-lg border border-neutral-border/60 bg-neutral-50 p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">{config.leaveType}</span>
-                  {balance?.replacementCredit ? <span className="rounded-full bg-secondary/10 px-1.5 py-0.5 text-[9px] font-bold text-secondary">Credit</span> : null}
-                </div>
-                <div className="mt-2 flex items-end justify-between">
-                  <span className="font-mono text-2xl font-bold text-primary">{remaining}</span>
-                  <span className="text-[10px] text-on-surface-variant">/ {(balance?.entitlement ?? config.daysEntitled) + (balance?.carryOver ?? 0)} days</span>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-on-surface-variant">
-                  <span>Approved taken <strong className="font-mono text-on-surface">{balance?.taken ?? 0}</strong></span>
-                  <span>Pending <strong className="font-mono text-on-surface">{balance?.pending ?? 0}</strong></span>
-                  <span>Carry forward <strong className="font-mono text-on-surface">{balance?.carryOver ?? 0}</strong></span>
-                  <span>Credits <strong className="font-mono text-on-surface">{balance?.credited ?? 0}</strong></span>
-                </div>
-                {expiryDate && <p className="mt-2 border-t border-neutral-border/60 pt-2 text-[10px] text-amber-700">Expires {formatToDDMMMYYYY(expiryDate)}</p>}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-        <div className={`${cardClass} p-5 xl:col-span-5`}>
-          <div className="mb-5 flex items-start justify-between gap-3 border-b border-neutral-100 pb-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <Plus className="h-4 w-4 text-primary" />
-                <h2 className="text-base font-bold text-primary">File Leave Request</h2>
-              </div>
-              <p className="mt-1 text-xs text-on-surface-variant">Submit a leave application for an active employee.</p>
-            </div>
-            <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase text-primary">Admin</span>
+          <div className="grid grid-cols-2 gap-3 pl-[52px] md:block md:pl-0">
+            <div><span className={labelClass}>Leave type</span><span className="block text-xs font-bold text-primary">{request.leaveType}</span></div>
+            <div className="md:mt-1"><span className={labelClass}>Request</span><span className="block text-[10px] text-on-surface-variant">{request.totalDays} day(s) · {request.reason}</span></div>
           </div>
-
-          <form onSubmit={handleApplyLeave} className="space-y-4 text-xs">
-            <div>
-              <label className={labelClass}>Employee</label>
-              <select value={selectedEmployeeId} onChange={(event) => setSelectedEmployeeId(event.target.value)} className={inputClass}>
-                <option value="">Select active employee</option>
-                {activeEmployees.map((employee) => (
-                  <option key={employee.id} value={employee.id}>{employee.name} ({employee.id})</option>
-                ))}
-              </select>
-            </div>
-
-            {currentEmployee && (
-              <div className="grid grid-cols-2 gap-3 rounded-lg border border-primary/15 bg-primary/5 p-3">
-                <div>
-                  <span className={labelClass}>Department</span>
-                  <span className="font-semibold text-on-surface">{currentEmployee.department || 'Not set'}</span>
-                </div>
-                <div>
-                  <span className={labelClass}>Designation</span>
-                  <span className="font-semibold text-on-surface">{currentEmployee.designation || 'Not set'}</span>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className={labelClass}>Type of Leave</label>
-                <select value={leaveType} onChange={(event) => setLeaveType(event.target.value)} className={inputClass}>
-                  {enabledLeaveConfigs.map((config) => <option key={config.id} value={config.leaveType}>{config.leaveType}</option>)}
-                </select>
-              </div>
-              <div className="rounded-lg border border-primary/15 bg-primary/5 p-3">
-                <span className={labelClass}>Computed Days</span>
-                <span className="font-mono text-2xl font-bold text-primary">{calculateDays(startDate, endDate)}</span>
-                <span className="ml-1 text-[10px] text-on-surface-variant">under active policy</span>
-              </div>
-            </div>
-            <div className="flex items-center justify-between rounded-lg border border-neutral-border/60 bg-neutral-50 px-3 py-2.5 text-[11px]">
-              <span className={labelClass}>Applicable Policy</span>
-              <span className="font-semibold text-on-surface">{policyForLeaveType?.name || 'Not configured'}</span>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className={labelClass}>Start Date</label>
-                <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className={`${inputClass} font-mono`} />
-              </div>
-              <div>
-                <label className={labelClass}>End Date</label>
-                <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className={`${inputClass} font-mono`} />
-              </div>
-            </div>
-
-            <div>
-              <label className={labelClass}>Reason / Notes</label>
-              <textarea rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Add the reason or supporting reference." className={inputClass} />
-            </div>
-
-            <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:opacity-90">
-              <Send className="h-4 w-4" /> Submit Leave Application
-            </button>
-          </form>
+          <div className="grid grid-cols-2 gap-3 pl-[52px] md:block md:pl-0">
+            <div><span className={labelClass}>Dates</span><span className="block font-mono text-[10px] font-bold text-on-surface">{formatToDDMMMYYYY(request.startDate)} to {formatToDDMMMYYYY(request.endDate)}</span></div>
+            {request.attachment && <span className="mt-1 inline-flex w-fit items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[9px] font-bold text-blue-700">Attachment</span>}
+          </div>
+          <div className="flex items-center justify-between pl-[52px] md:block md:pl-0">
+            <RequestStatusBadge status={request.status} />
+            <span className="mt-1 block text-[9px] text-on-surface-variant md:mt-2">Payroll: <strong className={requestPayrollStatus === 'Synced' ? 'text-green-700' : 'text-on-surface'}>{requestPayrollStatus}</strong>{requestPayrollDeduction > 0 ? ` · RM ${requestPayrollDeduction.toFixed(2)}` : ''}</span>
+          </div>
+          <div className="flex items-center justify-end gap-2 pl-[52px] md:pl-0" onClick={(event) => event.stopPropagation()}>
+            <button type="button" onClick={() => openReviewDecision(request, 'Rejected')} disabled={request.status !== 'Pending'} className="min-h-10 rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-[10px] font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40 md:min-h-8 md:py-1.5">Reject</button>
+            <button type="button" onClick={() => openReviewDecision(request, 'Approved')} disabled={request.status !== 'Pending'} className="min-h-10 rounded-lg bg-green-600 px-2.5 py-2 text-[10px] font-bold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40 md:min-h-8 md:py-1.5">Approve</button>
+          </div>
         </div>
+      );
+    };
 
-        <div className={`${cardClass} p-5 xl:col-span-7`}>
-          <div className="mb-5 flex flex-col justify-between gap-3 border-b border-neutral-100 pb-4 sm:flex-row sm:items-center">
-            <div>
-              <h2 className="text-base font-bold text-on-surface">Leave Applications Queue</h2>
-              <p className="mt-1 text-xs text-on-surface-variant">Review requests and keep approval status visible.</p>
+    return (
+      <div className="space-y-6">
+        <section className={`${cardClass} overflow-hidden`}>
+          <div className="border-b border-neutral-border/70 bg-surface-container-low/45 px-4 py-4 sm:px-5">
+            <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+              <div>
+                <div className="flex items-center gap-2">
+                  <ListChecks className="h-5 w-5 text-primary" aria-hidden="true" />
+                  <h2 className="text-lg font-bold text-on-surface">Leave application queue</h2>
+                </div>
+                <p className="mt-1 text-xs text-on-surface-variant">Review requests, add an employee-visible note, and complete the decision without leaving the queue.</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {pendingRequests.length > 0 && (
+                  <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-neutral-border bg-white px-3 text-[10px] font-bold text-on-surface-variant">
+                    <input type="checkbox" checked={allPendingSelected} onChange={(event) => selectVisiblePending(event.target.checked)} className="h-4 w-4 accent-primary" aria-label="Select all visible pending leave requests" />
+                    Select pending
+                  </label>
+                )}
+                {selectedLeaveRequestIds.length > 0 && <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold text-primary">{selectedLeaveRequestIds.length} selected</span>}
+                <button type="button" onClick={() => setActiveSection('overview')} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-white transition hover:bg-primary-container">
+                  <Plus className="h-4 w-4" aria-hidden="true" /> File leave
+                </button>
+              </div>
             </div>
-            <div className="flex gap-1 rounded-md bg-neutral-100 p-1">
-              {(['All', 'Pending', 'Approved', 'Rejected'] as const).map((filter) => (
-                <button key={filter} type="button" onClick={() => setRequestStatusFilter(filter)} className={`rounded px-2.5 py-1 text-[10px] font-bold ${requestStatusFilter === filter ? 'bg-white text-on-surface shadow-sm' : 'text-on-surface-variant'}`}>
-                  {filter}
+
+            <div className="mt-4 flex gap-1 overflow-x-auto rounded-lg bg-neutral-100 p-1">
+              {([
+                ['All', `All ${requests.length}`],
+                ['Pending', `Pending ${pendingLeaveCount}`],
+                ['Approved', `Approved ${requests.filter((request) => request.status === 'Approved').length}`],
+                ['Rejected', `Rejected ${requests.filter((request) => request.status === 'Rejected').length}`],
+              ] as Array<[RequestStatusFilter, string]>).map(([filter, label]) => (
+                <button key={filter} type="button" onClick={() => setRequestStatusFilter(filter)} className={`min-h-10 shrink-0 rounded-md px-3 py-2 text-[10px] font-bold transition-colors ${requestStatusFilter === filter ? 'bg-white text-on-surface shadow-sm' : 'text-on-surface-variant hover:bg-white/60'}`}>
+                  {label}
                 </button>
               ))}
             </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[minmax(220px,1.5fr)_minmax(150px,.8fr)_minmax(150px,.8fr)_auto]">
+              <label className={`${inputClass} flex items-center gap-2 text-on-surface-variant`}>
+                <span aria-hidden="true">⌕</span>
+                <span className="sr-only">Search leave requests</span>
+                <input
+                  value={requestSearch}
+                  onChange={(event) => setRequestSearch(event.target.value)}
+                  placeholder="Search employee, leave type, or ID"
+                  className="min-h-0 w-full border-0 bg-transparent p-0 text-xs text-on-surface outline-none focus:ring-0"
+                />
+              </label>
+              <select value={requestDepartmentFilter} onChange={(event) => setRequestDepartmentFilter(event.target.value)} className={inputClass} aria-label="Filter by department">
+                <option value="All">All departments</option>
+                {requestDepartments.map((department) => <option key={department} value={department}>{department}</option>)}
+              </select>
+              <select value={requestLeaveTypeFilter} onChange={(event) => setRequestLeaveTypeFilter(event.target.value)} className={inputClass} aria-label="Filter by leave type">
+                <option value="All">Any leave type</option>
+                {enabledLeaveConfigs.map((config) => <option key={config.id} value={config.leaveType}>{config.leaveType}</option>)}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  setRequestStatusFilter('All');
+                  setRequestSearch('');
+                  setRequestDepartmentFilter('All');
+                  setRequestLeaveTypeFilter('All');
+                }}
+                className="min-h-11 rounded-xl border border-neutral-border bg-white px-4 py-2 text-xs font-bold text-on-surface-variant transition hover:bg-neutral-50"
+              >
+                Reset
+              </button>
+            </div>
           </div>
 
-          <div className="space-y-3">
-            {filteredRequests.length === 0 ? (
-              <EmptyState icon={CalendarDays} title="No leave requests" description="New applications will appear here for review." />
-            ) : filteredRequests.map((request) => {
-              const employee = activeEmployees.find((item) => item.id === request.employeeId);
-              return (
-                <div key={request.id} className="rounded-lg border border-neutral-border/70 bg-neutral-50/40 p-4">
-                  <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
-                    <div className="flex items-center gap-3">
-                      <EmployeeAvatar employee={employee} className="h-9 w-9 rounded-full" />
-                      <div>
-                        <p className="text-xs font-bold text-on-surface">{request.employeeName}</p>
-                        <p className="mt-0.5 text-[10px] text-on-surface-variant">{employee?.department || 'Department not set'} · {employee?.designation || 'Designation not set'}</p>
-                        <p className="mt-0.5 text-[10px] font-mono text-on-surface-variant">{request.id} | Applied {formatToDDMMMYYYY(request.appliedDate)}</p>
-                      </div>
+          {selectedLeaveRequestIds.length > 0 && (
+            <div className="flex flex-col gap-3 border-b border-primary/20 bg-primary/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs font-semibold text-primary">Batch review is ready for {selectedLeaveRequestIds.length} pending request{selectedLeaveRequestIds.length === 1 ? '' : 's'}.</p>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => openBatchReviewDecision('Rejected')} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-red-200 bg-white px-3 py-2 text-[10px] font-bold text-red-700 transition hover:bg-red-50"><XCircle className="h-3.5 w-3.5" /> Reject selected</button>
+                <button type="button" onClick={() => openBatchReviewDecision('Approved')} className="inline-flex min-h-11 items-center gap-1 rounded-lg bg-green-600 px-3 py-2 text-[10px] font-bold text-white transition hover:bg-green-700"><CheckCircle2 className="h-3.5 w-3.5" /> Approve selected</button>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="min-w-0">
+              <div className="hidden grid-cols-[32px_minmax(190px,1.45fr)_minmax(145px,1fr)_minmax(125px,.9fr)_110px_minmax(138px,1.05fr)] gap-3 border-b border-neutral-border bg-neutral-50/70 px-4 py-3 text-[9px] font-bold uppercase tracking-[0.12em] text-on-surface-variant md:grid">
+                <span />
+                <span>Employee</span>
+                <span>Request</span>
+                <span>Dates</span>
+                <span>Status</span>
+                <span>Actions</span>
+              </div>
+              {filteredRequests.length === 0
+                ? <div className="p-8"><EmptyState icon={CalendarDays} title="No leave requests" description="New applications will appear here for review." /></div>
+                : filteredRequests.map(renderRequestRow)}
+            </div>
+
+            <aside className="border-t border-neutral-border bg-surface-container-low/35 p-4 sm:p-5 xl:border-l xl:border-t-0 xl:sticky xl:top-4 xl:self-start">
+              {!reviewRequest ? (
+                <EmptyState icon={CalendarDays} title="Select a request" description="Choose a leave application from the queue to review it here." />
+              ) : (
+                <>
+                  <div className="flex items-start justify-between gap-3 border-b border-neutral-border/70 pb-4">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-primary">Review request</p>
+                      <h3 className="mt-1 text-lg font-bold text-on-surface">{reviewRequest.employeeName}</h3>
+                      <p className="mt-1 text-[10px] text-on-surface-variant">{reviewRequest.id} · {reviewRequestEmployee?.department || 'Department not set'}</p>
                     </div>
-                    <RequestStatusBadge status={request.status} />
+                    <RequestStatusBadge status={reviewRequest.status} />
                   </div>
-                  <div className="mt-3 grid grid-cols-1 gap-3 rounded-md border border-neutral-border/40 bg-white p-3 text-[11px] sm:grid-cols-3">
-                    <div><span className={labelClass}>Leave Type</span><span className="font-semibold text-primary">{request.leaveType}</span></div>
-                    <div><span className={labelClass}>Dates</span><span className="font-mono font-semibold text-on-surface">{formatToDDMMMYYYY(request.startDate)} to {formatToDDMMMYYYY(request.endDate)}</span></div>
-                    <div><span className={labelClass}>Days</span><span className="font-mono font-semibold text-on-surface">{request.totalDays}</span></div>
+
+                  <div className="mt-4 flex items-center gap-3">
+                    <EmployeeAvatar employee={reviewRequestEmployee} className="h-11 w-11 rounded-full" />
+                    <div>
+                      <p className="text-xs font-bold text-on-surface">{reviewRequestEmployee?.designation || 'Employee record'}</p>
+                      <p className="mt-1 text-[10px] text-on-surface-variant">Applied {formatToDDMMMYYYY(reviewRequest.appliedDate)}</p>
+                    </div>
                   </div>
-                  <p className="mt-3 text-xs italic text-on-surface-variant">"{request.reason}"</p>
-                  <div className="mt-3 grid grid-cols-1 gap-2 rounded-md border border-neutral-border/40 bg-white p-3 text-[10px] sm:grid-cols-2">
-                    <div><span className={labelClass}>Payroll Deduction</span><span className="font-mono font-bold text-on-surface">RM {payrollDeductions.filter((deduction) => deduction.leaveRequestId === request.id).reduce((total, deduction) => total + deduction.amount, 0).toFixed(2)}</span></div>
-                    <div><span className={labelClass}>Payroll Sync</span><span className={`font-bold ${payrollDeductions.some((deduction) => deduction.leaveRequestId === request.id && deduction.status === 'Synced') ? 'text-green-700' : 'text-on-surface-variant'}`}>{payrollDeductions.some((deduction) => deduction.leaveRequestId === request.id && deduction.status === 'Synced') ? 'Synced' : payrollDeductions.some((deduction) => deduction.leaveRequestId === request.id) ? 'Pending' : 'Not applicable'}</span></div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg border border-neutral-border/60 bg-white p-3">
+                    <div><span className={labelClass}>Leave type</span><span className="block text-xs font-bold text-primary">{reviewRequest.leaveType}</span></div>
+                    <div><span className={labelClass}>Duration</span><span className="block text-xs font-bold text-on-surface">{reviewRequest.totalDays} working day(s)</span></div>
+                    <div><span className={labelClass}>Start date</span><span className="block font-mono text-[10px] font-bold text-on-surface">{formatToDDMMMYYYY(reviewRequest.startDate)}</span></div>
+                    <div><span className={labelClass}>End date</span><span className="block font-mono text-[10px] font-bold text-on-surface">{formatToDDMMMYYYY(reviewRequest.endDate)}</span></div>
+                    <div><span className={labelClass}>Payroll deduction</span><span className="block font-mono text-[10px] font-bold text-on-surface">RM {reviewRequestPayrollDeduction.toFixed(2)}</span></div>
+                    <div><span className={labelClass}>Payroll sync</span><span className={`block text-[10px] font-bold ${reviewRequestPayrollStatus === 'Synced' ? 'text-green-700' : 'text-on-surface'}`}>{reviewRequestPayrollStatus}</span></div>
                   </div>
-                  {request.status === 'Pending' && (
-                    <div className="mt-3 flex justify-end gap-2">
-                      <button type="button" onClick={() => updateLeaveRequestStatus(request.id, 'Rejected')} className="flex items-center gap-1 rounded bg-red-50 px-3 py-1.5 text-[10px] font-bold text-red-700 transition hover:bg-red-100"><XCircle className="h-3.5 w-3.5" /> Reject</button>
-                      <button type="button" onClick={() => updateLeaveRequestStatus(request.id, 'Approved')} className="flex items-center gap-1 rounded bg-green-600 px-3 py-1.5 text-[10px] font-bold text-white transition hover:bg-green-700"><CheckCircle2 className="h-3.5 w-3.5" /> Approve</button>
+
+                  <div className="mt-4">
+                    <span className={labelClass}>Employee reason</span>
+                    <p className="rounded-lg border border-neutral-border/60 bg-white p-3 text-xs italic leading-5 text-on-surface-variant">"{reviewRequest.reason}"</p>
+                  </div>
+
+                  {reviewRequest.attachment && (
+                    <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-[10px] text-blue-900">
+                      <span className="truncate font-semibold">{reviewRequest.attachment.name}</span>
+                      <span className="shrink-0 font-bold">Attached</span>
                     </div>
                   )}
-                </div>
-              );
-            })}
+
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <label htmlFor="employer-review-note" className={labelClass}>Employer note</label>
+                      <span className="text-[10px] text-on-surface-variant">Visible to employee</span>
+                    </div>
+                    <textarea
+                      id="employer-review-note"
+                      value={reviewRequest.id === reviewNoteRequest?.id ? reviewNoteDraft : (reviewRequest.reviewNote || '')}
+                      onChange={(event) => {
+                        setReviewNoteRequest(reviewRequest);
+                        setReviewNoteStatus(reviewRequest.status === 'Rejected' ? 'Rejected' : 'Approved');
+                        setReviewNoteDraft(event.target.value);
+                      }}
+                      maxLength={2000}
+                      rows={4}
+                      disabled={reviewRequest.status !== 'Pending'}
+                      placeholder="Add an approval note, handover detail, or rejection reason."
+                      className={`${inputClass} resize-y disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-on-surface-variant`}
+                    />
+                    <p className="mt-1 text-[10px] text-on-surface-variant">Saved with the decision and shown in the employee Leave history.</p>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+                    <div>
+                      <p className="text-xs font-bold text-emerald-900">Visible to employee</p>
+                      <p className="mt-0.5 text-[10px] text-emerald-800">Included in Leave history and email</p>
+                    </div>
+                    <span className="relative inline-flex h-5 w-9 rounded-full bg-emerald-600" aria-label="Employer note is visible to employee">
+                      <span className="absolute right-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm" />
+                    </span>
+                  </div>
+
+                  {reviewRequest.reviewNote && (
+                    <div className="mt-3 rounded-lg border border-primary/15 bg-primary/[0.04] p-3 text-[10px]">
+                      <p className="font-bold uppercase tracking-wider text-primary">Saved employee view</p>
+                      <p className="mt-1 whitespace-pre-wrap leading-5 text-on-surface-variant">{reviewRequest.reviewNote}</p>
+                    </div>
+                  )}
+
+                  {reviewRequest.status === 'Pending' && (
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      <button type="button" onClick={() => openReviewDecision(reviewRequest, 'Rejected')} className="min-h-11 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 transition hover:bg-red-100">Reject</button>
+                      <button type="button" onClick={() => openReviewDecision(reviewRequest, 'Approved')} className="min-h-11 rounded-lg bg-green-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-green-700">Approve & notify</button>
+                    </div>
+                  )}
+                </>
+              )}
+            </aside>
+          </div>
+        </section>
+
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+          <div className={`${cardClass} p-5 xl:col-span-7`}>
+            <div className="mb-4 flex flex-col justify-between gap-3 border-b border-neutral-100 pb-4 sm:flex-row sm:items-center">
+              <div>
+                <h2 className="text-base font-bold text-on-surface">Employee leave balance</h2>
+                <p className="mt-1 text-xs text-on-surface-variant">Check balances only when a request needs a policy or entitlement review.</p>
+              </div>
+              <select value={selectedEmployeeId} onChange={(event) => setSelectedEmployeeId(event.target.value)} className={`${inputClass} sm:max-w-[260px]`}>
+                {activeEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
+              </select>
+            </div>
+            {currentEmployee && (
+              <div className="mb-4 flex items-center gap-3 rounded-lg border border-primary/15 bg-primary/5 p-3">
+                <EmployeeAvatar employee={currentEmployee} className="h-9 w-9 rounded-full" />
+                <div><p className="text-sm font-bold text-on-surface">{currentEmployee.name}</p><p className="text-xs text-on-surface-variant">{currentEmployee.department} · {currentEmployee.designation}</p></div>
+              </div>
+            )}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {enabledLeaveConfigs.map((config) => {
+                const balance = selectedEmployeeBalances.find((item) => item.leaveTypeId === config.id);
+                const remaining = balance?.remaining ?? config.daysEntitled;
+                const expiryDate = ledgerEntries
+                  .filter((entry) => entry.employeeId === selectedEmployeeId && entry.leaveTypeId === config.id && entry.expiresAt)
+                  .map((entry) => entry.expiresAt as string)
+                  .sort()[0];
+                return (
+                  <div key={config.id} className="rounded-lg border border-neutral-border/60 bg-neutral-50 p-3">
+                    <div className="flex items-start justify-between gap-2"><span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">{config.leaveType}</span>{balance?.replacementCredit ? <span className="rounded-full bg-secondary/10 px-1.5 py-0.5 text-[9px] font-bold text-secondary">Credit</span> : null}</div>
+                    <div className="mt-2 flex items-end justify-between"><span className="font-mono text-2xl font-bold text-primary">{remaining}</span><span className="text-[10px] text-on-surface-variant">/ {(balance?.entitlement ?? config.daysEntitled) + (balance?.carryOver ?? 0)} days</span></div>
+                    <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-on-surface-variant"><span>Approved taken <strong className="font-mono text-on-surface">{balance?.taken ?? 0}</strong></span><span>Pending <strong className="font-mono text-on-surface">{balance?.pending ?? 0}</strong></span><span>Carry forward <strong className="font-mono text-on-surface">{balance?.carryOver ?? 0}</strong></span><span>Credits <strong className="font-mono text-on-surface">{balance?.credited ?? 0}</strong></span></div>
+                    {expiryDate && <p className="mt-2 border-t border-neutral-border/60 pt-2 text-[10px] text-amber-700">Expires {formatToDDMMMYYYY(expiryDate)}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className={`${cardClass} p-5 xl:col-span-5`}>
+            <div className="mb-4 flex items-start justify-between gap-3 border-b border-neutral-100 pb-4">
+              <div><div className="flex items-center gap-2"><Plus className="h-4 w-4 text-primary" /><h2 className="text-base font-bold text-primary">File leave request</h2></div><p className="mt-1 text-xs text-on-surface-variant">Submit on behalf of an active employee.</p></div>
+              <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase text-primary">Admin</span>
+            </div>
+            <form onSubmit={handleApplyLeave} className="space-y-3 text-xs">
+              <div><label className={labelClass}>Employee</label><select value={selectedEmployeeId} onChange={(event) => setSelectedEmployeeId(event.target.value)} className={inputClass}><option value="">Select active employee</option>{activeEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name} ({employee.id})</option>)}</select></div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label className={labelClass}>Type of leave</label><select value={leaveType} onChange={(event) => setLeaveType(event.target.value)} className={inputClass}>{enabledLeaveConfigs.map((config) => <option key={config.id} value={config.leaveType}>{config.leaveType}</option>)}</select></div><div className="rounded-lg border border-primary/15 bg-primary/5 p-3"><span className={labelClass}>Computed days</span><span className="font-mono text-2xl font-bold text-primary">{calculateDays(startDate, endDate)}</span></div></div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><label className={labelClass}>Start date</label><input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className={`${inputClass} font-mono`} /></div><div><label className={labelClass}>End date</label><input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className={`${inputClass} font-mono`} /></div></div>
+              <div className="flex items-center justify-between rounded-lg border border-neutral-border/60 bg-neutral-50 px-3 py-2.5 text-[10px]"><span className={labelClass}>Applicable policy</span><span className="font-semibold text-on-surface">{policyForLeaveType?.name || 'Not configured'}</span></div>
+              <div><label className={labelClass}>Reason / notes</label><textarea rows={3} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Add the reason or supporting reference." className={inputClass} /></div>
+              <button type="submit" className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:opacity-90"><Send className="h-4 w-4" /> Submit leave application</button>
+            </form>
           </div>
         </div>
       </div>
-
-    </div>
-  );
+    );
+  };
 
   const renderPolicy = () => (
     <div className="space-y-6">
@@ -2940,6 +3296,17 @@ export default function LeaveManagementView({
                 <Users className="h-4 w-4 text-primary" aria-hidden="true" />
                 {activeEmployees.length} active employees
               </span>
+              {workspaceSaveState !== 'idle' && (
+                <span className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 font-bold ${
+                  workspaceSaveState === 'error'
+                    ? 'border-amber-200 bg-amber-50 text-amber-800'
+                    : workspaceSaveState === 'saving'
+                      ? 'border-blue-200 bg-blue-50 text-blue-800'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                }`}>
+                  {workspaceSaveState === 'saving' ? 'Saving changes...' : workspaceSaveState === 'error' ? 'Saved locally; sync needs attention' : 'Saved just now'}
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => setRefreshKey((key) => key + 1)}
@@ -3063,6 +3430,95 @@ export default function LeaveManagementView({
       {activeSection === 'off-in-lieu' && renderOffInLieu()}
       {activeSection === 'calendar' && renderCalendar()}
         </>
+      )}
+
+      {(reviewNoteRequest || reviewNoteBatchStatus) && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4 backdrop-blur-[2px]"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeReviewDecision();
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="leave-review-note-title"
+            className="w-full max-w-lg rounded-2xl border border-neutral-border bg-white p-5 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Leave decision</p>
+                <h2 id="leave-review-note-title" className="mt-1 text-lg font-bold text-on-background">
+                  {reviewNoteStatus === 'Rejected' || reviewNoteBatchStatus === 'Rejected' ? 'Reject leave request' : 'Approve leave request'}
+                </h2>
+                <p className="mt-1 text-xs leading-5 text-on-surface-variant">
+                  {reviewNoteBatchStatus
+                    ? `Add one note for all ${selectedLeaveRequestIds.length} selected requests.`
+                    : `${reviewNoteRequest?.employeeName} · ${reviewNoteRequest?.leaveType}`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeReviewDecision}
+                className="min-h-11 min-w-11 rounded-xl border border-neutral-border text-lg text-on-surface-variant hover:bg-neutral-50"
+                aria-label="Close leave decision dialog"
+              >
+                ×
+              </button>
+            </div>
+
+            {!reviewNoteBatchStatus && reviewNoteRequest && (
+              <div className="mt-4 rounded-xl border border-neutral-border bg-neutral-50 p-3 text-xs text-on-surface-variant">
+                {formatToDDMMMYYYY(reviewNoteRequest.startDate)} to {formatToDDMMMYYYY(reviewNoteRequest.endDate)} · {reviewNoteRequest.totalDays} day(s)
+              </div>
+            )}
+
+            <label className="mt-4 block">
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                Employer note <span className="font-normal normal-case tracking-normal">(optional, visible to employee)</span>
+              </span>
+              <textarea
+                autoFocus
+                value={reviewNoteDraft}
+                onChange={(event) => setReviewNoteDraft(event.target.value)}
+                maxLength={2000}
+                rows={5}
+                placeholder={reviewNoteStatus === 'Rejected' || reviewNoteBatchStatus === 'Rejected'
+                  ? 'Explain the rejection or record the next action for the employee.'
+                  : 'Add an approval note, handover detail, or payroll reference for the employee.'}
+                className={`${inputClass} resize-y`}
+              />
+              <span className="mt-1 block text-right text-[10px] text-on-surface-variant">{reviewNoteDraft.length}/2000</span>
+            </label>
+
+            <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={closeReviewDecision}
+                className="min-h-11 rounded-xl border border-neutral-border px-4 py-2 text-xs font-bold text-on-surface-variant hover:bg-neutral-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveReviewDecision()}
+                disabled={isSavingReviewDecision}
+                className={`min-h-11 rounded-xl px-4 py-2 text-xs font-bold text-white disabled:cursor-wait disabled:opacity-60 ${
+                  reviewNoteStatus === 'Rejected' || reviewNoteBatchStatus === 'Rejected'
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : 'bg-green-600 hover:bg-green-700'
+                }`}
+              >
+                {isSavingReviewDecision
+                  ? 'Saving...'
+                  : reviewNoteStatus === 'Rejected' || reviewNoteBatchStatus === 'Rejected'
+                    ? 'Reject and notify employee'
+                    : 'Approve and notify employee'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

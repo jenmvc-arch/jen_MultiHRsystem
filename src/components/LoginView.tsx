@@ -524,7 +524,7 @@ export default function LoginView({ onLoginSuccess, portal }: LoginViewProps) {
             
             {/* Username Input Group */}
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-[#342624]">
+              <label htmlFor="login-username" className="mb-1.5 block text-sm font-semibold text-[#342624]">
                 Username or email
               </label>
               <div className="relative">
@@ -532,6 +532,7 @@ export default function LoginView({ onLoginSuccess, portal }: LoginViewProps) {
                   <Mail className="w-5 h-5" />
                 </span>
                 <input
+                  id="login-username"
                   type="text"
                   required
                   value={email}
@@ -545,7 +546,7 @@ export default function LoginView({ onLoginSuccess, portal }: LoginViewProps) {
 
             {/* Password Input Group */}
             {(loginPortal === 'admin' || (loginPortal === 'employee' && !employeeRecoveryMode)) && <div>
-              <label className="mb-1.5 block text-sm font-semibold text-[#342624]">
+              <label htmlFor="login-password" className="mb-1.5 block text-sm font-semibold text-[#342624]">
                 Password
               </label>
               <div className="relative">
@@ -553,6 +554,7 @@ export default function LoginView({ onLoginSuccess, portal }: LoginViewProps) {
                   <Lock className="w-5 h-5" />
                 </span>
                 <input
+                  id="login-password"
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}

@@ -110,7 +110,10 @@ async function requestAdminData<T>(path: string, init?: RequestInit): Promise<T>
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error || `Admin data request failed with status ${response.status}.`);
+    const fallbackMessage = response.status >= 500
+      ? 'The secure data service is temporarily unavailable. Please retry in a moment.'
+      : `Admin data request failed with status ${response.status}.`;
+    throw new Error(payload.error || fallbackMessage);
   }
   return payload as T;
 }

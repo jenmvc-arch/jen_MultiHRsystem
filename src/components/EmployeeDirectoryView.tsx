@@ -324,6 +324,15 @@ export default function EmployeeDirectoryView({
   const [formAllowances, setFormAllowances] = useState<EmployeeAllowanceDraft[]>([]);
   const [formCreateAccount, setFormCreateAccount] = useState(true);
 
+  useEffect(() => {
+    if (!isAddModalOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isSavingForm) setIsAddModalOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isAddModalOpen, isSavingForm]);
+
   // New specific compliance form states
   const [formNricPassport, setFormNricPassport] = useState('');
   const [formNationality, setFormNationality] = useState('Malaysian');
@@ -663,6 +672,10 @@ export default function EmployeeDirectoryView({
       });
     } catch (error) {
       console.error('[Employee Profile Save] Failed:', error);
+      onShowNotification(
+        'Profile Save Failed',
+        'The employee profile could not be saved. Your edits are still on screen; check the connection and retry.'
+      );
     } finally {
       setSavingAction(null);
     }
@@ -1480,7 +1493,7 @@ export default function EmployeeDirectoryView({
           }
         }
       } catch (err: any) {
-        onShowNotification('Save Error', `Failed to register employee: ${err.message || err}`);
+        onShowNotification('Employee Save Failed', 'The employee could not be registered. Check required fields and your connection, then try again.');
       } finally {
         setIsSavingForm(false);
       }
@@ -5561,7 +5574,7 @@ export default function EmployeeDirectoryView({
               </div>
 
               {/* Modal Footer */}
-              <div className="p-4 border-t border-neutral-border flex justify-end gap-2 bg-surface-container-low shrink-0">
+              <div className="sticky bottom-0 z-10 p-4 border-t border-neutral-border flex flex-wrap justify-end gap-2 bg-surface-container-low/95 backdrop-blur shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}

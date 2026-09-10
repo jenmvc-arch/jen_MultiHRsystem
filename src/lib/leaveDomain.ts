@@ -25,6 +25,7 @@ export interface LeaveRequest {
   appliedDate: string;
   approvedAt?: string;
   approvedBy?: string;
+  reviewNote?: string;
   excessDays?: number;
   payrollMonth?: number;
   payrollYear?: number;
