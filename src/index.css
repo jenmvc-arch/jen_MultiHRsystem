@@ -117,6 +117,12 @@
   textarea::placeholder {
     color: color-mix(in srgb, var(--color-on-surface-variant) 78%, transparent);
   }
+
+  .email-template-rich-editor:empty::before {
+    color: color-mix(in srgb, var(--color-on-surface-variant) 78%, transparent);
+    content: attr(data-placeholder);
+    pointer-events: none;
+  }
 }
 
 /* Custom baseline alignment and spacing utilities */

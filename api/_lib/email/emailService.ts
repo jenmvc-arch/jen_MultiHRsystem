@@ -7,6 +7,7 @@ import {
   extractEmailTemplatePlaceholders,
   replaceEmailTemplatePlaceholders,
 } from '../../../src/lib/emailTemplateTypes.js';
+import { stripEmailTemplateFormatting } from '../../../src/lib/emailTemplateFormatting.js';
 import {
   EmailDeliveryResult,
   EmailTemplateInput,
@@ -186,7 +187,7 @@ export const createEmailService = (options: EmailServiceOptions = {}) => {
             ) {
               template = {
                 subject,
-                text: body,
+                text: stripEmailTemplateFormatting(body),
                 html: renderPlainTextAsHtml(body),
               };
             }

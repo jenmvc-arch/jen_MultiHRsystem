@@ -1,15 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
+  Bold,
   Check,
   ChevronRight,
   Edit3,
   Globe2,
+  Italic,
   Loader2,
   Mail,
   Plus,
   Save,
   Sparkles,
+  Underline,
   UserRound,
 } from 'lucide-react';
 import type { CorporateEntity, EmailTemplate } from '../types';
@@ -21,6 +24,11 @@ import {
   normalizeEmailTemplate,
   replaceEmailTemplatePlaceholders,
 } from '../lib/emailTemplateTypes';
+import {
+  renderEmailTemplateMarkupAsHtml,
+  type EmailTemplateFormat,
+  wrapEmailTemplateFormatting,
+} from '../lib/emailTemplateFormatting';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
 
 const STORAGE_KEY = 'offline_email_templates';
@@ -88,19 +96,35 @@ const canUseLocalFallback = (error: any) => (
   )
 );
 
-const escapePreviewHtml = (value: string) => value
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#039;');
-
 const renderPreview = (value: string) => {
   const text = replaceEmailTemplatePlaceholders(value, (key) => (
     BUILT_IN_PREVIEW_VALUES[key] ?? `{{${key}}}`
   ));
-  return escapePreviewHtml(text).replace(/\r?\n/g, '<br />');
+  return renderEmailTemplateMarkupAsHtml(text);
 };
+
+const serializeRichTextNode = (node: Node): string => {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent || '';
+  if (!(node instanceof HTMLElement)) return '';
+
+  const tag = node.tagName.toLowerCase();
+  if (tag === 'br') return '\n';
+
+  let content = Array.from(node.childNodes).map(serializeRichTextNode).join('');
+  if (tag === 'strong' || tag === 'b') content = wrapEmailTemplateFormatting(content, 'bold');
+  if (tag === 'em' || tag === 'i') content = wrapEmailTemplateFormatting(content, 'italic');
+  if (tag === 'u') content = wrapEmailTemplateFormatting(content, 'underline');
+  if (tag === 'div' || tag === 'p') content += '\n';
+  return content;
+};
+
+const serializeRichTextEditor = (editor: HTMLElement) => (
+  Array.from(editor.childNodes)
+    .map(serializeRichTextNode)
+    .join('')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\n$/, '')
+);
 
 const apiRequest = async (path: string, init?: RequestInit) => {
   const response = await fetch(path, {
@@ -142,7 +166,13 @@ export default function EmailTemplateSetupView({
   const [loadError, setLoadError] = useState('');
   const [customFunction, setCustomFunction] = useState('');
   const subjectRef = useRef<HTMLTextAreaElement>(null);
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const bodySyncedValueRef = useRef('');
+  const [activeBodyFormats, setActiveBodyFormats] = useState<Record<EmailTemplateFormat, boolean>>({
+    bold: false,
+    italic: false,
+    underline: false,
+  });
   const useLocalStorage = !isSupabaseConfigured || isAccountPreview();
 
   const activeEntity = entities.find((entity) => entity.id === activeEntityId);
@@ -184,6 +214,13 @@ export default function EmailTemplateSetupView({
     setDraft((current) => current.id ? current : newTemplate(activeEntityId));
   }, [activeEntityId]);
 
+  useEffect(() => {
+    const editor = bodyRef.current;
+    if (!editor || bodySyncedValueRef.current === draft.bodyTemplate) return;
+    editor.innerHTML = renderEmailTemplateMarkupAsHtml(draft.bodyTemplate);
+    bodySyncedValueRef.current = draft.bodyTemplate;
+  }, [draft.bodyTemplate]);
+
   const selectTemplate = (template: EmailTemplate) => {
     setSelectedId(template.id);
     setDraft({ ...template });
@@ -202,17 +239,62 @@ export default function EmailTemplateSetupView({
     setDraft((current) => ({ ...current, ...updates }));
   };
 
+  const refreshBodyFormatState = () => {
+    const editor = bodyRef.current;
+    const selection = window.getSelection();
+    const isInsideEditor = Boolean(editor && selection?.anchorNode && editor.contains(selection.anchorNode));
+    setActiveBodyFormats({
+      bold: isInsideEditor && document.queryCommandState('bold'),
+      italic: isInsideEditor && document.queryCommandState('italic'),
+      underline: isInsideEditor && document.queryCommandState('underline'),
+    });
+  };
+
+  const syncBodyFromEditor = () => {
+    const editor = bodyRef.current;
+    if (!editor) return;
+    const value = serializeRichTextEditor(editor);
+    bodySyncedValueRef.current = value;
+    updateDraft({ bodyTemplate: value });
+    refreshBodyFormatState();
+  };
+
+  const applyBodyFormat = (format: EmailTemplateFormat) => {
+    const editor = bodyRef.current;
+    if (!editor) return;
+    editor.focus();
+    document.execCommand(format, false);
+    syncBodyFromEditor();
+  };
+
   const insertPlaceholder = (
     placeholder: string,
     target: 'subjectTemplate' | 'bodyTemplate',
   ) => {
-    const ref = target === 'subjectTemplate' ? subjectRef.current : bodyRef.current;
-    const value = draft[target];
     const insertion = `{{${placeholder}}}`;
+    if (target === 'bodyTemplate') {
+      const editor = bodyRef.current;
+      if (!editor) return;
+      const selection = window.getSelection();
+      if (!selection?.rangeCount || !selection.anchorNode || !editor.contains(selection.anchorNode)) {
+        editor.focus();
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(false);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+      document.execCommand('insertText', false, insertion);
+      syncBodyFromEditor();
+      return;
+    }
+
+    const ref = subjectRef.current;
+    const value = draft.subjectTemplate;
     const start = ref?.selectionStart ?? value.length;
     const end = ref?.selectionEnd ?? start;
     const nextValue = `${value.slice(0, start)}${insertion}${value.slice(end)}`;
-    updateDraft({ [target]: nextValue });
+    updateDraft({ subjectTemplate: nextValue });
     requestAnimationFrame(() => {
       if (!ref) return;
       ref.focus();
@@ -578,17 +660,32 @@ export default function EmailTemplateSetupView({
           </div>
 
           <div className="mt-5">
-            <label className="text-xs font-bold text-on-surface-variant">
-              Email Content
-              <textarea
-                ref={bodyRef}
-                value={draft.bodyTemplate}
-                onChange={(event) => updateDraft({ bodyTemplate: event.target.value })}
-                rows={10}
-                className="mt-1.5 w-full resize-y rounded-xl border border-neutral-border px-3 py-2.5 text-sm font-normal leading-relaxed text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
-                placeholder={'Hello {{employee_name}},\n\nYour document is ready.'}
+            <label className="text-xs font-bold text-on-surface-variant">Email Content</label>
+            <div className="mt-1.5 overflow-hidden rounded-xl border border-neutral-border bg-white transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/15">
+              <RichTextToolbar
+                activeFormats={activeBodyFormats}
+                onFormat={applyBodyFormat}
               />
-            </label>
+              <div
+                ref={bodyRef}
+                contentEditable
+                suppressContentEditableWarning
+                role="textbox"
+                aria-label="Email Content"
+                aria-multiline="true"
+                data-placeholder="Hello {{employee_name}}, your document is ready."
+                onInput={syncBodyFromEditor}
+                onKeyUp={refreshBodyFormatState}
+                onMouseUp={refreshBodyFormatState}
+                onFocus={refreshBodyFormatState}
+                onPaste={(event) => {
+                  event.preventDefault();
+                  document.execCommand('insertText', false, event.clipboardData.getData('text/plain'));
+                  syncBodyFromEditor();
+                }}
+                className="email-template-rich-editor min-h-[240px] px-3 py-3 text-sm font-normal leading-relaxed text-on-surface outline-none"
+              />
+            </div>
             <PlaceholderBar onInsert={(value) => insertPlaceholder(value, 'bodyTemplate')} />
           </div>
 
@@ -645,6 +742,7 @@ function PlaceholderBar({ onInsert }: { onInsert: (value: string) => void }) {
         <div key={placeholder.value} className="inline-flex overflow-hidden rounded-full border border-neutral-border bg-white">
           <button
             type="button"
+            onMouseDown={(event) => event.preventDefault()}
             onClick={() => onInsert(placeholder.value)}
             className="px-2 py-1 text-[10px] font-semibold text-primary transition hover:bg-primary/5"
             title={`Insert {{${placeholder.value}}}`}
@@ -653,6 +751,7 @@ function PlaceholderBar({ onInsert }: { onInsert: (value: string) => void }) {
           </button>
           <button
             type="button"
+            onMouseDown={(event) => event.preventDefault()}
             onClick={() => onInsert(`${placeholder.value} uppercase`)}
             className="border-l border-neutral-border px-1.5 py-1 text-[9px] font-bold uppercase text-on-surface-variant transition hover:bg-primary/5 hover:text-primary"
             title={`Insert uppercase {{${placeholder.value}}}`}
@@ -661,6 +760,7 @@ function PlaceholderBar({ onInsert }: { onInsert: (value: string) => void }) {
           </button>
           <button
             type="button"
+            onMouseDown={(event) => event.preventDefault()}
             onClick={() => onInsert(`${placeholder.value} lowercase`)}
             className="border-l border-neutral-border px-1.5 py-1 text-[9px] font-bold lowercase text-on-surface-variant transition hover:bg-primary/5 hover:text-primary"
             title={`Insert lowercase {{${placeholder.value}}}`}
@@ -668,6 +768,43 @@ function PlaceholderBar({ onInsert }: { onInsert: (value: string) => void }) {
             aa
           </button>
         </div>
+      ))}
+    </div>
+  );
+}
+
+function RichTextToolbar({
+  activeFormats,
+  onFormat,
+}: {
+  activeFormats: Record<EmailTemplateFormat, boolean>;
+  onFormat: (format: EmailTemplateFormat) => void;
+}) {
+  const controls = [
+    { format: 'bold' as const, label: 'Bold', icon: Bold },
+    { format: 'italic' as const, label: 'Italic', icon: Italic },
+    { format: 'underline' as const, label: 'Underline', icon: Underline },
+  ];
+
+  return (
+    <div className="flex h-10 items-center gap-1 border-b border-neutral-border bg-surface-container px-2" role="toolbar" aria-label="Text formatting">
+      {controls.map(({ format, label, icon: Icon }) => (
+        <button
+          key={format}
+          type="button"
+          title={label}
+          aria-label={label}
+          aria-pressed={activeFormats[format]}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onFormat(format)}
+          className={`flex h-7 w-7 items-center justify-center rounded-md transition ${
+            activeFormats[format]
+              ? 'bg-primary text-on-primary-container'
+              : 'text-on-surface-variant hover:bg-white hover:text-primary'
+          }`}
+        >
+          <Icon className="h-3.5 w-3.5" />
+        </button>
       ))}
     </div>
   );

@@ -5,6 +5,11 @@ import {
   getEmailTemplateFunctionLabel,
   replaceEmailTemplatePlaceholders,
 } from './lib/emailTemplateTypes';
+import {
+  renderEmailTemplateMarkupAsHtml,
+  stripEmailTemplateFormatting,
+  wrapEmailTemplateFormatting,
+} from './lib/emailTemplateFormatting';
 import { createEmailService } from '../api/_lib/email/emailService.js';
 
 process.env.GMAIL_USER = 'smtp-test@example.com';
@@ -77,6 +82,18 @@ assert.equal(
   ),
   'ALICIA TAN / Salary / pdf attached',
 );
+assert.equal(
+  renderEmailTemplateMarkupAsHtml('Hello [[bold]]{{employee_name}}[[/bold]] and [[underline]]HR[[/underline]]'),
+  'Hello <strong>{{employee_name}}</strong> and <u>HR</u>',
+);
+assert.equal(
+  renderEmailTemplateMarkupAsHtml('[[italic]]Review <unsafe>[[/italic]]'),
+  '<em>Review &lt;unsafe&gt;</em>',
+);
+assert.equal(
+  stripEmailTemplateFormatting(wrapEmailTemplateFormatting('Alicia Tan', 'bold')),
+  'Alicia Tan',
+);
 assert.equal(rendered.ok, true);
 assert.equal(sent[0].subject, 'Payslip August for Alicia Tan');
 assert.match(sent[0].html, /&lt;unsafe&gt;/);
@@ -90,7 +107,7 @@ const payslipTemplateQuery: any = {
       data: [{
         entity_id: 'ENT-92',
         subject_template: '{{payslip_type}} - {{pay type}} - {{payroll_month}} {{payroll_year}}',
-        body_template: '{{employee_name uppercase}} / {{entity_name}} / {{details}}',
+        body_template: '[[bold]]{{employee_name uppercase}}[[/bold]] / [[italic]]{{entity_name}}[[/italic]] / [[underline]]{{details}}[[/underline]]',
         is_active: true,
       }],
       error: null,
@@ -124,5 +141,9 @@ await payslipService.sendTemplate(
 );
 assert.equal(payslipSent[0].subject, 'Payslip - Salary - August 2026');
 assert.match(payslipSent[0].text, /ALICIA TAN \/ Red Point Sdn Bhd \/ Payslip PDF attached\./);
+assert.doesNotMatch(payslipSent[0].text, /\[\[/);
+assert.match(payslipSent[0].html, /<strong>ALICIA TAN<\/strong>/);
+assert.match(payslipSent[0].html, /<em>Red Point Sdn Bhd<\/em>/);
+assert.match(payslipSent[0].html, /<u>Payslip PDF attached\.<\/u>/);
 
 console.log('Email template tests passed.');

@@ -1,4 +1,5 @@
 import { EmailType } from './emailTypes.js';
+import { renderEmailTemplateMarkupAsHtml } from '../../../src/lib/emailTemplateFormatting.js';
 
 export const escapeHtml = (value: unknown) => String(value ?? '')
   .replace(/&/g, '&amp;')
@@ -21,7 +22,7 @@ const layout = (title: string, body: string) => `
 </html>`;
 
 export const renderPlainTextAsHtml = (value: string) => (
-  escapeHtml(value).replace(/\r?\n/g, '<br />')
+  renderEmailTemplateMarkupAsHtml(value)
 );
 
 export const buildTemplate = (type: EmailType, data: Record<string, unknown>) => {
